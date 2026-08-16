@@ -1,0 +1,16 @@
+node_modules/
+.data/
+.env
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+*.log
+.DS_Store
+.env.local
+.env.*.local
+contracts/deployments/*-local.json
+contracts/deployments/*-e2e.json
+config/providers.local.yaml
+config/providers.yaml
+web/out/
+web/.next/
