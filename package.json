@@ -1,0 +1,53 @@
+{
+  "name": "anyroute",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Any model. One key. Paid per call. OpenRouter-compatible inference router settled in USDG on Robinhood Chain.",
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "launch": "bun scripts/launch.ts",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "test:pg": "TEST_PG_URL=${TEST_PG_URL:-postgres://postgres@127.0.0.1:55432/postgres} TEST_REDIS_URL=${TEST_REDIS_URL:-redis://127.0.0.1:56379} bun test",
+    "test:e2e": "E2E_ANVIL=1 bun test test/e2e-anvil.test.ts",
+    "test:contracts": "cd contracts && ~/.foundry/bin/forge test",
+    "test:fork": "cd contracts && RHC_RPC_URL=${RHC_RPC_URL:-https://rpc.mainnet.chain.robinhood.com} ~/.foundry/bin/forge test --match-path 'test/fork/*'",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "abis": "bun scripts/export-abis.ts",
+    "providers:mock": "bun scripts/mock-providers.ts",
+    "seed": "bun scripts/seed.ts",
+    "key": "bun scripts/key.ts",
+    "deploy:local": "bun scripts/deploy-local.ts",
+    "services:up": "scripts/services.sh up",
+    "services:down": "scripts/services.sh down"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "dependencies": {
+    "@account-abstraction/contracts": "0.7.0",
+    "@electric-sql/pglite": "0.5.8",
+    "@hono/trpc-server": "0.4.2",
+    "@noble/hashes": "2.4.0",
+    "@openzeppelin/contracts": "5.6.1",
+    "@trpc/server": "11.19.0",
+    "@uniswap/v4-core": "1.0.2",
+    "bullmq": "6.3.9",
+    "drizzle-orm": "0.45.3",
+    "hono": "4.13.9",
+    "ioredis": "6.0.0",
+    "postgres": "3.4.9",
+    "viem": "2.56.9",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "drizzle-kit": "0.31.11",
+    "openai": "7.23.0",
+    "typescript": "7.0.2"
+  }
+}
