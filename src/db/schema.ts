@@ -195,3 +195,109 @@ export const offers = pgTable(
   },
   (t) => [primaryKey({ columns: [t.modelId, t.providerId] }), index("offers_provider_idx").on(t.providerId)],
 );
+
+export const health = pgTable(
+  "health",
+  {
+    modelId: text("model_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    ts: ts("ts").notNull().defaultNow(),
+    ok: boolean("ok").notNull(),
+    latencyMs: integer("latency_ms"),
+    tps: real("tps"),
+    empty200: boolean("empty200").notNull().default(false),
+    statusCode: integer("status_code"),
+    errorKind: text("error_kind"),
+    source: text("source").notNull().default("traffic"), // traffic | probe
+    caller: text("caller"), // truncated hash of the calling account (never the account itself)
+  },
+  (t) => [index("health_mp_ts_idx").on(t.modelId, t.providerId, t.ts)],
+);
+
+export const canaries = pgTable(
+  "canaries",
+  {
+    modelId: text("model_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    ts: ts("ts").notNull().defaultNow(),
+    quantMatch: boolean("quant_match"),
+    quantGuess: text("quant_guess"),
+    distance: real("distance"),
+    quality: real("quality"),
+    detail: jsonb("detail"),
+  },
+  (t) => [index("canaries_mp_ts_idx").on(t.modelId, t.providerId, t.ts)],
+);
+
+export const canaryReferences = pgTable(
+  "canary_references",
+  {
+    modelId: text("model_id").notNull(),
+    quant: text("quant").notNull(), // bf16 | fp8 | int4 ...
+    fingerprint: jsonb("fingerprint").notNull(),
+    source: text("source").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.modelId, t.quant] })],
+);
+
+export const apps = pgTable("apps", {
+  id: text("id").primaryKey(), // sha256(origin)
+  url: text("url"),
+  title: text("title"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const generations = pgTable(
+  "generations",
+  {
+    id: text("id").primaryKey(),
+    ts: ts("ts").notNull().defaultNow(),
+    keyHash: text("key_hash"),
+    accountId: text("account_id"),
+    modelId: text("model_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    tokensIn: integer("tokens_in").notNull().default(0),
+    tokensOut: integer("tokens_out").notNull().default(0),
+    reasoningTokens: integer("reasoning_tokens").notNull().default(0),
+    cachedTokens: integer("cached_tokens").notNull().default(0),
+    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+    cost: money("cost").notNull().default(sql`0`), // total charged to caller
+    upstreamCost: money("upstream_cost").notNull().default(sql`0`),
+    royalty: money("royalty").notNull().default(sql`0`),
+    margin: money("margin").notNull().default(sql`0`),
+    cacheDiscount: money("cache_discount").notNull().default(sql`0`),
+    mode: text("mode").notNull(), // prepaid | per_call | paywith | byok | cache
+    latencyMs: integer("latency_ms"),
+    generationTimeMs: integer("generation_time_ms"),
+    finishReason: text("finish_reason"),
+    nativeFinishReason: text("native_finish_reason"),
+    streamed: boolean("streamed").notNull().default(false),
+    cancelled: boolean("cancelled").notNull().default(false),
+    quant: text("quant"),
+    dataRegion: text("data_region"),
+    isByok: boolean("is_byok").notNull().default(false),
+    private: boolean("private").notNull().default(false),
+    attestationHash: text("attestation_hash"),
+    receiptId: text("receipt_id"),
+    receiptSig: text("receipt_sig"),
+    receiptKeyId: text("receipt_key_id"),
+    receipt: jsonb("receipt"), // signed payload (hashes only, never content)
+    receiptLeaf: text("receipt_leaf"),
+    anchorIndex: integer("anchor_index"),
+    leafIndex: integer("leaf_index"),
+    paidWith: jsonb("paid_with"),
+    paymentTx: text("payment_tx"),
+    appId: text("app_id"),
+    attempts: jsonb("attempts"),
+    requestSha256: text("request_sha256"),
+    responseSha256: text("response_sha256"),
+    settledPeriod: text("settled_period"),
+  },
+  (t) => [
+    index("gen_ts_idx").on(t.ts),
+    index("gen_key_ts_idx").on(t.keyHash, t.ts),
+    index("gen_provider_ts_idx").on(t.providerId, t.ts),
+    index("gen_anchor_idx").on(t.anchorIndex),
+  ],
+);
