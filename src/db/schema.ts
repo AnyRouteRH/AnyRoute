@@ -301,3 +301,89 @@ export const generations = pgTable(
     index("gen_anchor_idx").on(t.anchorIndex),
   ],
 );
+
+export const receiptKeys = pgTable("receipt_keys", {
+  id: text("id").primaryKey(), // 16 hex chars (bytes8)
+  publicKey: text("public_key").notNull(), // raw 32-byte hex
+  privateKeyEnc: text("private_key_enc"),
+  validFrom: ts("valid_from").notNull(),
+  retiredAt: ts("retired_at"),
+  onchainTx: text("onchain_tx"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const anchors = pgTable("anchors", {
+  index: integer("index").primaryKey(),
+  root: text("root").notNull(),
+  fromTs: ts("from_ts").notNull(),
+  toTs: ts("to_ts").notNull(),
+  count: integer("count").notNull(),
+  txHash: text("tx_hash"),
+  status: text("status").notNull().default("pending"), // pending | submitted | confirmed | local
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const spentRoots = pgTable("spent_roots", {
+  epoch: integer("epoch").primaryKey(),
+  root: text("root").notNull(),
+  asOf: ts("as_of").notNull(),
+  totalSpentUsdg: bigint("total_spent_usdg", { mode: "bigint" }).notNull(),
+  leaves: jsonb("leaves").notNull(), // [[chainKeyHash, cumulativeSpentUsdg]] in tree order
+  txHash: text("tx_hash"),
+  status: text("status").notNull().default("pending"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const chainEvents = pgTable(
+  "chain_events",
+  {
+    txHash: text("tx_hash").notNull(),
+    logIndex: integer("log_index").notNull(),
+    contract: text("contract").notNull(),
+    event: text("event").notNull(),
+    blockNumber: bigint("block_number", { mode: "bigint" }).notNull(),
+    args: jsonb("args").notNull(),
+    processed: boolean("processed").notNull().default(false),
+    processedAt: ts("processed_at"),
+    error: text("error"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.txHash, t.logIndex] }), index("chain_events_unprocessed").on(t.processed, t.event)],
+);
+
+export const chainCursor = pgTable("chain_cursor", {
+  id: text("id").primaryKey(),
+  block: bigint("block", { mode: "bigint" }).notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+export const quotes = pgTable(
+  "quotes",
+  {
+    nonce: text("nonce").primaryKey(), // bytes32 hex
+    priceUsdg: bigint("price_usdg", { mode: "bigint" }).notNull(),
+    pricePico: money("price_pico").notNull(),
+    requestSha256: text("request_sha256").notNull(),
+    modelId: text("model_id").notNull(),
+    expiresAt: ts("expires_at").notNull(),
+    status: text("status").notNull().default("open"), // open | paid | used | expired
+    payer: text("payer"),
+    txHash: text("tx_hash"),
+    accountId: text("account_id"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("quotes_tx_idx").on(t.txHash)], // one tx may pay several quotes (4337 bundles)
+);
+
+export const paywithSessions = pgTable("paywith_sessions", {
+  keyHash: text("key_hash").primaryKey(), // chain key hash
+  wallet: text("wallet").notNull(),
+  token: text("token").notNull(),
+  symbol: text("symbol").notNull(),
+  capRawDay: bigint("cap_raw_day", { mode: "bigint" }).notNull(),
+  spentRawToday: bigint("spent_raw_today", { mode: "bigint" }).notNull().default(sql`0`),
+  dayStart: ts("day_start"),
+  active: boolean("active").notNull().default(true),
+  openedTx: text("opened_tx"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
