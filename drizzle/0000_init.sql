@@ -182,3 +182,96 @@ CREATE TABLE "keys" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_used" timestamp with time zone
 );
+--> statement-breakpoint
+CREATE TABLE "kv" (
+	"key" text PRIMARY KEY NOT NULL,
+	"value" jsonb NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "ledger" (
+	"id" text PRIMARY KEY NOT NULL,
+	"account_id" text NOT NULL,
+	"key_hash" text,
+	"amount" bigint NOT NULL,
+	"kind" text NOT NULL,
+	"ref" text NOT NULL,
+	"generation_id" text,
+	"description" text DEFAULT '' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "models" (
+	"id" text PRIMARY KEY NOT NULL,
+	"author" text NOT NULL,
+	"name" text NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"ctx" integer DEFAULT 8192 NOT NULL,
+	"max_out" integer,
+	"arch" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"hf_repo" text,
+	"creator" text,
+	"royalty_bps" integer DEFAULT 0 NOT NULL,
+	"created_unix" integer NOT NULL,
+	"hidden" boolean DEFAULT false NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "offers" (
+	"model_id" text NOT NULL,
+	"provider_id" text NOT NULL,
+	"provider_model_id" text NOT NULL,
+	"price_prompt" bigint NOT NULL,
+	"price_completion" bigint NOT NULL,
+	"price_request" bigint DEFAULT 0 NOT NULL,
+	"price_image" bigint DEFAULT 0 NOT NULL,
+	"price_web_search" bigint DEFAULT 0 NOT NULL,
+	"price_reasoning" bigint DEFAULT 0 NOT NULL,
+	"price_cache_read" bigint,
+	"price_cache_write" bigint,
+	"quant" text DEFAULT 'unknown' NOT NULL,
+	"ctx" integer,
+	"max_out" integer,
+	"supported_parameters" text[] DEFAULT '{}' NOT NULL,
+	"features" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"is_moderated" boolean DEFAULT false NOT NULL,
+	"status" text DEFAULT 'live' NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "offers_model_id_provider_id_pk" PRIMARY KEY("model_id","provider_id")
+);
+--> statement-breakpoint
+CREATE TABLE "payouts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"provider_id" text NOT NULL,
+	"usdg" bigint NOT NULL,
+	"to" text,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"tx" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "paywith_debts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"chain_key_hash" text NOT NULL,
+	"account_id" text NOT NULL,
+	"generation_id" text NOT NULL,
+	"token" text NOT NULL,
+	"amount" bigint NOT NULL,
+	"raw_estimate" bigint,
+	"fair_price18" text,
+	"swap_id" text,
+	"raw_allocated" bigint,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "paywith_sessions" (
+	"key_hash" text PRIMARY KEY NOT NULL,
+	"wallet" text NOT NULL,
+	"token" text NOT NULL,
+	"symbol" text NOT NULL,
+	"cap_raw_day" bigint NOT NULL,
+	"spent_raw_today" bigint DEFAULT 0 NOT NULL,
+	"day_start" timestamp with time zone,
+	"active" boolean DEFAULT true NOT NULL,
+	"opened_tx" text,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
