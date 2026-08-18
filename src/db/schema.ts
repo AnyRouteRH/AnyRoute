@@ -81,3 +81,117 @@ export const keys = pgTable(
   },
   (t) => [uniqueIndex("keys_chain_uq").on(t.chainKeyHash), index("keys_account_idx").on(t.accountId)],
 );
+
+export const byokKeys = pgTable(
+  "byok_keys",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    keyEnc: text("key_enc").notNull(),
+    label: text("label").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("byok_account_provider_uq").on(t.accountId, t.providerId)],
+);
+
+export const ledger = pgTable(
+  "ledger",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    keyHash: text("key_hash"),
+    amount: money("amount").notNull(),
+    kind: text("kind").notNull(), // deposit | credit | usage | refund | paywith | change | adjustment | withdrawal_lock | withdrawal
+    ref: text("ref").notNull(),
+    generationId: text("generation_id"),
+    description: text("description").notNull().default(""),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ledger_ref_uq").on(t.ref), index("ledger_account_idx").on(t.accountId, t.createdAt)],
+);
+
+export const holds = pgTable(
+  "holds",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    keyHash: text("key_hash"),
+    amount: money("amount").notNull(),
+    status: text("status").notNull().default("held"), // held | settled | released
+    kind: text("kind").notNull().default("usage"),
+    result: jsonb("result"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    expiresAt: ts("expires_at").notNull(),
+  },
+  (t) => [index("holds_account_status_idx").on(t.accountId, t.status), index("holds_expiry_idx").on(t.status, t.expiresAt)],
+);
+
+export const providers = pgTable("providers", {
+  id: text("id").primaryKey(), // slug, e.g. "deepinfra"
+  name: text("name").notNull(),
+  baseUrl: text("base_url").notNull(),
+  apiKeyEnc: text("api_key_enc"),
+  kind: text("kind").notNull().default("openai"), // openai | tee
+  headers: jsonb("headers"),
+  dataPolicy: jsonb("data_policy").notNull().default({}), // { training, retains_prompts, retention_days, zdr, moderated }
+  datacenter: text("datacenter").array(),
+  attested: boolean("attested").notNull().default(false),
+  attestationUrl: text("attestation_url"),
+  attestationHash: text("attestation_hash"),
+  attestedAt: ts("attested_at"),
+  teeKind: text("tee_kind"), // tdx | snp | nvidia-cc | tinfoil | dev
+  bondUsdg: bigint("bond_usdg", { mode: "bigint" }).notNull().default(sql`0`),
+  anyrStake: bigint("anyr_stake", { mode: "bigint" }).notNull().default(sql`0`),
+  operator: text("operator"),
+  payoutMode: text("payout_mode").notNull().default("invoice"), // invoice | usdg
+  payoutAddress: text("payout_address"),
+  status: text("status").notNull().default("applied"), // applied | shadow | live | suspended | delisted
+  shadowUntil: ts("shadow_until"),
+  timeoutMs: integer("timeout_ms"),
+  staticModels: jsonb("static_models"), // provider-spec model list for APIs whose /models lacks pricing
+  contact: text("contact"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+export const models = pgTable("models", {
+  id: text("id").primaryKey(), // author/slug
+  author: text("author").notNull(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  ctx: integer("ctx").notNull().default(8192),
+  maxOut: integer("max_out"),
+  arch: jsonb("arch").notNull().default({}), // { modality, input_modalities, output_modalities, tokenizer, instruct_type }
+  hfRepo: text("hf_repo"),
+  creator: text("creator"),
+  royaltyBps: integer("royalty_bps").notNull().default(0),
+  createdUnix: integer("created_unix").notNull(),
+  hidden: boolean("hidden").notNull().default(false),
+});
+
+export const offers = pgTable(
+  "offers",
+  {
+    modelId: text("model_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    providerModelId: text("provider_model_id").notNull(),
+    pricePrompt: money("price_prompt").notNull(), // pico per token
+    priceCompletion: money("price_completion").notNull(),
+    priceRequest: money("price_request").notNull().default(sql`0`),
+    priceImage: money("price_image").notNull().default(sql`0`),
+    priceWebSearch: money("price_web_search").notNull().default(sql`0`),
+    priceReasoning: money("price_reasoning").notNull().default(sql`0`),
+    priceCacheRead: money("price_cache_read"),
+    priceCacheWrite: money("price_cache_write"),
+    quant: text("quant").notNull().default("unknown"),
+    ctx: integer("ctx"),
+    maxOut: integer("max_out"),
+    supportedParameters: text("supported_parameters").array().notNull().default([]),
+    features: jsonb("features").notNull().default({}),
+    isModerated: boolean("is_moderated").notNull().default(false),
+    status: text("status").notNull().default("live"), // live | shadow | disabled
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.modelId, t.providerId] }), index("offers_provider_idx").on(t.providerId)],
+);
