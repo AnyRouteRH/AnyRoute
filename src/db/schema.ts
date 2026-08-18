@@ -387,3 +387,118 @@ export const paywithSessions = pgTable("paywith_sessions", {
   openedTx: text("opened_tx"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+export const paywithDebts = pgTable(
+  "paywith_debts",
+  {
+    id: text("id").primaryKey(),
+    chainKeyHash: text("chain_key_hash").notNull(),
+    accountId: text("account_id").notNull(),
+    generationId: text("generation_id").notNull(),
+    token: text("token").notNull(),
+    amount: money("amount").notNull(),
+    rawEstimate: bigint("raw_estimate", { mode: "bigint" }),
+    fairPrice18: text("fair_price18"),
+    swapId: text("swap_id"),
+    rawAllocated: bigint("raw_allocated", { mode: "bigint" }),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("paywith_debts_open_idx").on(t.chainKeyHash, t.swapId)],
+);
+
+export const paywithSwaps = pgTable("paywith_swaps", {
+  id: text("id").primaryKey(),
+  keyHash: text("key_hash").notNull(),
+  token: text("token").notNull(),
+  rawSpent: bigint("raw_spent", { mode: "bigint" }),
+  fairPrice: text("fair_price"),
+  usdgOut: bigint("usdg_out", { mode: "bigint" }).notNull(),
+  tx: text("tx"),
+  status: text("status").notNull().default("pending"), // pending | submitted | confirmed | failed
+  error: text("error"),
+  ts: ts("ts").notNull().defaultNow(),
+  allocations: jsonb("allocations"),
+});
+
+export const settlements = pgTable(
+  "settlements",
+  {
+    providerId: text("provider_id").notNull(),
+    period: text("period").notNull(), // ISO hour, e.g. 2026-09-26T13
+    tokens: bigint("tokens", { mode: "bigint" }).notNull(),
+    requests: integer("requests").notNull().default(0),
+    upstream: money("upstream").notNull(),
+    fee: money("fee").notNull(),
+    usdgOwed: bigint("usdg_owed", { mode: "bigint" }).notNull(),
+    payoutId: text("payout_id"),
+    paidTx: text("paid_tx"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.providerId, t.period] })],
+);
+
+export const payouts = pgTable("payouts", {
+  id: text("id").primaryKey(),
+  providerId: text("provider_id").notNull(),
+  usdg: bigint("usdg", { mode: "bigint" }).notNull(),
+  to: text("to"),
+  status: text("status").notNull().default("pending"), // pending | submitted | paid | invoice
+  tx: text("tx"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const slashes = pgTable("slashes", {
+  id: text("id").primaryKey(),
+  providerId: text("provider_id").notNull(),
+  modelId: text("model_id"),
+  kind: text("kind").notNull(), // empty200 | quant_fraud | uptime | param_drop
+  amountUsdg: bigint("amount_usdg", { mode: "bigint" }).notNull(),
+  delist: boolean("delist").notNull().default(false),
+  evidenceRoot: text("evidence_root").notNull(),
+  evidence: jsonb("evidence").notNull(),
+  status: text("status").notNull().default("proposed"), // proposed | disputed | cancelled | executed | auto_refunded
+  proposedAt: ts("proposed_at").notNull().defaultNow(),
+  executableAt: ts("executable_at").notNull(),
+  executedAt: ts("executed_at"),
+  disputeHash: text("dispute_hash"),
+  disputedAt: ts("disputed_at"),
+  onchainId: text("onchain_id"),
+  txHash: text("tx_hash"),
+  refunded: money("refunded").notNull().default(sql`0`),
+});
+
+export const royalties = pgTable(
+  "royalties",
+  {
+    modelId: text("model_id").notNull(),
+    period: text("period").notNull(),
+    amount: money("amount").notNull(),
+    usdg: bigint("usdg", { mode: "bigint" }).notNull(),
+    creator: text("creator"),
+    streamTx: text("stream_tx"),
+    claimed: boolean("claimed").notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.modelId, t.period] })],
+);
+
+export const attestations = pgTable(
+  "attestations",
+  {
+    id: serial("id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    ts: ts("ts").notNull().defaultNow(),
+    ok: boolean("ok").notNull(),
+    teeKind: text("tee_kind"),
+    reportHash: text("report_hash"),
+    nonce: text("nonce"),
+    measurements: jsonb("measurements"),
+    detail: jsonb("detail"),
+  },
+  (t) => [index("attestations_provider_ts").on(t.providerId, t.ts)],
+);
+
+export const kv = pgTable("kv", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
