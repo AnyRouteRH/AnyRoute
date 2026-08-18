@@ -275,3 +275,79 @@ CREATE TABLE "paywith_sessions" (
 	"opened_tx" text,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
+--> statement-breakpoint
+CREATE TABLE "paywith_swaps" (
+	"id" text PRIMARY KEY NOT NULL,
+	"key_hash" text NOT NULL,
+	"token" text NOT NULL,
+	"raw_spent" bigint,
+	"fair_price" text,
+	"usdg_out" bigint NOT NULL,
+	"tx" text,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"error" text,
+	"ts" timestamp with time zone DEFAULT now() NOT NULL,
+	"allocations" jsonb
+);
+--> statement-breakpoint
+CREATE TABLE "providers" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"base_url" text NOT NULL,
+	"api_key_enc" text,
+	"kind" text DEFAULT 'openai' NOT NULL,
+	"headers" jsonb,
+	"data_policy" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"datacenter" text[],
+	"attested" boolean DEFAULT false NOT NULL,
+	"attestation_url" text,
+	"attestation_hash" text,
+	"attested_at" timestamp with time zone,
+	"tee_kind" text,
+	"bond_usdg" bigint DEFAULT 0 NOT NULL,
+	"anyr_stake" bigint DEFAULT 0 NOT NULL,
+	"operator" text,
+	"payout_mode" text DEFAULT 'invoice' NOT NULL,
+	"payout_address" text,
+	"status" text DEFAULT 'applied' NOT NULL,
+	"shadow_until" timestamp with time zone,
+	"timeout_ms" integer,
+	"contact" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "quotes" (
+	"nonce" text PRIMARY KEY NOT NULL,
+	"price_usdg" bigint NOT NULL,
+	"price_pico" bigint NOT NULL,
+	"request_sha256" text NOT NULL,
+	"model_id" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"status" text DEFAULT 'open' NOT NULL,
+	"payer" text,
+	"tx_hash" text,
+	"account_id" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "receipt_keys" (
+	"id" text PRIMARY KEY NOT NULL,
+	"public_key" text NOT NULL,
+	"private_key_enc" text,
+	"valid_from" timestamp with time zone NOT NULL,
+	"retired_at" timestamp with time zone,
+	"onchain_tx" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "royalties" (
+	"model_id" text NOT NULL,
+	"period" text NOT NULL,
+	"amount" bigint NOT NULL,
+	"usdg" bigint NOT NULL,
+	"creator" text,
+	"stream_tx" text,
+	"claimed" boolean DEFAULT false NOT NULL,
+	CONSTRAINT "royalties_model_id_period_pk" PRIMARY KEY("model_id","period")
+);
