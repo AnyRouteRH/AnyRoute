@@ -351,3 +351,83 @@ CREATE TABLE "royalties" (
 	"claimed" boolean DEFAULT false NOT NULL,
 	CONSTRAINT "royalties_model_id_period_pk" PRIMARY KEY("model_id","period")
 );
+--> statement-breakpoint
+CREATE TABLE "settlements" (
+	"provider_id" text NOT NULL,
+	"period" text NOT NULL,
+	"tokens" bigint NOT NULL,
+	"requests" integer DEFAULT 0 NOT NULL,
+	"upstream" bigint NOT NULL,
+	"fee" bigint NOT NULL,
+	"usdg_owed" bigint NOT NULL,
+	"payout_id" text,
+	"paid_tx" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "settlements_provider_id_period_pk" PRIMARY KEY("provider_id","period")
+);
+--> statement-breakpoint
+CREATE TABLE "slashes" (
+	"id" text PRIMARY KEY NOT NULL,
+	"provider_id" text NOT NULL,
+	"model_id" text,
+	"kind" text NOT NULL,
+	"amount_usdg" bigint NOT NULL,
+	"delist" boolean DEFAULT false NOT NULL,
+	"evidence_root" text NOT NULL,
+	"evidence" jsonb NOT NULL,
+	"status" text DEFAULT 'proposed' NOT NULL,
+	"proposed_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"executable_at" timestamp with time zone NOT NULL,
+	"executed_at" timestamp with time zone,
+	"dispute_hash" text,
+	"disputed_at" timestamp with time zone,
+	"onchain_id" text,
+	"tx_hash" text,
+	"refunded" bigint DEFAULT 0 NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "spent_roots" (
+	"epoch" integer PRIMARY KEY NOT NULL,
+	"root" text NOT NULL,
+	"as_of" timestamp with time zone NOT NULL,
+	"total_spent_usdg" bigint NOT NULL,
+	"leaves" jsonb NOT NULL,
+	"tx_hash" text,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "team_members" (
+	"team_id" text NOT NULL,
+	"key_hash" text NOT NULL,
+	"role" text DEFAULT 'member' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "team_members_team_id_key_hash_pk" PRIMARY KEY("team_id","key_hash")
+);
+--> statement-breakpoint
+CREATE TABLE "teams" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"owner_account" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX "accounts_wallet_uq" ON "accounts" USING btree ("wallet");--> statement-breakpoint
+CREATE INDEX "attestations_provider_ts" ON "attestations" USING btree ("provider_id","ts");--> statement-breakpoint
+CREATE UNIQUE INDEX "byok_account_provider_uq" ON "byok_keys" USING btree ("account_id","provider_id");--> statement-breakpoint
+CREATE INDEX "canaries_mp_ts_idx" ON "canaries" USING btree ("model_id","provider_id","ts");--> statement-breakpoint
+CREATE INDEX "chain_events_unprocessed" ON "chain_events" USING btree ("processed","event");--> statement-breakpoint
+CREATE INDEX "gen_ts_idx" ON "generations" USING btree ("ts");--> statement-breakpoint
+CREATE INDEX "gen_key_ts_idx" ON "generations" USING btree ("key_hash","ts");--> statement-breakpoint
+CREATE INDEX "gen_provider_ts_idx" ON "generations" USING btree ("provider_id","ts");--> statement-breakpoint
+CREATE INDEX "gen_anchor_idx" ON "generations" USING btree ("anchor_index");--> statement-breakpoint
+CREATE INDEX "health_mp_ts_idx" ON "health" USING btree ("model_id","provider_id","ts");--> statement-breakpoint
+CREATE INDEX "holds_account_status_idx" ON "holds" USING btree ("account_id","status");--> statement-breakpoint
+CREATE INDEX "holds_expiry_idx" ON "holds" USING btree ("status","expires_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "keys_chain_uq" ON "keys" USING btree ("chain_key_hash");--> statement-breakpoint
+CREATE INDEX "keys_account_idx" ON "keys" USING btree ("account_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "ledger_ref_uq" ON "ledger" USING btree ("ref");--> statement-breakpoint
+CREATE INDEX "ledger_account_idx" ON "ledger" USING btree ("account_id","created_at");--> statement-breakpoint
+CREATE INDEX "offers_provider_idx" ON "offers" USING btree ("provider_id");--> statement-breakpoint
+CREATE INDEX "paywith_debts_open_idx" ON "paywith_debts" USING btree ("chain_key_hash","swap_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "quotes_tx_uq" ON "quotes" USING btree ("tx_hash");
