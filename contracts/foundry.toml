@@ -1,0 +1,27 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib", "../node_modules"]
+test = "test"
+script = "script"
+solc_version = "0.8.26"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 20000
+via_ir = false
+fs_permissions = [{ access = "read-write", path = "./deployments" }, { access = "read", path = "./out" }, { access = "read", path = "../config" }]
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "@openzeppelin/contracts/=../node_modules/@openzeppelin/contracts/",
+  "@uniswap/v4-core/=../node_modules/@uniswap/v4-core/",
+  "account-abstraction/=../node_modules/@account-abstraction/contracts/",
+]
+
+[rpc_endpoints]
+rhc = "${RHC_RPC_URL}"
+
+[fuzz]
+runs = 512
+
+[fmt]
+line_length = 110
