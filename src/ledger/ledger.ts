@@ -131,3 +131,85 @@ export async function reserve(db: Db, r: ReserveInput): Promise<Pico> {
     return r.amount;
   });
 }
+
+export type SettleResult = { charged: Pico; uncovered: Pico; alreadySettled?: boolean };
+
+/** Close a hold, charging `actual`. Idempotent: a closed hold returns its stored result. */
+export async function settle(
+  db: Db,
+  holdId: string,
+  actual: Pico,
+  meta: { description?: string; generationId?: string | null; kind?: string; creditLine?: Pico } = {},
+): Promise<SettleResult> {
+  if (actual < 0n) fail(502, "Usage cost could not be verified.", "invalid_cost");
+  return db.transaction(async (tx) => {
+    const [h] = await tx.select().from(holds).where(eq(holds.id, holdId)).for("update");
+    if (!h) fail(500, "Unknown hold.", "internal");
+    if (h.status !== "held") {
+      const res = (h.result ?? {}) as { charged?: string; uncovered?: string };
+      return { charged: BigInt(res.charged ?? 0), uncovered: BigInt(res.uncovered ?? 0), alreadySettled: true };
+    }
+    const [acct] = await tx.select().from(accounts).where(eq(accounts.id, h.accountId)).for("update");
+    let charged = actual;
+    if (actual > h.amount) {
+      // Spare balance outside this hold (plus any credit line) may cover the overage.
+      const spare = acct.balance - acct.held + (meta.creditLine ?? 0n);
+      const extra = actual - h.amount;
+      charged = h.amount + (extra <= spare ? extra : spare > 0n ? spare : 0n);
+    }
+    const uncovered = actual - charged;
+    if (uncovered > 0n) log.warn("usage exceeded reservation; uncovered amount absorbed by operator", { holdId, uncovered });
+    await tx
+      .update(holds)
+      .set({ status: "settled", result: { charged: charged.toString(), uncovered: uncovered.toString() } })
+      .where(eq(holds.id, holdId));
+    if (charged > 0n) {
+      await post(tx, {
+        accountId: h.accountId,
+        keyHash: h.keyHash,
+        amount: -charged,
+        kind: meta.kind ?? h.kind,
+        ref: `settle:${holdId}`,
+        description: meta.description ?? "Model usage",
+        generationId: meta.generationId ?? null,
+      });
+      if (h.keyHash)
+        await tx
+          .update(keys)
+          .set({ spent: sql`${keys.spent} + ${charged}`, spentTotal: sql`${keys.spentTotal} + ${charged}`, lastUsed: new Date() })
+          .where(eq(keys.keyHash, h.keyHash));
+    }
+    return { charged, uncovered };
+  });
+}
+
+export async function release(db: Db, holdId: string) {
+  await db
+    .update(holds)
+    .set({ status: "released", result: { charged: "0", uncovered: "0" } })
+    .where(and(eq(holds.id, holdId), eq(holds.status, "held")));
+}
+
+/** Release holds whose owners vanished (crash mid-request). Returns count. */
+export async function expireHolds(db: Db) {
+  const rows = await db
+    .update(holds)
+    .set({ status: "released", result: { charged: "0", uncovered: "0", expired: true } })
+    .where(and(eq(holds.status, "held"), sql`${holds.expiresAt} < now()`))
+    .returning({ id: holds.id });
+  return rows.length;
+}
+
+/** Invariant check used by tests and the admin API. */
+export async function verifyInvariants(db: Db) {
+  const r = await db.execute(sql`
+    SELECT a.id,
+           a.balance AS balance,
+           coalesce((SELECT sum(amount) FROM ledger l WHERE l.account_id = a.id), 0) AS ledger_sum,
+           a.held AS held,
+           coalesce((SELECT sum(amount) FROM holds h WHERE h.account_id = a.id AND h.status = 'held'), 0) AS held_sum
+    FROM accounts a`);
+  const rows = ((r as { rows?: unknown[] }).rows ?? (r as unknown as unknown[])) as Array<Record<string, unknown>>;
+  const bad = rows.filter((x) => BigInt(x.balance as string) !== BigInt(x.ledger_sum as string) || BigInt(x.held as string) !== BigInt(x.held_sum as string));
+  return { ok: bad.length === 0, bad };
+}
