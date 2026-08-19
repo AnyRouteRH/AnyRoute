@@ -68,3 +68,66 @@ function periodStart(reset: string | null, at: Date): Date | null {
   if (reset === "monthly") d.setUTCDate(1);
   return d;
 }
+
+export type ReserveInput = {
+  id: string;
+  accountId: string;
+  keyHash?: string | null;
+  amount: Pico;
+  kind?: string;
+  ttlMs?: number;
+  /** Allow the available balance to go negative by up to this much (pay-with sessions). */
+  creditLine?: Pico;
+};
+
+export async function reserve(db: Db, r: ReserveInput): Promise<Pico> {
+  if (r.amount < 0n) fail(400, "Invalid reservation.");
+  return db.transaction(async (tx) => {
+    const [acct] = await tx.select().from(accounts).where(eq(accounts.id, r.accountId)).for("update");
+    if (!acct) fail(402, "This key has no balance. Deposit USDG to its key hash or pay per call.", "insufficient_credits");
+    const available = acct.balance - acct.held + (r.creditLine ?? 0n);
+    if (available < r.amount)
+      fail(
+        402,
+        `Insufficient balance: this request may cost up to $${picoToUsd(r.amount)} and $${picoToUsd(
+          acct.balance - acct.held < 0n ? 0n : acct.balance - acct.held,
+        )} is available. Deposit USDG, lower max_tokens, or pay per call.`,
+        "insufficient_credits",
+        { required_usd: picoToUsd(r.amount), available_usd: picoToUsd(acct.balance - acct.held) },
+      );
+    if (r.keyHash) {
+      const [k] = await tx.select().from(keys).where(eq(keys.keyHash, r.keyHash)).for("update");
+      if (!k || k.disabled) fail(401, "This key is disabled.", "key_disabled");
+      if (k.budget != null) {
+        const start = periodStart(k.budgetReset, new Date());
+        let spent = k.spent;
+        if (start && (!k.periodStart || k.periodStart < start)) {
+          spent = 0n;
+          await tx.update(keys).set({ spent: 0n, periodStart: start }).where(eq(keys.keyHash, k.keyHash));
+        }
+        const [{ inflight }] = await tx
+          .select({ inflight: sql<string>`coalesce(sum(${holds.amount}), 0)` })
+          .from(holds)
+          .where(and(eq(holds.keyHash, k.keyHash), eq(holds.status, "held")));
+        if (spent + BigInt(inflight) + r.amount > k.budget)
+          fail(
+            402,
+            `This key would exceed its budget of $${picoToUsd(k.budget)}${k.budgetReset ? ` per ${k.budgetReset.replace(/ly$/, "")}` : ""}.`,
+            "key_budget_exceeded",
+            { budget_usd: picoToUsd(k.budget), spent_usd: picoToUsd(spent) },
+          );
+      }
+    }
+    const existing = await tx.select({ id: holds.id }).from(holds).where(eq(holds.id, r.id));
+    if (existing.length) fail(409, "This request id was already submitted.", "duplicate_request");
+    await tx.insert(holds).values({
+      id: r.id,
+      accountId: r.accountId,
+      keyHash: r.keyHash ?? null,
+      amount: r.amount,
+      kind: r.kind ?? "usage",
+      expiresAt: new Date(Date.now() + (r.ttlMs ?? 15 * 60_000)),
+    });
+    return r.amount;
+  });
+}
