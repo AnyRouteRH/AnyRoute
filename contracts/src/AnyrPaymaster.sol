@@ -135,4 +135,90 @@ contract AnyrPaymaster is BasePaymaster, Ownable2Step {
             )
         );
     }
+
+    function parsePaymasterAndData(bytes calldata paymasterAndData)
+        public
+        pure
+        returns (uint48 validUntil, uint48 validAfter, bytes calldata signature)
+    {
+        (validUntil, validAfter) =
+            abi.decode(paymasterAndData[VALID_TIMESTAMP_OFFSET:SIGNATURE_OFFSET], (uint48, uint48));
+        signature = paymasterAndData[SIGNATURE_OFFSET:];
+    }
+
+    /// @notice Remaining sponsorship for `sender` in today's bucket (off-chain helper; uses block.timestamp).
+    function remaining(address sender) external view returns (uint256) {
+        Usage memory u = usage[sender];
+        uint64 today = uint64(block.timestamp / 1 days);
+        uint256 spent = u.day >= today ? u.spent : 0;
+        return spent >= dailyCap ? 0 : dailyCap - spent;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Paymaster hooks
+    // ---------------------------------------------------------------------------------------------
+
+    function _validatePaymasterUserOp(PackedUserOperation calldata userOp, bytes32, uint256 maxCost)
+        internal
+        override
+        returns (bytes memory context, uint256 validationData)
+    {
+        (uint48 validUntil, uint48 validAfter, bytes calldata signature) =
+            parsePaymasterAndData(userOp.paymasterAndData);
+        if (signature.length != 64 && signature.length != 65) revert InvalidSignatureLength();
+        if (!_signedByVerifier(getHash(userOp, validUntil, validAfter), signature)) {
+            // do not revert: lets bundlers estimate gas with a dummy signature
+            return ("", _packValidationData(true, validUntil, validAfter));
+        }
+        if (validUntil <= validAfter || validUntil - validAfter > MAX_VALIDITY_WINDOW) {
+            revert InvalidValidityWindow();
+        }
+
+        context = _reserve(userOp, validUntil, maxCost);
+        validationData = _packValidationData(false, validUntil, validAfter);
+    }
+
+    function _signedByVerifier(bytes32 hash, bytes calldata signature) internal view returns (bool) {
+        (address recovered, ECDSA.RecoverError err,) =
+            ECDSA.tryRecover(MessageHashUtils.toEthSignedMessageHash(hash), signature);
+        return err == ECDSA.RecoverError.NoError && recovered == verifyingSigner;
+    }
+
+    /// @dev Reserve `maxCost` in the sender's day bucket (derived from the signed validUntil; never moves backwards).
+    function _reserve(PackedUserOperation calldata userOp, uint48 validUntil, uint256 maxCost)
+        internal
+        returns (bytes memory context)
+    {
+        address sender = userOp.getSender();
+        Usage memory u = usage[sender];
+        uint64 day = uint64(validUntil / 1 days);
+        if (day < u.day) day = u.day;
+        uint256 spent = day == u.day ? u.spent : 0;
+        if (spent + maxCost > dailyCap) revert DailyCapExceeded(sender, spent, maxCost, dailyCap);
+        usage[sender] = Usage({day: day, spent: SafeCast.toUint192(spent + maxCost)});
+
+        uint256 postOpGas = userOp.unpackPostOpGasLimit();
+        uint256 extraGas = postOpGas + (userOp.unpackCallGasLimit() + postOpGas) / 10 + POSTOP_OVERHEAD_GAS;
+        context = abi.encode(sender, day, maxCost, extraGas);
+    }
+
+    function _postOp(PostOpMode, bytes calldata context, uint256 actualGasCost, uint256 actualUserOpFeePerGas)
+        internal
+        override
+    {
+        (address sender, uint64 day, uint256 maxCost, uint256 extraGas) =
+            abi.decode(context, (address, uint64, uint256, uint256));
+        uint256 charged = actualGasCost + extraGas * actualUserOpFeePerGas;
+        if (charged > maxCost) charged = maxCost;
+
+        Usage storage u = usage[sender];
+        if (u.day == day) {
+            uint256 spent = u.spent;
+            // replace the maxCost reservation by the estimated charge
+            spent = spent > maxCost ? spent - maxCost : 0;
+            // cannot overflow: spent + charged <= previous u.spent (charged <= maxCost)
+            u.spent = SafeCast.toUint192(spent + charged);
+        }
+        emit Sponsored(sender, day, charged, maxCost);
+    }
 }
