@@ -181,4 +181,95 @@ contract AnyrPaymasterTest is Test {
         (, uint256 spent) = _usage();
         assertEq(spent, 0);
     }
+
+    function test_tamperedOpRejected() public {
+        PackedUserOperation memory op = _bumpOp(0);
+        op.callData = abi.encodeCall(TestAccount.fail, ()); // signed over bump()
+        vm.expectRevert(abi.encodeWithSelector(IEntryPoint.FailedOp.selector, 0, "AA34 signature error"));
+        _handle(op);
+    }
+
+    function test_badSignatureLengthReverts() public {
+        PackedUserOperation memory op = _op(abi.encodeCall(TestAccount.bump, ()), 0);
+        op.paymasterAndData = abi.encodePacked(
+            address(pm),
+            PM_VERIF_GAS,
+            PM_POSTOP_GAS,
+            abi.encode(uint48(block.timestamp + 60), uint48(0)),
+            hex"1234"
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEntryPoint.FailedOpWithRevert.selector,
+                0,
+                "AA33 reverted",
+                abi.encodeWithSelector(AnyrPaymaster.InvalidSignatureLength.selector)
+            )
+        );
+        _handle(op);
+    }
+
+    function test_expiredRejected() public {
+        PackedUserOperation memory op = _sponsor(
+            _op(abi.encodeCall(TestAccount.bump, ()), 0),
+            uint48(block.timestamp - 1 minutes),
+            uint48(block.timestamp - 1 hours),
+            signerPk
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(IEntryPoint.FailedOp.selector, 0, "AA32 paymaster expired or not due")
+        );
+        _handle(op);
+    }
+
+    function test_validityWindowTooLongRejected() public {
+        PackedUserOperation memory op = _sponsor(
+            _op(abi.encodeCall(TestAccount.bump, ()), 0),
+            uint48(block.timestamp + 1 days),
+            uint48(block.timestamp - 1),
+            signerPk
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEntryPoint.FailedOpWithRevert.selector,
+                0,
+                "AA33 reverted",
+                abi.encodeWithSelector(AnyrPaymaster.InvalidValidityWindow.selector)
+            )
+        );
+        _handle(op);
+    }
+
+    function test_noExpiryRejected() public {
+        PackedUserOperation memory op =
+            _sponsor(_op(abi.encodeCall(TestAccount.bump, ()), 0), uint48(0), uint48(0), signerPk);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEntryPoint.FailedOpWithRevert.selector,
+                0,
+                "AA33 reverted",
+                abi.encodeWithSelector(AnyrPaymaster.InvalidValidityWindow.selector)
+            )
+        );
+        _handle(op);
+    }
+
+    // ------------------------------------------------------------------ daily cap
+
+    function test_capBelowMaxCostRejected() public {
+        vm.prank(owner);
+        pm.setDailyCap(MAX_COST - 1);
+        PackedUserOperation memory op = _bumpOp(0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEntryPoint.FailedOpWithRevert.selector,
+                0,
+                "AA33 reverted",
+                abi.encodeWithSelector(
+                    AnyrPaymaster.DailyCapExceeded.selector, address(account), 0, MAX_COST, MAX_COST - 1
+                )
+            )
+        );
+        _handle(op);
+    }
 }
