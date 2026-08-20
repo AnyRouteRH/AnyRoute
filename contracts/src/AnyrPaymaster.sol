@@ -61,4 +61,78 @@ contract AnyrPaymaster is BasePaymaster, Ownable2Step {
     event VerifyingSignerSet(address indexed signer);
     event DailyCapSet(uint256 cap);
     event Sponsored(address indexed sender, uint64 indexed day, uint256 charged, uint256 maxCost);
+
+    error ZeroAddress();
+    error InvalidSignatureLength();
+    error InvalidValidityWindow();
+    error DailyCapExceeded(address sender, uint256 spent, uint256 maxCost, uint256 cap);
+
+    /// @param entryPoint_ EntryPoint v0.7 (0x0000000071727De22E5E9d8BAf0edAc6f37da032 on RHC).
+    /// @param signer_ Router service signer.
+    /// @param dailyCap_ Per-sender daily sponsorship cap in wei.
+    /// @param owner_ Owner (can set signer / cap, manage deposit and stake).
+    constructor(IEntryPoint entryPoint_, address signer_, uint256 dailyCap_, address owner_)
+        BasePaymaster(entryPoint_)
+    {
+        if (signer_ == address(0) || owner_ == address(0)) revert ZeroAddress();
+        verifyingSigner = signer_;
+        dailyCap = dailyCap_;
+        _transferOwnership(owner_);
+        emit VerifyingSignerSet(signer_);
+        emit DailyCapSet(dailyCap_);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Owner
+    // ---------------------------------------------------------------------------------------------
+
+    function setVerifyingSigner(address signer_) external onlyOwner {
+        if (signer_ == address(0)) revert ZeroAddress();
+        verifyingSigner = signer_;
+        emit VerifyingSignerSet(signer_);
+    }
+
+    function setDailyCap(uint256 cap) external onlyOwner {
+        dailyCap = cap;
+        emit DailyCapSet(cap);
+    }
+
+    /// @notice Two-step ownership transfer (Ownable2Step): the new owner must call `acceptOwnership`.
+    function transferOwnership(address newOwner) public override(Ownable, Ownable2Step) {
+        Ownable2Step.transferOwnership(newOwner);
+    }
+
+    function _transferOwnership(address newOwner) internal override(Ownable, Ownable2Step) {
+        Ownable2Step._transferOwnership(newOwner);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Views
+    // ---------------------------------------------------------------------------------------------
+
+    /// @notice Hash the router service signs (then EIP-191 personal-message prefixed).
+    function getHash(PackedUserOperation calldata userOp, uint48 validUntil, uint48 validAfter)
+        public
+        view
+        returns (bytes32)
+    {
+        return keccak256(
+            abi.encode(
+                userOp.getSender(),
+                userOp.nonce,
+                keccak256(userOp.initCode),
+                keccak256(userOp.callData),
+                userOp.accountGasLimits,
+                uint256(
+                    bytes32(userOp.paymasterAndData[PAYMASTER_VALIDATION_GAS_OFFSET:PAYMASTER_DATA_OFFSET])
+                ),
+                userOp.preVerificationGas,
+                userOp.gasFees,
+                block.chainid,
+                address(this),
+                validUntil,
+                validAfter
+            )
+        );
+    }
 }
