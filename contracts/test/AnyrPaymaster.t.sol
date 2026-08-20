@@ -79,4 +79,106 @@ contract AnyrPaymasterTest is Test {
         vm.prank(owner);
         pm.deposit{value: 10 ether}();
     }
+
+    // ------------------------------------------------------------------ helpers
+
+    function _op(bytes memory callData, uint256 nonceOffset)
+        internal
+        view
+        returns (PackedUserOperation memory op)
+    {
+        op.sender = address(account);
+        op.nonce = ep.getNonce(address(account), 0) + nonceOffset;
+        op.initCode = "";
+        op.callData = callData;
+        op.accountGasLimits = bytes32((uint256(VERIF_GAS) << 128) | uint256(CALL_GAS));
+        op.preVerificationGas = PVG;
+        op.gasFees = bytes32((uint256(FEE) << 128) | uint256(FEE));
+        op.signature = "";
+    }
+
+    function _sponsor(PackedUserOperation memory op, uint48 validUntil, uint48 validAfter, uint256 pk)
+        internal
+        view
+        returns (PackedUserOperation memory)
+    {
+        op.paymasterAndData =
+            abi.encodePacked(address(pm), PM_VERIF_GAS, PM_POSTOP_GAS, abi.encode(validUntil, validAfter));
+        bytes32 h = pm.getHash(op, validUntil, validAfter);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, MessageHashUtils.toEthSignedMessageHash(h));
+        op.paymasterAndData = abi.encodePacked(op.paymasterAndData, r, s, v);
+        return op;
+    }
+
+    function _bumpOp(uint256 nonceOffset) internal view returns (PackedUserOperation memory) {
+        return _sponsor(
+            _op(abi.encodeCall(TestAccount.bump, ()), nonceOffset),
+            uint48(block.timestamp + 10 minutes),
+            uint48(block.timestamp - 1),
+            signerPk
+        );
+    }
+
+    function _handle(PackedUserOperation memory op) internal {
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = op;
+        vm.prank(bundler, bundler);
+        ep.handleOps(ops, payable(bundler));
+    }
+
+    function _usage() internal view returns (uint64 day, uint256 spent) {
+        (day, spent) = pm.usage(address(account));
+    }
+
+    // ------------------------------------------------------------------ sponsorship
+
+    function test_constructorState() public view {
+        assertEq(address(pm.entryPoint()), address(ep));
+        assertEq(pm.verifyingSigner(), signer);
+        assertEq(pm.dailyCap(), 3 * MAX_COST);
+        assertEq(pm.owner(), owner);
+        assertEq(ep.balanceOf(address(pm)), 10 ether);
+    }
+
+    function test_sponsoredOpExecutesAndReconciles() public {
+        uint256 depBefore = ep.balanceOf(address(pm));
+        _handle(_bumpOp(0));
+        uint256 finalCharge = depBefore - ep.balanceOf(address(pm));
+
+        assertEq(account.counter(), 1);
+        (uint64 day, uint256 spent) = _usage();
+        assertEq(day, (block.timestamp + 10 minutes) / 1 days);
+        assertLt(spent, MAX_COST, "reservation replaced by the estimated charge");
+        assertGe(spent, finalCharge, "estimate upper-bounds the EntryPoint's final charge");
+        assertGt(finalCharge, 0);
+        assertEq(address(account).balance, 0, "account paid nothing");
+    }
+
+    function test_revertedCallStillReconciled() public {
+        PackedUserOperation memory op = _sponsor(
+            _op(abi.encodeCall(TestAccount.fail, ()), 0),
+            uint48(block.timestamp + 10 minutes),
+            uint48(block.timestamp - 1),
+            signerPk
+        );
+        uint256 depBefore = ep.balanceOf(address(pm));
+        _handle(op);
+        (, uint256 spent) = _usage();
+        assertLt(spent, MAX_COST);
+        assertGe(spent, depBefore - ep.balanceOf(address(pm)));
+    }
+
+    function test_badSignatureRejected() public {
+        (, uint256 wrongPk) = makeAddrAndKey("impostor");
+        PackedUserOperation memory op = _sponsor(
+            _op(abi.encodeCall(TestAccount.bump, ()), 0),
+            uint48(block.timestamp + 10 minutes),
+            uint48(block.timestamp - 1),
+            wrongPk
+        );
+        vm.expectRevert(abi.encodeWithSelector(IEntryPoint.FailedOp.selector, 0, "AA34 signature error"));
+        _handle(op);
+        (, uint256 spent) = _usage();
+        assertEq(spent, 0);
+    }
 }
