@@ -272,4 +272,77 @@ contract AnyrPaymasterTest is Test {
         );
         _handle(op);
     }
+
+    function test_bundleReservesMaxCostPerOp() public {
+        vm.prank(owner);
+        pm.setDailyCap(2 * MAX_COST - 1);
+        PackedUserOperation[] memory ops = new PackedUserOperation[](2);
+        ops[0] = _bumpOp(0);
+        ops[1] = _bumpOp(1);
+        // op 1 is validated while op 0 still holds its full maxCost reservation
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IEntryPoint.FailedOpWithRevert.selector,
+                1,
+                "AA33 reverted",
+                abi.encodeWithSelector(
+                    AnyrPaymaster.DailyCapExceeded.selector,
+                    address(account),
+                    MAX_COST,
+                    MAX_COST,
+                    2 * MAX_COST - 1
+                )
+            )
+        );
+        vm.prank(bundler, bundler);
+        ep.handleOps(ops, payable(bundler));
+
+        // with room for both reservations the bundle goes through and both are reconciled
+        vm.prank(owner);
+        pm.setDailyCap(2 * MAX_COST);
+        vm.prank(bundler, bundler);
+        ep.handleOps(ops, payable(bundler));
+        assertEq(account.counter(), 2);
+        (, uint256 spent) = _usage();
+        assertLt(spent, 2 * MAX_COST);
+    }
+
+    /// @dev Keep sponsoring until the cap binds; the model (spent + maxCost > cap => reject) must hold every time.
+    function test_capAccumulatesUntilExhausted() public {
+        uint256 cap = pm.dailyCap();
+        uint256 successes;
+        bool rejected;
+        for (uint256 i; i < 20 && !rejected; ++i) {
+            (, uint256 spent) = _usage();
+            PackedUserOperation memory op = _bumpOp(0);
+            if (spent + MAX_COST > cap) {
+                vm.expectRevert(
+                    abi.encodeWithSelector(
+                        IEntryPoint.FailedOpWithRevert.selector,
+                        0,
+                        "AA33 reverted",
+                        abi.encodeWithSelector(
+                            AnyrPaymaster.DailyCapExceeded.selector, address(account), spent, MAX_COST, cap
+                        )
+                    )
+                );
+                _handle(op);
+                rejected = true;
+            } else {
+                _handle(op);
+                successes++;
+                (, uint256 after_) = _usage();
+                assertGt(after_, spent);
+                assertLe(after_, cap);
+            }
+        }
+        assertTrue(rejected, "cap never bound");
+        assertGe(successes, 3);
+        assertEq(account.counter(), successes);
+        assertEq(pm.remaining(address(account)), cap - _spent());
+    }
+
+    function _spent() internal view returns (uint256 s) {
+        (, s) = _usage();
+    }
 }
