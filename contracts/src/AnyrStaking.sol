@@ -104,4 +104,120 @@ contract AnyrStaking is IAnyrStaking, Ownable2Step, ReentrancyGuardTransient {
         emit AdapterSet(address(adapter_));
         emit MaxDailyBuybackSet(10_000e6);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Staking
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IAnyrStaking
+    /// @dev A non-zero `providerId` attributes the account's whole stake to that provider; once set it
+    /// is fixed (a different non-zero id reverts; zero keeps the existing attribution).
+    function stake(uint256 amount, bytes32 providerId) external nonReentrant {
+        if (amount == 0) revert InvalidAmount();
+        address account = msg.sender;
+        _updateReward(account);
+
+        bytes32 pid = providerOf[account];
+        if (providerId != bytes32(0)) {
+            if (pid == bytes32(0)) {
+                pid = providerId;
+                providerOf[account] = pid;
+                _providerStake[pid] += _staked[account];
+            } else if (pid != providerId) {
+                revert ProviderMismatch();
+            }
+        }
+
+        _staked[account] += amount;
+        totalStaked += amount;
+        if (pid != bytes32(0)) _providerStake[pid] += amount;
+        emit Staked(account, amount, pid);
+        anyr.safeTransferFrom(account, address(this), amount);
+    }
+
+    /// @inheritdoc IAnyrStaking
+    /// @dev The amount stops earning (and counting as provider stake) immediately. Adding to an
+    /// existing cooldown restarts the cooldown for the whole pending amount.
+    function requestUnstake(uint256 amount) external nonReentrant {
+        address account = msg.sender;
+        uint256 bal = _staked[account];
+        if (amount == 0 || amount > bal) revert InvalidAmount();
+        _updateReward(account);
+
+        _staked[account] = bal - amount;
+        totalStaked -= amount;
+        bytes32 pid = providerOf[account];
+        if (pid != bytes32(0)) _providerStake[pid] -= amount;
+
+        Cooldown storage c = pendingUnstake[account];
+        c.amount += amount;
+        uint64 availableAt = uint64(block.timestamp) + COOLDOWN;
+        c.availableAt = availableAt;
+        totalCooldown += amount;
+        emit UnstakeRequested(account, amount, availableAt);
+    }
+
+    /// @inheritdoc IAnyrStaking
+    function unstake() external nonReentrant {
+        Cooldown memory c = pendingUnstake[msg.sender];
+        if (c.amount == 0) revert InvalidAmount();
+        if (block.timestamp < c.availableAt) revert CooldownActive();
+        delete pendingUnstake[msg.sender];
+        totalCooldown -= c.amount;
+        emit Unstaked(msg.sender, c.amount);
+        anyr.safeTransfer(msg.sender, c.amount);
+    }
+
+    /// @inheritdoc IAnyrStaking
+    /// @dev Returns 0 (no revert, no event) when nothing is owed.
+    function claimRewards() external nonReentrant returns (uint256 reward) {
+        _updateReward(msg.sender);
+        reward = rewards[msg.sender];
+        if (reward == 0) return 0;
+        rewards[msg.sender] = 0;
+        rewardReserve -= reward;
+        emit RewardPaid(msg.sender, reward);
+        anyr.safeTransfer(msg.sender, reward);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Margin & buybacks
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IAnyrStaking
+    /// @dev Permissionless (it only donates). Odd base units go to the buyback half.
+    function notifyMargin(uint256 amount) external nonReentrant {
+        if (amount == 0) revert InvalidAmount();
+        uint256 toOps = amount / 2;
+        uint256 toBuyback = amount - toOps;
+        buybackBalance += toBuyback;
+        emit MarginNotified(amount, toBuyback, toOps);
+        usdg.safeTransferFrom(msg.sender, address(this), toBuyback);
+        if (toOps != 0) usdg.safeTransferFrom(msg.sender, opsWallet, toOps);
+    }
+
+    /// @inheritdoc IAnyrStaking
+    /// @dev Output is measured by ANYR balance delta, never trusted from the adapter's return value.
+    function executeBuyback(uint256 usdgIn, uint256 minAnyrOut) external nonReentrant returns (uint256 anyrOut) {
+        if (msg.sender != keeper) revert NotKeeper();
+        if (usdgIn == 0 || minAnyrOut == 0) revert InvalidAmount();
+        if (usdgIn > buybackBalance) revert BuybackTooLarge();
+
+        uint256 day = block.timestamp / 1 days;
+        uint256 used = (day == buybackDay ? boughtOnDay : 0) + usdgIn;
+        if (used > maxDailyBuyback) revert BuybackTooLarge();
+        buybackDay = day;
+        boughtOnDay = used;
+        buybackBalance -= usdgIn;
+
+        IBuybackAdapter a = adapter;
+        uint256 balanceBefore = anyr.balanceOf(address(this));
+        usdg.safeTransfer(address(a), usdgIn);
+        a.swapExactIn(address(usdg), address(anyr), usdgIn, minAnyrOut, address(this));
+        anyrOut = anyr.balanceOf(address(this)) - balanceBefore;
+        if (anyrOut < minAnyrOut) revert InsufficientOutput();
+
+        _distribute(anyrOut);
+        emit BoughtBack(usdgIn, anyrOut);
+    }
 }
