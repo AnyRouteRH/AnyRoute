@@ -563,4 +563,70 @@ contract AnyrStakingTest is StakingBase {
         vm.prank(alice);
         assertEq(staking.claimRewards(), out1 + out2);
     }
+
+    function test_executeBuyback_onlyCooldownStakeHoldsUndistributed() public {
+        _stake(alice, 1e18, bytes32(0));
+        vm.prank(alice);
+        staking.requestUnstake(1e18);
+        _notify(20e6);
+        uint256 out = _buyback(10e6);
+        assertEq(staking.undistributed(), out);
+        assertEq(staking.earned(alice), 0);
+    }
+
+    function test_executeBuyback_reentrancyBlocked() public {
+        ReentrantAdapter bad = new ReentrantAdapter();
+        vm.prank(owner);
+        staking.setAdapter(bad);
+        _notify(100e6);
+        for (uint8 m; m < 3; ++m) {
+            bad.set(staking, m);
+            vm.prank(keeper);
+            vm.expectRevert(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector);
+            staking.executeBuyback(1e6, 1);
+        }
+    }
+
+    // =============================================================================================
+    // claimRewards
+    // =============================================================================================
+
+    function test_claimRewards_nothing() public {
+        vm.recordLogs();
+        vm.prank(alice);
+        assertEq(staking.claimRewards(), 0);
+        assertEq(vm.getRecordedLogs().length, 0);
+    }
+
+    function test_claimRewards() public {
+        _stake(alice, 100e18, bytes32(0));
+        _notify(20e6);
+        uint256 out = _buyback(10e6);
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.RewardPaid(alice, out);
+        vm.prank(alice);
+        uint256 got = staking.claimRewards();
+        assertEq(got, out);
+        assertEq(anyr.balanceOf(alice), 10_000_000e18 - 100e18 + out);
+        assertEq(staking.earned(alice), 0);
+        assertEq(staking.rewardReserve(), 0);
+        assertEq(anyr.balanceOf(address(staking)), 100e18);
+        vm.prank(alice);
+        assertEq(staking.claimRewards(), 0);
+    }
+
+    function test_claimRewards_afterFullUnstake() public {
+        _stake(alice, 100e18, bytes32(0));
+        _notify(20e6);
+        uint256 out = _buyback(10e6);
+        vm.prank(alice);
+        staking.requestUnstake(100e18);
+        vm.warp(T0 + 7 days);
+        vm.prank(alice);
+        staking.unstake();
+        assertEq(staking.earned(alice), out);
+        vm.prank(alice);
+        assertEq(staking.claimRewards(), out);
+        assertEq(anyr.balanceOf(address(staking)), 0);
+    }
 }
