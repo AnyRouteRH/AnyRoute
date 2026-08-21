@@ -167,4 +167,88 @@ contract AnyrStakingTest is StakingBase {
         assertEq(usdg.balanceOf(o2), 5e6);
         assertEq(usdg.balanceOf(ops), 0);
     }
+
+    function test_setAdapter() public {
+        MockBuybackAdapter a2 = new MockBuybackAdapter(1e12, 1);
+        vm.prank(treasury);
+        assertTrue(anyr.transfer(address(a2), 1_000_000e18));
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit AnyrStaking.AdapterSet(address(a2));
+        vm.prank(owner);
+        staking.setAdapter(a2);
+        _notify(2e6);
+        vm.prank(keeper);
+        uint256 out = staking.executeBuyback(1e6, 1e18);
+        assertEq(out, 1e18);
+        assertEq(usdg.balanceOf(address(a2)), 1e6);
+    }
+
+    function test_setMaxDailyBuyback() public {
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit AnyrStaking.MaxDailyBuybackSet(0);
+        vm.prank(owner);
+        staking.setMaxDailyBuyback(0);
+        _notify(10e6);
+        vm.prank(keeper);
+        vm.expectRevert(IAnyrStaking.BuybackTooLarge.selector);
+        staking.executeBuyback(1, 1);
+        assertEq(staking.buybackRemainingToday(), 0);
+    }
+
+    function test_setters_onlyOwner() public {
+        vm.startPrank(keeper);
+        bytes memory err = abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, keeper);
+        vm.expectRevert(err);
+        staking.setKeeper(keeper);
+        vm.expectRevert(err);
+        staking.setOpsWallet(keeper);
+        vm.expectRevert(err);
+        staking.setAdapter(adapter);
+        vm.expectRevert(err);
+        staking.setMaxDailyBuyback(1);
+        vm.stopPrank();
+    }
+
+    function test_setters_revertZero() public {
+        vm.startPrank(owner);
+        vm.expectRevert(AnyrStaking.ZeroAddress.selector);
+        staking.setKeeper(address(0));
+        vm.expectRevert(AnyrStaking.ZeroAddress.selector);
+        staking.setOpsWallet(address(0));
+        vm.expectRevert(AnyrStaking.ZeroAddress.selector);
+        staking.setAdapter(IBuybackAdapter(address(0)));
+        vm.stopPrank();
+    }
+
+    // =============================================================================================
+    // stake
+    // =============================================================================================
+
+    function test_stake() public {
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.Staked(alice, 100e18, bytes32(0));
+        _stake(alice, 100e18, bytes32(0));
+        assertEq(staking.stakedOf(alice), 100e18);
+        assertEq(staking.totalStaked(), 100e18);
+        assertEq(anyr.balanceOf(address(staking)), 100e18);
+        assertEq(anyr.balanceOf(alice), 10_000_000e18 - 100e18);
+        assertEq(staking.providerOf(alice), bytes32(0));
+    }
+
+    function test_stake_revertsZero() public {
+        vm.prank(alice);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.stake(0, bytes32(0));
+    }
+
+    function test_stake_revertsWithoutAllowance() public {
+        address dave = makeAddr("dave");
+        vm.prank(treasury);
+        assertTrue(anyr.transfer(dave, 1e18));
+        vm.prank(dave);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(staking), 0, 1e18)
+        );
+        staking.stake(1e18, bytes32(0));
+    }
 }
