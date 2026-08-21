@@ -345,4 +345,104 @@ contract AnyrPaymasterTest is Test {
     function _spent() internal view returns (uint256 s) {
         (, s) = _usage();
     }
+
+    function test_newDayResetsCap() public {
+        vm.prank(owner);
+        pm.setDailyCap(MAX_COST);
+        _handle(_bumpOp(0));
+        PackedUserOperation memory op = _bumpOp(0);
+        vm.expectRevert(); // cap reached for today (spent + maxCost > cap)
+        _handle(op);
+
+        vm.warp(block.timestamp + 1 days);
+        _handle(_bumpOp(0));
+        assertEq(account.counter(), 2);
+        (uint64 day,) = _usage();
+        assertEq(day, (block.timestamp + 10 minutes) / 1 days);
+    }
+
+    function test_bucketNeverMovesBackwards() public {
+        // op signed so that validUntil lands tomorrow => bucket = tomorrow
+        uint48 tomorrowUntil = uint48(block.timestamp + 1 days - 1);
+        PackedUserOperation memory op1 = _sponsor(
+            _op(abi.encodeCall(TestAccount.bump, ()), 0), tomorrowUntil, uint48(block.timestamp), signerPk
+        );
+        _handle(op1);
+        (uint64 day1, uint256 spent1) = _usage();
+        assertEq(day1, tomorrowUntil / 1 days);
+        assertEq(day1, block.timestamp / 1 days + 1);
+
+        // a later op signed for "today" is charged to the (newer) stored bucket instead of resetting it
+        _handle(_bumpOp(0));
+        (uint64 day2, uint256 spent2) = _usage();
+        assertEq(day2, day1);
+        assertGt(spent2, spent1);
+    }
+
+    // ------------------------------------------------------------------ access control / admin
+
+    function test_onlyEntryPoint() public {
+        PackedUserOperation memory op = _bumpOp(0);
+        vm.expectRevert("Sender not EntryPoint");
+        pm.validatePaymasterUserOp(op, bytes32(0), MAX_COST);
+        vm.expectRevert("Sender not EntryPoint");
+        pm.postOp(
+            IPaymaster.PostOpMode.opSucceeded, abi.encode(address(account), uint64(1), MAX_COST, 0), 1, 1
+        );
+    }
+
+    function test_directValidationAsEntryPoint() public {
+        // simulate the EntryPoint calling validate/postOp directly (unit-level check of the accounting)
+        PackedUserOperation memory op = _bumpOp(0);
+        vm.prank(address(ep));
+        (bytes memory ctx, uint256 vd) = pm.validatePaymasterUserOp(op, bytes32(0), MAX_COST);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(uint160(vd), 0, "signature ok"); // low 160 bits = aggregator/sig-failed flag
+        assertEq(_spent(), MAX_COST);
+        vm.prank(address(ep));
+        pm.postOp(IPaymaster.PostOpMode.opSucceeded, ctx, 100_000 gwei, FEE);
+        uint256 extraGas = PM_POSTOP_GAS + (uint256(CALL_GAS) + PM_POSTOP_GAS) / 10 + pm.POSTOP_OVERHEAD_GAS();
+        assertEq(_spent(), 100_000 gwei + extraGas * FEE);
+    }
+
+    function test_admin() public {
+        vm.startPrank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        pm.setVerifyingSigner(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        pm.setDailyCap(1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        pm.withdrawTo(payable(stranger), 1);
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        vm.expectRevert(AnyrPaymaster.ZeroAddress.selector);
+        pm.setVerifyingSigner(address(0));
+        vm.expectEmit(true, false, false, false);
+        emit AnyrPaymaster.VerifyingSignerSet(stranger);
+        pm.setVerifyingSigner(stranger);
+        vm.expectEmit(false, false, false, true);
+        emit AnyrPaymaster.DailyCapSet(42);
+        pm.setDailyCap(42);
+        pm.withdrawTo(payable(owner), 1 ether);
+        vm.stopPrank();
+        assertEq(ep.balanceOf(address(pm)), 9 ether);
+
+        // rotated signer: old signatures no longer sponsor
+        vm.prank(owner);
+        pm.setDailyCap(10 * MAX_COST);
+        PackedUserOperation memory op = _bumpOp(0);
+        vm.expectRevert(abi.encodeWithSelector(IEntryPoint.FailedOp.selector, 0, "AA34 signature error"));
+        _handle(op);
+    }
+
+    function test_ownable2Step() public {
+        vm.prank(owner);
+        pm.transferOwnership(stranger);
+        assertEq(pm.owner(), owner);
+        assertEq(pm.pendingOwner(), stranger);
+        vm.prank(stranger);
+        pm.acceptOwnership();
+        assertEq(pm.owner(), stranger);
+    }
 }
