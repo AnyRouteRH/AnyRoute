@@ -468,4 +468,99 @@ contract AnyrStakingTest is StakingBase {
         assertEq(staking.rewardReserve(), 800e18);
         assertEq(anyr.balanceOf(address(staking)), 400e18 + 800e18);
     }
+
+    function test_executeBuyback_reverts() public {
+        _notify(100e6);
+        vm.prank(alice);
+        vm.expectRevert(IAnyrStaking.NotKeeper.selector);
+        staking.executeBuyback(1e6, 1);
+        vm.startPrank(keeper);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.executeBuyback(0, 1);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.executeBuyback(1e6, 0);
+        vm.expectRevert(IAnyrStaking.BuybackTooLarge.selector);
+        staking.executeBuyback(50e6 + 1, 1);
+        vm.stopPrank();
+    }
+
+    function test_executeBuyback_dailyCap() public {
+        _notify(100_000e6);
+        _buyback(6_000e6);
+        assertEq(staking.buybackRemainingToday(), 4_000e6);
+        vm.prank(keeper);
+        vm.expectRevert(IAnyrStaking.BuybackTooLarge.selector);
+        staking.executeBuyback(4_000e6 + 1, 1);
+        _buyback(4_000e6); // exactly the cap
+        assertEq(staking.buybackRemainingToday(), 0);
+        vm.prank(keeper);
+        vm.expectRevert(IAnyrStaking.BuybackTooLarge.selector);
+        staking.executeBuyback(1, 1);
+
+        // last second of the UTC day: still capped
+        vm.warp(T0 + 1 days - 1);
+        vm.prank(keeper);
+        vm.expectRevert(IAnyrStaking.BuybackTooLarge.selector);
+        staking.executeBuyback(1, 1);
+
+        // next UTC day resets
+        vm.warp(T0 + 1 days);
+        assertEq(staking.buybackRemainingToday(), 10_000e6);
+        _buyback(10_000e6);
+        assertEq(staking.boughtOnDay(), 10_000e6);
+        assertEq(staking.buybackDay(), (T0 + 1 days) / 1 days);
+    }
+
+    function test_executeBuyback_singleOverCap() public {
+        _notify(100_000e6);
+        vm.prank(keeper);
+        vm.expectRevert(IAnyrStaking.BuybackTooLarge.selector);
+        staking.executeBuyback(10_000e6 + 1, 1);
+    }
+
+    function test_executeBuyback_insufficientOutputByBalanceDelta() public {
+        _stake(alice, 1e18, bytes32(0));
+        _notify(100e6);
+        adapter.setShortfallBps(100); // adapter lies: reports full quote, delivers 99%
+        uint256 minOut = adapter.quote(10e6);
+        vm.prank(keeper);
+        vm.expectRevert(IAnyrStaking.InsufficientOutput.selector);
+        staking.executeBuyback(10e6, minOut);
+        assertEq(staking.buybackBalance(), 50e6); // rolled back
+    }
+
+    function test_executeBuyback_usesDeliveredNotReported() public {
+        _stake(alice, 1e18, bytes32(0));
+        _notify(100e6);
+        adapter.setShortfallBps(1000); // delivers 90%
+        uint256 quoted = adapter.quote(10e6);
+        vm.prank(keeper);
+        uint256 out = staking.executeBuyback(10e6, quoted / 2);
+        assertEq(out, (quoted * 9) / 10);
+        assertEq(staking.rewardReserve(), out);
+    }
+
+    function test_executeBuyback_adapterSlippageBubbles() public {
+        _notify(100e6);
+        uint256 minOut = adapter.quote(10e6) + 1;
+        vm.prank(keeper);
+        vm.expectRevert(abi.encodeWithSelector(MockBuybackAdapter.Slippage.selector, minOut - 1, minOut));
+        staking.executeBuyback(10e6, minOut);
+    }
+
+    function test_executeBuyback_noStakersHoldsUndistributed() public {
+        _notify(200e6);
+        uint256 out1 = _buyback(10e6);
+        assertEq(staking.undistributed(), out1);
+        assertEq(staking.rewardReserve(), out1);
+        assertEq(staking.rewardPerTokenStored(), 0);
+
+        _stake(alice, 1e18, bytes32(0));
+        assertEq(staking.earned(alice), 0); // not distributed until the next buyback
+        uint256 out2 = _buyback(20e6);
+        assertEq(staking.earned(alice), out1 + out2);
+        assertEq(staking.undistributed(), 0);
+        vm.prank(alice);
+        assertEq(staking.claimRewards(), out1 + out2);
+    }
 }
