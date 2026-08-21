@@ -93,3 +93,78 @@ abstract contract StakingBase is Test {
         return staking.executeBuyback(usdgIn, minOut);
     }
 }
+
+contract AnyrStakingTest is StakingBase {
+    bytes32 internal constant PID = keccak256("provider-a");
+    bytes32 internal constant PID2 = keccak256("provider-b");
+
+    // =============================================================================================
+    // Constructor / admin
+    // =============================================================================================
+
+    function test_constructor() public view {
+        assertEq(address(staking.anyr()), address(anyr));
+        assertEq(address(staking.usdg()), address(usdg));
+        assertEq(staking.owner(), owner);
+        assertEq(staking.keeper(), keeper);
+        assertEq(staking.opsWallet(), ops);
+        assertEq(address(staking.adapter()), address(adapter));
+        assertEq(staking.maxDailyBuyback(), 10_000e6);
+        assertEq(staking.COOLDOWN(), 7 days);
+        assertEq(staking.totalStaked(), 0);
+        assertEq(staking.buybackBalance(), 0);
+    }
+
+    function test_constructor_emits() public {
+        vm.expectEmit(true, true, true, true);
+        emit IAnyrStaking.KeeperSet(keeper);
+        vm.expectEmit(true, true, true, true);
+        emit AnyrStaking.OpsWalletSet(ops);
+        vm.expectEmit(true, true, true, true);
+        emit AnyrStaking.AdapterSet(address(adapter));
+        vm.expectEmit(true, true, true, true);
+        emit AnyrStaking.MaxDailyBuybackSet(10_000e6);
+        new AnyrStaking(IERC20(address(anyr)), IERC20(address(usdg)), owner, keeper, ops, adapter);
+    }
+
+    function test_constructor_revertsZeros() public {
+        IERC20 a = IERC20(address(anyr));
+        IERC20 u = IERC20(address(usdg));
+        vm.expectRevert(AnyrStaking.ZeroAddress.selector);
+        new AnyrStaking(IERC20(address(0)), u, owner, keeper, ops, adapter);
+        vm.expectRevert(AnyrStaking.ZeroAddress.selector);
+        new AnyrStaking(a, IERC20(address(0)), owner, keeper, ops, adapter);
+        vm.expectRevert(AnyrStaking.ZeroAddress.selector);
+        new AnyrStaking(a, u, owner, address(0), ops, adapter);
+        vm.expectRevert(AnyrStaking.ZeroAddress.selector);
+        new AnyrStaking(a, u, owner, keeper, address(0), adapter);
+        vm.expectRevert(AnyrStaking.ZeroAddress.selector);
+        new AnyrStaking(a, u, owner, keeper, ops, IBuybackAdapter(address(0)));
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
+        new AnyrStaking(a, u, address(0), keeper, ops, adapter);
+    }
+
+    function test_setKeeper() public {
+        address k2 = makeAddr("k2");
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.KeeperSet(k2);
+        vm.prank(owner);
+        staking.setKeeper(k2);
+        assertEq(staking.keeper(), k2);
+        _notify(100e6);
+        vm.prank(keeper);
+        vm.expectRevert(IAnyrStaking.NotKeeper.selector);
+        staking.executeBuyback(1e6, 1);
+    }
+
+    function test_setOpsWallet() public {
+        address o2 = makeAddr("o2");
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit AnyrStaking.OpsWalletSet(o2);
+        vm.prank(owner);
+        staking.setOpsWallet(o2);
+        _notify(10e6);
+        assertEq(usdg.balanceOf(o2), 5e6);
+        assertEq(usdg.balanceOf(ops), 0);
+    }
+}

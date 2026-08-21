@@ -220,4 +220,94 @@ contract AnyrStaking is IAnyrStaking, Ownable2Step, ReentrancyGuardTransient {
         _distribute(anyrOut);
         emit BoughtBack(usdgIn, anyrOut);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Admin
+    // ---------------------------------------------------------------------------------------------
+
+    /// @notice Set the buyback keeper.
+    function setKeeper(address keeper_) external onlyOwner {
+        if (keeper_ == address(0)) revert ZeroAddress();
+        keeper = keeper_;
+        emit KeeperSet(keeper_);
+    }
+
+    /// @notice Set the ops wallet.
+    function setOpsWallet(address opsWallet_) external onlyOwner {
+        if (opsWallet_ == address(0)) revert ZeroAddress();
+        opsWallet = opsWallet_;
+        emit OpsWalletSet(opsWallet_);
+    }
+
+    /// @notice Set the buyback adapter.
+    function setAdapter(IBuybackAdapter adapter_) external onlyOwner {
+        if (address(adapter_) == address(0)) revert ZeroAddress();
+        adapter = adapter_;
+        emit AdapterSet(address(adapter_));
+    }
+
+    /// @notice Set the per-UTC-day buyback cap in USDG base units (0 pauses buybacks).
+    function setMaxDailyBuyback(uint256 maxDailyBuyback_) external onlyOwner {
+        maxDailyBuyback = maxDailyBuyback_;
+        emit MaxDailyBuybackSet(maxDailyBuyback_);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Views
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IAnyrStaking
+    /// @dev Earning stake only (excludes principal in cooldown).
+    function stakedOf(address account) external view returns (uint256) {
+        return _staked[account];
+    }
+
+    /// @inheritdoc IAnyrStaking
+    function providerStake(bytes32 providerId) external view returns (uint256) {
+        return _providerStake[providerId];
+    }
+
+    /// @inheritdoc IAnyrStaking
+    function earned(address account) external view returns (uint256) {
+        return _earned(account);
+    }
+
+    /// @notice USDG that can still be swapped today under the daily cap.
+    function buybackRemainingToday() external view returns (uint256) {
+        uint256 used = block.timestamp / 1 days == buybackDay ? boughtOnDay : 0;
+        return used >= maxDailyBuyback ? 0 : maxDailyBuyback - used;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Internal
+    // ---------------------------------------------------------------------------------------------
+
+    function _earned(address account) private view returns (uint256) {
+        return rewards[account]
+            + (_staked[account] * (rewardPerTokenStored - userRewardPerTokenPaid[account])) / PRECISION;
+    }
+
+    function _updateReward(address account) private {
+        rewards[account] = _earned(account);
+        userRewardPerTokenPaid[account] = rewardPerTokenStored;
+    }
+
+    /// @dev Allocates `amount` plus any undistributed remainder to current stakers. The allocated part
+    /// is rounded up so that the sum of all (rounded-down) individual accruals never exceeds it.
+    function _distribute(uint256 amount) private {
+        rewardReserve += amount;
+        uint256 pending = undistributed + amount;
+        uint256 staked = totalStaked;
+        if (staked == 0) {
+            undistributed = pending;
+            return;
+        }
+        uint256 delta = (pending * PRECISION) / staked;
+        if (delta == 0) {
+            undistributed = pending;
+            return;
+        }
+        rewardPerTokenStored += delta;
+        undistributed = pending - Math.mulDiv(delta, staked, PRECISION, Math.Rounding.Ceil);
+    }
 }
