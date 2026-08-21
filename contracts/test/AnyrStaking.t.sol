@@ -629,4 +629,132 @@ contract AnyrStakingTest is StakingBase {
         assertEq(staking.claimRewards(), out);
         assertEq(anyr.balanceOf(address(staking)), 0);
     }
+
+    function test_rewardsNeverPayPrincipal() public {
+        _stake(alice, 7e18, bytes32(0));
+        _stake(bob, 13e18, bytes32(0));
+        _stake(carol, 3e18, bytes32(0));
+        _notify(1_000e6);
+        _buyback(333_333);
+        _buyback(1);
+        vm.prank(bob);
+        staking.requestUnstake(5e18);
+        _buyback(777_777);
+
+        address[3] memory who = [alice, bob, carol];
+        for (uint256 i; i < 3; ++i) {
+            vm.prank(who[i]);
+            staking.claimRewards();
+            // after all rewards are claimed, principal is still fully backed
+            assertGe(anyr.balanceOf(address(staking)), staking.totalStaked() + staking.totalCooldown());
+        }
+        assertEq(anyr.balanceOf(address(staking)), staking.totalStaked() + staking.totalCooldown() + staking.rewardReserve());
+        // only rounding dust / undistributed remains as reward reserve
+        assertLe(staking.rewardReserve(), staking.undistributed() + 10);
+
+        vm.startPrank(alice);
+        staking.requestUnstake(7e18);
+        vm.stopPrank();
+        vm.prank(carol);
+        staking.requestUnstake(3e18);
+        vm.prank(bob);
+        staking.requestUnstake(8e18);
+        vm.warp(T0 + 7 days);
+        for (uint256 i; i < 3; ++i) {
+            vm.prank(who[i]);
+            staking.unstake();
+        }
+        assertEq(staking.totalStaked(), 0);
+        assertEq(staking.totalCooldown(), 0);
+        assertEq(anyr.balanceOf(address(staking)), staking.rewardReserve());
+    }
+
+    // =============================================================================================
+    // Fuzz
+    // =============================================================================================
+
+    function testFuzz_rewardsProportional(uint256 a, uint256 b, uint256 usdgIn) public {
+        a = bound(a, 1, 10_000_000e18);
+        b = bound(b, 1, 10_000_000e18);
+        usdgIn = bound(usdgIn, 1, 10_000e6);
+        _stake(alice, a, bytes32(0));
+        _stake(bob, b, bytes32(0));
+        _notify(2 * usdgIn);
+        uint256 out = _buyback(usdgIn);
+        uint256 ea = staking.earned(alice);
+        uint256 eb = staking.earned(bob);
+        assertLe(ea + eb + staking.undistributed(), staking.rewardReserve());
+        assertEq(staking.rewardReserve(), out);
+        // each within 1 wei of the exact pro-rata share of what was allocated
+        uint256 allocated = out - staking.undistributed();
+        assertApproxEqAbs(ea, (allocated * a) / (a + b), 1);
+        assertApproxEqAbs(eb, (allocated * b) / (a + b), 1);
+    }
+
+    function testFuzz_multiRoundAccounting(uint256[4] memory stakes, uint256[4] memory buys) public {
+        address[3] memory who = [alice, bob, carol];
+        _notify(100_000e6);
+        for (uint256 r; r < 4; ++r) {
+            _stake(who[r % 3], bound(stakes[r], 1, 1_000_000e18), bytes32(0));
+            vm.warp(T0 + r * 1 days);
+            _buyback(bound(buys[r], 1, 10_000e6));
+        }
+        uint256 sumEarned = staking.earned(alice) + staking.earned(bob) + staking.earned(carol);
+        assertLe(sumEarned + staking.undistributed(), staking.rewardReserve());
+        uint256 claimed;
+        for (uint256 i; i < 3; ++i) {
+            vm.prank(who[i]);
+            claimed += staking.claimRewards();
+        }
+        assertEq(claimed, sumEarned);
+        assertEq(anyr.balanceOf(address(staking)), staking.totalStaked() + staking.rewardReserve());
+    }
+}
+
+// =================================================================================================
+// Invariant: principal and rewards are separately and fully backed
+// =================================================================================================
+
+contract StakingHandler is CommonBase, StdCheats, StdUtils {
+    AnyrStaking public immutable staking;
+    AnyrToken public immutable anyr;
+    MockUSDG public immutable usdg;
+    MockBuybackAdapter public immutable adapter;
+    address public immutable keeper;
+    address public immutable anyrSource;
+    address[3] public actors;
+    bytes32[3] public pids;
+
+    constructor(AnyrStaking s, AnyrToken a, MockUSDG u, MockBuybackAdapter ad, address k, address src) {
+        staking = s;
+        anyr = a;
+        usdg = u;
+        adapter = ad;
+        keeper = k;
+        anyrSource = src;
+        actors = [makeAddr("s1"), makeAddr("s2"), makeAddr("s3")];
+        pids = [keccak256("p1"), bytes32(0), keccak256("p2")];
+        for (uint256 i; i < 3; ++i) {
+            vm.prank(actors[i]);
+            anyr.approve(address(staking), type(uint256).max);
+        }
+        usdg.approve(address(staking), type(uint256).max);
+    }
+
+    function stake(uint256 seed, uint256 amt) external {
+        uint256 i = seed % 3;
+        amt = bound(amt, 1, 1_000_000e18);
+        vm.prank(anyrSource);
+        require(anyr.transfer(actors[i], amt), "transfer");
+        vm.prank(actors[i]);
+        staking.stake(amt, pids[i]);
+    }
+
+    function requestUnstake(uint256 seed, uint256 amt) external {
+        uint256 i = seed % 3;
+        uint256 bal = staking.stakedOf(actors[i]);
+        if (bal == 0) return;
+        vm.prank(actors[i]);
+        staking.requestUnstake(bound(amt, 1, bal));
+    }
 }
