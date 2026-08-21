@@ -251,4 +251,128 @@ contract AnyrStakingTest is StakingBase {
         );
         staking.stake(1e18, bytes32(0));
     }
+
+    function test_stake_providerAttribution() public {
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.Staked(alice, 10e18, PID);
+        _stake(alice, 10e18, PID);
+        assertEq(staking.providerOf(alice), PID);
+        assertEq(staking.providerStake(PID), 10e18);
+
+        // zero id keeps the existing attribution
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.Staked(alice, 5e18, PID);
+        _stake(alice, 5e18, bytes32(0));
+        assertEq(staking.providerStake(PID), 15e18);
+
+        // same id ok
+        _stake(alice, 1e18, PID);
+        assertEq(staking.providerStake(PID), 16e18);
+
+        // different id reverts
+        vm.prank(alice);
+        vm.expectRevert(AnyrStaking.ProviderMismatch.selector);
+        staking.stake(1e18, PID2);
+
+        _stake(bob, 4e18, PID);
+        assertEq(staking.providerStake(PID), 20e18);
+        assertEq(staking.providerStake(PID2), 0);
+    }
+
+    function test_stake_existingStakeAttributedOnFirstProvider() public {
+        _stake(alice, 10e18, bytes32(0));
+        assertEq(staking.providerStake(PID), 0);
+        _stake(alice, 1e18, PID);
+        assertEq(staking.providerStake(PID), 11e18);
+    }
+
+    function test_stake_providerStakeTracksUnstakeRequests() public {
+        _stake(alice, 10e18, PID);
+        vm.prank(alice);
+        staking.requestUnstake(4e18);
+        assertEq(staking.providerStake(PID), 6e18);
+        vm.prank(alice);
+        staking.requestUnstake(6e18);
+        assertEq(staking.providerStake(PID), 0);
+        // attribution is permanent even at zero stake
+        vm.prank(alice);
+        vm.expectRevert(AnyrStaking.ProviderMismatch.selector);
+        staking.stake(1e18, PID2);
+    }
+
+    // =============================================================================================
+    // requestUnstake / unstake
+    // =============================================================================================
+
+    function test_requestUnstake() public {
+        _stake(alice, 10e18, bytes32(0));
+        vm.expectEmit(true, true, true, true, address(staking));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        emit IAnyrStaking.UnstakeRequested(alice, 4e18, uint64(T0 + 7 days));
+        vm.prank(alice);
+        staking.requestUnstake(4e18);
+        assertEq(staking.stakedOf(alice), 6e18);
+        assertEq(staking.totalStaked(), 6e18);
+        assertEq(staking.totalCooldown(), 4e18);
+        (uint256 amt, uint64 at) = staking.pendingUnstake(alice);
+        assertEq(amt, 4e18);
+        assertEq(at, T0 + 7 days);
+        assertEq(anyr.balanceOf(address(staking)), 10e18);
+    }
+
+    function test_requestUnstake_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.requestUnstake(1);
+        _stake(alice, 10e18, bytes32(0));
+        vm.startPrank(alice);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.requestUnstake(0);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.requestUnstake(10e18 + 1);
+        vm.stopPrank();
+    }
+
+    function test_requestUnstake_accumulatesAndResetsCooldown() public {
+        _stake(alice, 10e18, bytes32(0));
+        vm.prank(alice);
+        staking.requestUnstake(4e18);
+        vm.warp(T0 + 3 days);
+        vm.prank(alice);
+        staking.requestUnstake(1e18);
+        (uint256 amt, uint64 at) = staking.pendingUnstake(alice);
+        assertEq(amt, 5e18);
+        assertEq(at, T0 + 3 days + 7 days);
+        vm.warp(T0 + 7 days);
+        vm.prank(alice);
+        vm.expectRevert(IAnyrStaking.CooldownActive.selector);
+        staking.unstake();
+    }
+
+    function test_unstake() public {
+        _stake(alice, 10e18, bytes32(0));
+        vm.prank(alice);
+        staking.requestUnstake(10e18);
+
+        vm.warp(T0 + 7 days - 1);
+        vm.prank(alice);
+        vm.expectRevert(IAnyrStaking.CooldownActive.selector);
+        staking.unstake();
+
+        vm.warp(T0 + 7 days);
+        uint256 before = anyr.balanceOf(alice);
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.Unstaked(alice, 10e18);
+        vm.prank(alice);
+        staking.unstake();
+        assertEq(anyr.balanceOf(alice), before + 10e18);
+        assertEq(staking.totalCooldown(), 0);
+        (uint256 amt,) = staking.pendingUnstake(alice);
+        assertEq(amt, 0);
+        assertEq(anyr.balanceOf(address(staking)), 0);
+
+        vm.prank(alice);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.unstake();
+    }
 }
