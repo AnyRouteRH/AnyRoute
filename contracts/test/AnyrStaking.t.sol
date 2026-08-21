@@ -375,4 +375,97 @@ contract AnyrStakingTest is StakingBase {
         vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
         staking.unstake();
     }
+
+    function test_unstake_revertsWithoutRequest() public {
+        _stake(alice, 10e18, bytes32(0));
+        vm.prank(alice);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.unstake();
+    }
+
+    function test_requestUnstake_stopsEarningImmediately() public {
+        _stake(alice, 10e18, bytes32(0));
+        _stake(bob, 10e18, bytes32(0));
+        _notify(200e6);
+        vm.prank(alice);
+        staking.requestUnstake(10e18);
+        uint256 out = _buyback(100e6);
+        assertEq(staking.earned(alice), 0);
+        assertEq(staking.earned(bob), out);
+    }
+
+    // =============================================================================================
+    // notifyMargin
+    // =============================================================================================
+
+    function test_notifyMargin_splits() public {
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.MarginNotified(100e6, 50e6, 50e6);
+        _notify(100e6);
+        assertEq(staking.buybackBalance(), 50e6);
+        assertEq(usdg.balanceOf(ops), 50e6);
+        assertEq(usdg.balanceOf(address(staking)), 50e6);
+    }
+
+    function test_notifyMargin_oddUnitsGoToBuyback() public {
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.MarginNotified(3, 2, 1);
+        _notify(3);
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.MarginNotified(1, 1, 0);
+        _notify(1);
+        assertEq(staking.buybackBalance(), 3);
+        assertEq(usdg.balanceOf(ops), 1);
+    }
+
+    function test_notifyMargin_anyoneCanDonate() public {
+        usdg.mint(carol, 10e6);
+        vm.prank(carol);
+        usdg.approve(address(staking), 10e6);
+        vm.prank(carol);
+        staking.notifyMargin(10e6);
+        assertEq(staking.buybackBalance(), 5e6);
+    }
+
+    function test_notifyMargin_reverts() public {
+        vm.prank(settlement);
+        vm.expectRevert(IAnyrStaking.InvalidAmount.selector);
+        staking.notifyMargin(0);
+        vm.prank(carol);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(staking), 0, 1)
+        );
+        staking.notifyMargin(2);
+    }
+
+    function testFuzz_notifyMargin(uint256 amt) public {
+        amt = bound(amt, 1, 100_000_000e6);
+        _notify(amt);
+        assertEq(staking.buybackBalance() + usdg.balanceOf(ops), amt);
+        assertEq(usdg.balanceOf(address(staking)), staking.buybackBalance());
+        assertEq(staking.buybackBalance(), amt - amt / 2);
+    }
+
+    // =============================================================================================
+    // executeBuyback
+    // =============================================================================================
+
+    function test_executeBuyback_distributes() public {
+        _stake(alice, 100e18, bytes32(0));
+        _stake(bob, 300e18, bytes32(0));
+        _notify(200e6);
+        uint256 expected = adapter.quote(80e6);
+        vm.expectEmit(true, true, true, true, address(staking));
+        emit IAnyrStaking.BoughtBack(80e6, expected);
+        uint256 out = _buyback(80e6);
+        assertEq(out, expected);
+        assertEq(out, 800e18);
+        assertEq(staking.buybackBalance(), 20e6);
+        assertEq(usdg.balanceOf(address(adapter)), 80e6);
+        assertEq(usdg.balanceOf(address(staking)), 20e6);
+        assertEq(staking.earned(alice), 200e18);
+        assertEq(staking.earned(bob), 600e18);
+        assertEq(staking.rewardReserve(), 800e18);
+        assertEq(anyr.balanceOf(address(staking)), 400e18 + 800e18);
+    }
 }
