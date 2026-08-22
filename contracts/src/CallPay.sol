@@ -46,4 +46,67 @@ contract CallPay is ICallPay, Ownable2Step, ReentrancyGuardTransient {
     function usdg() external view returns (address) {
         return address(_usdg);
     }
+
+    /// @inheritdoc ICallPay
+    function pay(bytes32 nonce, uint256 amount, uint256 expiry) external nonReentrant {
+        _pay(nonce, amount, expiry);
+    }
+
+    /// @inheritdoc ICallPay
+    /// @dev The permit is wrapped in try/catch so a front-run permit cannot brick the payment.
+    function payWithPermit(
+        bytes32 nonce,
+        uint256 amount,
+        uint256 expiry,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant {
+        try IERC20Permit(address(_usdg)).permit(msg.sender, address(this), amount, deadline, v, r, s) {} catch {}
+        _pay(nonce, amount, expiry);
+    }
+
+    /// @inheritdoc ICallPay
+    /// @dev The quote nonce doubles as the EIP-3009 authorization nonce and receiveWithAuthorization
+    /// requires msg.sender == to (this contract), so the signed authorization is bound to this quote and
+    /// can only ever move funds into this contract (then to the treasury), whoever submits it.
+    function payWithAuthorization(
+        bytes32 nonce,
+        uint256 amount,
+        uint256 expiry,
+        address from,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes calldata signature
+    ) external nonReentrant {
+        _checkQuote(nonce, amount, expiry);
+        if (from == address(0)) revert ZeroAddress();
+        paid[nonce] = Payment({payer: from, amount: amount});
+        emit Paid(nonce, from, amount);
+        IERC3009(address(_usdg)).receiveWithAuthorization(
+            from, address(this), amount, validAfter, validBefore, nonce, signature
+        );
+        _usdg.safeTransfer(treasury, amount);
+    }
+
+    /// @notice Set the treasury that receives payments.
+    function setTreasury(address treasury_) external onlyOwner {
+        if (treasury_ == address(0)) revert ZeroAddress();
+        treasury = treasury_;
+        emit TreasurySet(treasury_);
+    }
+
+    function _pay(bytes32 nonce, uint256 amount, uint256 expiry) private {
+        _checkQuote(nonce, amount, expiry);
+        paid[nonce] = Payment({payer: msg.sender, amount: amount});
+        emit Paid(nonce, msg.sender, amount);
+        _usdg.safeTransferFrom(msg.sender, treasury, amount);
+    }
+
+    function _checkQuote(bytes32 nonce, uint256 amount, uint256 expiry) private view {
+        if (paid[nonce].payer != address(0)) revert NonceUsed();
+        if (amount == 0) revert InvalidAmount();
+        if (block.timestamp > expiry) revert Expired();
+    }
 }
