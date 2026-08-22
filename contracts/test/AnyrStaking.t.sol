@@ -757,4 +757,90 @@ contract StakingHandler is CommonBase, StdCheats, StdUtils {
         vm.prank(actors[i]);
         staking.requestUnstake(bound(amt, 1, bal));
     }
+
+    function unstake(uint256 seed) external {
+        uint256 i = seed % 3;
+        (uint256 amt, uint64 at) = staking.pendingUnstake(actors[i]);
+        if (amt == 0) return;
+        if (block.timestamp < at) vm.warp(at);
+        vm.prank(actors[i]);
+        staking.unstake();
+    }
+
+    function claim(uint256 seed) external {
+        vm.prank(actors[seed % 3]);
+        staking.claimRewards();
+    }
+
+    function notify(uint256 amt) external {
+        amt = bound(amt, 1, 50_000e6);
+        usdg.mint(address(this), amt);
+        staking.notifyMargin(amt);
+    }
+
+    function buyback(uint256 amt) external {
+        uint256 room = staking.buybackRemainingToday();
+        uint256 bal = staking.buybackBalance();
+        uint256 max = room < bal ? room : bal;
+        if (max == 0) return;
+        amt = bound(amt, 1, max);
+        uint256 minOut = adapter.quote(amt);
+        if (minOut == 0) return;
+        vm.prank(keeper);
+        staking.executeBuyback(amt, minOut);
+    }
+
+    function warp(uint256 secs) external {
+        vm.warp(block.timestamp + bound(secs, 1, 3 days));
+    }
+
+    function actor(uint256 i) external view returns (address) {
+        return actors[i];
+    }
+}
+
+contract AnyrStakingInvariantTest is StakingBase {
+    StakingHandler internal handler;
+
+    function setUp() public override {
+        super.setUp();
+        handler = new StakingHandler(staking, anyr, usdg, adapter, keeper, treasury);
+        bytes4[] memory selectors = new bytes4[](7);
+        selectors[0] = StakingHandler.stake.selector;
+        selectors[1] = StakingHandler.requestUnstake.selector;
+        selectors[2] = StakingHandler.unstake.selector;
+        selectors[3] = StakingHandler.claim.selector;
+        selectors[4] = StakingHandler.notify.selector;
+        selectors[5] = StakingHandler.buyback.selector;
+        selectors[6] = StakingHandler.warp.selector;
+        targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
+        targetContract(address(handler));
+    }
+
+    /// forge-config: default.invariant.runs = 128
+    /// forge-config: default.invariant.depth = 64
+    /// forge-config: default.invariant.fail-on-revert = true
+    function invariant_principalAndRewardsBacked() public view {
+        assertEq(
+            anyr.balanceOf(address(staking)),
+            staking.totalStaked() + staking.totalCooldown() + staking.rewardReserve()
+        );
+        uint256 sumEarned;
+        uint256 sumStaked;
+        uint256 sumCooling;
+        for (uint256 i; i < 3; ++i) {
+            address a = handler.actor(i);
+            sumEarned += staking.earned(a);
+            sumStaked += staking.stakedOf(a);
+            (uint256 c,) = staking.pendingUnstake(a);
+            sumCooling += c;
+        }
+        assertLe(sumEarned + staking.undistributed(), staking.rewardReserve());
+        assertEq(sumStaked, staking.totalStaked());
+        assertEq(sumCooling, staking.totalCooldown());
+        assertEq(staking.providerStake(keccak256("p1")), staking.stakedOf(handler.actor(0)));
+        assertEq(staking.providerStake(keccak256("p2")), staking.stakedOf(handler.actor(2)));
+        assertEq(usdg.balanceOf(address(staking)), staking.buybackBalance());
+        assertLe(staking.boughtOnDay(), staking.maxDailyBuyback());
+    }
 }
