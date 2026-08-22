@@ -62,4 +62,74 @@ contract AnyrTokenTest is Test {
             new AnyrToken(r);
         }
     }
+
+    function test_noMintNoOwnerNoPause() public {
+        (bool ok,) = address(token).call(abi.encodeWithSignature("mint(address,uint256)", team, 1));
+        assertFalse(ok);
+        (ok,) = address(token).call(abi.encodeWithSignature("owner()"));
+        assertFalse(ok);
+        (ok,) = address(token).call(abi.encodeWithSignature("pause()"));
+        assertFalse(ok);
+        (ok,) = address(token).call(abi.encodeWithSignature("burn(uint256)", 1));
+        assertFalse(ok);
+    }
+
+    function test_permit() public {
+        address spender = makeAddr("spender");
+        uint256 dl = block.timestamp + 1 days;
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, treasury, spender, 5e18, 0, dl));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(treasuryPk, keccak256(abi.encodePacked("\x19\x01", token.DOMAIN_SEPARATOR(), structHash)));
+        token.permit(treasury, spender, 5e18, dl, v, r, s);
+        assertEq(token.allowance(treasury, spender), 5e18);
+        assertEq(token.nonces(treasury), 1);
+
+        vm.prank(spender);
+        assertTrue(token.transferFrom(treasury, spender, 5e18));
+        assertEq(token.balanceOf(spender), 5e18);
+
+        // replay fails
+        vm.expectRevert();
+        token.permit(treasury, spender, 5e18, dl, v, r, s);
+    }
+
+    function test_permit_revertsExpired() public {
+        address spender = makeAddr("spender");
+        uint256 dl = block.timestamp;
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, treasury, spender, 1, 0, dl));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(treasuryPk, keccak256(abi.encodePacked("\x19\x01", token.DOMAIN_SEPARATOR(), structHash)));
+        vm.warp(dl + 1);
+        vm.expectRevert(abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, dl));
+        token.permit(treasury, spender, 1, dl, v, r, s);
+    }
+
+    function test_permit_revertsWrongSigner() public {
+        address spender = makeAddr("spender");
+        uint256 dl = block.timestamp + 1;
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, treasury, spender, 1, 0, dl));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(0xBAD, keccak256(abi.encodePacked("\x19\x01", token.DOMAIN_SEPARATOR(), structHash)));
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC20Permit.ERC2612InvalidSigner.selector, vm.addr(0xBAD), treasury)
+        );
+        token.permit(treasury, spender, 1, dl, v, r, s);
+    }
+
+    function testFuzz_transferConservesSupply(address to, uint256 amount) public {
+        vm.assume(to != address(0));
+        amount = bound(amount, 0, 800_000_000e18);
+        uint256 toBefore = token.balanceOf(to);
+        vm.prank(treasury);
+        assertTrue(token.transfer(to, amount));
+        assertEq(token.totalSupply(), 1_000_000_000e18);
+        if (to != treasury) {
+            assertEq(token.balanceOf(to), toBefore + amount);
+            assertEq(token.balanceOf(treasury), 800_000_000e18 - amount);
+        }
+    }
+}
+
+interface IERC20Transfer {
+    event Transfer(address indexed from, address indexed to, uint256 value);
 }
