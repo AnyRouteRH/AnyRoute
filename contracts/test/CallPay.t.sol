@@ -290,4 +290,88 @@ contract CallPayAuthorizationTest is Test {
 
     uint256 internal constant T0 = 1_750_000_000;
     bytes32 internal constant QUOTE = keccak256("quote-3009");
+
+    function setUp() public {
+        vm.warp(T0);
+        (payer, payerPk) = makeAddrAndKey("payer");
+        usdg = new MockUSDG3009();
+        callPay = new CallPay(IERC20(address(usdg)), treasury, owner);
+        usdg.mint(payer, 1_000e6);
+        usdg.mint(attacker, 1_000e6);
+    }
+
+    function _auth(uint256 pk, address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 n)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes32 structHash = keccak256(abi.encode(RWA_TYPEHASH, from, to, value, validAfter, validBefore, n));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(pk, keccak256(abi.encodePacked("\x19\x01", usdg.DOMAIN_SEPARATOR(), structHash)));
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _sig(uint256 amount) internal view returns (bytes memory) {
+        return _auth(payerPk, payer, address(callPay), amount, T0 - 1, T0 + 300, QUOTE);
+    }
+
+    function test_payWithAuthorization_paysTreasury() public {
+        bytes memory sig = _sig(25e6);
+        vm.expectEmit(true, true, true, true, address(callPay));
+        emit ICallPay.Paid(QUOTE, payer, 25e6);
+        vm.prank(relayer);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+        assertEq(usdg.balanceOf(treasury), 25e6);
+        assertEq(usdg.balanceOf(payer), 975e6);
+        assertEq(usdg.balanceOf(address(callPay)), 0);
+        assertEq(usdg.balanceOf(relayer), 0);
+        (address p, uint256 a) = callPay.paid(QUOTE);
+        assertEq(p, payer);
+        assertEq(a, 25e6);
+        assertTrue(usdg.authorizationState(payer, QUOTE));
+    }
+
+    function test_payWithAuthorization_replayFails() public {
+        bytes memory sig = _sig(25e6);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+        vm.expectRevert(ICallPay.NonceUsed.selector);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+        assertEq(usdg.balanceOf(treasury), 25e6);
+    }
+
+    function test_payWithAuthorization_signatureBoundToQuoteNonce() public {
+        bytes memory sig = _sig(25e6);
+        vm.expectRevert(MockUSDG3009.InvalidSignature.selector);
+        callPay.payWithAuthorization(keccak256("other-quote"), 25e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+    }
+
+    function test_payWithAuthorization_tamperedAmountFails() public {
+        bytes memory sig = _sig(25e6);
+        vm.expectRevert(MockUSDG3009.InvalidSignature.selector);
+        callPay.payWithAuthorization(QUOTE, 26e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+    }
+
+    function test_payWithAuthorization_wrongFromFails() public {
+        bytes memory sig = _sig(25e6);
+        vm.expectRevert(MockUSDG3009.InvalidSignature.selector);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, attacker, T0 - 1, T0 + 300, sig);
+    }
+
+    function test_payWithAuthorization_thirdPartyCannotRedirect() public {
+        bytes memory sig = _sig(25e6);
+        // calling USDG directly with to = CallPay: caller must be the payee
+        vm.prank(attacker);
+        vm.expectRevert(MockUSDG3009.CallerMustBePayee.selector);
+        usdg.receiveWithAuthorization(payer, address(callPay), 25e6, T0 - 1, T0 + 300, QUOTE, sig);
+        // calling USDG directly with to = attacker: signature does not cover that recipient
+        vm.prank(attacker);
+        vm.expectRevert(MockUSDG3009.InvalidSignature.selector);
+        usdg.receiveWithAuthorization(payer, attacker, 25e6, T0 - 1, T0 + 300, QUOTE, sig);
+        // a signature made out to another recipient can't be consumed through CallPay
+        bytes memory toAttacker = _auth(payerPk, payer, attacker, 25e6, T0 - 1, T0 + 300, QUOTE);
+        vm.expectRevert(MockUSDG3009.InvalidSignature.selector);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 1, T0 + 300, toAttacker);
+        assertEq(usdg.balanceOf(attacker), 1_000e6);
+        assertFalse(usdg.authorizationState(payer, QUOTE));
+    }
 }
