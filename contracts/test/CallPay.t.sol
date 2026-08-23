@@ -202,4 +202,92 @@ contract CallPayTest is Test {
         callPay.payWithPermit(bytes32(uint256(9)), 50e6, block.timestamp, dl, v, r, s);
         assertEq(usdg.balanceOf(treasury), 50e6);
     }
+
+    function test_payWithPermit_badPermitNoAllowanceReverts() public {
+        vm.prank(payer);
+        usdg.approve(address(callPay), 0);
+        vm.prank(payer);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(callPay), 0, 50e6)
+        );
+        callPay.payWithPermit(bytes32(uint256(9)), 50e6, block.timestamp, block.timestamp, 27, bytes32(0), bytes32(0));
+    }
+
+    function test_payWithPermit_revertsNonceUsed() public {
+        vm.prank(payer);
+        callPay.pay(bytes32(uint256(9)), 1, block.timestamp);
+        vm.prank(payer);
+        vm.expectRevert(ICallPay.NonceUsed.selector);
+        callPay.payWithPermit(bytes32(uint256(9)), 1, block.timestamp, block.timestamp, 0, 0, 0);
+    }
+
+    function test_payWithPermit_revertsExpired() public {
+        vm.prank(payer);
+        vm.expectRevert(ICallPay.Expired.selector);
+        callPay.payWithPermit(bytes32(uint256(9)), 1, block.timestamp - 1, block.timestamp, 0, 0, 0);
+    }
+
+    function test_payWithPermit_revertsZeroAmount() public {
+        vm.prank(payer);
+        vm.expectRevert(ICallPay.InvalidAmount.selector);
+        callPay.payWithPermit(bytes32(uint256(9)), 0, block.timestamp, block.timestamp, 0, 0, 0);
+    }
+
+    // --- admin ---------------------------------------------------------------------------------
+
+    function test_setTreasury() public {
+        address t2 = makeAddr("t2");
+        vm.expectEmit(true, true, true, true, address(callPay));
+        emit ICallPay.TreasurySet(t2);
+        vm.prank(owner);
+        callPay.setTreasury(t2);
+        assertEq(callPay.treasury(), t2);
+        vm.prank(payer);
+        callPay.pay(bytes32(uint256(1)), 3, block.timestamp);
+        assertEq(usdg.balanceOf(t2), 3);
+        assertEq(usdg.balanceOf(treasury), 0);
+    }
+
+    function test_setTreasury_onlyOwner() public {
+        vm.prank(payer);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, payer));
+        callPay.setTreasury(payer);
+    }
+
+    function test_setTreasury_revertsZero() public {
+        vm.prank(owner);
+        vm.expectRevert(CallPay.ZeroAddress.selector);
+        callPay.setTreasury(address(0));
+    }
+
+    function test_ownership_twoStep() public {
+        address n = makeAddr("newOwner");
+        vm.prank(owner);
+        callPay.transferOwnership(n);
+        assertEq(callPay.owner(), owner);
+        vm.prank(n);
+        callPay.acceptOwnership();
+        assertEq(callPay.owner(), n);
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, owner));
+        callPay.setTreasury(owner);
+    }
+}
+
+contract CallPayAuthorizationTest is Test {
+    bytes32 internal constant RWA_TYPEHASH = keccak256(
+        "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+    );
+
+    MockUSDG3009 internal usdg;
+    CallPay internal callPay;
+    address internal owner = makeAddr("owner");
+    address internal treasury = makeAddr("treasury");
+    address internal relayer = makeAddr("relayer");
+    address internal attacker = makeAddr("attacker");
+    address internal payer;
+    uint256 internal payerPk;
+
+    uint256 internal constant T0 = 1_750_000_000;
+    bytes32 internal constant QUOTE = keccak256("quote-3009");
 }
