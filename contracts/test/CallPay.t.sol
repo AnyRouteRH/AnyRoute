@@ -86,4 +86,120 @@ contract CallPayTest is Test {
         assertEq(p, payer);
         assertEq(a, 1_234_567);
     }
+
+    function test_pay_expiryEqualNowOk() public {
+        vm.prank(payer);
+        callPay.pay(bytes32(uint256(1)), 1, block.timestamp);
+        (address p,) = callPay.paid(bytes32(uint256(1)));
+        assertEq(p, payer);
+    }
+
+    function test_pay_revertsExpired() public {
+        vm.prank(payer);
+        vm.expectRevert(ICallPay.Expired.selector);
+        callPay.pay(bytes32(uint256(1)), 1, block.timestamp - 1);
+    }
+
+    function test_pay_revertsZeroAmount() public {
+        vm.prank(payer);
+        vm.expectRevert(ICallPay.InvalidAmount.selector);
+        callPay.pay(bytes32(uint256(1)), 0, block.timestamp);
+    }
+
+    function test_pay_revertsNonceUsedSamePayer() public {
+        vm.startPrank(payer);
+        callPay.pay(bytes32(uint256(1)), 5, block.timestamp);
+        vm.expectRevert(ICallPay.NonceUsed.selector);
+        callPay.pay(bytes32(uint256(1)), 5, block.timestamp);
+        vm.stopPrank();
+    }
+
+    function test_pay_revertsNonceUsedOtherPayer() public {
+        vm.prank(payer);
+        callPay.pay(bytes32(uint256(1)), 5, block.timestamp);
+        vm.prank(other);
+        vm.expectRevert(ICallPay.NonceUsed.selector);
+        callPay.pay(bytes32(uint256(1)), 7, block.timestamp);
+    }
+
+    function test_pay_revertsWithoutAllowance() public {
+        address poor = makeAddr("poor");
+        usdg.mint(poor, 10);
+        vm.prank(poor);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(callPay), 0, 10)
+        );
+        callPay.pay(bytes32(uint256(1)), 10, block.timestamp);
+    }
+
+    function test_pay_revertsInsufficientBalance() public {
+        address poor = makeAddr("poor");
+        usdg.mint(poor, 9);
+        vm.prank(poor);
+        usdg.approve(address(callPay), 10);
+        vm.prank(poor);
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, poor, 9, 10));
+        callPay.pay(bytes32(uint256(1)), 10, block.timestamp);
+        (address p,) = callPay.paid(bytes32(uint256(1)));
+        assertEq(p, address(0)); // state rolled back, nonce still usable
+    }
+
+    function test_paid_unknownNonceIsZero() public view {
+        (address p, uint256 a) = callPay.paid(keccak256("nope"));
+        assertEq(p, address(0));
+        assertEq(a, 0);
+    }
+
+    function testFuzz_pay(bytes32 nonce, uint256 amount, uint256 ttl) public {
+        amount = bound(amount, 1, 1_000_000e6);
+        ttl = bound(ttl, 0, 365 days);
+        vm.prank(payer);
+        callPay.pay(nonce, amount, block.timestamp + ttl);
+        assertEq(usdg.balanceOf(treasury), amount);
+        (address p, uint256 a) = callPay.paid(nonce);
+        assertEq(p, payer);
+        assertEq(a, amount);
+        vm.prank(other);
+        vm.expectRevert(ICallPay.NonceUsed.selector);
+        callPay.pay(nonce, amount, block.timestamp + ttl);
+    }
+
+    function testFuzz_pay_manyNonces(uint8 n, uint256 seed) public {
+        n = uint8(bound(n, 1, 30));
+        uint256 total;
+        for (uint256 i; i < n; ++i) {
+            uint256 amt = bound(uint256(keccak256(abi.encode(seed, i))), 1, 10_000e6);
+            total += amt;
+            vm.prank(i % 2 == 0 ? payer : other);
+            callPay.pay(keccak256(abi.encode(seed, "nonce", i)), amt, block.timestamp);
+        }
+        assertEq(usdg.balanceOf(treasury), total);
+    }
+
+    // --- payWithPermit -------------------------------------------------------------------------
+
+    function test_payWithPermit_works() public {
+        vm.prank(payer);
+        usdg.approve(address(callPay), 0);
+        uint256 dl = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _permit(50e6, dl);
+        vm.expectEmit(true, true, true, true, address(callPay));
+        emit ICallPay.Paid(bytes32(uint256(9)), payer, 50e6);
+        vm.prank(payer);
+        callPay.payWithPermit(bytes32(uint256(9)), 50e6, block.timestamp, dl, v, r, s);
+        assertEq(usdg.balanceOf(treasury), 50e6);
+        assertEq(usdg.allowance(payer, address(callPay)), 0);
+    }
+
+    function test_payWithPermit_frontRunPermitStillPays() public {
+        vm.prank(payer);
+        usdg.approve(address(callPay), 0);
+        uint256 dl = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _permit(50e6, dl);
+        vm.prank(other);
+        usdg.permit(payer, address(callPay), 50e6, dl, v, r, s);
+        vm.prank(payer);
+        callPay.payWithPermit(bytes32(uint256(9)), 50e6, block.timestamp, dl, v, r, s);
+        assertEq(usdg.balanceOf(treasury), 50e6);
+    }
 }
