@@ -194,4 +194,136 @@ contract CreditsTest is CreditsBase {
         assertEq(credits.spentLeaf(kh, spent), Merkle.creditsLeaf(kh, spent));
         assertEq(credits.spentLeaf(kh, spent), keccak256(bytes.concat(keccak256(abi.encode(kh, spent)))));
     }
+
+    function test_availableFor() public {
+        _deposit(keyHash, 100e6);
+        assertEq(credits.availableFor(keyHash, 0), 100e6);
+        assertEq(credits.availableFor(keyHash, 40e6), 60e6);
+        assertEq(credits.availableFor(keyHash, 100e6), 0);
+        assertEq(credits.availableFor(keyHash, 1000e6), 0);
+        assertEq(credits.availableFor(bytes32(uint256(1)), 0), 0);
+    }
+
+    // =============================================================================================
+    // Deposit
+    // =============================================================================================
+
+    function test_deposit_creditsKeyAndPullsFunds() public {
+        uint256 balBefore = usdg.balanceOf(alice);
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.Deposited(keyHash, alice, 250e6);
+        _deposit(keyHash, 250e6);
+        assertEq(credits.deposited(keyHash), 250e6);
+        assertEq(usdg.balanceOf(address(credits)), 250e6);
+        assertEq(usdg.balanceOf(alice), balBefore - 250e6);
+    }
+
+    function test_deposit_revertsOnZero() public {
+        vm.prank(alice);
+        vm.expectRevert(ICredits.InvalidAmount.selector);
+        credits.deposit(keyHash, 0);
+    }
+
+    function test_deposit_revertsWithoutAllowance() public {
+        address bob = makeAddr("bob");
+        usdg.mint(bob, 10e6);
+        vm.prank(bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(credits), 0, 10e6)
+        );
+        credits.deposit(keyHash, 10e6);
+    }
+
+    function testFuzz_deposit_accumulates(uint96 a, uint96 b, bytes32 kh) public {
+        a = uint96(bound(a, 1, 5_000_000e6));
+        b = uint96(bound(b, 1, 5_000_000e6));
+        _deposit(kh, a);
+        _deposit(kh, b);
+        assertEq(credits.deposited(kh), uint256(a) + b);
+        assertEq(usdg.balanceOf(address(credits)), uint256(a) + b);
+    }
+
+    function test_depositWithPermit_works() public {
+        vm.prank(alice);
+        usdg.approve(address(credits), 0);
+        uint256 dl = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _permitSig(alicePk, alice, address(credits), 77e6, dl);
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.Deposited(keyHash, alice, 77e6);
+        vm.prank(alice);
+        credits.depositWithPermit(keyHash, 77e6, dl, v, r, s);
+        assertEq(credits.deposited(keyHash), 77e6);
+        assertEq(usdg.allowance(alice, address(credits)), 0);
+    }
+
+    function test_depositWithPermit_frontRunPermitStillDeposits() public {
+        vm.prank(alice);
+        usdg.approve(address(credits), 0);
+        uint256 dl = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) = _permitSig(alicePk, alice, address(credits), 77e6, dl);
+        // attacker front-runs the permit
+        vm.prank(relayer);
+        usdg.permit(alice, address(credits), 77e6, dl, v, r, s);
+        vm.prank(alice);
+        credits.depositWithPermit(keyHash, 77e6, dl, v, r, s);
+        assertEq(credits.deposited(keyHash), 77e6);
+    }
+
+    function test_depositWithPermit_invalidPermitWithoutAllowanceReverts() public {
+        vm.prank(alice);
+        usdg.approve(address(credits), 0);
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(credits), 0, 5e6)
+        );
+        credits.depositWithPermit(keyHash, 5e6, block.timestamp, 27, bytes32(uint256(1)), bytes32(uint256(2)));
+    }
+
+    function test_depositWithPermit_invalidPermitWithAllowanceStillDeposits() public {
+        vm.prank(alice);
+        credits.depositWithPermit(keyHash, 5e6, block.timestamp, 27, bytes32(uint256(1)), bytes32(uint256(2)));
+        assertEq(credits.deposited(keyHash), 5e6);
+    }
+
+    function test_depositWithPermit_revertsOnZero() public {
+        vm.prank(alice);
+        vm.expectRevert(ICredits.InvalidAmount.selector);
+        credits.depositWithPermit(keyHash, 0, block.timestamp, 0, 0, 0);
+    }
+
+    // =============================================================================================
+    // Credit
+    // =============================================================================================
+
+    function test_credit_works() public {
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.Credited(keyHash, creditor, 12e6);
+        vm.prank(creditor);
+        credits.credit(keyHash, 12e6);
+        assertEq(credits.deposited(keyHash), 12e6);
+        assertEq(usdg.balanceOf(address(credits)), 12e6);
+    }
+
+    function test_credit_revertsNotCreditor() public {
+        vm.prank(alice);
+        vm.expectRevert(ICredits.NotCreditor.selector);
+        credits.credit(keyHash, 1e6);
+    }
+
+    function test_credit_revertsOnZero() public {
+        vm.prank(creditor);
+        vm.expectRevert(ICredits.InvalidAmount.selector);
+        credits.credit(keyHash, 0);
+    }
+
+    function test_setCreditor_revokes() public {
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.CreditorSet(creditor, false);
+        vm.prank(owner);
+        credits.setCreditor(creditor, false);
+        assertFalse(credits.isCreditor(creditor));
+        vm.prank(creditor);
+        vm.expectRevert(ICredits.NotCreditor.selector);
+        credits.credit(keyHash, 1e6);
+    }
 }
