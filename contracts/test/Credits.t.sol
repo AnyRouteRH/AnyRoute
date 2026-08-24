@@ -821,4 +821,87 @@ contract CreditsTest is CreditsBase {
         credits.finalizeWithdrawal(keyHash, 90e6, Merkle.getProof(leaves, 0));
         assertEq(usdg.balanceOf(recipient), 10e6);
     }
+
+    function test_finalize_revertsInvalidProof_innerNodeAsLeaf() public {
+        bytes32[] memory leaves = new bytes32[](4);
+        for (uint256 i; i < 4; ++i) {
+            leaves[i] = Merkle.creditsLeaf(bytes32(i), i);
+        }
+        _deposit(keyHash, 100e6);
+        _request(10e6);
+        vm.prank(settlement);
+        credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 6);
+        bytes32[] memory proof = new bytes32[](1);
+        proof[0] = Merkle.hashPair(leaves[2], leaves[3]);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 0, proof);
+    }
+
+    function test_finalize_usesLatestRootOnly() public {
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        _postSingle(keyHash, 10e6, 10e6);
+        vm.warp(block.timestamp + 1);
+        _postSingle(keyHash, 40e6, 40e6);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 10e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 40e6, _empty());
+        assertEq(usdg.balanceOf(recipient), 60e6);
+    }
+
+    function test_finalize_escapeHatch() public {
+        _deposit(keyHash, 100e6);
+        _postSingle(keyHash, 20e6, 20e6);
+        vm.warp(block.timestamp + 1 hours);
+        _request(100e6);
+        uint256 requestedAt = block.timestamp;
+
+        vm.warp(requestedAt + 7 days - 1);
+        vm.expectRevert(ICredits.RootTooOld.selector);
+        credits.finalizeWithdrawal(keyHash, 20e6, _empty());
+
+        vm.warp(requestedAt + 7 days);
+        credits.finalizeWithdrawal(keyHash, 20e6, _empty());
+        assertEq(usdg.balanceOf(recipient), 80e6);
+    }
+
+    function test_finalize_escapeHatchStillNeedsValidProof() public {
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        vm.warp(block.timestamp + 7 days);
+        // no root ever posted
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 0, _empty());
+    }
+
+    function testFuzz_finalize(uint256 dep, uint256 spent, uint256 req) public {
+        dep = bound(dep, 1, 5_000_000e6);
+        spent = bound(spent, 0, 10_000_000e6);
+        req = bound(req, 1, 10_000_000e6);
+        _deposit(keyHash, dep);
+        _request(req);
+        _postSingle(keyHash, spent, spent);
+        credits.finalizeWithdrawal(keyHash, spent, _empty());
+        uint256 avail = dep > spent ? dep - spent : 0;
+        uint256 expected = req < avail ? req : avail;
+        assertEq(usdg.balanceOf(recipient), expected);
+        assertEq(credits.withdrawn(keyHash), expected);
+        assertEq(usdg.balanceOf(address(credits)), dep - expected);
+    }
+
+    // =============================================================================================
+    // sweep
+    // =============================================================================================
+
+    function test_sweep_revertsNotSettlement() public {
+        vm.prank(owner);
+        vm.expectRevert(ICredits.NotSettlement.selector);
+        credits.sweep(owner, 1);
+    }
+
+    function test_sweep_revertsZeroAmount() public {
+        vm.prank(settlement);
+        vm.expectRevert(ICredits.InvalidAmount.selector);
+        credits.sweep(recipient, 0);
+    }
 }
