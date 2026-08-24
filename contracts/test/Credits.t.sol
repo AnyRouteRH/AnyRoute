@@ -709,4 +709,116 @@ contract CreditsTest is CreditsBase {
         (uint256 amt,,) = credits.pendingWithdrawal(keyHash);
         assertEq(amt, 0);
     }
+
+    function test_finalize_capsAtAvailable() public {
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        vm.warp(block.timestamp + 1 hours);
+        _postSingle(keyHash, 30e6, 30e6);
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.Withdrawn(keyHash, recipient, 70e6);
+        credits.finalizeWithdrawal(keyHash, 30e6, _empty());
+        assertEq(usdg.balanceOf(recipient), 70e6);
+        assertEq(credits.withdrawn(keyHash), 70e6);
+    }
+
+    function test_finalize_paysZeroWhenFullySpent_stillClears() public {
+        _deposit(keyHash, 100e6);
+        _request(10e6);
+        _postSingle(keyHash, 100e6, 100e6);
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.Withdrawn(keyHash, recipient, 0);
+        credits.finalizeWithdrawal(keyHash, 100e6, _empty());
+        assertEq(usdg.balanceOf(recipient), 0);
+        assertEq(credits.withdrawn(keyHash), 0);
+        (uint256 amt,,) = credits.pendingWithdrawal(keyHash);
+        assertEq(amt, 0);
+    }
+
+    function test_finalize_floorsAtZeroWhenOverspent() public {
+        _deposit(keyHash, 100e6);
+        _request(10e6);
+        _postSingle(keyHash, 150e6, 150e6);
+        credits.finalizeWithdrawal(keyHash, 150e6, _empty());
+        assertEq(usdg.balanceOf(recipient), 0);
+    }
+
+    function test_finalize_accountsForPreviousWithdrawals() public {
+        _deposit(keyHash, 100e6);
+        _request(60e6);
+        _postSingle(keyHash, 10e6, 10e6);
+        credits.finalizeWithdrawal(keyHash, 10e6, _empty());
+        assertEq(usdg.balanceOf(recipient), 60e6);
+
+        vm.warp(block.timestamp + 1);
+        _request(60e6);
+        vm.warp(block.timestamp + 1);
+        _postSingle(keyHash, 20e6, 20e6);
+        credits.finalizeWithdrawal(keyHash, 20e6, _empty());
+        // 100 - 20 - 60 = 20
+        assertEq(usdg.balanceOf(recipient), 80e6);
+        assertEq(credits.withdrawn(keyHash), 80e6);
+        assertEq(credits.availableFor(keyHash, 20e6), 0);
+    }
+
+    function test_finalize_depositAfterRootCounts() public {
+        _deposit(keyHash, 10e6);
+        _request(30e6);
+        _postSingle(keyHash, 5e6, 5e6);
+        _deposit(keyHash, 20e6); // on-chain deposits are always current
+        credits.finalizeWithdrawal(keyHash, 5e6, _empty());
+        assertEq(usdg.balanceOf(recipient), 25e6);
+    }
+
+    function test_finalize_multiKeyTree() public {
+        uint256 n = 7;
+        uint256[] memory pks = new uint256[](n);
+        bytes32[] memory khs = new bytes32[](n);
+        uint256[] memory spents = new uint256[](n);
+        bytes32[] memory leaves = new bytes32[](n);
+        for (uint256 i; i < n; ++i) {
+            pks[i] = 0x1000 + i;
+            khs[i] = keccak256(abi.encodePacked(vm.addr(pks[i])));
+            spents[i] = (i + 1) * 3e6;
+            _deposit(khs[i], 100e6);
+            leaves[i] = Merkle.creditsLeaf(khs[i], spents[i]);
+            bytes memory sig = _signRequest(pks[i], 200e6, recipient, block.timestamp);
+            credits.requestWithdrawal(vm.addr(pks[i]), 200e6, recipient, block.timestamp, sig);
+        }
+        vm.warp(block.timestamp + 1 hours);
+        vm.prank(settlement);
+        credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 84e6);
+        uint256 expected;
+        for (uint256 i; i < n; ++i) {
+            credits.finalizeWithdrawal(khs[i], spents[i], Merkle.getProof(leaves, i));
+            expected += 100e6 - spents[i];
+        }
+        assertEq(usdg.balanceOf(recipient), expected);
+        assertEq(usdg.balanceOf(address(credits)), 84e6);
+    }
+
+    function test_finalize_revertsInvalidProof_wrongSpent() public {
+        _deposit(keyHash, 100e6);
+        _request(10e6);
+        _postSingle(keyHash, 30e6, 30e6);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 29e6, _empty());
+    }
+
+    function test_finalize_revertsInvalidProof_otherKeysLeaf() public {
+        bytes32 other = keccak256("other");
+        _deposit(keyHash, 100e6);
+        _request(10e6);
+        bytes32[] memory leaves = new bytes32[](2);
+        leaves[0] = Merkle.creditsLeaf(keyHash, 90e6);
+        leaves[1] = Merkle.creditsLeaf(other, 0);
+        vm.prank(settlement);
+        credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 90e6);
+        // try using other key's leaf/proof for our key
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 0, Merkle.getProof(leaves, 1));
+        // the correct proof works
+        credits.finalizeWithdrawal(keyHash, 90e6, Merkle.getProof(leaves, 0));
+        assertEq(usdg.balanceOf(recipient), 10e6);
+    }
 }
