@@ -88,4 +88,128 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         settlement = settlement_;
         emit SettlementSet(settlement_);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Deposits
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc ICredits
+    function usdg() external view returns (address) {
+        return address(_usdg);
+    }
+
+    /// @inheritdoc ICredits
+    function deposit(bytes32 keyHash, uint256 amount) external nonReentrant {
+        _deposit(keyHash, amount);
+    }
+
+    /// @inheritdoc ICredits
+    /// @dev The permit is wrapped in try/catch so a front-run permit cannot brick the deposit; if the
+    /// permit fails and no allowance exists, the transferFrom reverts instead.
+    function depositWithPermit(bytes32 keyHash, uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+        external
+        nonReentrant
+    {
+        try IERC20Permit(address(_usdg)).permit(msg.sender, address(this), amount, deadline, v, r, s) {} catch {}
+        _deposit(keyHash, amount);
+    }
+
+    /// @inheritdoc ICredits
+    function credit(bytes32 keyHash, uint256 amount) external nonReentrant {
+        if (!isCreditor[msg.sender]) revert NotCreditor();
+        if (amount == 0) revert InvalidAmount();
+        deposited[keyHash] += amount;
+        emit Credited(keyHash, msg.sender, amount);
+        _usdg.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Settlement
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc ICredits
+    function postSpentRoot(bytes32 root, uint64 asOf, uint256 totalSpent) external onlySettlement {
+        uint256 epoch = latestEpoch;
+        SpentRoot storage prev = spentRoot[epoch];
+        if (asOf <= prev.asOf) revert StaleRoot();
+        if (asOf > block.timestamp) revert RootInFuture();
+        if (totalSpent < prev.totalSpent) revert SpentDecreased();
+        unchecked {
+            ++epoch;
+        }
+        spentRoot[epoch] = SpentRoot({root: root, asOf: asOf, totalSpent: totalSpent});
+        latestEpoch = epoch;
+        emit SpentRootPosted(epoch, root, asOf, totalSpent);
+    }
+
+    /// @inheritdoc ICredits
+    function sweep(address to, uint256 amount) external onlySettlement nonReentrant {
+        if (amount == 0) revert InvalidAmount();
+        if (to == address(0)) revert ZeroAddress();
+        uint256 swept = totalSwept + amount;
+        if (swept > spentRoot[latestEpoch].totalSpent) revert SweepExceedsSpent();
+        totalSwept = swept;
+        emit Swept(to, amount);
+        _usdg.safeTransfer(to, amount);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Withdrawals
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc ICredits
+    /// @dev Anyone may relay the signed request. The signature is checked with SignatureChecker so
+    /// ERC-1271 smart accounts are supported as key addresses.
+    function requestWithdrawal(address keyAddress, uint256 amount, address to, uint256 deadline, bytes calldata sig)
+        external
+    {
+        if (amount == 0) revert InvalidAmount();
+        if (to == address(0)) revert ZeroAddress();
+        if (block.timestamp > deadline) revert Expired();
+        bytes32 keyHash = keyHashOf(keyAddress);
+        if (pendingWithdrawal[keyHash].amount != 0) revert WithdrawalPending();
+
+        _useSignature(keyAddress, keyHash, amount, to, deadline, sig);
+
+        uint64 requestedAt = uint64(block.timestamp);
+        pendingWithdrawal[keyHash] = Pending({amount: amount, to: to, requestedAt: requestedAt});
+        emit WithdrawalRequested(keyHash, to, amount, requestedAt);
+    }
+
+    /// @inheritdoc ICredits
+    function cancelWithdrawal(address keyAddress, uint256 deadline, bytes calldata sig) external {
+        if (block.timestamp > deadline) revert Expired();
+        bytes32 keyHash = keyHashOf(keyAddress);
+        if (pendingWithdrawal[keyHash].amount == 0) revert NoPendingWithdrawal();
+
+        _useSignature(keyAddress, keyHash, 0, address(0), deadline, sig);
+
+        delete pendingWithdrawal[keyHash];
+        emit WithdrawalCancelled(keyHash);
+    }
+
+    /// @inheritdoc ICredits
+    /// @dev Permissionless: funds always go to the `to` fixed at request time. The payout may be 0
+    /// (e.g. everything was spent); the pending request is cleared either way.
+    function finalizeWithdrawal(bytes32 keyHash, uint256 cumulativeSpent, bytes32[] calldata proof)
+        external
+        nonReentrant
+    {
+        Pending memory p = pendingWithdrawal[keyHash];
+        if (p.amount == 0) revert NoPendingWithdrawal();
+
+        SpentRoot storage r = spentRoot[latestEpoch];
+        if (r.asOf < p.requestedAt && block.timestamp < uint256(p.requestedAt) + ESCAPE_DELAY) {
+            revert RootTooOld();
+        }
+        if (!MerkleProof.verifyCalldata(proof, r.root, spentLeaf(keyHash, cumulativeSpent))) revert InvalidProof();
+
+        uint256 pay = _available(keyHash, cumulativeSpent);
+        if (p.amount < pay) pay = p.amount;
+
+        delete pendingWithdrawal[keyHash];
+        if (pay != 0) withdrawn[keyHash] += pay;
+        emit Withdrawn(keyHash, p.to, pay);
+        if (pay != 0) _usdg.safeTransfer(p.to, pay);
+    }
 }

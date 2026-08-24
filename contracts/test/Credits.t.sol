@@ -326,4 +326,72 @@ contract CreditsTest is CreditsBase {
         vm.expectRevert(ICredits.NotCreditor.selector);
         credits.credit(keyHash, 1e6);
     }
+
+    function test_setCreditor_onlyOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        credits.setCreditor(alice, true);
+    }
+
+    function test_setCreditor_revertsZero() public {
+        vm.prank(owner);
+        vm.expectRevert(Credits.ZeroAddress.selector);
+        credits.setCreditor(address(0), true);
+    }
+
+    // =============================================================================================
+    // postSpentRoot
+    // =============================================================================================
+
+    function test_postSpentRoot_firstIsEpochOne() public {
+        bytes32 root = keccak256("r1");
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.SpentRootPosted(1, root, uint64(block.timestamp), 5e6);
+        vm.prank(settlement);
+        credits.postSpentRoot(root, uint64(block.timestamp), 5e6);
+        assertEq(credits.latestEpoch(), 1);
+        (bytes32 r, uint64 asOf, uint256 total) = credits.spentRoot(1);
+        assertEq(r, root);
+        assertEq(asOf, block.timestamp);
+        assertEq(total, 5e6);
+    }
+
+    function test_postSpentRoot_sequentialEpochs() public {
+        vm.startPrank(settlement);
+        credits.postSpentRoot(keccak256("a"), uint64(block.timestamp - 100), 1);
+        credits.postSpentRoot(keccak256("b"), uint64(block.timestamp - 50), 1);
+        credits.postSpentRoot(keccak256("c"), uint64(block.timestamp), 9);
+        vm.stopPrank();
+        assertEq(credits.latestEpoch(), 3);
+        (bytes32 r2,,) = credits.spentRoot(2);
+        assertEq(r2, keccak256("b"));
+    }
+
+    function test_postSpentRoot_revertsNotSettlement() public {
+        vm.prank(owner);
+        vm.expectRevert(ICredits.NotSettlement.selector);
+        credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
+    }
+
+    function test_postSpentRoot_revertsZeroAsOfFirst() public {
+        vm.prank(settlement);
+        vm.expectRevert(ICredits.StaleRoot.selector);
+        credits.postSpentRoot(keccak256("r"), 0, 0);
+    }
+
+    function test_postSpentRoot_revertsStaleEqual() public {
+        vm.startPrank(settlement);
+        credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
+        vm.expectRevert(ICredits.StaleRoot.selector);
+        credits.postSpentRoot(keccak256("r2"), uint64(block.timestamp), 0);
+        vm.stopPrank();
+    }
+
+    function test_postSpentRoot_revertsStaleLower() public {
+        vm.startPrank(settlement);
+        credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
+        vm.expectRevert(ICredits.StaleRoot.selector);
+        credits.postSpentRoot(keccak256("r2"), uint64(block.timestamp - 1), 0);
+        vm.stopPrank();
+    }
 }
