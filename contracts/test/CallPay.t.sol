@@ -374,4 +374,105 @@ contract CallPayAuthorizationTest is Test {
         assertEq(usdg.balanceOf(attacker), 1_000e6);
         assertFalse(usdg.authorizationState(payer, QUOTE));
     }
+
+    function test_payWithAuthorization_frontRunSubmitterIsHarmless() public {
+        bytes memory sig = _sig(25e6);
+        vm.prank(attacker); // someone else submits the relayer's payload first
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+        (address p,) = callPay.paid(QUOTE);
+        assertEq(p, payer); // payer is the signer, never the submitter
+        assertEq(usdg.balanceOf(treasury), 25e6);
+        assertEq(usdg.balanceOf(attacker), 1_000e6);
+    }
+
+    function test_payWithAuthorization_quoteExpired() public {
+        bytes memory sig = _sig(25e6);
+        vm.expectRevert(ICallPay.Expired.selector);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 - 1, payer, T0 - 1, T0 + 300, sig);
+    }
+
+    function test_payWithAuthorization_authorizationExpired() public {
+        bytes memory sig = _auth(payerPk, payer, address(callPay), 25e6, T0 - 10, T0, QUOTE);
+        vm.expectRevert(MockUSDG3009.AuthorizationExpired.selector);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 10, T0, sig);
+    }
+
+    function test_payWithAuthorization_authorizationNotYetValid() public {
+        bytes memory sig = _auth(payerPk, payer, address(callPay), 25e6, T0, T0 + 300, QUOTE);
+        vm.expectRevert(MockUSDG3009.AuthorizationNotYetValid.selector);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0, T0 + 300, sig);
+        (address p,) = callPay.paid(QUOTE);
+        assertEq(p, address(0)); // rolled back
+        vm.warp(T0 + 1);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0, T0 + 300, sig);
+        assertEq(usdg.balanceOf(treasury), 25e6);
+    }
+
+    function test_payWithAuthorization_nonceUsedByPayFirst() public {
+        vm.prank(attacker);
+        usdg.approve(address(callPay), type(uint256).max);
+        vm.prank(attacker);
+        callPay.pay(QUOTE, 1, T0);
+        bytes memory sig = _sig(25e6);
+        vm.expectRevert(ICallPay.NonceUsed.selector);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+    }
+
+    function test_pay_nonceUsedByAuthorizationFirst() public {
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 1, T0 + 300, _sig(25e6));
+        vm.prank(payer);
+        usdg.approve(address(callPay), type(uint256).max);
+        vm.prank(payer);
+        vm.expectRevert(ICallPay.NonceUsed.selector);
+        callPay.pay(QUOTE, 25e6, T0);
+    }
+
+    function test_payWithAuthorization_authorizationNonceAlreadyUsedElsewhere() public {
+        // the payer already spent this authorization nonce in another receiveWithAuthorization
+        address other = makeAddr("otherPayee");
+        bytes memory sigOther = _auth(payerPk, payer, other, 1e6, T0 - 1, T0 + 300, QUOTE);
+        vm.prank(other);
+        usdg.receiveWithAuthorization(payer, other, 1e6, T0 - 1, T0 + 300, QUOTE, sigOther);
+        bytes memory sig = _sig(25e6);
+        vm.expectRevert(MockUSDG3009.AuthorizationAlreadyUsed.selector);
+        callPay.payWithAuthorization(QUOTE, 25e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+    }
+
+    function test_payWithAuthorization_revertsZeroAmount() public {
+        bytes memory sig = _sig(0);
+        vm.expectRevert(ICallPay.InvalidAmount.selector);
+        callPay.payWithAuthorization(QUOTE, 0, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+    }
+
+    function test_payWithAuthorization_revertsZeroFrom() public {
+        bytes memory sig = _sig(1);
+        vm.expectRevert(CallPay.ZeroAddress.selector);
+        callPay.payWithAuthorization(QUOTE, 1, T0 + 60, address(0), T0 - 1, T0 + 300, sig);
+    }
+
+    function test_payWithAuthorization_insufficientBalance() public {
+        bytes memory sig = _sig(1_001e6);
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, payer, 1_000e6, 1_001e6));
+        callPay.payWithAuthorization(QUOTE, 1_001e6, T0 + 60, payer, T0 - 1, T0 + 300, sig);
+    }
+
+    function test_payWithAuthorization_malformedSignature() public {
+        vm.expectRevert(MockUSDG3009.InvalidSignature.selector);
+        callPay.payWithAuthorization(QUOTE, 1, T0 + 60, payer, T0 - 1, T0 + 300, hex"deadbeef");
+    }
+
+    function testFuzz_payWithAuthorization(uint256 pk, uint256 amount, bytes32 quote) public {
+        pk = bound(pk, 1, 115792089237316195423570985008687907852837564279074904382605163141518161494336);
+        amount = bound(amount, 1, 1_000_000e6);
+        address from = vm.addr(pk);
+        usdg.mint(from, amount);
+        bytes memory sig = _auth(pk, from, address(callPay), amount, T0 - 1, T0 + 1, quote);
+        vm.prank(relayer);
+        callPay.payWithAuthorization(quote, amount, T0, from, T0 - 1, T0 + 1, sig);
+        (address p, uint256 a) = callPay.paid(quote);
+        assertEq(p, from);
+        assertEq(a, amount);
+        assertEq(usdg.balanceOf(treasury), amount);
+        assertEq(usdg.balanceOf(address(callPay)), 0);
+    }
 }
