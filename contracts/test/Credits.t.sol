@@ -112,4 +112,86 @@ abstract contract CreditsBase is Test {
         vm.prank(alice);
         credits.deposit(kh, amount);
     }
+
+    /// Posts a single-leaf root for (kh, spent); proof is empty.
+    function _postSingle(bytes32 kh, uint256 spent, uint256 totalSpent) internal {
+        vm.prank(settlement);
+        credits.postSpentRoot(Merkle.creditsLeaf(kh, spent), uint64(block.timestamp), totalSpent);
+    }
+
+    function _empty() internal pure returns (bytes32[] memory p) {
+        p = new bytes32[](0);
+    }
+
+    function _permitSig(uint256 pk, address ownerAddr, address spender, uint256 value, uint256 deadline)
+        internal
+        view
+        returns (uint8 v, bytes32 r, bytes32 s)
+    {
+        bytes32 structHash =
+            keccak256(abi.encode(PERMIT_TYPEHASH, ownerAddr, spender, value, usdg.nonces(ownerAddr), deadline));
+        (v, r, s) = vm.sign(pk, keccak256(abi.encodePacked("\x19\x01", usdg.DOMAIN_SEPARATOR(), structHash)));
+    }
+}
+
+contract CreditsTest is CreditsBase {
+    // =============================================================================================
+    // Constructor / config / views
+    // =============================================================================================
+
+    function test_constructor_setsState() public view {
+        assertEq(credits.usdg(), address(usdg));
+        assertEq(credits.settlement(), settlement);
+        assertEq(credits.owner(), owner);
+        assertEq(credits.latestEpoch(), 0);
+        assertEq(credits.totalSwept(), 0);
+        assertEq(credits.ESCAPE_DELAY(), 7 days);
+        assertEq(credits.WITHDRAW_REQUEST_TYPEHASH(), TYPEHASH);
+    }
+
+    function test_constructor_emitsSettlementSet() public {
+        vm.expectEmit(true, true, true, true);
+        emit ICredits.SettlementSet(settlement);
+        new Credits(IERC20(address(usdg)), owner, settlement);
+    }
+
+    function test_constructor_revertsOnZeroUsdg() public {
+        vm.expectRevert(Credits.ZeroAddress.selector);
+        new Credits(IERC20(address(0)), owner, settlement);
+    }
+
+    function test_constructor_revertsOnZeroSettlement() public {
+        vm.expectRevert(Credits.ZeroAddress.selector);
+        new Credits(IERC20(address(usdg)), owner, address(0));
+    }
+
+    function test_constructor_revertsOnZeroOwner() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
+        new Credits(IERC20(address(usdg)), address(0), settlement);
+    }
+
+    function test_domainSeparator_matchesManual() public view {
+        assertEq(credits.DOMAIN_SEPARATOR(), _domainSeparator(CHAIN_ID, address(credits)));
+        (, string memory name, string memory version, uint256 chainId, address verifying,,) = credits.eip712Domain();
+        assertEq(name, "Anyroute Credits");
+        assertEq(version, "1");
+        assertEq(chainId, CHAIN_ID);
+        assertEq(verifying, address(credits));
+    }
+
+    function testFuzz_withdrawDigest_matchesManual(bytes32 kh, uint256 amount, address to, uint256 nonce, uint256 dl)
+        public
+        view
+    {
+        assertEq(credits.withdrawDigest(kh, amount, to, nonce, dl), _digest(kh, amount, to, nonce, dl));
+    }
+
+    function testFuzz_keyHashOf(address a) public view {
+        assertEq(credits.keyHashOf(a), keccak256(abi.encodePacked(a)));
+    }
+
+    function testFuzz_spentLeaf_matchesHelper(bytes32 kh, uint256 spent) public view {
+        assertEq(credits.spentLeaf(kh, spent), Merkle.creditsLeaf(kh, spent));
+        assertEq(credits.spentLeaf(kh, spent), keccak256(bytes.concat(keccak256(abi.encode(kh, spent)))));
+    }
 }
