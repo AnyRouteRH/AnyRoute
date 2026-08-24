@@ -1031,4 +1031,111 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
     uint256 public calls;
     uint256 public finalizations;
     uint256 public escapes;
+
+    constructor(Credits credits_, MockUSDG usdg_, address settlement_, address creditor_) {
+        credits = credits_;
+        usdg = usdg_;
+        settlement = settlement_;
+        creditor = creditor_;
+        depositor = makeAddr("depositor");
+        sink = makeAddr("sink");
+        for (uint256 i; i < N; ++i) {
+            pks[i] = 0xC0FFEE + i;
+            keyAddrs[i] = vm.addr(pks[i]);
+            keyHashes[i] = keccak256(abi.encodePacked(keyAddrs[i]));
+        }
+        vm.prank(depositor);
+        usdg.approve(address(credits), type(uint256).max);
+        vm.prank(creditor);
+        usdg.approve(address(credits), type(uint256).max);
+    }
+
+    function _pending(uint256 i) internal view returns (uint256 amt, uint64 at) {
+        (amt,, at) = credits.pendingWithdrawal(keyHashes[i]);
+    }
+
+    function deposit(uint256 seed, uint256 amount) external {
+        uint256 i = seed % N;
+        amount = bound(amount, 1, 1_000_000e6);
+        usdg.mint(depositor, amount);
+        vm.prank(depositor);
+        credits.deposit(keyHashes[i], amount);
+        ++calls;
+    }
+
+    function credit(uint256 seed, uint256 amount) external {
+        uint256 i = seed % N;
+        amount = bound(amount, 1, 1_000_000e6);
+        usdg.mint(creditor, amount);
+        vm.prank(creditor);
+        credits.credit(keyHashes[i], amount);
+        ++calls;
+    }
+
+    /// Router serves usage (off-chain). An honest router never serves a key with a pending withdrawal
+    /// and never lets spend exceed the key's balance.
+    function spend(uint256 seed, uint256 amount) external {
+        uint256 i = seed % N;
+        (uint256 p,) = _pending(i);
+        if (p != 0) return;
+        uint256 dep = credits.deposited(keyHashes[i]);
+        uint256 used = credits.withdrawn(keyHashes[i]) + liveSpent[i];
+        if (dep <= used) return;
+        liveSpent[i] += bound(amount, 0, dep - used);
+        ++calls;
+    }
+
+    /// Settlement posts an honest root: each key's spent is capped at what the key can still back.
+    function postRoot(uint256 gap) external {
+        vm.warp(block.timestamp + bound(gap, 1, 2 hours));
+        delete latestLeaves;
+        uint256 total;
+        for (uint256 i; i < N; ++i) {
+            uint256 cap = credits.deposited(keyHashes[i]) - credits.withdrawn(keyHashes[i]);
+            uint256 s = liveSpent[i] < cap ? liveSpent[i] : cap;
+            if (s < rootSpent[i]) s = rootSpent[i];
+            rootSpent[i] = s;
+            total += s;
+            latestLeaves.push(Merkle.creditsLeaf(keyHashes[i], s));
+        }
+        vm.prank(settlement);
+        credits.postSpentRoot(Merkle.getRoot(latestLeaves), uint64(block.timestamp), total);
+        ++calls;
+    }
+
+    function requestWithdrawal(uint256 seed, uint256 amount) external {
+        uint256 i = seed % N;
+        (uint256 p,) = _pending(i);
+        if (p != 0) return;
+        amount = bound(amount, 1, 2_000_000e6);
+        uint256 dl = block.timestamp + 1 hours;
+        bytes32 digest = credits.withdrawDigest(keyHashes[i], amount, sink, credits.nonces(keyHashes[i]), dl);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pks[i], digest);
+        credits.requestWithdrawal(keyAddrs[i], amount, sink, dl, abi.encodePacked(r, s, v));
+        ++calls;
+    }
+
+    function cancelWithdrawal(uint256 seed) external {
+        uint256 i = seed % N;
+        (uint256 p,) = _pending(i);
+        if (p == 0) return;
+        uint256 dl = block.timestamp;
+        bytes32 digest = credits.withdrawDigest(keyHashes[i], 0, address(0), credits.nonces(keyHashes[i]), dl);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pks[i], digest);
+        credits.cancelWithdrawal(keyAddrs[i], dl, abi.encodePacked(r, s, v));
+        ++calls;
+    }
+
+    function finalizeWithdrawal(uint256 seed) external {
+        uint256 i = seed % N;
+        (uint256 p, uint64 at) = _pending(i);
+        if (p == 0 || latestLeaves.length == 0) return;
+        (, uint64 asOf,) = credits.spentRoot(credits.latestEpoch());
+        bool escape = asOf < at;
+        if (escape && block.timestamp < uint256(at) + credits.ESCAPE_DELAY()) return;
+        credits.finalizeWithdrawal(keyHashes[i], rootSpent[i], Merkle.getProof(latestLeaves, i));
+        ++finalizations;
+        if (escape) ++escapes;
+        ++calls;
+    }
 }
