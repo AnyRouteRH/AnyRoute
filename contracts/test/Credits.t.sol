@@ -904,4 +904,131 @@ contract CreditsTest is CreditsBase {
         vm.expectRevert(ICredits.InvalidAmount.selector);
         credits.sweep(recipient, 0);
     }
+
+    function test_sweep_revertsZeroTo() public {
+        vm.prank(settlement);
+        vm.expectRevert(Credits.ZeroAddress.selector);
+        credits.sweep(address(0), 1);
+    }
+
+    function test_sweep_revertsWithoutRoot() public {
+        _deposit(keyHash, 100e6);
+        vm.prank(settlement);
+        vm.expectRevert(ICredits.SweepExceedsSpent.selector);
+        credits.sweep(recipient, 1);
+    }
+
+    function test_sweep_boundedByTotalSpent() public {
+        _deposit(keyHash, 100e6);
+        _postSingle(keyHash, 40e6, 40e6);
+        vm.startPrank(settlement);
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.Swept(recipient, 25e6);
+        credits.sweep(recipient, 25e6);
+        vm.expectRevert(ICredits.SweepExceedsSpent.selector);
+        credits.sweep(recipient, 15e6 + 1);
+        credits.sweep(recipient, 15e6);
+        vm.expectRevert(ICredits.SweepExceedsSpent.selector);
+        credits.sweep(recipient, 1);
+        vm.stopPrank();
+        assertEq(credits.totalSwept(), 40e6);
+        assertEq(usdg.balanceOf(recipient), 40e6);
+        assertEq(usdg.balanceOf(address(credits)), 60e6);
+
+        vm.warp(block.timestamp + 1);
+        _postSingle(keyHash, 50e6, 50e6);
+        vm.prank(settlement);
+        credits.sweep(recipient, 10e6);
+        assertEq(credits.totalSwept(), 50e6);
+    }
+
+    function testFuzz_sweep(uint256 dep, uint256 spent, uint256 amt) public {
+        dep = bound(dep, 1, 5_000_000e6);
+        spent = bound(spent, 0, dep);
+        amt = bound(amt, 1, dep);
+        _deposit(keyHash, dep);
+        _postSingle(keyHash, spent, spent);
+        vm.prank(settlement);
+        if (amt > spent) {
+            vm.expectRevert(ICredits.SweepExceedsSpent.selector);
+            credits.sweep(recipient, amt);
+        } else {
+            credits.sweep(recipient, amt);
+            assertEq(usdg.balanceOf(recipient), amt);
+            assertEq(credits.totalSwept(), amt);
+        }
+    }
+
+    // =============================================================================================
+    // Admin
+    // =============================================================================================
+
+    function test_setSettlement() public {
+        address s2 = makeAddr("s2");
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.SettlementSet(s2);
+        vm.prank(owner);
+        credits.setSettlement(s2);
+        assertEq(credits.settlement(), s2);
+        vm.prank(settlement);
+        vm.expectRevert(ICredits.NotSettlement.selector);
+        credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
+        vm.prank(s2);
+        credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
+    }
+
+    function test_setSettlement_onlyOwner() public {
+        vm.prank(settlement);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, settlement));
+        credits.setSettlement(settlement);
+    }
+
+    function test_setSettlement_revertsZero() public {
+        vm.prank(owner);
+        vm.expectRevert(Credits.ZeroAddress.selector);
+        credits.setSettlement(address(0));
+    }
+
+    function test_ownership_twoStep() public {
+        address newOwner = makeAddr("newOwner");
+        vm.prank(owner);
+        credits.transferOwnership(newOwner);
+        assertEq(credits.owner(), owner);
+        assertEq(credits.pendingOwner(), newOwner);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        credits.acceptOwnership();
+        vm.prank(newOwner);
+        credits.acceptOwnership();
+        assertEq(credits.owner(), newOwner);
+    }
+}
+
+// =================================================================================================
+// Invariant: sum_k (deposited - spent - withdrawn) + totalSpent - totalSwept == USDG balance
+// =================================================================================================
+
+contract CreditsHandler is CommonBase, StdCheats, StdUtils {
+    uint256 internal constant N = 5;
+
+    Credits public immutable credits;
+    MockUSDG public immutable usdg;
+    address public immutable settlement;
+    address public immutable creditor;
+    address public immutable depositor;
+    address public immutable sink;
+
+    uint256[N] public pks;
+    address[N] public keyAddrs;
+    bytes32[N] public keyHashes;
+
+    // off-chain router state
+    uint256[N] public liveSpent;
+    // spent as of the latest posted root
+    uint256[N] public rootSpent;
+    bytes32[] internal latestLeaves;
+
+    uint256 public calls;
+    uint256 public finalizations;
+    uint256 public escapes;
 }
