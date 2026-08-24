@@ -212,4 +212,89 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         emit Withdrawn(keyHash, p.to, pay);
         if (pay != 0) _usdg.safeTransfer(p.to, pay);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Admin
+    // ---------------------------------------------------------------------------------------------
+
+    /// @notice Set the settlement address.
+    function setSettlement(address settlement_) external onlyOwner {
+        if (settlement_ == address(0)) revert ZeroAddress();
+        settlement = settlement_;
+        emit SettlementSet(settlement_);
+    }
+
+    /// @notice Allow or disallow an address to call credit().
+    function setCreditor(address creditor, bool allowed) external onlyOwner {
+        if (creditor == address(0)) revert ZeroAddress();
+        isCreditor[creditor] = allowed;
+        emit CreditorSet(creditor, allowed);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Views
+    // ---------------------------------------------------------------------------------------------
+
+    /// @notice keyHash for a key address: keccak256(abi.encodePacked(keyAddress)).
+    function keyHashOf(address keyAddress) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(keyAddress));
+    }
+
+    /// @notice Merkle leaf for (keyHash, cumulativeSpent): keccak256(bytes.concat(keccak256(abi.encode(..)))).
+    function spentLeaf(bytes32 keyHash, uint256 cumulativeSpent) public pure returns (bytes32) {
+        return keccak256(bytes.concat(keccak256(abi.encode(keyHash, cumulativeSpent))));
+    }
+
+    /// @notice deposited - cumulativeSpent - withdrawn for a key, floored at 0.
+    function availableFor(bytes32 keyHash, uint256 cumulativeSpent) external view returns (uint256) {
+        return _available(keyHash, cumulativeSpent);
+    }
+
+    /// @notice The EIP-712 domain separator.
+    // solhint-disable-next-line func-name-mixedcase
+    function DOMAIN_SEPARATOR() external view returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+
+    /// @notice EIP-712 digest a key address signs for a WithdrawRequest (amount = 0, to = 0 for cancel).
+    function withdrawDigest(bytes32 keyHash, uint256 amount, address to, uint256 nonce, uint256 deadline)
+        public
+        view
+        returns (bytes32)
+    {
+        return _hashTypedDataV4(keccak256(abi.encode(WITHDRAW_REQUEST_TYPEHASH, keyHash, amount, to, nonce, deadline)));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Internal
+    // ---------------------------------------------------------------------------------------------
+
+    function _deposit(bytes32 keyHash, uint256 amount) private {
+        if (amount == 0) revert InvalidAmount();
+        deposited[keyHash] += amount;
+        emit Deposited(keyHash, msg.sender, amount);
+        _usdg.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    function _useSignature(
+        address keyAddress,
+        bytes32 keyHash,
+        uint256 amount,
+        address to,
+        uint256 deadline,
+        bytes calldata sig
+    ) private {
+        uint256 nonce = nonces[keyHash];
+        bytes32 digest = withdrawDigest(keyHash, amount, to, nonce, deadline);
+        if (!SignatureChecker.isValidSignatureNowCalldata(keyAddress, digest, sig)) revert BadSignature();
+        nonces[keyHash] = nonce + 1;
+    }
+
+    function _available(bytes32 keyHash, uint256 cumulativeSpent) private view returns (uint256) {
+        uint256 dep = deposited[keyHash];
+        uint256 used = withdrawn[keyHash];
+        if (dep <= used) return 0;
+        uint256 rest = dep - used;
+        return rest > cumulativeSpent ? rest - cumulativeSpent : 0;
+    }
 }
