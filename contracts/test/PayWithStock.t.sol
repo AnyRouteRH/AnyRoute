@@ -101,4 +101,93 @@ contract PayWithStockTest is Test {
     function _session(bytes32 key) internal view returns (IPayWithStock.Session memory s) {
         (s.wallet, s.token, s.capRawPerDay, s.spentRawToday, s.dayStart, s.active) = pws.sessions(key);
     }
+
+    function _maxIn(uint256 usdgOwed, uint16 slip) internal view returns (uint256 maxIn, uint256 raw) {
+        (raw,) = pws.quoteRaw(address(nvda), usdgOwed);
+        maxIn = Math.mulDiv(raw, 10_000 + slip, 10_000, Math.Rounding.Ceil);
+    }
+
+    function _pay(uint256 usdgOwed, uint16 slip) internal returns (uint256) {
+        vm.prank(router);
+        return pws.payCall(KEY, usdgOwed, slip);
+    }
+
+    function _assertNoLeftovers() internal view {
+        assertEq(nvda.balanceOf(address(pws)), 0, "pws holds stock");
+        assertEq(usdg.balanceOf(address(pws)), 0, "pws holds usdg");
+        assertEq(usdg.allowance(address(pws), address(credits)), 0, "dangling credits allowance");
+    }
+
+    function _today() internal view returns (uint64) {
+        return uint64(block.timestamp - block.timestamp % 1 days);
+    }
+
+    // ------------------------------------------------------------------ construction / admin
+
+    function test_constructorState() public view {
+        assertEq(address(pws.usdg()), address(usdg));
+        assertEq(address(pws.credits()), address(credits));
+        assertEq(address(pws.oracle()), address(oracle));
+        assertEq(pws.router(), router);
+        assertEq(pws.owner(), owner);
+        assertEq(pws.maxSlipCapBps(), 300);
+        (bool enabled, address p, address f) = pws.tokens(address(nvda));
+        assertTrue(enabled);
+        assertEq(p, address(primary));
+        assertEq(f, address(fallbackAdapter));
+    }
+
+    function test_constructorRejectsZeroAndBadUsdg() public {
+        vm.expectRevert(PayWithStock.ZeroAddress.selector);
+        new PayWithStock(IERC20(address(0)), ICredits(address(credits)), oracle, router, owner);
+        vm.expectRevert(PayWithStock.ZeroAddress.selector);
+        new PayWithStock(IERC20(address(usdg)), ICredits(address(credits)), oracle, address(0), owner);
+        vm.expectRevert(PayWithStock.InvalidToken.selector);
+        new PayWithStock(IERC20(address(nvda)), ICredits(address(credits)), oracle, router, owner); // 18 decimals
+    }
+
+    function test_registerToken() public {
+        MockStockToken tsla = new MockStockToken("TSLA", "TSLAx", 8);
+        vm.expectEmit(true, false, false, true);
+        emit IPayWithStock.TokenRegistered(address(tsla), address(primary), address(0), true);
+        vm.prank(owner);
+        pws.registerToken(address(tsla), address(primary), address(0), true);
+        (bool enabled, address p, address f) = pws.tokens(address(tsla));
+        assertTrue(enabled);
+        assertEq(p, address(primary));
+        assertEq(f, address(0));
+    }
+
+    function test_registerTokenValidation() public {
+        vm.startPrank(owner);
+        vm.expectRevert(PayWithStock.InvalidToken.selector);
+        pws.registerToken(address(0), address(primary), address(0), true);
+        vm.expectRevert(PayWithStock.InvalidToken.selector);
+        pws.registerToken(address(usdg), address(primary), address(0), true);
+        vm.expectRevert(PayWithStock.InvalidAdapter.selector);
+        pws.registerToken(address(nvda), address(0), address(0), true);
+        vm.expectRevert(PayWithStock.InvalidAdapter.selector);
+        pws.registerToken(address(nvda), address(primary), address(primary), true);
+        MockStockToken weird = new MockStockToken("W", "W", 37);
+        vm.expectRevert(PayWithStock.InvalidToken.selector);
+        pws.registerToken(address(weird), address(primary), address(0), true);
+        // disabling without adapters is fine
+        pws.registerToken(address(nvda), address(0), address(0), false);
+        vm.stopPrank();
+    }
+
+    function test_onlyOwnerAdmin() public {
+        vm.startPrank(other);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, other));
+        pws.registerToken(address(nvda), address(primary), address(0), true);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, other));
+        pws.setRouter(other);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, other));
+        pws.setOracle(IStockOracle(other));
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, other));
+        pws.setMaxSlip(10);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, other));
+        pws.rescue(IERC20(address(nvda)), other, 1);
+        vm.stopPrank();
+    }
 }
