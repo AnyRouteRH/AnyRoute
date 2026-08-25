@@ -1138,4 +1138,97 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
         if (escape) ++escapes;
         ++calls;
     }
+
+    function sweep(uint256 amount) external {
+        (,, uint256 totalSpent) = credits.spentRoot(credits.latestEpoch());
+        uint256 room = totalSpent - credits.totalSwept();
+        if (room == 0) return;
+        amount = bound(amount, 1, room);
+        vm.prank(settlement);
+        credits.sweep(sink, amount);
+        ++calls;
+    }
+
+    function warp(uint256 secs) external {
+        vm.warp(block.timestamp + bound(secs, 1, 8 days));
+    }
+
+    function sumTerms() external view returns (int256 sum, uint256 sumOwedPositive) {
+        for (uint256 i; i < N; ++i) {
+            int256 t = int256(credits.deposited(keyHashes[i])) - int256(rootSpent[i])
+                - int256(credits.withdrawn(keyHashes[i]));
+            sum += t;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (t > 0) sumOwedPositive += uint256(t);
+        }
+    }
+
+    function sumDepositedMinusWithdrawn() external view returns (uint256 s) {
+        for (uint256 i; i < N; ++i) {
+            s += credits.deposited(keyHashes[i]) - credits.withdrawn(keyHashes[i]);
+        }
+    }
+
+    function keyHashAt(uint256 i) external view returns (bytes32) {
+        return keyHashes[i];
+    }
+}
+
+contract CreditsInvariantTest is Test {
+    MockUSDG internal usdg;
+    Credits internal credits;
+    CreditsHandler internal handler;
+
+    function setUp() public {
+        vm.chainId(4663);
+        vm.warp(1_750_000_000);
+        address owner = makeAddr("owner");
+        address settlement = makeAddr("settlement");
+        address creditor = makeAddr("creditor");
+        usdg = new MockUSDG();
+        credits = new Credits(IERC20(address(usdg)), owner, settlement);
+        vm.prank(owner);
+        credits.setCreditor(creditor, true);
+        handler = new CreditsHandler(credits, usdg, settlement, creditor);
+
+        bytes4[] memory selectors = new bytes4[](9);
+        selectors[0] = CreditsHandler.deposit.selector;
+        selectors[1] = CreditsHandler.credit.selector;
+        selectors[2] = CreditsHandler.spend.selector;
+        selectors[3] = CreditsHandler.postRoot.selector;
+        selectors[4] = CreditsHandler.requestWithdrawal.selector;
+        selectors[5] = CreditsHandler.cancelWithdrawal.selector;
+        selectors[6] = CreditsHandler.finalizeWithdrawal.selector;
+        selectors[7] = CreditsHandler.sweep.selector;
+        selectors[8] = CreditsHandler.warp.selector;
+        targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
+        targetContract(address(handler));
+    }
+
+    /// forge-config: default.invariant.runs = 128
+    /// forge-config: default.invariant.depth = 64
+    /// forge-config: default.invariant.fail-on-revert = true
+    function invariant_balanceIdentity() public view {
+        (int256 sum,) = handler.sumTerms();
+        (,, uint256 totalSpent) = credits.spentRoot(credits.latestEpoch());
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 lhs = sum + int256(totalSpent) - int256(credits.totalSwept());
+        assertEq(lhs, int256(usdg.balanceOf(address(credits))));
+    }
+
+    /// forge-config: default.invariant.runs = 128
+    /// forge-config: default.invariant.depth = 64
+    /// forge-config: default.invariant.fail-on-revert = true
+    function invariant_solventAndBounded() public view {
+        uint256 bal = usdg.balanceOf(address(credits));
+        (,, uint256 totalSpent) = credits.spentRoot(credits.latestEpoch());
+        assertLe(credits.totalSwept(), totalSpent);
+        assertEq(bal, handler.sumDepositedMinusWithdrawn() - credits.totalSwept());
+        (, uint256 owed) = handler.sumTerms();
+        assertGe(bal, owed);
+        for (uint256 i; i < 5; ++i) {
+            bytes32 kh = handler.keyHashAt(i);
+            assertLe(credits.withdrawn(kh), credits.deposited(kh));
+        }
+    }
 }
