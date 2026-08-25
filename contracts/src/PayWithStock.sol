@@ -115,4 +115,79 @@ contract PayWithStock is IPayWithStock, Ownable2Step, ReentrancyGuardTransient {
             TokenConfig({enabled: enabled, primaryAdapter: primaryAdapter, fallbackAdapter: fallbackAdapter});
         emit TokenRegistered(token, primaryAdapter, fallbackAdapter, enabled);
     }
+
+    /// @notice Set the router allowed to call payCall.
+    function setRouter(address router_) external onlyOwner {
+        if (router_ == address(0)) revert ZeroAddress();
+        router = router_;
+        emit RouterSet(router_);
+    }
+
+    /// @notice Set the fair-value oracle.
+    function setOracle(IStockOracle oracle_) external onlyOwner {
+        if (address(oracle_) == address(0)) revert ZeroAddress();
+        oracle = oracle_;
+        emit OracleSet(address(oracle_));
+    }
+
+    /// @notice Set the slippage cap for payCall (<= HARD_MAX_SLIP_BPS).
+    function setMaxSlip(uint16 maxSlipBps_) external onlyOwner {
+        if (maxSlipBps_ > HARD_MAX_SLIP_BPS) revert SlippageTooHigh();
+        maxSlipCapBps = maxSlipBps_;
+        emit MaxSlipSet(maxSlipBps_);
+    }
+
+    /// @notice Recover tokens held by this contract (it never holds wallet funds between transactions).
+    function rescue(IERC20 token, address to, uint256 amount) external onlyOwner {
+        if (to == address(0)) revert ZeroAddress();
+        token.safeTransfer(to, amount);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Sessions
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IPayWithStock
+    /// @dev msg.sender becomes the session wallet and must separately `approve` this contract for `token`.
+    /// An active session can only be replaced by its own wallet. If the same wallet re-opens with the same token
+    /// on the same UTC day, today's spend is preserved (closing/re-opening cannot reset the daily cap).
+    function openSession(bytes32 keyHash, address token, uint256 capRawPerDay) external {
+        _openSession(keyHash, token, capRawPerDay);
+    }
+
+    /// @notice openSession plus an EIP-2612 permit granting this contract `permitValue` of `token` (Stock Tokens
+    /// support permit). The permit is best-effort (try/catch) so a front-run permit cannot grief the call; the
+    /// resulting allowance is what payCall relies on.
+    function openSessionWithPermit(
+        bytes32 keyHash,
+        address token,
+        uint256 capRawPerDay,
+        uint256 permitValue,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        try IERC20Permit(token).permit(msg.sender, address(this), permitValue, deadline, v, r, s) {} catch {}
+        _openSession(keyHash, token, capRawPerDay);
+    }
+
+    function _openSession(bytes32 keyHash, address token, uint256 capRawPerDay) internal {
+        if (!tokens[token].enabled) revert TokenNotEnabled();
+        if (capRawPerDay == 0) revert InvalidAmount();
+        Session storage s = sessions[keyHash];
+        if (s.active && s.wallet != msg.sender) revert NotSessionWallet();
+
+        uint64 today = _today();
+        bool keepSpend = s.wallet == msg.sender && s.token == token && s.dayStart == today;
+        s.wallet = msg.sender;
+        s.token = token;
+        s.capRawPerDay = capRawPerDay;
+        if (!keepSpend) {
+            s.spentRawToday = 0;
+            s.dayStart = today;
+        }
+        s.active = true;
+        emit SessionOpened(keyHash, msg.sender, token, capRawPerDay);
+    }
 }
