@@ -190,4 +190,80 @@ contract PayWithStock is IPayWithStock, Ownable2Step, ReentrancyGuardTransient {
         s.active = true;
         emit SessionOpened(keyHash, msg.sender, token, capRawPerDay);
     }
+
+    /// @inheritdoc IPayWithStock
+    function closeSession(bytes32 keyHash) external {
+        Session storage s = sessions[keyHash];
+        if (!s.active) revert NoSession();
+        if (s.wallet != msg.sender) revert NotSessionWallet();
+        s.active = false;
+        emit SessionClosed(keyHash, msg.sender);
+    }
+
+    /// @notice Router can deactivate a session (e.g. one squatting a keyHash with a wallet the key's owner did not
+    /// link off-chain). Moves no funds; the wallet can re-open it.
+    function forceCloseSession(bytes32 keyHash) external onlyRouter {
+        Session storage s = sessions[keyHash];
+        if (!s.active) revert NoSession();
+        s.active = false;
+        emit SessionClosed(keyHash, s.wallet);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Payment
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IPayWithStock
+    function payCall(bytes32 keyHash, uint256 usdgOwed, uint16 maxSlipBps)
+        external
+        onlyRouter
+        nonReentrant
+        returns (uint256 rawSpent)
+    {
+        if (usdgOwed == 0) revert InvalidAmount();
+        if (maxSlipBps > maxSlipCapBps) revert SlippageTooHigh();
+        Session storage s = sessions[keyHash];
+        if (!s.active) revert NoSession();
+        address token = s.token;
+        if (!tokens[token].enabled) revert TokenNotEnabled();
+
+        (uint256 maxIn, uint256 price18) = _maxIn(token, usdgOwed, maxSlipBps);
+        // reserve the worst case against the daily cap (CEI); trimmed to the actual spend below
+        uint256 spentBefore = _reserveCap(s, maxIn);
+
+        IERC20(token).safeTransferFrom(s.wallet, address(this), maxIn);
+        rawSpent = _swapWithFallback(keyHash, token, usdgOwed, maxIn);
+
+        s.spentRawToday = spentBefore + rawSpent;
+        if (maxIn > rawSpent) IERC20(token).safeTransfer(s.wallet, maxIn - rawSpent);
+
+        usdg.forceApprove(address(credits), usdgOwed);
+        credits.credit(keyHash, usdgOwed);
+
+        emit PaidWithStock(keyHash, token, rawSpent, price18, usdgOwed);
+    }
+
+    /// @notice One swap attempt. External only so it can be wrapped in try/catch; callable only by this contract.
+    /// @dev Sends `maxIn` to `adapter`, which must deliver >= `usdgOwed` USDG here and refund unused tokens here.
+    /// Reverting (adapter failure, under-delivery, over-refund) rolls back the transfer to the adapter.
+    /// @return rawSpent Tokens actually consumed (balance delta, <= maxIn).
+    function attemptSwap(address adapter, address token, uint256 usdgOwed, uint256 maxIn)
+        external
+        returns (uint256 rawSpent)
+    {
+        if (msg.sender != address(this)) revert NotSelf();
+        IERC20 t = IERC20(token);
+        uint256 tokBefore = t.balanceOf(address(this));
+        uint256 usdgBefore = usdg.balanceOf(address(this));
+
+        t.safeTransfer(adapter, maxIn);
+        ISwapAdapter(adapter)
+            .swapExactOut(token, address(usdg), usdgOwed, maxIn, address(this), address(this));
+
+        uint256 tokAfter = t.balanceOf(address(this));
+        if (tokAfter > tokBefore) revert SwapFailed(); // adapter returned more than it was given
+        rawSpent = tokBefore - tokAfter;
+        if (rawSpent > maxIn) revert SwapFailed();
+        if (usdg.balanceOf(address(this)) < usdgBefore + usdgOwed) revert InsufficientUsdgOut();
+    }
 }
