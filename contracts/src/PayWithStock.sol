@@ -266,4 +266,104 @@ contract PayWithStock is IPayWithStock, Ownable2Step, ReentrancyGuardTransient {
         if (rawSpent > maxIn) revert SwapFailed();
         if (usdg.balanceOf(address(this)) < usdgBefore + usdgOwed) revert InsufficientUsdgOut();
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Views
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IPayWithStock
+    /// @dev rawNeeded = ceil(usdgOwed * 10^dec * 1e18 / (fairPrice18 * 1e6)).
+    function quoteRaw(address token, uint256 usdgOwed)
+        external
+        view
+        returns (uint256 rawNeeded, uint256 fairPrice18)
+    {
+        bool ok;
+        (fairPrice18, ok) = oracle.fairPrice(token);
+        if (!ok || fairPrice18 == 0) revert OracleNotOk();
+        uint8 dec = IERC20Metadata(token).decimals();
+        if (dec > MAX_TOKEN_DECIMALS) revert InvalidToken();
+        rawNeeded = _rawFor(usdgOwed, dec, fairPrice18);
+    }
+
+    /// @notice Worst-case raw amount payCall would pull (and check against the cap) for `usdgOwed` at `slipBps`.
+    function quoteMaxIn(address token, uint256 usdgOwed, uint16 slipBps)
+        external
+        view
+        returns (uint256 maxIn, uint256 rawNeeded, uint256 fairPrice18)
+    {
+        bool ok;
+        (fairPrice18, ok) = oracle.fairPrice(token);
+        if (!ok || fairPrice18 == 0) revert OracleNotOk();
+        uint8 dec = IERC20Metadata(token).decimals();
+        if (dec > MAX_TOKEN_DECIMALS) revert InvalidToken();
+        rawNeeded = _rawFor(usdgOwed, dec, fairPrice18);
+        maxIn = Math.mulDiv(rawNeeded, BPS + slipBps, BPS, Math.Rounding.Ceil);
+    }
+
+    /// @notice Raw token units the session can still spend today (accounts for the UTC day rollover).
+    function remainingToday(bytes32 keyHash) external view returns (uint256) {
+        Session storage s = sessions[keyHash];
+        if (!s.active) return 0;
+        uint256 spent = s.dayStart < _today() ? 0 : s.spentRawToday;
+        return spent >= s.capRawPerDay ? 0 : s.capRawPerDay - spent;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Internals
+    // ---------------------------------------------------------------------------------------------
+
+    function _swapWithFallback(bytes32 keyHash, address token, uint256 usdgOwed, uint256 maxIn)
+        internal
+        returns (uint256)
+    {
+        TokenConfig memory cfg = tokens[token];
+        try this.attemptSwap(cfg.primaryAdapter, token, usdgOwed, maxIn) returns (uint256 spent) {
+            return spent;
+        } catch (bytes memory reason) {
+            emit SwapAttemptFailed(keyHash, cfg.primaryAdapter, reason);
+        }
+        if (cfg.fallbackAdapter != address(0)) {
+            try this.attemptSwap(cfg.fallbackAdapter, token, usdgOwed, maxIn) returns (uint256 spent) {
+                return spent;
+            } catch (bytes memory reason) {
+                emit SwapAttemptFailed(keyHash, cfg.fallbackAdapter, reason);
+            }
+        }
+        revert SwapFailed();
+    }
+
+    /// @dev Fair-value quote plus slippage: maxIn = ceil(rawNeeded * (10000 + slipBps) / 10000).
+    function _maxIn(address token, uint256 usdgOwed, uint16 slipBps)
+        internal
+        view
+        returns (uint256 maxIn, uint256 price18)
+    {
+        bool ok;
+        (price18, ok) = oracle.fairPrice(token);
+        if (!ok || price18 == 0) revert OracleNotOk();
+        uint256 rawNeeded = _rawFor(usdgOwed, IERC20Metadata(token).decimals(), price18);
+        maxIn = Math.mulDiv(rawNeeded, BPS + slipBps, BPS, Math.Rounding.Ceil);
+    }
+
+    /// @dev Roll the UTC day window, check `spent + maxIn <= cap`, reserve maxIn. Returns spend before this call.
+    function _reserveCap(Session storage s, uint256 maxIn) internal returns (uint256 spentBefore) {
+        uint64 today = _today();
+        if (s.dayStart < today) {
+            s.dayStart = today;
+            s.spentRawToday = 0;
+        }
+        spentBefore = s.spentRawToday;
+        if (spentBefore + maxIn > s.capRawPerDay) revert CapExceeded();
+        s.spentRawToday = spentBefore + maxIn;
+    }
+
+    /// @dev ceil(usdgOwed * 10^dec * 1e18 / (price18 * 10^6)) == ceil(usdgOwed * 10^(dec + 12) / price18).
+    function _rawFor(uint256 usdgOwed, uint8 dec, uint256 price18) internal pure returns (uint256) {
+        return Math.mulDiv(usdgOwed, 10 ** (uint256(dec) + 18 - USDG_DECIMALS), price18, Math.Rounding.Ceil);
+    }
+
+    function _today() internal view returns (uint64) {
+        return uint64(block.timestamp - (block.timestamp % 1 days));
+    }
 }
