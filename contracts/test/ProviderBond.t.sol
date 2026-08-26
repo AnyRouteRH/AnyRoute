@@ -175,4 +175,117 @@ contract ProviderBondTest is Test {
         vm.expectRevert(IProviderBond.ProviderDelisted.selector);
         pb.bond(PID, MIN);
     }
+
+    function test_bond_independentProviders() public {
+        _bond(PID, op, MIN);
+        _bond(PID2, op2, 2 * MIN);
+        assertEq(pb.operatorOf(PID2), op2);
+        assertEq(pb.bondOf(PID), MIN);
+        assertEq(pb.bondOf(PID2), 2 * MIN);
+    }
+
+    function testFuzz_bond(uint256 first, uint256 topUp) public {
+        first = bound(first, MIN, 1_000_000e6);
+        topUp = bound(topUp, 1, 1_000_000e6);
+        _bond(PID, op, first);
+        _bond(PID, op, topUp);
+        assertEq(pb.bondOf(PID), first + topUp);
+        assertEq(usdg.balanceOf(address(pb)), first + topUp);
+    }
+
+    // --- requestWithdraw -----------------------------------------------------------------------
+
+    function test_requestWithdraw_partial() public {
+        _bond(PID, op, 3 * MIN);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.WithdrawRequested(PID, MIN, T0 + 14 days);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        (uint256 amt, uint64 at) = pb.withdrawRequest(PID);
+        assertEq(amt, MIN);
+        assertEq(at, T0 + 14 days);
+        assertEq(pb.bondOf(PID), 3 * MIN); // still locked & slashable
+        assertEq(pb.activeBondOf(PID), 2 * MIN);
+    }
+
+    function test_requestWithdraw_fullExit() public {
+        _bond(PID, op, MIN + 5);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN + 5);
+        assertEq(pb.activeBondOf(PID), 0);
+    }
+
+    function test_requestWithdraw_remainingExactlyMinOk() public {
+        _bond(PID, op, MIN + 5);
+        vm.prank(op);
+        pb.requestWithdraw(PID, 5);
+        (uint256 amt,) = pb.withdrawRequest(PID);
+        assertEq(amt, 5);
+    }
+
+    function test_requestWithdraw_revertsBelowMinimum() public {
+        _bond(PID, op, MIN + 5);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.BelowMinimum.selector);
+        pb.requestWithdraw(PID, 6);
+    }
+
+    function test_requestWithdraw_revertsNotOperator() public {
+        _bond(PID, op, MIN);
+        vm.prank(rando);
+        vm.expectRevert(IProviderBond.NotOperator.selector);
+        pb.requestWithdraw(PID, MIN);
+    }
+
+    function test_requestWithdraw_revertsUnknownProvider() public {
+        vm.prank(rando);
+        vm.expectRevert(IProviderBond.NotOperator.selector);
+        pb.requestWithdraw(PID, 1);
+    }
+
+    function test_requestWithdraw_revertsInvalidAmount() public {
+        _bond(PID, op, MIN);
+        vm.startPrank(op);
+        vm.expectRevert(ProviderBond.InvalidAmount.selector);
+        pb.requestWithdraw(PID, 0);
+        vm.expectRevert(ProviderBond.InvalidAmount.selector);
+        pb.requestWithdraw(PID, MIN + 1);
+        vm.stopPrank();
+    }
+
+    function test_requestWithdraw_revertsSlashPending() public {
+        _bond(PID, op, MIN);
+        _propose(1, false);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.SlashPending.selector);
+        pb.requestWithdraw(PID, MIN);
+    }
+
+    function test_requestWithdraw_replacesPrevious() public {
+        _bond(PID, op, 3 * MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        vm.warp(T0 + 1 days);
+        vm.prank(op);
+        pb.requestWithdraw(PID, 2 * MIN);
+        (uint256 amt, uint64 at) = pb.withdrawRequest(PID);
+        assertEq(amt, 2 * MIN);
+        assertEq(at, T0 + 1 days + 14 days);
+    }
+
+    // --- cancelWithdraw ------------------------------------------------------------------------
+
+    function test_cancelWithdraw() public {
+        _bond(PID, op, MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit ProviderBond.WithdrawCancelled(PID);
+        vm.prank(op);
+        pb.cancelWithdraw(PID);
+        (uint256 amt, uint64 at) = pb.withdrawRequest(PID);
+        assertEq(amt, 0);
+        assertEq(at, 0);
+        assertEq(pb.activeBondOf(PID), MIN);
+    }
 }
