@@ -654,4 +654,112 @@ contract ProviderBondTest is Test {
         assertEq(usdg.balanceOf(refundPool), MIN);
         assertEq(uint8(_status(id2)), uint8(ProviderBond.Status.Executed));
     }
+
+    function test_slashes_isolatedPerProvider() public {
+        _bond(PID, op, MIN);
+        _bond(PID2, op2, MIN);
+        _propose(1, false); // PID
+        assertEq(pb.pendingSlashes(PID2), 0);
+        vm.prank(op2);
+        pb.requestWithdraw(PID2, MIN);
+    }
+
+    // --- admin ---------------------------------------------------------------------------------
+
+    function test_setSlasher() public {
+        address s2 = makeAddr("s2");
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlasherSet(s2);
+        vm.prank(owner);
+        pb.setSlasher(s2);
+        assertEq(pb.slasher(), s2);
+        _bond(PID, op, MIN);
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.NotSlasher.selector);
+        pb.proposeSlash(PID, IProviderBond.Kind.Other, 1, EVIDENCE, false);
+        vm.prank(s2);
+        pb.proposeSlash(PID, IProviderBond.Kind.Other, 1, EVIDENCE, false);
+    }
+
+    function test_setRefundPool() public {
+        address r2 = makeAddr("r2");
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.RefundPoolSet(r2);
+        vm.prank(owner);
+        pb.setRefundPool(r2);
+        _bond(PID, op, MIN);
+        uint256 id = _propose(1e6, false);
+        vm.warp(T0 + 72 hours);
+        _execute(id);
+        assertEq(usdg.balanceOf(r2), 1e6);
+        assertEq(usdg.balanceOf(refundPool), 0);
+    }
+
+    function test_setters_onlyOwnerAndNonZero() public {
+        vm.startPrank(slasher);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, slasher));
+        pb.setSlasher(slasher);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, slasher));
+        pb.setRefundPool(slasher);
+        vm.stopPrank();
+        vm.startPrank(owner);
+        vm.expectRevert(ProviderBond.ZeroAddress.selector);
+        pb.setSlasher(address(0));
+        vm.expectRevert(ProviderBond.ZeroAddress.selector);
+        pb.setRefundPool(address(0));
+        vm.stopPrank();
+    }
+
+    // --- fuzz: conservation --------------------------------------------------------------------
+
+    function testFuzz_slashThenWithdraw_conserves(uint256 bondAmt, uint256 s1, uint256 s2, bool cancel2) public {
+        bondAmt = bound(bondAmt, MIN, 5_000_000e6);
+        s1 = bound(s1, 1, bondAmt);
+        s2 = bound(s2, 1, bondAmt);
+        _bond(PID, op, bondAmt);
+        vm.prank(op);
+        pb.requestWithdraw(PID, bondAmt);
+        uint256 id1 = _propose(s1, false);
+        uint256 id2 = _propose(s2, false);
+        vm.warp(T0 + 72 hours);
+        _execute(id1);
+        if (cancel2) {
+            vm.prank(slasher);
+            pb.cancelSlash(id2);
+        } else {
+            _execute(id2);
+        }
+        uint256 slashed = usdg.balanceOf(refundPool);
+        uint256 expectedSlashed = cancel2 ? s1 : (s1 + s2 > bondAmt ? bondAmt : s1 + s2);
+        assertEq(slashed, expectedSlashed);
+        assertEq(pb.bondOf(PID), bondAmt - slashed);
+        assertEq(usdg.balanceOf(address(pb)), pb.bondOf(PID));
+
+        vm.warp(T0 + 14 days);
+        bool empty = pb.bondOf(PID) == 0;
+        vm.prank(op);
+        if (empty) {
+            vm.expectRevert(IProviderBond.NothingToWithdraw.selector);
+            pb.withdraw(PID, payout);
+        } else {
+            pb.withdraw(PID, payout);
+        }
+        assertEq(usdg.balanceOf(payout) + slashed, bondAmt);
+        assertEq(usdg.balanceOf(address(pb)), 0);
+    }
+
+    function testFuzz_requestWithdraw_minimumRule(uint256 bondAmt, uint256 req) public {
+        bondAmt = bound(bondAmt, MIN, 5_000_000e6);
+        req = bound(req, 1, bondAmt);
+        _bond(PID, op, bondAmt);
+        uint256 remaining = bondAmt - req;
+        vm.prank(op);
+        if (remaining != 0 && remaining < MIN) {
+            vm.expectRevert(IProviderBond.BelowMinimum.selector);
+            pb.requestWithdraw(PID, req);
+        } else {
+            pb.requestWithdraw(PID, req);
+            assertEq(pb.activeBondOf(PID), remaining);
+        }
+    }
 }
