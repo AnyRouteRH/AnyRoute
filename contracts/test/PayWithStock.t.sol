@@ -280,4 +280,89 @@ contract PayWithStockTest is Test {
         pws.openSession(KEY, address(nvda), 0);
         vm.stopPrank();
     }
+
+    function test_openSessionCannotHijackActive() public {
+        vm.prank(other);
+        vm.expectRevert(IPayWithStock.NotSessionWallet.selector);
+        pws.openSession(KEY, address(nvda), 1);
+    }
+
+    function test_openSessionTakeoverAfterClose() public {
+        vm.prank(wallet);
+        pws.closeSession(KEY);
+        vm.prank(other);
+        pws.openSession(KEY, address(nvda), 5);
+        IPayWithStock.Session memory s = _session(KEY);
+        assertEq(s.wallet, other);
+        assertEq(s.capRawPerDay, 5);
+        assertEq(s.spentRawToday, 0);
+    }
+
+    function test_reopenSameDayKeepsSpend() public {
+        uint256 spent = _pay(10e6, 100);
+        vm.startPrank(wallet);
+        pws.closeSession(KEY);
+        pws.openSession(KEY, address(nvda), CAP * 2); // raise own cap
+        vm.stopPrank();
+        assertEq(_session(KEY).spentRawToday, spent);
+        assertEq(_session(KEY).capRawPerDay, CAP * 2);
+    }
+
+    function test_reopenOtherTokenResetsSpend() public {
+        _pay(10e6, 100);
+        MockStockToken tsla = new MockStockToken("TSLA", "TSLAx", 8);
+        vm.prank(owner);
+        pws.registerToken(address(tsla), address(primary), address(0), true);
+        vm.prank(wallet);
+        pws.openSession(KEY, address(tsla), 1e8);
+        assertEq(_session(KEY).spentRawToday, 0);
+        assertEq(_session(KEY).token, address(tsla));
+    }
+
+    function test_closeSession() public {
+        vm.prank(other);
+        vm.expectRevert(IPayWithStock.NotSessionWallet.selector);
+        pws.closeSession(KEY);
+
+        vm.expectEmit(true, true, false, false);
+        emit IPayWithStock.SessionClosed(KEY, wallet);
+        vm.prank(wallet);
+        pws.closeSession(KEY);
+        assertFalse(_session(KEY).active);
+        assertEq(pws.remainingToday(KEY), 0);
+
+        vm.prank(wallet);
+        vm.expectRevert(IPayWithStock.NoSession.selector);
+        pws.closeSession(KEY);
+
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.NoSession.selector);
+        pws.payCall(KEY, 1e6, 100);
+    }
+
+    function test_forceCloseSession() public {
+        vm.prank(other);
+        vm.expectRevert(IPayWithStock.NotRouter.selector);
+        pws.forceCloseSession(KEY);
+
+        vm.expectEmit(true, true, false, false);
+        emit IPayWithStock.SessionClosed(KEY, wallet);
+        vm.prank(router);
+        pws.forceCloseSession(KEY);
+        assertFalse(_session(KEY).active);
+    }
+
+    // ------------------------------------------------------------------ quoteRaw
+
+    function test_quoteRawExample() public view {
+        (uint256 raw, uint256 price) = pws.quoteRaw(address(nvda), 1e6); // $1 of NVDA at $180
+        assertEq(price, PRICE18);
+        assertEq(raw, 5_555_555_555_555_556); // ceil(1e18 / 180)
+    }
+
+    function test_quoteRawRevertsWhenOracleNotOk() public {
+        vm.warp(block.timestamp + 2 hours);
+        vm.expectRevert(IPayWithStock.OracleNotOk.selector);
+        pws.quoteRaw(address(nvda), 1e6);
+    }
 }
