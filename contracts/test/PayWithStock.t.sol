@@ -646,4 +646,99 @@ contract PayWithStockTest is Test {
         assertEq(nvda.balanceOf(wallet), walletBefore);
         assertEq(_session(KEY).spentRawToday, 0);
     }
+
+    function test_noFallbackConfigured() public {
+        vm.prank(owner);
+        pws.registerToken(address(nvda), address(primary), address(0), true);
+        primary.setMode(MockSwapAdapter.Mode.Revert);
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.SwapFailed.selector);
+        pws.payCall(KEY, 3e6, 100);
+        assertEq(fallbackAdapter.calls(), 0);
+    }
+
+    function test_adapterKeepingRefundIsChargedByBalanceDelta() public {
+        primary.setMode(MockSwapAdapter.Mode.NoRefund);
+        (uint256 maxIn,) = _maxIn(3e6, 200);
+        uint256 walletBefore = nvda.balanceOf(wallet);
+        uint256 spent = _pay(3e6, 200);
+        assertEq(spent, maxIn, "whole maxIn consumed");
+        assertEq(walletBefore - nvda.balanceOf(wallet), maxIn);
+        assertEq(_session(KEY).spentRawToday, maxIn);
+        _assertNoLeftovers();
+    }
+
+    function test_adapterReturnValueIsNotTrusted() public {
+        primary.setMode(MockSwapAdapter.Mode.LieAboutAmount);
+        (, uint256 raw) = _maxIn(3e6, 200);
+        uint256 spent = _pay(3e6, 200);
+        assertEq(spent, raw);
+        assertEq(_session(KEY).spentRawToday, raw);
+    }
+
+    function test_attemptSwapIsSelfOnly() public {
+        vm.expectRevert(PayWithStock.NotSelf.selector);
+        pws.attemptSwap(address(primary), address(nvda), 1e6, 1e18);
+    }
+
+    function test_adapterCannotCallAttemptSwap() public {
+        SneakyAdapter sneaky = new SneakyAdapter();
+        vm.prank(owner);
+        pws.registerToken(address(nvda), address(sneaky), address(fallbackAdapter), true);
+        vm.expectEmit(true, true, false, true);
+        emit PayWithStock.SwapAttemptFailed(
+            KEY, address(sneaky), abi.encodeWithSelector(PayWithStock.NotSelf.selector)
+        );
+        _pay(1e6, 100);
+        assertEq(fallbackAdapter.calls(), 1);
+        _assertNoLeftovers();
+    }
+
+    function test_reentrancyIntoPayCallBlocked() public {
+        ReentrantAdapter evil = new ReentrantAdapter();
+        evil.arm(pws, KEY);
+        vm.startPrank(owner);
+        pws.registerToken(address(nvda), address(evil), address(fallbackAdapter), true);
+        pws.setRouter(address(evil));
+        vm.stopPrank();
+
+        vm.expectEmit(true, true, false, true);
+        emit PayWithStock.SwapAttemptFailed(
+            KEY,
+            address(evil),
+            abi.encodeWithSelector(ReentrancyGuardTransient.ReentrancyGuardReentrantCall.selector)
+        );
+        evil.start(1e6);
+        assertEq(fallbackAdapter.calls(), 1);
+        assertEq(credits.credited(KEY), 1e6);
+        _assertNoLeftovers();
+    }
+
+    // ------------------------------------------------------------------ refund correctness (fuzz)
+
+    function testFuzz_refundCorrectness(uint256 owed, uint16 slip, uint256 priceBps, bool usePrimaryFail)
+        public
+    {
+        owed = bound(owed, 1, 1_500e6);
+        slip = uint16(bound(slip, 0, 300));
+        // adapter price between (fair / (1 + slip)) and 1.5 x fair => always fillable within maxIn
+        priceBps = bound(priceBps, 10_000, 15_000);
+        uint256 adapterPrice = Math.mulDiv(PRICE18, priceBps, 10_000 + slip, Math.Rounding.Ceil);
+        MockSwapAdapter used = usePrimaryFail ? fallbackAdapter : primary;
+        used.setPrice(adapterPrice);
+        if (usePrimaryFail) primary.setMode(MockSwapAdapter.Mode.Revert);
+
+        (uint256 maxIn,) = _maxIn(owed, slip);
+        uint256 expected = used.quoteIn(address(nvda), address(usdg), owed);
+        vm.assume(expected <= maxIn); // rounding at the edge
+        uint256 walletBefore = nvda.balanceOf(wallet);
+
+        uint256 spent = _pay(owed, slip);
+        assertEq(spent, expected);
+        assertEq(walletBefore - nvda.balanceOf(wallet), spent, "wallet refunded maxIn - spent");
+        assertEq(nvda.balanceOf(address(0xdEaD)), spent, "adapter received exactly spent");
+        assertEq(_session(KEY).spentRawToday, spent);
+        assertEq(credits.credited(KEY), owed);
+        _assertNoLeftovers();
+    }
 }
