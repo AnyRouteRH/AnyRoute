@@ -475,4 +475,91 @@ contract PayWithStockTest is Test {
         assertEq(nvda.balanceOf(wallet), walletBefore);
         assertEq(_session(KEY).spentRawToday, 0);
     }
+
+    // ------------------------------------------------------------------ slippage
+
+    function test_slippageAboveCapReverts() public {
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.SlippageTooHigh.selector);
+        pws.payCall(KEY, 1e6, 301);
+    }
+
+    function test_slippageAtRaisedCap() public {
+        vm.prank(owner);
+        pws.setMaxSlip(1000);
+        primary.setPrice(PRICE18 * 10_000 / 11_000 + 1); // pool 9.09% below fair: needs ~10% slippage
+        _pay(1e6, 1000);
+        assertEq(fallbackAdapter.calls(), 0);
+    }
+
+    function testFuzz_slippageBounds(uint256 owed, uint16 slip, uint256 adapterPrice) public {
+        owed = bound(owed, 1, 1_000e6);
+        slip = uint16(bound(slip, 0, 300));
+        adapterPrice = bound(adapterPrice, PRICE18 / 2, PRICE18 * 2);
+        primary.setPrice(adapterPrice);
+        fallbackAdapter.setMode(MockSwapAdapter.Mode.Revert);
+        vm.prank(wallet);
+        pws.openSession(KEY, address(nvda), type(uint256).max);
+
+        (uint256 maxIn,) = _maxIn(owed, slip);
+        uint256 needed = primary.quoteIn(address(nvda), address(usdg), owed);
+        uint256 walletBefore = nvda.balanceOf(wallet);
+
+        vm.prank(router);
+        if (needed > maxIn) {
+            vm.expectRevert(IPayWithStock.SwapFailed.selector);
+            pws.payCall(KEY, owed, slip);
+            assertEq(nvda.balanceOf(wallet), walletBefore);
+        } else {
+            uint256 spent = pws.payCall(KEY, owed, slip);
+            assertEq(spent, needed);
+            assertLe(spent, maxIn);
+            assertEq(walletBefore - nvda.balanceOf(wallet), spent);
+        }
+        _assertNoLeftovers();
+    }
+
+    // ------------------------------------------------------------------ cap & day rollover
+
+    function test_capCheckedAgainstMaxInRecordsActual() public {
+        (uint256 maxIn, uint256 raw) = _maxIn(5e6, 300);
+        vm.prank(wallet);
+        pws.openSession(KEY, address(nvda), maxIn - 1);
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.CapExceeded.selector);
+        pws.payCall(KEY, 5e6, 300);
+
+        vm.prank(wallet);
+        pws.openSession(KEY, address(nvda), maxIn);
+        uint256 spent = _pay(5e6, 300);
+        assertEq(spent, raw);
+        assertEq(_session(KEY).spentRawToday, raw, "actual, not maxIn");
+        assertEq(pws.remainingToday(KEY), maxIn - raw);
+    }
+
+    function test_dayRollover() public {
+        // spend most of the cap
+        uint256 owed = 1_700e6; // ~9.44 NVDA
+        _pay(owed, 0);
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.CapExceeded.selector);
+        pws.payCall(KEY, owed, 0);
+
+        // one second before midnight: still capped
+        uint256 nextDay = _today() + 1 days;
+        vm.warp(nextDay - 1);
+        feed.setAnswer(180e8);
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.CapExceeded.selector);
+        pws.payCall(KEY, owed, 0);
+
+        // at midnight UTC the window resets
+        vm.warp(nextDay);
+        feed.setAnswer(180e8);
+        assertEq(pws.remainingToday(KEY), CAP);
+        uint256 spent = _pay(owed, 0);
+        IPayWithStock.Session memory s = _session(KEY);
+        assertEq(s.dayStart, nextDay);
+        assertEq(s.spentRawToday, spent);
+    }
 }
