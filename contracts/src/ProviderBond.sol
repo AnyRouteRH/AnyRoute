@@ -124,4 +124,42 @@ contract ProviderBond is IProviderBond, Ownable2Step, ReentrancyGuardTransient {
         emit Bonded(providerId, msg.sender, amount, total);
         usdg.safeTransferFrom(msg.sender, address(this), amount);
     }
+
+    /// @inheritdoc IProviderBond
+    /// @dev Replaces any previous request. The remaining bond must be 0 (full exit) or >= MIN_BOND.
+    /// The requested amount stays in the bond (and slashable) until withdrawn.
+    function requestWithdraw(bytes32 providerId, uint256 amount) external onlyOperator(providerId) {
+        Provider storage p = _providers[providerId];
+        if (p.pendingSlashes != 0) revert SlashPending();
+        if (amount == 0 || amount > p.bond) revert InvalidAmount();
+        uint256 remaining = p.bond - amount;
+        if (remaining != 0 && remaining < MIN_BOND) revert BelowMinimum();
+        uint64 availableAt = uint64(block.timestamp) + WITHDRAW_DELAY;
+        withdrawRequest[providerId] = WithdrawRequest({amount: amount, availableAt: availableAt});
+        emit WithdrawRequested(providerId, amount, availableAt);
+    }
+
+    /// @notice Cancel the pending withdrawal request.
+    function cancelWithdraw(bytes32 providerId) external onlyOperator(providerId) {
+        if (withdrawRequest[providerId].amount == 0) revert NothingToWithdraw();
+        delete withdrawRequest[providerId];
+        emit WithdrawCancelled(providerId);
+    }
+
+    /// @inheritdoc IProviderBond
+    /// @dev Pays min(requested, current bond), since slashes may have reduced the bond meanwhile.
+    function withdraw(bytes32 providerId, address to) external nonReentrant onlyOperator(providerId) {
+        if (to == address(0)) revert ZeroAddress();
+        WithdrawRequest memory req = withdrawRequest[providerId];
+        if (req.amount == 0) revert NothingToWithdraw();
+        if (block.timestamp < req.availableAt) revert NotReady();
+        Provider storage p = _providers[providerId];
+        if (p.pendingSlashes != 0) revert SlashPending();
+        uint256 amount = req.amount < p.bond ? req.amount : p.bond;
+        if (amount == 0) revert NothingToWithdraw();
+        delete withdrawRequest[providerId];
+        p.bond -= amount;
+        emit Withdrawn(providerId, to, amount);
+        usdg.safeTransfer(to, amount);
+    }
 }
