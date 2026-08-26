@@ -162,4 +162,125 @@ contract ProviderBond is IProviderBond, Ownable2Step, ReentrancyGuardTransient {
         emit Withdrawn(providerId, to, amount);
         usdg.safeTransfer(to, amount);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Slashing
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IProviderBond
+    function proposeSlash(bytes32 providerId, Kind kind, uint256 amount, bytes32 evidenceRoot, bool delist)
+        external
+        onlySlasher
+        returns (uint256 slashId)
+    {
+        Provider storage p = _providers[providerId];
+        if (amount == 0 || amount > p.bond) revert InvalidAmount();
+        slashId = ++slashCount;
+        uint64 executableAt = uint64(block.timestamp) + DISPUTE_WINDOW;
+        slashes[slashId] = Slash({
+            providerId: providerId,
+            amount: amount,
+            evidenceRoot: evidenceRoot,
+            disputeHash: bytes32(0),
+            executableAt: executableAt,
+            kind: kind,
+            delist: delist,
+            status: Status.Pending
+        });
+        ++p.pendingSlashes;
+        emit SlashProposed(slashId, providerId, kind, amount, evidenceRoot, executableAt);
+    }
+
+    /// @inheritdoc IProviderBond
+    /// @dev Records the dispute only; it does not block execution. The slasher decides.
+    function disputeSlash(uint256 slashId, bytes32 disputeHash) external {
+        Slash storage s = _pendingSlash(slashId);
+        if (msg.sender != _providers[s.providerId].operator) revert NotOperator();
+        s.disputeHash = disputeHash;
+        emit SlashDisputed(slashId, disputeHash);
+    }
+
+    /// @inheritdoc IProviderBond
+    function cancelSlash(uint256 slashId) external onlySlasher {
+        Slash storage s = _pendingSlash(slashId);
+        s.status = Status.Cancelled;
+        --_providers[s.providerId].pendingSlashes;
+        emit SlashCancelled(slashId);
+    }
+
+    /// @inheritdoc IProviderBond
+    /// @dev Transfers min(amount, current bond) to the refund pool.
+    function executeSlash(uint256 slashId) external onlySlasher nonReentrant {
+        Slash storage s = _pendingSlash(slashId);
+        if (block.timestamp < s.executableAt) revert NotReady();
+        bytes32 providerId = s.providerId;
+        Provider storage p = _providers[providerId];
+        uint256 amount = s.amount < p.bond ? s.amount : p.bond;
+        bool delist = s.delist;
+
+        s.status = Status.Executed;
+        p.bond -= amount;
+        --p.pendingSlashes;
+        if (delist && !p.delisted) {
+            p.delisted = true;
+            emit Delisted(providerId);
+        }
+        emit SlashExecuted(slashId, providerId, amount, delist);
+        if (amount != 0) usdg.safeTransfer(refundPool, amount);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Admin
+    // ---------------------------------------------------------------------------------------------
+
+    /// @notice Set the slasher multisig.
+    function setSlasher(address slasher_) external onlyOwner {
+        if (slasher_ == address(0)) revert ZeroAddress();
+        slasher = slasher_;
+        emit SlasherSet(slasher_);
+    }
+
+    /// @notice Set the refund pool.
+    function setRefundPool(address refundPool_) external onlyOwner {
+        if (refundPool_ == address(0)) revert ZeroAddress();
+        refundPool = refundPool_;
+        emit RefundPoolSet(refundPool_);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Views
+    // ---------------------------------------------------------------------------------------------
+
+    /// @inheritdoc IProviderBond
+    function bondOf(bytes32 providerId) external view returns (uint256) {
+        return _providers[providerId].bond;
+    }
+
+    /// @notice Bond not queued for withdrawal: bond - min(requested, bond).
+    function activeBondOf(bytes32 providerId) external view returns (uint256) {
+        uint256 b = _providers[providerId].bond;
+        uint256 queued = withdrawRequest[providerId].amount;
+        return queued >= b ? 0 : b - queued;
+    }
+
+    /// @inheritdoc IProviderBond
+    function operatorOf(bytes32 providerId) external view returns (address) {
+        return _providers[providerId].operator;
+    }
+
+    /// @inheritdoc IProviderBond
+    function isDelisted(bytes32 providerId) external view returns (bool) {
+        return _providers[providerId].delisted;
+    }
+
+    /// @inheritdoc IProviderBond
+    function pendingSlashes(bytes32 providerId) external view returns (uint256) {
+        return _providers[providerId].pendingSlashes;
+    }
+
+    function _pendingSlash(uint256 slashId) private view returns (Slash storage s) {
+        s = slashes[slashId];
+        if (s.status == Status.None) revert UnknownSlash();
+        if (s.status != Status.Pending) revert AlreadyFinal();
+    }
 }
