@@ -596,4 +596,62 @@ contract ProviderBondTest is Test {
         vm.expectRevert(IProviderBond.AlreadyFinal.selector);
         pb.executeSlash(id);
     }
+
+    function test_executeSlash_reverts() public {
+        _bond(PID, op, MIN);
+        uint256 id = _propose(1, false);
+        vm.warp(T0 + 72 hours);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.NotSlasher.selector);
+        pb.executeSlash(id);
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.UnknownSlash.selector);
+        pb.executeSlash(42);
+    }
+
+    function test_executeSlash_delists() public {
+        _bond(PID, op, MIN);
+        uint256 id1 = _propose(1_000e6, true);
+        uint256 id2 = _propose(1_000e6, true);
+        vm.warp(T0 + 72 hours);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.Delisted(PID);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlashExecuted(id1, PID, 1_000e6, true);
+        _execute(id1);
+        assertTrue(pb.isDelisted(PID));
+
+        // second delisting slash does not re-emit Delisted
+        vm.recordLogs();
+        _execute(id2);
+        assertEq(vm.getRecordedLogs().length, 2); // ERC20 Transfer + SlashExecuted
+        assertEq(pb.bondOf(PID), 8_000e6);
+    }
+
+    function test_executeSlash_capsAtBond() public {
+        _bond(PID, op, MIN);
+        uint256 id1 = _propose(7_000e6, false);
+        uint256 id2 = _propose(7_000e6, false);
+        vm.warp(T0 + 72 hours);
+        _execute(id1);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlashExecuted(id2, PID, 3_000e6, false);
+        _execute(id2);
+        assertEq(pb.bondOf(PID), 0);
+        assertEq(usdg.balanceOf(refundPool), MIN);
+        assertEq(pb.pendingSlashes(PID), 0);
+    }
+
+    function test_executeSlash_zeroWhenBondEmpty() public {
+        _bond(PID, op, MIN);
+        uint256 id1 = _propose(MIN, false);
+        uint256 id2 = _propose(MIN, false);
+        vm.warp(T0 + 72 hours);
+        _execute(id1);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlashExecuted(id2, PID, 0, false);
+        _execute(id2);
+        assertEq(usdg.balanceOf(refundPool), MIN);
+        assertEq(uint8(_status(id2)), uint8(ProviderBond.Status.Executed));
+    }
 }
