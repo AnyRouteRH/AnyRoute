@@ -94,4 +94,85 @@ contract ProviderBondTest is Test {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
         new ProviderBond(IERC20(address(usdg)), address(0), slasher, refundPool);
     }
+
+    // --- bond ----------------------------------------------------------------------------------
+
+    function test_bond_firstRegistersOperator() public {
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.Bonded(PID, op, MIN, MIN);
+        _bond(PID, op, MIN);
+        assertEq(pb.operatorOf(PID), op);
+        assertEq(pb.bondOf(PID), MIN);
+        assertEq(pb.activeBondOf(PID), MIN);
+        assertEq(usdg.balanceOf(address(pb)), MIN);
+        assertFalse(pb.isDelisted(PID));
+        assertEq(pb.pendingSlashes(PID), 0);
+    }
+
+    function test_bond_revertsBelowMinimumFirst() public {
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.BelowMinimum.selector);
+        pb.bond(PID, MIN - 1);
+        assertEq(pb.operatorOf(PID), address(0));
+    }
+
+    function test_bond_revertsZeroProviderId() public {
+        vm.prank(op);
+        vm.expectRevert(ProviderBond.InvalidProvider.selector);
+        pb.bond(bytes32(0), MIN);
+    }
+
+    function test_bond_revertsZeroAmount() public {
+        vm.prank(op);
+        vm.expectRevert(ProviderBond.InvalidAmount.selector);
+        pb.bond(PID, 0);
+    }
+
+    function test_bond_revertsWithoutAllowance() public {
+        address poor = makeAddr("poor");
+        usdg.mint(poor, MIN);
+        vm.prank(poor);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(pb), 0, MIN)
+        );
+        pb.bond(PID, MIN);
+    }
+
+    function test_bond_topUpByOperator() public {
+        _bond(PID, op, MIN);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.Bonded(PID, op, 1, MIN + 1);
+        _bond(PID, op, 1);
+        assertEq(pb.bondOf(PID), MIN + 1);
+    }
+
+    function test_bond_topUpRevertsNotOperator() public {
+        _bond(PID, op, MIN);
+        vm.prank(op2);
+        vm.expectRevert(IProviderBond.NotOperator.selector);
+        pb.bond(PID, MIN);
+    }
+
+    function test_bond_topUpAfterSlashMustReachMinimum() public {
+        _bond(PID, op, MIN);
+        uint256 id = _propose(4_000e6, false);
+        vm.warp(T0 + 72 hours);
+        _execute(id);
+        assertEq(pb.bondOf(PID), 6_000e6);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.BelowMinimum.selector);
+        pb.bond(PID, 3_999e6);
+        _bond(PID, op, 4_000e6);
+        assertEq(pb.bondOf(PID), MIN);
+    }
+
+    function test_bond_revertsDelisted() public {
+        _bond(PID, op, MIN);
+        uint256 id = _propose(1e6, true);
+        vm.warp(T0 + 72 hours);
+        _execute(id);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.ProviderDelisted.selector);
+        pb.bond(PID, MIN);
+    }
 }
