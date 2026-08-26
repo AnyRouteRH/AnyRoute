@@ -365,4 +365,114 @@ contract PayWithStockTest is Test {
         vm.expectRevert(IPayWithStock.OracleNotOk.selector);
         pws.quoteRaw(address(nvda), 1e6);
     }
+
+    function testFuzz_quoteRawMath(uint256 decSeed, uint256 answer, uint256 mult, uint256 usdgOwed) public {
+        uint8[3] memory decs = [uint8(6), uint8(8), uint8(18)];
+        uint8 dec = decs[decSeed % 3];
+        answer = bound(answer, 1e2, 1e14); // $0.000001 .. $1,000,000 (8-dec feed)
+        mult = bound(mult, 0.01e18, 100e18);
+        usdgOwed = bound(usdgOwed, 1, 1e12); // up to $1M
+
+        MockStockToken t = new MockStockToken("T", "T", dec);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        MockAggregator f = new MockAggregator(8, int256(answer), "T/USD"); // answer bounded to 1e14
+        t.setUiMultiplier(mult);
+        vm.prank(owner);
+        oracle.setFeed(address(t), f, 1 hours, true);
+
+        (uint256 raw, uint256 price) = pws.quoteRaw(address(t), usdgOwed);
+        (uint256 oraclePrice,) = oracle.fairPrice(address(t));
+        assertEq(price, oraclePrice);
+        assertEq(price, answer * 1e10 * mult / 1e18);
+
+        // raw is the ceiling of usdgOwed * 10^dec * 1e18 / (price * 1e6)
+        uint256 need = usdgOwed * 10 ** dec * 1e18;
+        assertGe(raw * price * 1e6, need, "raw too small");
+        assertLt((raw - 1) * price * 1e6, need, "raw not minimal");
+    }
+
+    // ------------------------------------------------------------------ payCall: happy path
+
+    function test_payCallHappyPath() public {
+        uint256 owed = 5e6;
+        uint16 slip = 100;
+        (uint256 maxIn, uint256 raw) = _maxIn(owed, slip);
+        uint256 walletBefore = nvda.balanceOf(wallet);
+
+        vm.expectEmit(true, true, false, true);
+        emit IPayWithStock.PaidWithStock(KEY, address(nvda), raw, PRICE18, owed);
+        uint256 spent = _pay(owed, slip);
+
+        assertEq(spent, raw, "adapter at fair price spends exactly rawNeeded");
+        assertLt(spent, maxIn);
+        assertEq(walletBefore - nvda.balanceOf(wallet), spent, "wallet charged rawSpent only");
+        assertEq(credits.credited(KEY), owed);
+        assertEq(usdg.balanceOf(address(credits)), owed);
+        assertEq(_session(KEY).spentRawToday, spent, "actual spend recorded");
+        assertEq(nvda.balanceOf(address(primary)), 0, "adapter keeps nothing");
+        assertEq(fallbackAdapter.calls(), 0);
+        _assertNoLeftovers();
+    }
+
+    function test_payCallOnlyRouter() public {
+        vm.prank(other);
+        vm.expectRevert(IPayWithStock.NotRouter.selector);
+        pws.payCall(KEY, 1e6, 100);
+    }
+
+    function test_payCallZeroAmount() public {
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.InvalidAmount.selector);
+        pws.payCall(KEY, 0, 100);
+    }
+
+    function test_payCallNoSession() public {
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.NoSession.selector);
+        pws.payCall(keccak256("nope"), 1e6, 100);
+    }
+
+    function test_payCallTokenDisabled() public {
+        vm.prank(owner);
+        pws.registerToken(address(nvda), address(primary), address(0), false);
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.TokenNotEnabled.selector);
+        pws.payCall(KEY, 1e6, 100);
+    }
+
+    function test_payCallOracleNotOk() public {
+        vm.prank(owner);
+        oracle.pause(address(nvda));
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.OracleNotOk.selector);
+        pws.payCall(KEY, 1e6, 100);
+    }
+
+    function test_payCallOracleStale() public {
+        vm.warp(block.timestamp + 1 hours + 1);
+        vm.prank(router);
+        vm.expectRevert(IPayWithStock.OracleNotOk.selector);
+        pws.payCall(KEY, 1e6, 100);
+    }
+
+    function test_payCallWithoutAllowanceReverts() public {
+        vm.prank(wallet);
+        nvda.approve(address(pws), 0);
+        (uint256 maxIn,) = _maxIn(1e6, 100);
+        vm.prank(router);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(pws), 0, maxIn)
+        );
+        pws.payCall(KEY, 1e6, 100);
+    }
+
+    function test_payCallCreditsRevertIsAtomic() public {
+        credits.setShouldRevert(true);
+        uint256 walletBefore = nvda.balanceOf(wallet);
+        vm.prank(router);
+        vm.expectRevert(MockCredits.MockCreditsReverted.selector);
+        pws.payCall(KEY, 1e6, 100);
+        assertEq(nvda.balanceOf(wallet), walletBefore);
+        assertEq(_session(KEY).spentRawToday, 0);
+    }
 }
