@@ -288,4 +288,102 @@ contract ProviderBondTest is Test {
         assertEq(at, 0);
         assertEq(pb.activeBondOf(PID), MIN);
     }
+
+    function test_cancelWithdraw_reverts() public {
+        _bond(PID, op, MIN);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.NothingToWithdraw.selector);
+        pb.cancelWithdraw(PID);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        vm.prank(rando);
+        vm.expectRevert(IProviderBond.NotOperator.selector);
+        pb.cancelWithdraw(PID);
+    }
+
+    // --- withdraw ------------------------------------------------------------------------------
+
+    function test_withdraw_afterDelay() public {
+        _bond(PID, op, 3 * MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+
+        vm.warp(T0 + 14 days - 1);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.NotReady.selector);
+        pb.withdraw(PID, payout);
+
+        vm.warp(T0 + 14 days);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.Withdrawn(PID, payout, MIN);
+        vm.prank(op);
+        pb.withdraw(PID, payout);
+        assertEq(usdg.balanceOf(payout), MIN);
+        assertEq(pb.bondOf(PID), 2 * MIN);
+        (uint256 amt,) = pb.withdrawRequest(PID);
+        assertEq(amt, 0);
+
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.NothingToWithdraw.selector);
+        pb.withdraw(PID, payout);
+    }
+
+    function test_withdraw_fullExitThenRebond() public {
+        _bond(PID, op, MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        vm.warp(T0 + 14 days);
+        vm.prank(op);
+        pb.withdraw(PID, op);
+        assertEq(pb.bondOf(PID), 0);
+        assertEq(pb.operatorOf(PID), op);
+        vm.prank(op2);
+        vm.expectRevert(IProviderBond.NotOperator.selector);
+        pb.bond(PID, MIN);
+        _bond(PID, op, MIN);
+        assertEq(pb.bondOf(PID), MIN);
+    }
+
+    function test_withdraw_revertsNotOperator() public {
+        _bond(PID, op, MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        vm.warp(T0 + 14 days);
+        vm.prank(rando);
+        vm.expectRevert(IProviderBond.NotOperator.selector);
+        pb.withdraw(PID, rando);
+    }
+
+    function test_withdraw_revertsZeroTo() public {
+        _bond(PID, op, MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        vm.warp(T0 + 14 days);
+        vm.prank(op);
+        vm.expectRevert(ProviderBond.ZeroAddress.selector);
+        pb.withdraw(PID, address(0));
+    }
+
+    function test_withdraw_revertsNoRequest() public {
+        _bond(PID, op, MIN);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.NothingToWithdraw.selector);
+        pb.withdraw(PID, op);
+    }
+
+    function test_withdraw_revertsSlashPending_thenCancelledUnblocks() public {
+        _bond(PID, op, MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        uint256 id = _propose(1e6, false);
+        vm.warp(T0 + 14 days);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.SlashPending.selector);
+        pb.withdraw(PID, op);
+        vm.prank(slasher);
+        pb.cancelSlash(id);
+        vm.prank(op);
+        pb.withdraw(PID, op);
+        assertEq(pb.bondOf(PID), 0);
+    }
 }
