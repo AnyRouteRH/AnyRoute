@@ -190,4 +190,94 @@ contract PayWithStockTest is Test {
         pws.rescue(IERC20(address(nvda)), other, 1);
         vm.stopPrank();
     }
+
+    function test_setters() public {
+        vm.startPrank(owner);
+        vm.expectEmit(true, false, false, false);
+        emit IPayWithStock.RouterSet(other);
+        pws.setRouter(other);
+        assertEq(pws.router(), other);
+
+        vm.expectEmit(true, false, false, false);
+        emit IPayWithStock.OracleSet(other);
+        pws.setOracle(IStockOracle(other));
+        assertEq(address(pws.oracle()), other);
+
+        vm.expectEmit(false, false, false, true);
+        emit IPayWithStock.MaxSlipSet(1000);
+        pws.setMaxSlip(1000);
+        assertEq(pws.maxSlipCapBps(), 1000);
+
+        vm.expectRevert(IPayWithStock.SlippageTooHigh.selector);
+        pws.setMaxSlip(1001);
+        vm.expectRevert(PayWithStock.ZeroAddress.selector);
+        pws.setRouter(address(0));
+        vm.expectRevert(PayWithStock.ZeroAddress.selector);
+        pws.setOracle(IStockOracle(address(0)));
+        vm.stopPrank();
+    }
+
+    function test_rescue() public {
+        nvda.mint(address(pws), 5);
+        vm.prank(owner);
+        pws.rescue(IERC20(address(nvda)), owner, 5);
+        assertEq(nvda.balanceOf(owner), 5);
+    }
+
+    // ------------------------------------------------------------------ sessions
+
+    function test_openSessionState() public view {
+        IPayWithStock.Session memory s = _session(KEY);
+        assertEq(s.wallet, wallet);
+        assertEq(s.token, address(nvda));
+        assertEq(s.capRawPerDay, CAP);
+        assertEq(s.spentRawToday, 0);
+        assertEq(s.dayStart, _today());
+        assertTrue(s.active);
+        assertEq(pws.remainingToday(KEY), CAP);
+    }
+
+    function test_openSessionEmits() public {
+        vm.expectEmit(true, true, true, true);
+        emit IPayWithStock.SessionOpened(keccak256("k2"), other, address(nvda), 7);
+        vm.prank(other);
+        pws.openSession(keccak256("k2"), address(nvda), 7);
+    }
+
+    function test_openSessionWithPermit() public {
+        (address permitWallet, uint256 pk) = makeAddrAndKey("permitWallet");
+        bytes32 key2 = keccak256("k-permit");
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+                ),
+                permitWallet,
+                address(pws),
+                5e18,
+                nvda.nonces(permitWallet),
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", nvda.DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+
+        // a front-run permit must not grief the session opening
+        nvda.permit(permitWallet, address(pws), 5e18, deadline, v, r, s);
+        vm.prank(permitWallet);
+        pws.openSessionWithPermit(key2, address(nvda), 5e18, 5e18, deadline, v, r, s);
+        assertEq(nvda.allowance(permitWallet, address(pws)), 5e18);
+        assertEq(_session(key2).wallet, permitWallet);
+        assertTrue(_session(key2).active);
+    }
+
+    function test_openSessionValidation() public {
+        vm.startPrank(wallet);
+        vm.expectRevert(IPayWithStock.TokenNotEnabled.selector);
+        pws.openSession(KEY, address(usdg), 1);
+        vm.expectRevert(IPayWithStock.InvalidAmount.selector);
+        pws.openSession(KEY, address(nvda), 0);
+        vm.stopPrank();
+    }
 }
