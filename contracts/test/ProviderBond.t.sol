@@ -495,4 +495,105 @@ contract ProviderBondTest is Test {
         pb.proposeSlash(PID2, IProviderBond.Kind.Other, 1, EVIDENCE, false); // unknown provider
         vm.stopPrank();
     }
+
+    // --- disputeSlash --------------------------------------------------------------------------
+
+    function test_disputeSlash_recordsButDoesNotBlock() public {
+        _bond(PID, op, MIN);
+        uint256 id = _propose(1_000e6, false);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlashDisputed(id, keccak256("counter-evidence"));
+        vm.prank(op);
+        pb.disputeSlash(id, keccak256("counter-evidence"));
+        (,,, bytes32 dispute,,,,) = pb.slashes(id);
+        assertEq(dispute, keccak256("counter-evidence"));
+        vm.warp(T0 + 72 hours);
+        _execute(id);
+        assertEq(pb.bondOf(PID), 9_000e6);
+    }
+
+    function test_disputeSlash_reverts() public {
+        _bond(PID, op, MIN);
+        _bond(PID2, op2, MIN);
+        uint256 id = _propose(1, false);
+        vm.prank(op2); // operator of another provider
+        vm.expectRevert(IProviderBond.NotOperator.selector);
+        pb.disputeSlash(id, bytes32(uint256(1)));
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.NotOperator.selector);
+        pb.disputeSlash(id, bytes32(uint256(1)));
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.UnknownSlash.selector);
+        pb.disputeSlash(99, bytes32(uint256(1)));
+        vm.prank(slasher);
+        pb.cancelSlash(id);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.AlreadyFinal.selector);
+        pb.disputeSlash(id, bytes32(uint256(1)));
+    }
+
+    // --- cancelSlash ---------------------------------------------------------------------------
+
+    function test_cancelSlash() public {
+        _bond(PID, op, MIN);
+        uint256 id = _propose(1_000e6, false);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlashCancelled(id);
+        vm.prank(slasher);
+        pb.cancelSlash(id);
+        assertEq(uint8(_status(id)), uint8(ProviderBond.Status.Cancelled));
+        assertEq(pb.pendingSlashes(PID), 0);
+        assertEq(pb.bondOf(PID), MIN);
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.AlreadyFinal.selector);
+        pb.cancelSlash(id);
+        vm.warp(T0 + 72 hours);
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.AlreadyFinal.selector);
+        pb.executeSlash(id);
+    }
+
+    function test_cancelSlash_reverts() public {
+        _bond(PID, op, MIN);
+        uint256 id = _propose(1, false);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.NotSlasher.selector);
+        pb.cancelSlash(id);
+        vm.startPrank(slasher);
+        vm.expectRevert(IProviderBond.UnknownSlash.selector);
+        pb.cancelSlash(0);
+        vm.expectRevert(IProviderBond.UnknownSlash.selector);
+        pb.cancelSlash(2);
+        vm.stopPrank();
+        vm.warp(T0 + 72 hours);
+        _execute(id);
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.AlreadyFinal.selector);
+        pb.cancelSlash(id);
+    }
+
+    // --- executeSlash --------------------------------------------------------------------------
+
+    function test_executeSlash() public {
+        _bond(PID, op, 2 * MIN);
+        uint256 id = _propose(3_000e6, false);
+        vm.warp(T0 + 72 hours - 1);
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.NotReady.selector);
+        pb.executeSlash(id);
+
+        vm.warp(T0 + 72 hours);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlashExecuted(id, PID, 3_000e6, false);
+        _execute(id);
+        assertEq(usdg.balanceOf(refundPool), 3_000e6);
+        assertEq(pb.bondOf(PID), 17_000e6);
+        assertEq(pb.pendingSlashes(PID), 0);
+        assertFalse(pb.isDelisted(PID));
+        assertEq(uint8(_status(id)), uint8(ProviderBond.Status.Executed));
+
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.AlreadyFinal.selector);
+        pb.executeSlash(id);
+    }
 }
