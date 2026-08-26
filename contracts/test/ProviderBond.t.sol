@@ -386,4 +386,113 @@ contract ProviderBondTest is Test {
         pb.withdraw(PID, op);
         assertEq(pb.bondOf(PID), 0);
     }
+
+    function test_withdraw_afterSlashPaysMin() public {
+        _bond(PID, op, 2 * MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, 2 * MIN);
+        uint256 id = _propose(8_000e6, false); // locked amount is still slashable
+        vm.warp(T0 + 72 hours);
+        _execute(id);
+        vm.warp(T0 + 14 days);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.Withdrawn(PID, payout, 12_000e6);
+        vm.prank(op);
+        pb.withdraw(PID, payout);
+        assertEq(usdg.balanceOf(payout), 12_000e6);
+        assertEq(usdg.balanceOf(refundPool), 8_000e6);
+        assertEq(pb.bondOf(PID), 0);
+        assertEq(usdg.balanceOf(address(pb)), 0);
+    }
+
+    function test_withdraw_revertsWhenSlashedToZero() public {
+        _bond(PID, op, MIN);
+        vm.prank(op);
+        pb.requestWithdraw(PID, MIN);
+        uint256 id = _propose(MIN, false);
+        vm.warp(T0 + 72 hours);
+        _execute(id);
+        vm.warp(T0 + 14 days);
+        vm.prank(op);
+        vm.expectRevert(IProviderBond.NothingToWithdraw.selector);
+        pb.withdraw(PID, op);
+        // operator can clear the stale request
+        vm.prank(op);
+        pb.cancelWithdraw(PID);
+    }
+
+    function test_withdraw_delistedCanWithdrawRemainder() public {
+        _bond(PID, op, 2 * MIN);
+        uint256 id = _propose(5_000e6, true);
+        vm.warp(T0 + 72 hours);
+        _execute(id);
+        assertTrue(pb.isDelisted(PID));
+        vm.prank(op);
+        pb.requestWithdraw(PID, 15_000e6);
+        vm.warp(T0 + 72 hours + 14 days);
+        vm.prank(op);
+        pb.withdraw(PID, payout);
+        assertEq(usdg.balanceOf(payout), 15_000e6);
+        assertEq(pb.bondOf(PID), 0);
+    }
+
+    // --- proposeSlash --------------------------------------------------------------------------
+
+    function test_proposeSlash() public {
+        _bond(PID, op, MIN);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlashProposed(1, PID, IProviderBond.Kind.Uptime, 500e6, EVIDENCE, T0 + 72 hours);
+        vm.prank(slasher);
+        uint256 id = pb.proposeSlash(PID, IProviderBond.Kind.Uptime, 500e6, EVIDENCE, true);
+        assertEq(id, 1);
+        assertEq(pb.slashCount(), 1);
+        assertEq(pb.pendingSlashes(PID), 1);
+        (
+            bytes32 pid,
+            uint256 amount,
+            bytes32 evidence,
+            bytes32 dispute,
+            uint64 executableAt,
+            IProviderBond.Kind kind,
+            bool delist,
+            ProviderBond.Status status
+        ) = pb.slashes(id);
+        assertEq(pid, PID);
+        assertEq(amount, 500e6);
+        assertEq(evidence, EVIDENCE);
+        assertEq(dispute, bytes32(0));
+        assertEq(executableAt, T0 + 72 hours);
+        assertEq(uint8(kind), uint8(IProviderBond.Kind.Uptime));
+        assertTrue(delist);
+        assertEq(uint8(status), uint8(ProviderBond.Status.Pending));
+        // proposing does not move funds
+        assertEq(pb.bondOf(PID), MIN);
+    }
+
+    function test_proposeSlash_sequentialIds() public {
+        _bond(PID, op, MIN);
+        assertEq(_propose(1, false), 1);
+        assertEq(_propose(1, false), 2);
+        assertEq(_propose(1, false), 3);
+        assertEq(pb.pendingSlashes(PID), 3);
+    }
+
+    function test_proposeSlash_revertsNotSlasher() public {
+        _bond(PID, op, MIN);
+        vm.prank(owner);
+        vm.expectRevert(IProviderBond.NotSlasher.selector);
+        pb.proposeSlash(PID, IProviderBond.Kind.Other, 1, EVIDENCE, false);
+    }
+
+    function test_proposeSlash_revertsInvalidAmount() public {
+        _bond(PID, op, MIN);
+        vm.startPrank(slasher);
+        vm.expectRevert(ProviderBond.InvalidAmount.selector);
+        pb.proposeSlash(PID, IProviderBond.Kind.Other, 0, EVIDENCE, false);
+        vm.expectRevert(ProviderBond.InvalidAmount.selector);
+        pb.proposeSlash(PID, IProviderBond.Kind.Other, MIN + 1, EVIDENCE, false);
+        vm.expectRevert(ProviderBond.InvalidAmount.selector);
+        pb.proposeSlash(PID2, IProviderBond.Kind.Other, 1, EVIDENCE, false); // unknown provider
+        vm.stopPrank();
+    }
 }
