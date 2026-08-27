@@ -57,4 +57,64 @@ contract Royalty is IRoyalty, Ownable2Step, ReentrancyGuardTransient {
         emit RegistrarSet(registrar_);
         emit SettlementSet(settlement_);
     }
+
+    /// @inheritdoc IRoyalty
+    /// @dev Re-registering an existing model updates creator and bps; USDG already accrued stays
+    /// claimable by the previous creator.
+    function register(bytes32 modelId, address creator, uint16 bps) external {
+        if (msg.sender != registrar) revert NotRegistrar();
+        if (creator == address(0)) revert ZeroAddress();
+        if (bps > MAX_BPS) revert BpsTooHigh();
+        Model storage m = models[modelId];
+        m.creator = creator;
+        m.bps = bps;
+        emit Registered(modelId, creator, bps);
+    }
+
+    /// @inheritdoc IRoyalty
+    function transferCreator(bytes32 modelId, address newCreator) external {
+        Model storage m = models[modelId];
+        if (m.creator == address(0)) revert UnknownModel();
+        if (msg.sender != m.creator) revert NotCreator();
+        if (newCreator == address(0)) revert ZeroAddress();
+        m.creator = newCreator;
+        emit CreatorUpdated(modelId, newCreator);
+    }
+
+    /// @inheritdoc IRoyalty
+    function stream(bytes32 modelId, uint256 amount) external nonReentrant {
+        if (msg.sender != settlement) revert NotSettlement();
+        if (amount == 0) revert InvalidAmount();
+        Model storage m = models[modelId];
+        address creator = m.creator;
+        if (creator == address(0)) revert UnknownModel();
+        m.totalStreamed += amount;
+        claimable[creator] += amount;
+        emit Streamed(modelId, creator, amount);
+        usdg.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    /// @inheritdoc IRoyalty
+    function claim(address to) external nonReentrant returns (uint256 amount) {
+        if (to == address(0)) revert ZeroAddress();
+        amount = claimable[msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        claimable[msg.sender] = 0;
+        emit Claimed(msg.sender, to, amount);
+        usdg.safeTransfer(to, amount);
+    }
+
+    /// @notice Set the registrar.
+    function setRegistrar(address registrar_) external onlyOwner {
+        if (registrar_ == address(0)) revert ZeroAddress();
+        registrar = registrar_;
+        emit RegistrarSet(registrar_);
+    }
+
+    /// @notice Set the settlement address.
+    function setSettlement(address settlement_) external onlyOwner {
+        if (settlement_ == address(0)) revert ZeroAddress();
+        settlement = settlement_;
+        emit SettlementSet(settlement_);
+    }
 }
