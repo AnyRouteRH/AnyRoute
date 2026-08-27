@@ -238,4 +238,108 @@ contract RoyaltyTest is Test {
         assertEq(t1, 1e6);
         assertEq(t2, 2e6);
     }
+
+    // --- claim ---------------------------------------------------------------------------------
+
+    function test_claim() public {
+        _register(M1, creator, 1000);
+        _stream(M1, 42e6);
+        vm.expectEmit(true, true, true, true, address(royalty));
+        emit IRoyalty.Claimed(creator, sink, 42e6);
+        vm.prank(creator);
+        uint256 out = royalty.claim(sink);
+        assertEq(out, 42e6);
+        assertEq(usdg.balanceOf(sink), 42e6);
+        assertEq(royalty.claimable(creator), 0);
+        assertEq(usdg.balanceOf(address(royalty)), 0);
+        vm.prank(creator);
+        vm.expectRevert(IRoyalty.NothingToClaim.selector);
+        royalty.claim(sink);
+    }
+
+    function test_claim_revertsNothing() public {
+        vm.prank(creator);
+        vm.expectRevert(IRoyalty.NothingToClaim.selector);
+        royalty.claim(creator);
+    }
+
+    function test_claim_revertsZeroTo() public {
+        _register(M1, creator, 1000);
+        _stream(M1, 1e6);
+        vm.prank(creator);
+        vm.expectRevert(Royalty.ZeroAddress.selector);
+        royalty.claim(address(0));
+    }
+
+    function testFuzz_streamAndClaim(uint96[4] memory amts, uint8 claimMask) public {
+        _register(M1, creator, 1000);
+        _register(M2, creator2, 1000);
+        uint256 c1;
+        uint256 c2;
+        for (uint256 i; i < 4; ++i) {
+            uint256 a = bound(amts[i], 1, 1_000_000e6);
+            if (i % 2 == 0) {
+                _stream(M1, a);
+                c1 += a;
+            } else {
+                _stream(M2, a);
+                c2 += a;
+            }
+            if ((uint256(claimMask) >> i) & 1 == 1) {
+                address who = i % 2 == 0 ? creator : creator2;
+                vm.prank(who);
+                royalty.claim(who);
+            }
+        }
+        assertEq(usdg.balanceOf(creator) + royalty.claimable(creator), c1);
+        assertEq(usdg.balanceOf(creator2) + royalty.claimable(creator2), c2);
+        assertEq(usdg.balanceOf(address(royalty)), royalty.claimable(creator) + royalty.claimable(creator2));
+    }
+
+    // --- admin ---------------------------------------------------------------------------------
+
+    function test_setRegistrar() public {
+        address r2 = makeAddr("r2");
+        vm.expectEmit(true, true, true, true, address(royalty));
+        emit Royalty.RegistrarSet(r2);
+        vm.prank(owner);
+        royalty.setRegistrar(r2);
+        assertEq(royalty.registrar(), r2);
+        vm.prank(registrar);
+        vm.expectRevert(IRoyalty.NotRegistrar.selector);
+        royalty.register(M1, creator, 1);
+        vm.prank(r2);
+        royalty.register(M1, creator, 1);
+    }
+
+    function test_setSettlement() public {
+        address s2 = makeAddr("s2");
+        vm.expectEmit(true, true, true, true, address(royalty));
+        emit Royalty.SettlementSet(s2);
+        vm.prank(owner);
+        royalty.setSettlement(s2);
+        assertEq(royalty.settlement(), s2);
+        _register(M1, creator, 1);
+        vm.prank(settlement);
+        vm.expectRevert(IRoyalty.NotSettlement.selector);
+        royalty.stream(M1, 1);
+    }
+
+    function test_setters_onlyOwner() public {
+        vm.startPrank(registrar);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, registrar));
+        royalty.setRegistrar(registrar);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, registrar));
+        royalty.setSettlement(registrar);
+        vm.stopPrank();
+    }
+
+    function test_setters_revertZero() public {
+        vm.startPrank(owner);
+        vm.expectRevert(Royalty.ZeroAddress.selector);
+        royalty.setRegistrar(address(0));
+        vm.expectRevert(Royalty.ZeroAddress.selector);
+        royalty.setSettlement(address(0));
+        vm.stopPrank();
+    }
 }
