@@ -86,4 +86,104 @@ contract ReceiptAnchorTest is Test {
         vm.stopPrank();
         assertEq(ra.anchorCount(), 2);
     }
+
+    function test_anchor_pointWindowOk() public {
+        vm.prank(anchorer);
+        ra.anchor(keccak256("r0"), T0, T0, 0);
+        vm.prank(anchorer);
+        ra.anchor(keccak256("r1"), T0, T0, 0); // starts exactly where the previous ended
+        assertEq(ra.anchorCount(), 2);
+    }
+
+    function test_anchor_revertsNotAnchorer() public {
+        vm.prank(owner);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.anchor(keccak256("r"), T0 - 1, T0, 1);
+        vm.prank(rando);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.anchor(keccak256("r"), T0 - 1, T0, 1);
+    }
+
+    function test_anchor_revertsEmptyRoot() public {
+        vm.prank(anchorer);
+        vm.expectRevert(IReceiptAnchor.EmptyRoot.selector);
+        ra.anchor(bytes32(0), T0 - 1, T0, 1);
+    }
+
+    function test_anchor_revertsFromAfterTo() public {
+        vm.prank(anchorer);
+        vm.expectRevert(ReceiptAnchor.InvalidWindow.selector);
+        ra.anchor(keccak256("r"), T0, T0 - 1, 1);
+    }
+
+    function test_anchor_revertsFutureWindow() public {
+        vm.prank(anchorer);
+        vm.expectRevert(ReceiptAnchor.InvalidWindow.selector);
+        ra.anchor(keccak256("r"), T0, T0 + 1, 1);
+    }
+
+    function test_anchor_revertsOverlap() public {
+        vm.prank(anchorer);
+        ra.anchor(keccak256("r0"), T0 - 3600, T0 - 100, 1);
+        vm.prank(anchorer);
+        vm.expectRevert(IReceiptAnchor.OutOfOrder.selector);
+        ra.anchor(keccak256("r1"), T0 - 101, T0, 1);
+    }
+
+    function test_anchor_revertsBackwards() public {
+        vm.prank(anchorer);
+        ra.anchor(keccak256("r0"), T0 - 100, T0, 1);
+        vm.prank(anchorer);
+        vm.expectRevert(IReceiptAnchor.OutOfOrder.selector);
+        ra.anchor(keccak256("r1"), T0 - 3600, T0 - 3000, 1);
+    }
+
+    function testFuzz_anchor_sequence(uint32[6] memory lens, uint32[6] memory gaps) public {
+        uint64 t = T0;
+        vm.warp(T0 + 400 days);
+        for (uint256 i; i < 6; ++i) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint64 fromTs = t + uint64(bound(gaps[i], 0, 1 days));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint64 toTs = fromTs + uint64(bound(lens[i], 0, 1 days));
+            vm.prank(anchorer);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 idx = ra.anchor(bytes32(i + 1), fromTs, toTs, uint32(i));
+            assertEq(idx, i);
+            t = toTs;
+        }
+        assertEq(ra.anchorCount(), 6);
+    }
+
+    // --- verify --------------------------------------------------------------------------------
+
+    function test_verify_allLeaves() public {
+        bytes32[] memory leaves = _leaves(13, 1);
+        vm.prank(anchorer);
+        uint256 idx = ra.anchor(Merkle.getRoot(leaves), T0 - 3600, T0, 13);
+        for (uint256 i; i < leaves.length; ++i) {
+            assertTrue(ra.verify(leaves[i], Merkle.getProof(leaves, i), idx));
+        }
+    }
+
+    function test_verify_falseForWrongIndex() public {
+        bytes32[] memory a = _leaves(4, 1);
+        bytes32[] memory b = _leaves(4, 2);
+        vm.startPrank(anchorer);
+        ra.anchor(Merkle.getRoot(a), T0 - 7200, T0 - 3600, 4);
+        ra.anchor(Merkle.getRoot(b), T0 - 3600, T0, 4);
+        vm.stopPrank();
+        assertTrue(ra.verify(a[2], Merkle.getProof(a, 2), 0));
+        assertFalse(ra.verify(a[2], Merkle.getProof(a, 2), 1));
+        assertTrue(ra.verify(b[3], Merkle.getProof(b, 3), 1));
+    }
+
+    function test_verify_falseForUnknownIndex_neverReverts() public {
+        bytes32[] memory a = _leaves(4, 1);
+        assertFalse(ra.verify(a[0], Merkle.getProof(a, 0), 0));
+        vm.prank(anchorer);
+        ra.anchor(Merkle.getRoot(a), T0 - 1, T0, 4);
+        assertFalse(ra.verify(a[0], Merkle.getProof(a, 0), 1));
+        assertFalse(ra.verify(a[0], Merkle.getProof(a, 0), type(uint256).max));
+    }
 }
