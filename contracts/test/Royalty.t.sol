@@ -80,4 +80,86 @@ contract RoyaltyTest is Test {
         assertEq(bps, 1500);
         assertEq(total, 0);
     }
+
+    function test_register_maxBpsOk() public {
+        _register(M1, creator, 2000);
+        (, uint16 bps,) = royalty.models(M1);
+        assertEq(bps, 2000);
+    }
+
+    function test_register_zeroBpsOk() public {
+        _register(M1, creator, 0);
+        (address c,,) = royalty.models(M1);
+        assertEq(c, creator);
+    }
+
+    function test_register_revertsBpsTooHigh() public {
+        vm.prank(registrar);
+        vm.expectRevert(IRoyalty.BpsTooHigh.selector);
+        royalty.register(M1, creator, 2001);
+    }
+
+    function test_register_revertsNotRegistrar() public {
+        vm.prank(owner);
+        vm.expectRevert(IRoyalty.NotRegistrar.selector);
+        royalty.register(M1, creator, 100);
+    }
+
+    function test_register_revertsZeroCreator() public {
+        vm.prank(registrar);
+        vm.expectRevert(Royalty.ZeroAddress.selector);
+        royalty.register(M1, address(0), 100);
+    }
+
+    function test_register_reRegisterUpdatesAndKeepsTotals() public {
+        _register(M1, creator, 1000);
+        _stream(M1, 100e6);
+        vm.expectEmit(true, true, true, true, address(royalty));
+        emit IRoyalty.Registered(M1, creator2, 500);
+        _register(M1, creator2, 500);
+        (address c, uint16 bps, uint256 total) = royalty.models(M1);
+        assertEq(c, creator2);
+        assertEq(bps, 500);
+        assertEq(total, 100e6);
+        // accrued stays with the previous creator; new streams go to the new one
+        assertEq(royalty.claimable(creator), 100e6);
+        _stream(M1, 7e6);
+        assertEq(royalty.claimable(creator2), 7e6);
+        assertEq(royalty.claimable(creator), 100e6);
+    }
+
+    function testFuzz_register(bytes32 m, address c, uint16 bps) public {
+        vm.assume(c != address(0));
+        vm.prank(registrar);
+        if (bps > 2000) {
+            vm.expectRevert(IRoyalty.BpsTooHigh.selector);
+            royalty.register(m, c, bps);
+        } else {
+            royalty.register(m, c, bps);
+            (address cc, uint16 b,) = royalty.models(m);
+            assertEq(cc, c);
+            assertEq(b, bps);
+        }
+    }
+
+    // --- transferCreator -----------------------------------------------------------------------
+
+    function test_transferCreator() public {
+        _register(M1, creator, 1000);
+        _stream(M1, 10e6);
+        vm.expectEmit(true, true, true, true, address(royalty));
+        emit IRoyalty.CreatorUpdated(M1, creator2);
+        vm.prank(creator);
+        royalty.transferCreator(M1, creator2);
+        (address c, uint16 bps,) = royalty.models(M1);
+        assertEq(c, creator2);
+        assertEq(bps, 1000);
+        _stream(M1, 5e6);
+        assertEq(royalty.claimable(creator), 10e6);
+        assertEq(royalty.claimable(creator2), 5e6);
+        // old creator lost control
+        vm.prank(creator);
+        vm.expectRevert(IRoyalty.NotCreator.selector);
+        royalty.transferCreator(M1, creator);
+    }
 }
