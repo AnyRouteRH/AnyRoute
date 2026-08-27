@@ -186,4 +186,67 @@ contract ReceiptAnchorTest is Test {
         assertFalse(ra.verify(a[0], Merkle.getProof(a, 0), 1));
         assertFalse(ra.verify(a[0], Merkle.getProof(a, 0), type(uint256).max));
     }
+
+    function test_verify_falseForTamperedLeafOrProof() public {
+        bytes32[] memory a = _leaves(8, 1);
+        vm.prank(anchorer);
+        ra.anchor(Merkle.getRoot(a), T0 - 1, T0, 8);
+        bytes32[] memory proof = Merkle.getProof(a, 5);
+        assertFalse(ra.verify(keccak256("forged"), proof, 0));
+        proof[0] = bytes32(uint256(proof[0]) ^ 1);
+        assertFalse(ra.verify(a[5], proof, 0));
+        assertFalse(ra.verify(a[5], new bytes32[](0), 0));
+    }
+
+    function test_verify_singleLeafTree() public {
+        bytes32[] memory a = _leaves(1, 7);
+        vm.prank(anchorer);
+        ra.anchor(Merkle.getRoot(a), T0 - 1, T0, 1);
+        assertTrue(ra.verify(a[0], new bytes32[](0), 0));
+    }
+
+    function testFuzz_verify(uint8 n, uint256 salt, uint256 pick) public {
+        n = uint8(bound(n, 1, 64));
+        pick = bound(pick, 0, n - 1);
+        bytes32[] memory a = _leaves(n, salt);
+        vm.prank(anchorer);
+        ra.anchor(Merkle.getRoot(a), T0 - 1, T0, n);
+        bytes32[] memory proof = Merkle.getProof(a, pick);
+        assertTrue(ra.verify(a[pick], proof, 0));
+        assertFalse(ra.verify(keccak256(abi.encode(salt, "x")), proof, 0));
+    }
+
+    function test_anchors_unknownIndexReturnsZeros() public view {
+        (bytes32 root, uint64 fromTs, uint64 toTs, uint32 count) = ra.anchors(5);
+        assertEq(root, bytes32(0));
+        assertEq(fromTs, 0);
+        assertEq(toTs, 0);
+        assertEq(count, 0);
+    }
+
+    // --- signing keys --------------------------------------------------------------------------
+
+    function test_registerSigningKey_byAnchorer() public {
+        vm.expectEmit(true, true, true, true, address(ra));
+        emit IReceiptAnchor.SigningKeyRegistered(KW1, keccak256("pk1"), T0 + 10);
+        vm.prank(anchorer);
+        ra.registerSigningKey(KW1, keccak256("pk1"), T0 + 10);
+        (bytes32 pk, uint64 validFrom, uint64 revokedAt) = ra.signingKeys(KW1);
+        assertEq(pk, keccak256("pk1"));
+        assertEq(validFrom, T0 + 10);
+        assertEq(revokedAt, 0);
+    }
+
+    function test_registerSigningKey_byOwner() public {
+        vm.prank(owner);
+        ra.registerSigningKey(K1, keccak256("pk1"), 0);
+        (bytes32 pk,,) = ra.signingKeys(K1);
+        assertEq(pk, keccak256("pk1"));
+    }
+
+    function test_registerSigningKey_revertsUnauthorized() public {
+        vm.prank(rando);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.registerSigningKey(K1, keccak256("pk1"), 0);
+    }
 }
