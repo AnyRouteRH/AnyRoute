@@ -162,4 +162,80 @@ contract RoyaltyTest is Test {
         vm.expectRevert(IRoyalty.NotCreator.selector);
         royalty.transferCreator(M1, creator);
     }
+
+    function test_transferCreator_revertsUnknownModel() public {
+        vm.prank(creator);
+        vm.expectRevert(IRoyalty.UnknownModel.selector);
+        royalty.transferCreator(M1, creator2);
+    }
+
+    function test_transferCreator_revertsNotCreator() public {
+        _register(M1, creator, 1000);
+        vm.prank(registrar);
+        vm.expectRevert(IRoyalty.NotCreator.selector);
+        royalty.transferCreator(M1, creator2);
+    }
+
+    function test_transferCreator_revertsZero() public {
+        _register(M1, creator, 1000);
+        vm.prank(creator);
+        vm.expectRevert(Royalty.ZeroAddress.selector);
+        royalty.transferCreator(M1, address(0));
+    }
+
+    // --- stream --------------------------------------------------------------------------------
+
+    function test_stream() public {
+        _register(M1, creator, 1000);
+        vm.expectEmit(true, true, true, true, address(royalty));
+        emit IRoyalty.Streamed(M1, creator, 3_500_000);
+        _stream(M1, 3_500_000);
+        assertEq(royalty.claimable(creator), 3_500_000);
+        (,, uint256 total) = royalty.models(M1);
+        assertEq(total, 3_500_000);
+        assertEq(usdg.balanceOf(address(royalty)), 3_500_000);
+    }
+
+    function test_stream_revertsNotSettlement() public {
+        _register(M1, creator, 1000);
+        vm.prank(registrar);
+        vm.expectRevert(IRoyalty.NotSettlement.selector);
+        royalty.stream(M1, 1);
+    }
+
+    function test_stream_revertsUnknownModel() public {
+        vm.prank(settlement);
+        vm.expectRevert(IRoyalty.UnknownModel.selector);
+        royalty.stream(M1, 1);
+    }
+
+    function test_stream_revertsZero() public {
+        _register(M1, creator, 1000);
+        vm.prank(settlement);
+        vm.expectRevert(Royalty.InvalidAmount.selector);
+        royalty.stream(M1, 0);
+    }
+
+    function test_stream_revertsWithoutAllowance() public {
+        _register(M1, creator, 1000);
+        vm.prank(settlement);
+        usdg.approve(address(royalty), 0);
+        vm.prank(settlement);
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(royalty), 0, 1)
+        );
+        royalty.stream(M1, 1);
+    }
+
+    function test_stream_sameCreatorMultipleModels() public {
+        _register(M1, creator, 1000);
+        _register(M2, creator, 2000);
+        _stream(M1, 1e6);
+        _stream(M2, 2e6);
+        assertEq(royalty.claimable(creator), 3e6);
+        (,, uint256 t1) = royalty.models(M1);
+        (,, uint256 t2) = royalty.models(M2);
+        assertEq(t1, 1e6);
+        assertEq(t2, 2e6);
+    }
 }
