@@ -249,4 +249,112 @@ contract ReceiptAnchorTest is Test {
         vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
         ra.registerSigningKey(K1, keccak256("pk1"), 0);
     }
+
+    function test_registerSigningKey_revertsZeroId() public {
+        vm.prank(anchorer);
+        vm.expectRevert(ReceiptAnchor.InvalidKey.selector);
+        ra.registerSigningKey(bytes8(0), keccak256("pk1"), 0);
+    }
+
+    function test_registerSigningKey_revertsZeroPubkey() public {
+        vm.prank(anchorer);
+        vm.expectRevert(ReceiptAnchor.InvalidKey.selector);
+        ra.registerSigningKey(K1, bytes32(0), 0);
+    }
+
+    function test_registerSigningKey_revertsExisting() public {
+        vm.prank(anchorer);
+        ra.registerSigningKey(K1, keccak256("pk1"), 0);
+        vm.prank(owner);
+        vm.expectRevert(ReceiptAnchor.KeyExists.selector);
+        ra.registerSigningKey(K1, keccak256("pk2"), 0);
+    }
+
+    function test_revokeSigningKey_byAnchorerAndOwner() public {
+        vm.startPrank(anchorer);
+        ra.registerSigningKey(K1, keccak256("pk1"), 0);
+        ra.registerSigningKey(K2, keccak256("pk2"), 0);
+        vm.stopPrank();
+
+        vm.warp(T0 + 7 days);
+        vm.expectEmit(true, true, true, true, address(ra));
+        emit IReceiptAnchor.SigningKeyRevoked(K1, T0 + 7 days);
+        vm.prank(anchorer);
+        ra.revokeSigningKey(K1);
+        (, , uint64 revokedAt) = ra.signingKeys(K1);
+        assertEq(revokedAt, T0 + 7 days);
+
+        vm.prank(owner);
+        ra.revokeSigningKey(K2);
+        (, , revokedAt) = ra.signingKeys(K2);
+        assertEq(revokedAt, T0 + 7 days);
+    }
+
+    function test_revokeSigningKey_revertsUnknown() public {
+        vm.prank(anchorer);
+        vm.expectRevert(IReceiptAnchor.UnknownKey.selector);
+        ra.revokeSigningKey(KNOPE);
+    }
+
+    function test_revokeSigningKey_revertsAlreadyRevoked() public {
+        vm.startPrank(anchorer);
+        ra.registerSigningKey(K1, keccak256("pk1"), 0);
+        ra.revokeSigningKey(K1);
+        vm.warp(T0 + 1);
+        vm.expectRevert(ReceiptAnchor.AlreadyRevoked.selector);
+        ra.revokeSigningKey(K1);
+        vm.stopPrank();
+        (, , uint64 revokedAt) = ra.signingKeys(K1);
+        assertEq(revokedAt, T0);
+    }
+
+    function test_revokeSigningKey_revertsUnauthorized() public {
+        vm.prank(anchorer);
+        ra.registerSigningKey(K1, keccak256("pk1"), 0);
+        vm.prank(rando);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.revokeSigningKey(K1);
+    }
+
+    function test_revokedKeyCannotBeReRegistered() public {
+        vm.startPrank(anchorer);
+        ra.registerSigningKey(K1, keccak256("pk1"), 0);
+        ra.revokeSigningKey(K1);
+        vm.expectRevert(ReceiptAnchor.KeyExists.selector);
+        ra.registerSigningKey(K1, keccak256("pk9"), 0);
+        vm.stopPrank();
+    }
+
+    // --- admin ---------------------------------------------------------------------------------
+
+    function test_setAnchorer() public {
+        address a2 = makeAddr("a2");
+        vm.expectEmit(true, true, true, true, address(ra));
+        emit IReceiptAnchor.AnchorerSet(a2);
+        vm.prank(owner);
+        ra.setAnchorer(a2);
+        assertEq(ra.anchorer(), a2);
+
+        vm.prank(anchorer);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.anchor(keccak256("r"), T0 - 1, T0, 1);
+        vm.prank(anchorer);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.registerSigningKey(K1, keccak256("pk1"), 0);
+
+        vm.prank(a2);
+        ra.anchor(keccak256("r"), T0 - 1, T0, 1);
+    }
+
+    function test_setAnchorer_onlyOwner() public {
+        vm.prank(anchorer);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, anchorer));
+        ra.setAnchorer(anchorer);
+    }
+
+    function test_setAnchorer_revertsZero() public {
+        vm.prank(owner);
+        vm.expectRevert(ReceiptAnchor.ZeroAddress.selector);
+        ra.setAnchorer(address(0));
+    }
 }
