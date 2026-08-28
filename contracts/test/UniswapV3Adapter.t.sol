@@ -287,4 +287,109 @@ contract UniswapV3AdapterTest is Test {
         assertEq(nvda.balanceOf(refundTo), 0.9e18);
         _assertClean();
     }
+
+    function test_exactOutExceedingMaxReverts() public {
+        _fund(address(nvda), 0.49e18);
+        vm.prank(caller);
+        vm.expectRevert(MockSwapRouter02.TooMuchRequested.selector);
+        adapter.swapExactOut(address(nvda), address(usdg), 90e6, 0.49e18, recipient, refundTo);
+    }
+
+    function test_exactOutRequiresPrefunding() public {
+        _fund(address(nvda), 1);
+        vm.prank(caller);
+        vm.expectRevert(abi.encodeWithSelector(UniswapV3Adapter.InsufficientInputBalance.selector, 1, 1e18));
+        adapter.swapExactOut(address(nvda), address(usdg), 90e6, 1e18, recipient, refundTo);
+    }
+
+    function test_exactOutNoRoute() public {
+        _fund(address(weth), 1e18);
+        vm.prank(caller);
+        vm.expectRevert(UniswapV3Adapter.NoRoute.selector);
+        adapter.swapExactOut(address(weth), address(usdg), 1e6, 1e18, recipient, refundTo);
+    }
+
+    function test_exactOutShortDeliveryReverts() public {
+        router.setShortDeliver(true);
+        _fund(address(nvda), 1e18);
+        vm.prank(caller);
+        vm.expectRevert(abi.encodeWithSelector(UniswapV3Adapter.InsufficientOutput.selector, 90e6 - 1, 90e6));
+        adapter.swapExactOut(address(nvda), address(usdg), 90e6, 1e18, recipient, refundTo);
+    }
+
+    function test_exactOutInvalidArgs() public {
+        vm.startPrank(caller);
+        vm.expectRevert(UniswapV3Adapter.InvalidAmount.selector);
+        adapter.swapExactOut(address(nvda), address(usdg), 0, 1, recipient, refundTo);
+        vm.expectRevert(UniswapV3Adapter.ZeroAddress.selector);
+        adapter.swapExactOut(address(nvda), address(usdg), 1, 1, address(0), refundTo);
+        vm.stopPrank();
+    }
+
+    function testFuzz_exactOutRefund(uint256 amountOut, uint256 extraBps) public {
+        amountOut = bound(amountOut, 1, 1_000_000e6);
+        extraBps = bound(extraBps, 0, 5_000);
+        uint256 needed = Math.mulDiv(amountOut, 1e18, 180e6, Math.Rounding.Ceil);
+        uint256 maxIn = needed + needed * extraBps / 10_000;
+        _fund(address(nvda), maxIn);
+        vm.prank(caller);
+        uint256 amountIn =
+            adapter.swapExactOut(address(nvda), address(usdg), amountOut, maxIn, recipient, refundTo);
+        assertEq(amountIn, needed);
+        assertEq(usdg.balanceOf(recipient), amountOut);
+        assertEq(nvda.balanceOf(refundTo), maxIn - needed);
+        _assertClean();
+    }
+
+    // ------------------------------------------------------------------ exact input (buyback)
+
+    function test_exactInSingle() public {
+        _fund(address(usdg), 360e6);
+        vm.prank(caller);
+        uint256 out = adapter.swapExactIn(address(usdg), address(nvda), 360e6, 2e18, recipient);
+        assertEq(out, 2e18);
+        assertEq(nvda.balanceOf(recipient), 2e18);
+        assertEq(router.lastFee(), 500);
+        _assertClean();
+    }
+
+    function test_exactInMultiHop() public {
+        router.setRate(address(usdg), address(nvda), 1e18, 180e6);
+        bytes memory fwd =
+            abi.encodePacked(address(usdg), uint24(500), address(weth), uint24(3000), address(nvda));
+        vm.prank(owner);
+        adapter.setPath(address(usdg), address(nvda), fwd);
+        _fund(address(usdg), 180e6);
+        vm.prank(caller);
+        uint256 out = adapter.swapExactIn(address(usdg), address(nvda), 180e6, 1, recipient);
+        assertEq(out, 1e18);
+        assertEq(router.lastPath(), fwd);
+        _assertClean();
+    }
+
+    function test_exactInMinOutReverts() public {
+        _fund(address(usdg), 360e6);
+        vm.prank(caller);
+        vm.expectRevert(MockSwapRouter02.TooLittleReceived.selector);
+        adapter.swapExactIn(address(usdg), address(nvda), 360e6, 2e18 + 1, recipient);
+    }
+
+    function test_exactInUnderConsumingRouterRefundsCaller() public {
+        router.setUnderConsume(true);
+        _fund(address(usdg), 360e6);
+        vm.prank(caller);
+        uint256 out = adapter.swapExactIn(address(usdg), address(nvda), 360e6, 1e18, recipient);
+        assertEq(out, 1e18);
+        assertEq(usdg.balanceOf(caller), 180e6, "leftover input returned to caller");
+        _assertClean();
+    }
+
+    // ------------------------------------------------------------------ rescue
+
+    function test_rescue() public {
+        _fund(address(nvda), 7);
+        vm.prank(owner);
+        adapter.rescue(address(nvda), owner, 7);
+        assertEq(nvda.balanceOf(owner), 7);
+    }
 }
