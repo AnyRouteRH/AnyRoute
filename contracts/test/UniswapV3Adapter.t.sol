@@ -78,4 +78,149 @@ contract MockSwapRouter02 is ISwapRouter02 {
         IERC20(p.tokenIn).safeTransferFrom(msg.sender, address(this), used);
         IMint(p.tokenOut).mint(p.recipient, amountOut);
     }
+
+    function exactInput(ExactInputParams calldata p) external payable returns (uint256 amountOut) {
+        lastFn = "exactInput";
+        lastPath = p.path;
+        address tIn = _first(p.path);
+        address tOut = _last(p.path);
+        amountOut = _out(tIn, tOut, p.amountIn);
+        if (amountOut < p.amountOutMinimum) revert TooLittleReceived();
+        IERC20(tIn).safeTransferFrom(msg.sender, address(this), p.amountIn);
+        IMint(tOut).mint(p.recipient, amountOut);
+    }
+
+    function exactOutputSingle(ExactOutputSingleParams calldata p)
+        external
+        payable
+        returns (uint256 amountIn)
+    {
+        lastFn = "exactOutputSingle";
+        lastFee = p.fee;
+        amountIn = _in(p.tokenIn, p.tokenOut, p.amountOut);
+        if (amountIn > p.amountInMaximum) revert TooMuchRequested();
+        IERC20(p.tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        IMint(p.tokenOut).mint(p.recipient, overDeliverShort ? p.amountOut - 1 : p.amountOut);
+    }
+
+    function exactOutput(ExactOutputParams calldata p) external payable returns (uint256 amountIn) {
+        lastFn = "exactOutput";
+        lastPath = p.path;
+        // exact-output paths are reversed: first = tokenOut, last = tokenIn
+        address tOut = _first(p.path);
+        address tIn = _last(p.path);
+        amountIn = _in(tIn, tOut, p.amountOut);
+        if (amountIn > p.amountInMaximum) revert TooMuchRequested();
+        IERC20(tIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        IMint(tOut).mint(p.recipient, p.amountOut);
+    }
+}
+
+contract UniswapV3AdapterTest is Test {
+    MockSwapRouter02 router;
+    UniswapV3Adapter adapter;
+    MockStockToken nvda; // 18 dec
+    MockStockToken weth; // 18 dec
+    MockUSDG usdg; // 6 dec
+
+    address owner = makeAddr("owner");
+    address caller = makeAddr("caller"); // PayWithStock / AnyrStaking stand-in
+    address recipient = makeAddr("recipient");
+    address refundTo = makeAddr("refundTo");
+    address stranger = makeAddr("stranger");
+
+    function setUp() public {
+        router = new MockSwapRouter02();
+        adapter = new UniswapV3Adapter(ISwapRouter02(address(router)), owner);
+        nvda = new MockStockToken("NVIDIA xStock", "NVDAx", 18);
+        weth = new MockStockToken("Wrapped Ether", "WETH", 18);
+        usdg = new MockUSDG();
+
+        // 1 NVDA = 180 USDG ; 1 NVDA = 0.05 WETH ; 1 WETH = 3600 USDG
+        router.setRate(address(nvda), address(usdg), 180e6, 1e18);
+        router.setRate(address(usdg), address(nvda), 1e18, 180e6);
+        router.setRate(address(nvda), address(weth), 5e16, 1e18);
+
+        vm.startPrank(owner);
+        adapter.setCaller(caller, true);
+        adapter.setPath(
+            address(nvda), address(usdg), abi.encodePacked(address(nvda), uint24(3000), address(usdg))
+        );
+        adapter.setPath(
+            address(usdg), address(nvda), abi.encodePacked(address(usdg), uint24(500), address(nvda))
+        );
+        vm.stopPrank();
+    }
+
+    function _fund(address token, uint256 amount) internal {
+        MockStockToken(token).mint(address(adapter), amount);
+    }
+
+    function _assertClean() internal view {
+        assertEq(nvda.balanceOf(address(adapter)), 0);
+        assertEq(usdg.balanceOf(address(adapter)), 0);
+        assertEq(weth.balanceOf(address(adapter)), 0);
+        assertEq(nvda.allowance(address(adapter), address(router)), 0);
+        assertEq(usdg.allowance(address(adapter), address(router)), 0);
+    }
+
+    // ------------------------------------------------------------------ path registration
+
+    function test_setPathStoresForwardAndReversed() public view {
+        (bytes memory p, bytes memory r) = adapter.getPath(address(nvda), address(usdg));
+        assertEq(p, abi.encodePacked(address(nvda), uint24(3000), address(usdg)));
+        assertEq(r, abi.encodePacked(address(usdg), uint24(3000), address(nvda)));
+    }
+
+    function test_setPathMultiHopReverse() public {
+        bytes memory fwd =
+            abi.encodePacked(address(nvda), uint24(3000), address(weth), uint24(500), address(usdg));
+        vm.prank(owner);
+        adapter.setPath(address(nvda), address(usdg), fwd);
+        (, bytes memory r) = adapter.getPath(address(nvda), address(usdg));
+        assertEq(r, abi.encodePacked(address(usdg), uint24(500), address(weth), uint24(3000), address(nvda)));
+    }
+
+    function test_setPathValidation() public {
+        vm.startPrank(owner);
+        vm.expectRevert(UniswapV3Adapter.InvalidPath.selector);
+        adapter.setPath(
+            address(nvda), address(nvda), abi.encodePacked(address(nvda), uint24(1), address(nvda))
+        );
+        vm.expectRevert(UniswapV3Adapter.InvalidPath.selector);
+        adapter.setPath(address(0), address(usdg), abi.encodePacked(address(0), uint24(1), address(usdg)));
+        vm.expectRevert(UniswapV3Adapter.InvalidPath.selector); // wrong start
+        adapter.setPath(
+            address(nvda), address(usdg), abi.encodePacked(address(weth), uint24(1), address(usdg))
+        );
+        vm.expectRevert(UniswapV3Adapter.InvalidPath.selector); // wrong end
+        adapter.setPath(
+            address(nvda), address(usdg), abi.encodePacked(address(nvda), uint24(1), address(weth))
+        );
+        vm.expectRevert(UniswapV3Adapter.InvalidPath.selector); // bad length
+        adapter.setPath(
+            address(nvda), address(usdg), abi.encodePacked(address(nvda), uint24(1), address(usdg), hex"00")
+        );
+        vm.expectRevert(UniswapV3Adapter.InvalidPath.selector); // too many hops (4)
+        adapter.setPath(
+            address(nvda),
+            address(usdg),
+            abi.encodePacked(
+                address(nvda),
+                uint24(1),
+                address(weth),
+                uint24(1),
+                address(weth),
+                uint24(1),
+                address(weth),
+                uint24(1),
+                address(usdg)
+            )
+        );
+        // clear
+        adapter.setPath(address(nvda), address(usdg), "");
+        vm.stopPrank();
+        (bytes memory p,) = adapter.getPath(address(nvda), address(usdg));
+        assertEq(p.length, 0);
+    }
 }
