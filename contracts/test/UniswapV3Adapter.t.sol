@@ -223,4 +223,68 @@ contract UniswapV3AdapterTest is Test {
         (bytes memory p,) = adapter.getPath(address(nvda), address(usdg));
         assertEq(p.length, 0);
     }
+
+    function test_onlyOwner() public {
+        vm.startPrank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        adapter.setPath(address(nvda), address(usdg), "");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        adapter.setCaller(stranger, true);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        adapter.rescue(address(nvda), stranger, 1);
+        vm.stopPrank();
+    }
+
+    function test_onlyWhitelistedCallers() public {
+        _fund(address(nvda), 1e18);
+        vm.startPrank(stranger);
+        vm.expectRevert(UniswapV3Adapter.NotCaller.selector);
+        adapter.swapExactOut(address(nvda), address(usdg), 1e6, 1e18, recipient, refundTo);
+        vm.expectRevert(UniswapV3Adapter.NotCaller.selector);
+        adapter.swapExactIn(address(nvda), address(usdg), 1e18, 0, recipient);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        adapter.setCaller(caller, false);
+        vm.prank(caller);
+        vm.expectRevert(UniswapV3Adapter.NotCaller.selector);
+        adapter.swapExactOut(address(nvda), address(usdg), 1e6, 1e18, recipient, refundTo);
+    }
+
+    // ------------------------------------------------------------------ exact output
+
+    function test_exactOutSingle() public {
+        uint256 amountOut = 90e6; // $90 => 0.5 NVDA
+        uint256 maxIn = 0.51e18;
+        _fund(address(nvda), maxIn);
+        vm.prank(caller);
+        uint256 amountIn =
+            adapter.swapExactOut(address(nvda), address(usdg), amountOut, maxIn, recipient, refundTo);
+        assertEq(amountIn, 0.5e18);
+        assertEq(usdg.balanceOf(recipient), amountOut);
+        assertEq(nvda.balanceOf(refundTo), maxIn - amountIn);
+        assertEq(router.lastFee(), 3000);
+        assertEq(keccak256(bytes(router.lastFn())), keccak256("exactOutputSingle"));
+        _assertClean();
+    }
+
+    function test_exactOutMultiHopUsesReversedPath() public {
+        router.setRate(address(nvda), address(usdg), 180e6, 1e18); // end-to-end rate used by the mock
+        bytes memory fwd =
+            abi.encodePacked(address(nvda), uint24(3000), address(weth), uint24(500), address(usdg));
+        vm.prank(owner);
+        adapter.setPath(address(nvda), address(usdg), fwd);
+
+        _fund(address(nvda), 1e18);
+        vm.prank(caller);
+        uint256 amountIn = adapter.swapExactOut(address(nvda), address(usdg), 18e6, 1e18, recipient, refundTo);
+        assertEq(amountIn, 0.1e18);
+        assertEq(keccak256(bytes(router.lastFn())), keccak256("exactOutput"));
+        assertEq(
+            router.lastPath(),
+            abi.encodePacked(address(usdg), uint24(500), address(weth), uint24(3000), address(nvda))
+        );
+        assertEq(nvda.balanceOf(refundTo), 0.9e18);
+        _assertClean();
+    }
 }
