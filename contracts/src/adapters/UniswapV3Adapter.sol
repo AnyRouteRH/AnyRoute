@@ -178,4 +178,132 @@ contract UniswapV3Adapter is ISwapAdapter, IBuybackAdapter, Ownable2Step, Reentr
         if (amountInMax > amountIn) IERC20(tokenIn).safeTransfer(refundTo, amountInMax - amountIn);
         emit Swapped(msg.sender, tokenIn, tokenOut, amountIn, amountOut, recipient);
     }
+
+    /// @inheritdoc IBuybackAdapter
+    function swapExactIn(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 minOut,
+        address recipient
+    ) external onlyCaller nonReentrant returns (uint256 amountOut) {
+        if (amountIn == 0) revert InvalidAmount();
+        if (recipient == address(0)) revert ZeroAddress();
+
+        uint256 balBefore = _requireBalance(tokenIn, amountIn);
+        uint256 outBefore = IERC20(tokenOut).balanceOf(recipient);
+        _routerExactIn(tokenIn, tokenOut, amountIn, minOut, recipient);
+
+        uint256 spent = balBefore - IERC20(tokenIn).balanceOf(address(this));
+        if (spent > amountIn) revert ExcessiveInput(spent, amountIn);
+        amountOut = IERC20(tokenOut).balanceOf(recipient) - outBefore;
+        if (amountOut < minOut) revert InsufficientOutput(amountOut, minOut);
+        // never leave input behind (a router that under-consumes gets its leftover returned to the caller)
+        if (spent < amountIn) IERC20(tokenIn).safeTransfer(msg.sender, amountIn - spent);
+        emit Swapped(msg.sender, tokenIn, tokenOut, spent, amountOut, recipient);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Views
+    // ---------------------------------------------------------------------------------------------
+
+    /// @notice Registered forward path and derived exact-output path.
+    function getPath(address tokenIn, address tokenOut)
+        external
+        view
+        returns (bytes memory path, bytes memory reversedPath)
+    {
+        Route storage r = _routes[tokenIn][tokenOut];
+        return (r.path, r.reversedPath);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Internals
+    // ---------------------------------------------------------------------------------------------
+
+    function _routerExactOut(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountOut,
+        uint256 amountInMax,
+        address recipient
+    ) internal {
+        bytes memory rpath = _routes[tokenIn][tokenOut].reversedPath;
+        if (rpath.length == 0) revert NoRoute();
+        IERC20(tokenIn).forceApprove(address(router), amountInMax);
+        if (rpath.length == ADDR_SIZE + HOP_SIZE) {
+            router.exactOutputSingle(
+                ISwapRouter02.ExactOutputSingleParams({
+                    tokenIn: tokenIn,
+                    tokenOut: tokenOut,
+                    fee: _feeAt(rpath, 0),
+                    recipient: recipient,
+                    amountOut: amountOut,
+                    amountInMaximum: amountInMax,
+                    sqrtPriceLimitX96: 0
+                })
+            );
+        } else {
+            router.exactOutput(
+                ISwapRouter02.ExactOutputParams({
+                    path: rpath, recipient: recipient, amountOut: amountOut, amountInMaximum: amountInMax
+                })
+            );
+        }
+        IERC20(tokenIn).forceApprove(address(router), 0);
+    }
+
+    function _routerExactIn(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 minOut,
+        address recipient
+    ) internal {
+        bytes memory path = _routes[tokenIn][tokenOut].path;
+        if (path.length == 0) revert NoRoute();
+        IERC20(tokenIn).forceApprove(address(router), amountIn);
+        if (path.length == ADDR_SIZE + HOP_SIZE) {
+            router.exactInputSingle(
+                ISwapRouter02.ExactInputSingleParams({
+                    tokenIn: tokenIn,
+                    tokenOut: tokenOut,
+                    fee: _feeAt(path, 0),
+                    recipient: recipient,
+                    amountIn: amountIn,
+                    amountOutMinimum: minOut,
+                    sqrtPriceLimitX96: 0
+                })
+            );
+        } else {
+            router.exactInput(
+                ISwapRouter02.ExactInputParams({
+                    path: path, recipient: recipient, amountIn: amountIn, amountOutMinimum: minOut
+                })
+            );
+        }
+        IERC20(tokenIn).forceApprove(address(router), 0);
+    }
+
+    function _requireBalance(address token, uint256 required) internal view returns (uint256 bal) {
+        bal = IERC20(token).balanceOf(address(this));
+        if (bal < required) revert InsufficientInputBalance(bal, required);
+    }
+
+    /// @dev tokens t0..tn, fees f0..f(n-1)  ->  tn | f(n-1) | ... | f0 | t0
+    function _reverse(bytes calldata path, uint256 hops) internal pure returns (bytes memory out) {
+        out = abi.encodePacked(path[hops * HOP_SIZE:hops * HOP_SIZE + ADDR_SIZE]);
+        for (uint256 i = hops; i != 0;) {
+            unchecked {
+                --i;
+            }
+            uint256 o = i * HOP_SIZE;
+            out = bytes.concat(out, path[o + ADDR_SIZE:o + HOP_SIZE], path[o:o + ADDR_SIZE]);
+        }
+    }
+
+    function _feeAt(bytes memory path, uint256 hop) internal pure returns (uint24 fee) {
+        uint256 o = hop * HOP_SIZE + ADDR_SIZE;
+        fee = uint24(uint8(path[o])) << 16 | uint24(uint8(path[o + 1])) << 8 | uint24(uint8(path[o + 2]));
+    }
 }
