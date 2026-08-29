@@ -104,4 +104,100 @@ contract ChainlinkStockOracleTest is Test {
         assertFalse(ok);
         assertEq(p, 0);
     }
+
+    function test_nonPositiveAnswer() public {
+        feed.setAnswer(0);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+        feed.setAnswer(-1);
+        (, ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function testFuzz_staleness(uint32 age) public {
+        age = uint32(bound(age, 0, 30 days));
+        feed.setAnswer(180e8);
+        vm.warp(block.timestamp + age);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertEq(ok, age <= STALENESS); // stale iff updatedAt + maxStaleness < now
+    }
+
+    function test_futureUpdatedAtIsInvalid() public {
+        feed.setUpdatedAt(block.timestamp + 1);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_zeroUpdatedAtIsInvalid() public {
+        feed.setRoundData(5, 180e8, 0, 0, 5);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_answeredInRoundBehind() public {
+        feed.setRoundData(10, 180e8, block.timestamp, block.timestamp, 9);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+        feed.setRoundData(10, 180e8, block.timestamp, block.timestamp, 10);
+        (, ok) = oracle.fairPrice(address(nvda));
+        assertTrue(ok);
+    }
+
+    function test_feedReverts() public {
+        feed.setShouldRevert(true);
+        (uint256 p, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+        assertEq(p, 0);
+    }
+
+    function test_multiplierReverts() public {
+        nvda.setMultiplierReverts(true);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_multiplierZero() public {
+        nvda.setUiMultiplier(0);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_tokenWithoutCodeDoesNotRevert() public {
+        address eoaToken = makeAddr("eoaToken");
+        vm.prank(owner);
+        oracle.setFeed(eoaToken, feed, STALENESS, true);
+        (, bool ok) = oracle.fairPrice(eoaToken); // uiMultiplier() on an EOA: empty return data
+        assertFalse(ok);
+    }
+
+    function test_feedWithoutCodeDoesNotRevert() public {
+        // configure with a real feed, then etch the feed away
+        vm.etch(address(feed), "");
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_multiplierOverflowIsNotOk() public {
+        MockAggregator big = new MockAggregator(0, int256(uint256(type(uint128).max)), "big");
+        vm.prank(owner);
+        oracle.setFeed(address(nvda), big, STALENESS, true);
+        nvda.setUiMultiplier(type(uint256).max);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_scalingOverflowIsNotOk() public {
+        MockAggregator big = new MockAggregator(0, type(int256).max, "big");
+        vm.prank(owner);
+        oracle.setFeed(address(nvda), big, STALENESS, true);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    // ------------------------------------------------------------------ sequencer
+
+    function _enableSequencer() internal {
+        vm.prank(owner);
+        oracle.setSequencerFeed(seq, GRACE);
+    }
 }

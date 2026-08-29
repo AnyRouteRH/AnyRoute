@@ -182,4 +182,77 @@ contract ChainlinkStockOracle is IStockOracle, Ownable2Step {
         if (price18 == 0) return (0, false);
         return (price18, true);
     }
+
+    /// @notice True when no sequencer feed is set, or the sequencer is up and past its grace period.
+    function isSequencerUp() external view returns (bool) {
+        return _sequencerOk();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Internals
+    // ---------------------------------------------------------------------------------------------
+
+    function _sequencerOk() internal view returns (bool) {
+        address feed = address(sequencerUptimeFeed);
+        if (feed == address(0)) return true;
+        (bool success,, int256 answer, uint256 startedAt,,) = _latestRound(feed);
+        // answer: 0 = up, 1 = down. startedAt == 0 means the round is not valid (Arbitrum pattern).
+        if (!success || answer != 0 || startedAt == 0) return false;
+        if (startedAt > block.timestamp) return false;
+        return block.timestamp - startedAt > sequencerGracePeriod;
+    }
+
+    /// @dev Latest valid round scaled to 18 decimals, or ok = false (bad answer, stale, incomplete round).
+    function _feedPrice18(FeedConfig memory c) internal view returns (bool ok, uint256 price18) {
+        (bool success, uint256 roundId, int256 answer,, uint256 updatedAt, uint256 answeredInRound) =
+            _latestRound(address(c.feed));
+        if (!success || answer <= 0 || updatedAt == 0) return (false, 0);
+        // stale when updatedAt + maxStaleness < now (written overflow-free); future timestamps are invalid
+        if (updatedAt > block.timestamp || block.timestamp - updatedAt > c.maxStaleness) return (false, 0);
+        if (answeredInRound < roundId) return (false, 0);
+
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 a = uint256(answer); // answer > 0 checked above
+        if (c.feedDecimals <= 18) {
+            (ok, price18) = Math.tryMul(a, 10 ** (18 - uint256(c.feedDecimals)));
+        } else {
+            (ok, price18) = (true, a / 10 ** (uint256(c.feedDecimals) - 18));
+        }
+    }
+
+    /// @dev True when the token reports `paused()` or `oraclePaused()`. Missing / reverting views are ignored.
+    function _tokenHalted(address token) internal view returns (bool) {
+        (bool ok, uint256 v) = _staticUint(token, IStockTokenStatus.paused.selector);
+        if (ok && v != 0) return true;
+        (ok, v) = _staticUint(token, IStockTokenStatus.oraclePaused.selector);
+        return ok && v != 0;
+    }
+
+    /// @dev latestRoundData via staticcall; decodes all words as full-width types so decoding can never revert.
+    function _latestRound(address feed)
+        internal
+        view
+        returns (
+            bool success,
+            uint256 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint256 answeredInRound
+        )
+    {
+        (bool callOk, bytes memory ret) = feed.staticcall(
+            abi.encodeWithSelector(AggregatorV3Interface.latestRoundData.selector)
+        );
+        if (!callOk || ret.length < 160) return (false, 0, 0, 0, 0, 0);
+        (roundId, answer, startedAt, updatedAt, answeredInRound) =
+            abi.decode(ret, (uint256, int256, uint256, uint256, uint256));
+        success = true;
+    }
+
+    function _staticUint(address target, bytes4 selector) internal view returns (bool, uint256) {
+        (bool callOk, bytes memory ret) = target.staticcall(abi.encodeWithSelector(selector));
+        if (!callOk || ret.length < 32) return (false, 0);
+        return (true, abi.decode(ret, (uint256)));
+    }
 }
