@@ -78,4 +78,108 @@ contract ChainlinkStockOracle is IStockOracle, Ownable2Step {
     event GuardianSet(address indexed guardian);
     event TokenPaused(address indexed token, address indexed by);
     event TokenUnpaused(address indexed token);
+
+    error ZeroAddress();
+    error InvalidFeed();
+    error InvalidStaleness();
+    error UnknownToken();
+    error NotGuardian();
+
+    constructor(address owner_) Ownable(owner_) {}
+
+    // ---------------------------------------------------------------------------------------------
+    // Owner configuration
+    // ---------------------------------------------------------------------------------------------
+
+    /// @notice Configure (or replace) the price feed for `token`. Keeps the guardian pause flag.
+    /// @param maxStaleness Max age of the latest round in seconds (must be > 0; cover weekends for 24/5 feeds).
+    /// @param applyUiMultiplier Multiply the feed price by `uiMultiplier()`. Must be FALSE for Chainlink's Robinhood
+    /// Stock Token feeds, which already include the multiplier.
+    function setFeed(address token, AggregatorV3Interface feed, uint32 maxStaleness, bool applyUiMultiplier)
+        external
+        onlyOwner
+    {
+        if (token == address(0) || address(feed) == address(0)) revert ZeroAddress();
+        if (maxStaleness == 0) revert InvalidStaleness();
+        uint8 dec = feed.decimals();
+        if (dec > MAX_FEED_DECIMALS) revert InvalidFeed();
+        FeedConfig storage c = _configs[token];
+        c.feed = feed;
+        c.feedDecimals = dec;
+        c.maxStaleness = maxStaleness;
+        c.applyMultiplier = applyUiMultiplier;
+        emit FeedSet(token, address(feed), dec, maxStaleness, applyUiMultiplier);
+    }
+
+    /// @notice Remove a token's configuration entirely (fairPrice then returns ok = false).
+    function removeFeed(address token) external onlyOwner {
+        if (address(_configs[token].feed) == address(0)) revert UnknownToken();
+        delete _configs[token];
+        emit FeedRemoved(token);
+    }
+
+    /// @notice Toggle whether `uiMultiplier()` is applied for `token`.
+    function setUiMultiplierEnabled(address token, bool enabled) external onlyOwner {
+        if (address(_configs[token].feed) == address(0)) revert UnknownToken();
+        _configs[token].applyMultiplier = enabled;
+        emit UiMultiplierEnabled(token, enabled);
+    }
+
+    /// @notice Set the L2 sequencer uptime feed and grace period. `feed = 0` disables the check.
+    function setSequencerFeed(AggregatorV3Interface feed, uint32 gracePeriod) external onlyOwner {
+        sequencerUptimeFeed = feed;
+        sequencerGracePeriod = gracePeriod;
+        emit SequencerFeedSet(address(feed), gracePeriod);
+    }
+
+    /// @notice Set the guardian allowed to pause tokens instantly (zero disables the role).
+    function setGuardian(address guardian_) external onlyOwner {
+        guardian = guardian_;
+        emit GuardianSet(guardian_);
+    }
+
+    /// @notice Pause a token's price (fairPrice returns ok = false). Callable by the guardian or the owner.
+    function pause(address token) external {
+        if (msg.sender != guardian && msg.sender != owner()) revert NotGuardian();
+        if (address(_configs[token].feed) == address(0)) revert UnknownToken();
+        _configs[token].paused = true;
+        emit TokenPaused(token, msg.sender);
+    }
+
+    /// @notice Unpause a token. Owner (timelock) only.
+    function unpause(address token) external onlyOwner {
+        if (address(_configs[token].feed) == address(0)) revert UnknownToken();
+        _configs[token].paused = false;
+        emit TokenUnpaused(token);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Views
+    // ---------------------------------------------------------------------------------------------
+
+    /// @notice Raw configuration for `token`.
+    function configOf(address token) external view returns (FeedConfig memory) {
+        return _configs[token];
+    }
+
+    /// @inheritdoc IStockOracle
+    function fairPrice(address token) external view returns (uint256 price18, bool ok) {
+        FeedConfig memory c = _configs[token];
+        if (address(c.feed) == address(0) || c.paused) return (0, false);
+        if (!_sequencerOk() || _tokenHalted(token)) return (0, false);
+
+        (ok, price18) = _feedPrice18(c);
+        if (!ok) return (0, false);
+
+        if (c.applyMultiplier) {
+            (bool mOk, uint256 m) = _staticUint(token, IUiMultiplier.uiMultiplier.selector);
+            if (!mOk || m == 0) return (0, false);
+            (uint256 high,) = Math.mul512(price18, m);
+            if (high >= 1e18) return (0, false); // result would overflow uint256
+            price18 = Math.mulDiv(price18, m, 1e18);
+        }
+
+        if (price18 == 0) return (0, false);
+        return (price18, true);
+    }
 }
