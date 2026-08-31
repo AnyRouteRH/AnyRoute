@@ -95,4 +95,108 @@ contract UniswapV4AdapterLocalTest is Test {
         key = _init(a, b, fee, spacing, rawA, rawB);
         _addFullRange(key, liq);
     }
+
+    function _init(address a, address b, uint24 fee, int24 spacing, uint256 rawA, uint256 rawB)
+        internal
+        returns (PoolKey memory key)
+    {
+        (address c0, address c1, uint256 r0, uint256 r1) = a < b ? (a, b, rawA, rawB) : (b, a, rawB, rawA);
+        key = PoolKey(Currency.wrap(c0), Currency.wrap(c1), fee, spacing, IHooks(address(0)));
+        manager.initialize(key, uint160(Math.sqrt(Math.mulDiv(r1, 1 << 192, r0))));
+    }
+
+    function _addFullRange(PoolKey memory key, uint128 liq) internal {
+        ModifyLiquidityParams memory p = ModifyLiquidityParams({
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing),
+            liquidityDelta: int256(uint256(liq)),
+            salt: 0
+        });
+        lp.modifyLiquidity{value: key.currency0.isAddressZero() ? 50_000 ether : 0}(key, p, "");
+    }
+
+    function _hops(PoolKey memory k) internal pure returns (PoolKey[] memory h) {
+        h = new PoolKey[](1);
+        h[0] = k;
+    }
+
+    function _hops(PoolKey memory k0, PoolKey memory k1) internal pure returns (PoolKey[] memory h) {
+        h = new PoolKey[](2);
+        h[0] = k0;
+        h[1] = k1;
+    }
+
+    function _assertClean() internal view {
+        assertEq(nvda.balanceOf(address(adapter)), 0, "adapter NVDA");
+        assertEq(usdg.balanceOf(address(adapter)), 0, "adapter USDG");
+        assertEq(address(adapter).balance, 0, "adapter ETH");
+    }
+
+    // ------------------------------------------------------------------ exact output
+
+    function test_exactOutSingleHop() public {
+        uint256 maxIn = 1.1e18;
+        IERC20(address(nvda)).safeTransfer(address(adapter), maxIn);
+        uint256 amountIn =
+            adapter.swapExactOut(address(nvda), address(usdg), 180e6, maxIn, recipient, refundTo);
+        assertEq(usdg.balanceOf(recipient), 180e6, "exact output");
+        assertGt(amountIn, 1e18); // 0.3% fee + impact
+        assertLt(amountIn, 1.005e18);
+        assertEq(nvda.balanceOf(refundTo), maxIn - amountIn, "refund");
+        _assertClean();
+    }
+
+    function test_exactOutTwoHopsThroughNativeEth() public {
+        vm.prank(owner);
+        adapter.setRoute(address(nvda), address(usdg), _hops(ethNvda, ethUsdg));
+        uint256 maxIn = 1.1e18;
+        IERC20(address(nvda)).safeTransfer(address(adapter), maxIn);
+        uint256 amountIn =
+            adapter.swapExactOut(address(nvda), address(usdg), 180e6, maxIn, recipient, refundTo);
+        assertEq(usdg.balanceOf(recipient), 180e6);
+        assertGt(amountIn, 1.0035e18); // 0.3% + 0.05% fees
+        assertLt(amountIn, 1.01e18);
+        assertEq(nvda.balanceOf(refundTo), maxIn - amountIn);
+        _assertClean();
+    }
+
+    function test_exactOutNativeIn() public {
+        uint256 maxIn = 1.1 ether;
+        (bool ok,) = address(adapter).call{value: maxIn}("");
+        assertTrue(ok);
+        uint256 amountIn = adapter.swapExactOut(address(0), address(usdg), 3600e6, maxIn, recipient, refundTo);
+        assertEq(usdg.balanceOf(recipient), 3600e6);
+        assertGt(amountIn, 1 ether);
+        assertEq(refundTo.balance, maxIn - amountIn, "ETH refund");
+        _assertClean();
+    }
+
+    function test_exactOutNativeOut() public {
+        uint256 maxIn = 4000e6;
+        IERC20(address(usdg)).safeTransfer(address(adapter), maxIn);
+        uint256 amountIn =
+            adapter.swapExactOut(address(usdg), address(0), 1 ether, maxIn, recipient, refundTo);
+        assertEq(recipient.balance, 1 ether);
+        assertGt(amountIn, 3600e6);
+        assertEq(usdg.balanceOf(refundTo), maxIn - amountIn);
+        _assertClean();
+    }
+
+    function test_exactOutAboveMaxReverts() public {
+        IERC20(address(nvda)).safeTransfer(address(adapter), 1e18);
+        vm.expectPartialRevert(UniswapV4Adapter.ExcessiveInput.selector);
+        adapter.swapExactOut(address(nvda), address(usdg), 180e6, 1e18, recipient, refundTo);
+    }
+
+    function test_exactOutBeyondLiquidityReverts() public {
+        MockStockToken thin = new MockStockToken("THIN", "THIN", 18);
+        thin.mint(address(this), 1e30);
+        thin.approve(address(lp), type(uint256).max);
+        PoolKey memory k = _pool(address(thin), address(usdg), 3000, 60, 1e18, 1e6, 1e12); // tiny liquidity
+        vm.prank(owner);
+        adapter.setRoute(address(thin), address(usdg), _hops(k));
+        IERC20(address(thin)).safeTransfer(address(adapter), 1e27);
+        vm.expectRevert(UniswapV4Adapter.IncompleteFill.selector);
+        adapter.swapExactOut(address(thin), address(usdg), 1_000_000e6, 1e27, recipient, refundTo);
+    }
 }
