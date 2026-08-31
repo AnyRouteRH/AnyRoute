@@ -78,4 +78,121 @@ contract Deploy is Script {
         uint32 paymasterUnstakeDelay;
         uint24 wethUsdgFee;
     }
+
+    struct Roles {
+        address ownerSafe; // timelock proposer/executor (production); 0 locally
+        address slasher;
+        address router;
+        address settlement;
+        address anchorer;
+        address registrar;
+        address keeper;
+        address opsWallet;
+        address paymasterSigner;
+        address refundPool;
+        address callPayTreasury;
+        address guardian;
+        address[4] anyrRecipients;
+    }
+
+    struct Deployed {
+        address deployer;
+        address usdg;
+        address anyrToken;
+        address credits;
+        address callPay;
+        address receiptAnchor;
+        address royalty;
+        address providerBond;
+        address anyrStaking;
+        address payWithStock;
+        address stockOracle;
+        address uniswapV4Adapter;
+        address uniswapV3Adapter;
+        address paymaster;
+        address entryPoint;
+        address poolManager;
+        address swapRouter02;
+        address timelock;
+        address buybackAdapter;
+        // local mocks
+        address mockNvda;
+        address mockNvdaFeed;
+        address mockSwapAdapter;
+        uint256 blockNumber;
+        uint256 timestamp;
+    }
+
+    struct StockEntry {
+        string symbol;
+        address token;
+        uint8 decimals;
+        address feed;
+        address primaryAdapter;
+        address fallbackAdapter;
+        bytes v3Path;
+    }
+
+    Deployed internal _d;
+    Roles internal _r;
+    Params internal _p;
+    StockEntry[] internal _stocks;
+
+    // =============================================================================================
+    // Entry points
+    // =============================================================================================
+
+    function run() external {
+        Params memory p = _paramsFromEnv();
+        if (p.mock) {
+            deployLocal(p, _localRolesFromEnv());
+        } else {
+            deployProduction(p, _prodRolesFromEnv(p));
+        }
+    }
+
+    /// @notice Default parameters for local mode (no env). Used by tests.
+    function localParams() public view returns (Params memory p) {
+        p.mock = true;
+        p.deployerKey = vm.deriveKey(ANVIL_MNEMONIC, 0);
+        p.configPath = DEFAULT_CONFIG;
+        p.outPath = string.concat("deployments/", vm.toString(block.chainid), "-local.json");
+        p.paymasterDailyCap = 0.01 ether;
+        p.paymasterDeposit = 10 ether;
+        p.paymasterUnstakeDelay = 1 days;
+        p.wethUsdgFee = 100;
+    }
+
+    /// @notice Default local roles: anvil accounts #1..#6.
+    function localRoles() public pure returns (Roles memory r) {
+        address deployer = vm.addr(vm.deriveKey(ANVIL_MNEMONIC, 0));
+        r.router = _anvil(1);
+        r.registrar = r.router;
+        r.settlement = _anvil(2);
+        r.refundPool = r.settlement;
+        r.callPayTreasury = r.settlement;
+        r.anchorer = _anvil(3);
+        r.slasher = _anvil(4);
+        r.paymasterSigner = _anvil(5);
+        r.keeper = _anvil(6);
+        r.opsWallet = _anvil(6);
+        r.guardian = deployer;
+        r.anyrRecipients = [deployer, deployer, deployer, deployer];
+    }
+
+    function deployed() external view returns (Deployed memory) {
+        return _d;
+    }
+
+    function roles() external view returns (Roles memory) {
+        return _r;
+    }
+
+    function stockCount() external view returns (uint256) {
+        return _stocks.length;
+    }
+
+    function stock(uint256 i) external view returns (StockEntry memory) {
+        return _stocks[i];
+    }
 }
