@@ -199,4 +199,122 @@ contract UniswapV4AdapterLocalTest is Test {
         vm.expectRevert(UniswapV4Adapter.IncompleteFill.selector);
         adapter.swapExactOut(address(thin), address(usdg), 1_000_000e6, 1e27, recipient, refundTo);
     }
+
+    function test_exactOutRequiresPrefunding() public {
+        vm.expectRevert(abi.encodeWithSelector(UniswapV4Adapter.InsufficientInputBalance.selector, 0, 1e18));
+        adapter.swapExactOut(address(nvda), address(usdg), 1e6, 1e18, recipient, refundTo);
+    }
+
+    function testFuzz_exactOutRefund(uint256 amountOut, uint256 slackBps) public {
+        amountOut = bound(amountOut, 1, 10_000e6); // <= ~0.75% of pool depth
+        slackBps = bound(slackBps, 200, 5_000);
+        uint256 fair = Math.mulDiv(amountOut, 1e18, 180e6, Math.Rounding.Ceil);
+        uint256 maxIn = fair + fair * slackBps / 10_000 + 1e6; // cover fee + impact (+ dust for tiny amounts)
+        IERC20(address(nvda)).safeTransfer(address(adapter), maxIn);
+        uint256 amountIn =
+            adapter.swapExactOut(address(nvda), address(usdg), amountOut, maxIn, recipient, refundTo);
+        assertEq(usdg.balanceOf(recipient), amountOut);
+        assertEq(nvda.balanceOf(refundTo), maxIn - amountIn);
+        assertLe(amountIn, maxIn);
+        _assertClean();
+    }
+
+    // ------------------------------------------------------------------ exact input
+
+    function test_exactInSingleHop() public {
+        IERC20(address(usdg)).safeTransfer(address(adapter), 180e6);
+        uint256 out = adapter.swapExactIn(address(usdg), address(nvda), 180e6, 0.99e18, recipient);
+        assertEq(nvda.balanceOf(recipient), out);
+        assertGt(out, 0.99e18);
+        assertLt(out, 1e18);
+        _assertClean();
+    }
+
+    function test_exactInTwoHopsThroughNativeEth() public {
+        vm.prank(owner);
+        adapter.setRoute(address(usdg), address(nvda), _hops(ethUsdg, ethNvda));
+        IERC20(address(usdg)).safeTransfer(address(adapter), 180e6);
+        uint256 out = adapter.swapExactIn(address(usdg), address(nvda), 180e6, 0.99e18, recipient);
+        assertEq(nvda.balanceOf(recipient), out);
+        assertGt(out, 0.99e18);
+        _assertClean();
+    }
+
+    function test_exactInNativeInAndOut() public {
+        (bool ok,) = address(adapter).call{value: 1 ether}("");
+        assertTrue(ok);
+        uint256 out = adapter.swapExactIn(address(0), address(usdg), 1 ether, 3500e6, recipient);
+        assertEq(usdg.balanceOf(recipient), out);
+
+        IERC20(address(usdg)).safeTransfer(address(adapter), 3600e6);
+        uint256 ethOut = adapter.swapExactIn(address(usdg), address(0), 3600e6, 0.99 ether, recipient);
+        assertEq(recipient.balance, ethOut);
+        _assertClean();
+    }
+
+    function test_exactInMinOutReverts() public {
+        IERC20(address(usdg)).safeTransfer(address(adapter), 180e6);
+        vm.expectPartialRevert(UniswapV4Adapter.InsufficientOutput.selector);
+        adapter.swapExactIn(address(usdg), address(nvda), 180e6, 1e18, recipient);
+    }
+
+    // ------------------------------------------------------------------ routes / access
+
+    function test_routeValidation() public {
+        vm.startPrank(owner);
+        vm.expectRevert(UniswapV4Adapter.InvalidRoute.selector); // hop does not contain tokenIn
+        adapter.setRoute(address(nvda), address(usdg), _hops(ethUsdg));
+        vm.expectRevert(UniswapV4Adapter.InvalidRoute.selector); // does not end in tokenOut
+        adapter.setRoute(address(nvda), address(usdg), _hops(ethNvda));
+        vm.expectRevert(UniswapV4Adapter.InvalidRoute.selector); // broken chain
+        adapter.setRoute(address(nvda), address(usdg), _hops(nvdaUsdg, ethNvda));
+        vm.expectRevert(UniswapV4Adapter.InvalidRoute.selector); // same token
+        adapter.setRoute(address(nvda), address(nvda), _hops(nvdaUsdg));
+        PoolKey memory unsorted = PoolKey(ethUsdg.currency1, ethUsdg.currency0, 500, 10, IHooks(address(0)));
+        vm.expectRevert(UniswapV4Adapter.InvalidRoute.selector);
+        adapter.setRoute(address(0), address(usdg), _hops(unsorted));
+        PoolKey[] memory three = new PoolKey[](3);
+        vm.expectRevert(UniswapV4Adapter.InvalidRoute.selector);
+        adapter.setRoute(address(nvda), address(usdg), three);
+
+        adapter.setRoute(address(nvda), address(usdg), new PoolKey[](0)); // clear
+        vm.stopPrank();
+        assertEq(adapter.getRoute(address(nvda), address(usdg)).length, 0);
+        IERC20(address(nvda)).safeTransfer(address(adapter), 1e18);
+        vm.expectRevert(UniswapV4Adapter.NoRoute.selector);
+        adapter.swapExactOut(address(nvda), address(usdg), 1e6, 1e18, recipient, refundTo);
+    }
+
+    function test_accessControl() public {
+        vm.startPrank(stranger);
+        vm.expectRevert(UniswapV4Adapter.NotCaller.selector);
+        adapter.swapExactOut(address(nvda), address(usdg), 1e6, 1e18, recipient, refundTo);
+        vm.expectRevert(UniswapV4Adapter.NotCaller.selector);
+        adapter.swapExactIn(address(usdg), address(nvda), 1e6, 0, recipient);
+        vm.expectRevert(UniswapV4Adapter.NotPoolManager.selector);
+        adapter.unlockCallback("");
+        vm.deal(stranger, 1 ether);
+        (bool ok,) = address(adapter).call{value: 1 ether}("");
+        assertFalse(ok, "ETH from strangers rejected");
+        vm.expectRevert();
+        adapter.setRoute(address(nvda), address(usdg), _hops(nvdaUsdg));
+        vm.expectRevert();
+        adapter.setCaller(stranger, true);
+        vm.expectRevert();
+        adapter.rescue(address(0), stranger, 0);
+        vm.stopPrank();
+    }
+
+    function test_rescue() public {
+        (bool ok,) = address(adapter).call{value: 1 ether}("");
+        assertTrue(ok);
+        IERC20(address(nvda)).safeTransfer(address(adapter), 5);
+        vm.startPrank(owner);
+        adapter.rescue(address(0), owner, 1 ether);
+        adapter.rescue(address(nvda), owner, 5);
+        vm.stopPrank();
+        assertEq(owner.balance, 1 ether);
+        assertEq(nvda.balanceOf(owner), 5);
+        _assertClean();
+    }
 }
