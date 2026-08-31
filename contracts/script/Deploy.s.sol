@@ -195,4 +195,119 @@ contract Deploy is Script {
     function stock(uint256 i) external view returns (StockEntry memory) {
         return _stocks[i];
     }
+
+    // =============================================================================================
+    // Production
+    // =============================================================================================
+
+    function deployProduction(Params memory p, Roles memory r) public {
+        _p = p;
+        _r = r;
+        string memory cfg = vm.readFile(p.configPath);
+        require(vm.parseJsonUint(cfg, ".chainId") == block.chainid, "Deploy: config chainId != block.chainid");
+        _requireRoles(r, true);
+
+        address deployer = vm.addr(p.deployerKey);
+        _d.deployer = deployer;
+        _d.blockNumber = block.number;
+        _d.timestamp = block.timestamp;
+        _d.usdg = p.usdg != address(0) ? p.usdg : vm.parseJsonAddress(cfg, ".usdg.address");
+        _d.entryPoint = vm.parseJsonAddress(cfg, ".entryPointV07");
+        _d.poolManager = vm.parseJsonAddress(cfg, ".uniswap.v4PoolManager");
+        _d.swapRouter02 = vm.parseJsonAddress(cfg, ".uniswap.v3SwapRouter02");
+        require(_d.usdg.code.length != 0 && _d.entryPoint.code.length != 0, "Deploy: USDG/EntryPoint missing");
+        require(
+            _d.poolManager.code.length != 0 && _d.swapRouter02.code.length != 0, "Deploy: Uniswap missing"
+        );
+
+        vm.startBroadcast(p.deployerKey);
+
+        address[] memory safe = new address[](1);
+        safe[0] = r.ownerSafe;
+        _d.timelock = address(new TimelockController(TIMELOCK_DELAY, safe, safe, address(0)));
+
+        _d.uniswapV4Adapter = address(new UniswapV4Adapter(IPoolManager(_d.poolManager), deployer));
+        _d.uniswapV3Adapter = address(new UniswapV3Adapter(ISwapRouter02(_d.swapRouter02), deployer));
+        _d.anyrToken = address(new AnyrToken(r.anyrRecipients));
+        // Buybacks go through the V4 adapter; the USDG->ANYR route is registered once the ANYR pool exists.
+        _d.buybackAdapter = _d.uniswapV4Adapter;
+
+        _deployCore(deployer);
+
+        UniswapV4Adapter(payable(_d.uniswapV4Adapter)).setCaller(_d.payWithStock, true);
+        UniswapV4Adapter(payable(_d.uniswapV4Adapter)).setCaller(_d.anyrStaking, true);
+        UniswapV3Adapter(_d.uniswapV3Adapter).setCaller(_d.payWithStock, true);
+        UniswapV3Adapter(_d.uniswapV3Adapter).setCaller(_d.anyrStaking, true);
+
+        _configureStockTokens(cfg);
+
+        if (p.paymasterDeposit != 0) {
+            AnyrPaymaster(payable(_d.paymaster)).deposit{value: p.paymasterDeposit}();
+        }
+        if (p.paymasterStake != 0) {
+            AnyrPaymaster(payable(_d.paymaster)).addStake{value: p.paymasterStake}(p.paymasterUnstakeDelay);
+        }
+
+        address[] memory owned = _ownedContracts();
+        for (uint256 i; i < owned.length; ++i) {
+            Ownable2Step(owned[i]).transferOwnership(_d.timelock);
+        }
+
+        vm.stopBroadcast();
+
+        _writeDeployments();
+        _writeSafeBatch();
+    }
+
+    /// @dev Oracle feed + V3 path + PayWithStock registration for every token in the config.
+    function _configureStockTokens(string memory cfg) internal {
+        address usdg = _d.usdg;
+        address weth = vm.parseJsonAddress(cfg, ".weth");
+        IUniswapV3FactoryLike factory = IUniswapV3FactoryLike(vm.parseJsonAddress(cfg, ".uniswap.v3Factory"));
+        ChainlinkStockOracle oracle = ChainlinkStockOracle(_d.stockOracle);
+        UniswapV3Adapter v3 = UniswapV3Adapter(_d.uniswapV3Adapter);
+        PayWithStock pws = PayWithStock(_d.payWithStock);
+
+        for (uint256 i; vm.keyExistsJson(cfg, _idx(i)); ++i) {
+            string memory b = _idx(i);
+            StockEntry memory e;
+            e.symbol = vm.parseJsonString(cfg, string.concat(b, ".symbol"));
+            e.token = vm.parseJsonAddress(cfg, string.concat(b, ".address"));
+            e.decimals = uint8(vm.parseJsonUint(cfg, string.concat(b, ".decimals")));
+            e.feed = vm.parseJsonAddress(cfg, string.concat(b, ".feed"));
+            string memory pair = vm.parseJsonString(cfg, string.concat(b, ".v3Pool.pair"));
+            uint24 fee = uint24(vm.parseJsonUint(cfg, string.concat(b, ".v3Pool.fee")));
+            address pool = vm.parseJsonAddress(cfg, string.concat(b, ".v3Pool.address"));
+
+            if (_eq(pair, "USDG")) {
+                require(
+                    factory.getPool(e.token, usdg, fee) == pool,
+                    string.concat("Deploy: v3 pool mismatch ", e.symbol)
+                );
+                e.v3Path = abi.encodePacked(e.token, fee, usdg);
+            } else if (_eq(pair, "WETH")) {
+                require(
+                    factory.getPool(e.token, weth, fee) == pool,
+                    string.concat("Deploy: v3 pool mismatch ", e.symbol)
+                );
+                require(
+                    factory.getPool(weth, usdg, _p.wethUsdgFee) != address(0), "Deploy: no WETH/USDG v3 pool"
+                );
+                e.v3Path = abi.encodePacked(e.token, fee, weth, _p.wethUsdgFee, usdg);
+            } else {
+                revert(string.concat("Deploy: unsupported v3 pair for ", e.symbol));
+            }
+
+            e.primaryAdapter = _d.uniswapV3Adapter;
+            // No sane Uniswap v4 stock routes exist on RHC yet (thin/spam pools): fallback left empty. Register a
+            // V4 route + set the fallback later through the timelock.
+            e.fallbackAdapter = address(0);
+
+            oracle.setFeed(e.token, AggregatorV3Interface(e.feed), MAX_STALENESS, false);
+            v3.setPath(e.token, usdg, e.v3Path);
+            pws.registerToken(e.token, e.primaryAdapter, e.fallbackAdapter, true);
+            _stocks.push(e);
+        }
+        require(_stocks.length != 0, "Deploy: no stock tokens in config");
+    }
 }
