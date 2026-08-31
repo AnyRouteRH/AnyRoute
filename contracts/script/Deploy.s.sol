@@ -378,4 +378,142 @@ contract Deploy is Script {
 
         _writeDeployments();
     }
+
+    // =============================================================================================
+    // Shared
+    // =============================================================================================
+
+    /// @dev Core protocol contracts (owner = deployer) + role wiring that does not depend on the mode.
+    function _deployCore(address deployer) internal {
+        Roles memory r = _r;
+        IERC20 usdg = IERC20(_d.usdg);
+
+        _d.credits = address(new Credits(usdg, deployer, r.settlement));
+        _d.callPay = address(new CallPay(usdg, r.callPayTreasury, deployer));
+        _d.receiptAnchor = address(new ReceiptAnchor(deployer, r.anchorer));
+        _d.royalty = address(new Royalty(usdg, deployer, r.registrar, r.settlement));
+        _d.providerBond = address(new ProviderBond(usdg, deployer, r.slasher, r.refundPool));
+        _d.anyrStaking = address(
+            new AnyrStaking(
+                IERC20(_d.anyrToken),
+                usdg,
+                deployer,
+                r.keeper,
+                r.opsWallet,
+                IBuybackAdapter(_d.buybackAdapter)
+            )
+        );
+        _d.stockOracle = address(new ChainlinkStockOracle(deployer));
+        _d.payWithStock = address(
+            new PayWithStock(usdg, ICredits(_d.credits), IStockOracle(_d.stockOracle), r.router, deployer)
+        );
+        _d.paymaster = address(
+            new AnyrPaymaster(IEntryPoint(_d.entryPoint), r.paymasterSigner, _p.paymasterDailyCap, deployer)
+        );
+
+        Credits(_d.credits).setCreditor(_d.payWithStock, true);
+        ChainlinkStockOracle(_d.stockOracle).setGuardian(r.guardian);
+    }
+
+    /// @notice Every Ownable2Step contract handed to the timelock (order = accept batch order).
+    function _ownedContracts() internal view returns (address[] memory a) {
+        uint256 n = _d.uniswapV3Adapter == address(0) ? 10 : 11;
+        a = new address[](n);
+        a[0] = _d.credits;
+        a[1] = _d.callPay;
+        a[2] = _d.receiptAnchor;
+        a[3] = _d.royalty;
+        a[4] = _d.providerBond;
+        a[5] = _d.anyrStaking;
+        a[6] = _d.payWithStock;
+        a[7] = _d.stockOracle;
+        a[8] = _d.paymaster;
+        a[9] = _d.uniswapV4Adapter;
+        if (n == 11) a[10] = _d.uniswapV3Adapter;
+    }
+
+    function ownedContracts() external view returns (address[] memory) {
+        return _ownedContracts();
+    }
+
+    /// @notice The timelock batch that makes it accept ownership of every contract.
+    function acceptBatch()
+        public
+        view
+        returns (address[] memory targets, uint256[] memory values, bytes[] memory payloads, bytes32 salt)
+    {
+        targets = _ownedContracts();
+        values = new uint256[](targets.length);
+        payloads = new bytes[](targets.length);
+        for (uint256 i; i < targets.length; ++i) {
+            payloads[i] = abi.encodeCall(Ownable2Step.acceptOwnership, ());
+        }
+        salt = keccak256(abi.encode(ACCEPT_SALT_TAG, block.chainid, _d.timelock));
+    }
+
+    // =============================================================================================
+    // Env
+    // =============================================================================================
+
+    function _paramsFromEnv() internal view returns (Params memory p) {
+        string memory mock = vm.envOr("MOCK", string(""));
+        p.mock = _eq(mock, "1") || _eq(mock, "true");
+        if (p.mock) {
+            p = localParams();
+            p.deployerKey = vm.envOr("DEPLOYER_PRIVATE_KEY", p.deployerKey);
+            p.paymasterDeposit = vm.envOr("PAYMASTER_DEPOSIT", p.paymasterDeposit);
+        } else {
+            p.deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+            p.usdg = vm.envOr("USDG", address(0));
+            p.outPath = string.concat("deployments/", vm.toString(block.chainid), ".json");
+            p.safeBatchPath =
+                string.concat("deployments/", vm.toString(block.chainid), "-accept-ownership.json");
+            p.paymasterDailyCap = 0.01 ether;
+            p.paymasterDeposit = vm.envOr("PAYMASTER_DEPOSIT", uint256(0));
+            p.paymasterStake = vm.envOr("PAYMASTER_STAKE", uint256(0));
+            p.paymasterUnstakeDelay = uint32(vm.envOr("PAYMASTER_UNSTAKE_DELAY", uint256(1 days)));
+            p.wethUsdgFee = uint24(vm.envOr("WETH_USDG_V3_FEE", uint256(100)));
+            p.configPath = DEFAULT_CONFIG;
+        }
+        p.configPath = vm.envOr("CONFIG_PATH", p.configPath);
+        p.outPath = vm.envOr("DEPLOYMENTS_PATH", p.outPath);
+        if (!p.mock) p.safeBatchPath = vm.envOr("SAFE_BATCH_PATH", p.safeBatchPath);
+        p.paymasterDailyCap = vm.envOr("PAYMASTER_DAILY_CAP", p.paymasterDailyCap);
+    }
+
+    function _prodRolesFromEnv(Params memory) internal view returns (Roles memory r) {
+        r.ownerSafe = vm.envAddress("OWNER_SAFE");
+        r.slasher = vm.envAddress("SLASHER_SAFE");
+        r.router = vm.envAddress("ROUTER");
+        r.settlement = vm.envAddress("SETTLEMENT");
+        r.anchorer = vm.envAddress("ANCHORER");
+        r.keeper = vm.envAddress("KEEPER");
+        r.opsWallet = vm.envAddress("OPS_WALLET");
+        r.paymasterSigner = vm.envAddress("PAYMASTER_SIGNER");
+        r.refundPool = vm.envAddress("REFUND_POOL");
+        r.callPayTreasury = vm.envAddress("CALLPAY_TREASURY");
+        r.registrar = vm.envOr("REGISTRAR", r.router);
+        r.guardian = vm.envOr("GUARDIAN", r.ownerSafe);
+        address[] memory rec = vm.envAddress("ANYR_RECIPIENTS", ",");
+        require(rec.length == 4, "Deploy: ANYR_RECIPIENTS needs 4 addresses (80/10/5/5)");
+        r.anyrRecipients = [rec[0], rec[1], rec[2], rec[3]];
+    }
+
+    function _localRolesFromEnv() internal view returns (Roles memory r) {
+        r = localRoles();
+        r.router = vm.envOr("ROUTER", r.router);
+        r.registrar = vm.envOr("REGISTRAR", r.router);
+        r.settlement = vm.envOr("SETTLEMENT", r.settlement);
+        r.refundPool = vm.envOr("REFUND_POOL", r.settlement);
+        r.callPayTreasury = vm.envOr("CALLPAY_TREASURY", r.settlement);
+        r.anchorer = vm.envOr("ANCHORER", r.anchorer);
+        r.slasher = vm.envOr("SLASHER", r.slasher);
+        r.paymasterSigner = vm.envOr("PAYMASTER_SIGNER", r.paymasterSigner);
+        r.keeper = vm.envOr("KEEPER", r.keeper);
+        r.opsWallet = vm.envOr("OPS_WALLET", r.opsWallet);
+        r.guardian = vm.envOr("GUARDIAN", r.guardian);
+        address[] memory none = new address[](0);
+        address[] memory rec = vm.envOr("ANYR_RECIPIENTS", ",", none);
+        if (rec.length == 4) r.anyrRecipients = [rec[0], rec[1], rec[2], rec[3]];
+    }
 }
