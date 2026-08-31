@@ -395,4 +395,124 @@ contract RhcForkTest is Test {
     address constant NVDA_USD_FEED = 0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15;
     address constant SWAP_ROUTER_02 = 0xCaf681a66D020601342297493863E78C959E5cb2;
     address constant NVDA_USDG_V3_POOL = 0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3; // 0.05%
+
+    string rpc;
+    UniswapV4Adapter adapter;
+    PoolKey ethUsdg;
+
+    function setUp() public {
+        rpc = vm.envOr("RHC_RPC_URL", string(""));
+        if (bytes(rpc).length == 0) {
+            vm.skip(true);
+            return;
+        }
+        vm.createSelectFork(rpc);
+        ethUsdg = PoolKey(Currency.wrap(address(0)), Currency.wrap(USDG), 100, 1, IHooks(address(0)));
+        adapter = new UniswapV4Adapter(IPoolManager(POOL_MANAGER), address(this));
+        adapter.setCaller(address(this), true);
+        PoolKey[] memory hops = new PoolKey[](1);
+        hops[0] = ethUsdg;
+        adapter.setRoute(address(0), USDG, hops);
+        adapter.setRoute(USDG, address(0), hops);
+        vm.deal(address(this), 10 ether);
+    }
+
+    receive() external payable {}
+
+    function test_fork_chainAndCancunOpcodes() public {
+        assertEq(block.chainid, 4663);
+        // Executed by the RHC node itself (eth_call of init code), not by the local EVM:
+        // tstore(0, 0x2a); mstore(0, tload(0)); mcopy(0x20, 0, 0x20); return(0x20, 0x20)  -- uses PUSH0 too
+        bytes memory ret =
+            vm.rpc(rpc, "eth_call", '[{"data":"0x602a5f5d5f5c5f5260205f60205e60206020f3"},"latest"]');
+        assertEq(abi.decode(ret, (uint256)), 0x2a, "TSTORE/TLOAD/MCOPY/PUSH0 on chain");
+    }
+
+    function test_fork_entryPointV07() public {
+        assertGt(ENTRY_POINT_V07.code.length, 0, "EntryPoint v0.7 deployed");
+        assertTrue(IERC165(ENTRY_POINT_V07).supportsInterface(type(IEntryPoint).interfaceId));
+        assertEq(IEntryPoint(ENTRY_POINT_V07).getNonce(address(this), 0), 0);
+        // BasePaymaster's constructor checks the IEntryPoint interface id against the live contract
+        AnyrPaymaster pm = new AnyrPaymaster(IEntryPoint(ENTRY_POINT_V07), address(1), 1 ether, address(this));
+        pm.deposit{value: 0.01 ether}();
+        assertEq(pm.getDeposit(), 0.01 ether);
+    }
+
+    function test_fork_v4ExactOutAndExactIn() public {
+        (uint160 sqrtP,,,) = IPoolManager(POOL_MANAGER).getSlot0(ethUsdg.toId());
+        assertGt(sqrtP, 0, "ETH/USDG pool initialized");
+        assertGt(IPoolManager(POOL_MANAGER).getLiquidity(ethUsdg.toId()), 0, "pool has liquidity");
+
+        // exact-out: 1 USDG from native ETH (caller pre-sends amountInMax wei, like it pre-transfers ERC20s)
+        uint256 maxIn = 0.01 ether;
+        uint256 ethBefore = address(this).balance;
+        (bool ok,) = address(adapter).call{value: maxIn}("");
+        assertTrue(ok);
+        uint256 amountIn = adapter.swapExactOut(address(0), USDG, 1e6, maxIn, address(this), address(this));
+        assertEq(IERC20(USDG).balanceOf(address(this)), 1e6, "exactly 1 USDG");
+        assertEq(ethBefore - address(this).balance, amountIn, "unused ETH refunded");
+        assertGt(amountIn, 0);
+        assertEq(address(adapter).balance, 0);
+        assertEq(IERC20(USDG).balanceOf(address(adapter)), 0);
+
+        // exact-in: swap the 1 USDG back to native ETH
+        IERC20(USDG).safeTransfer(address(adapter), 1e6);
+        uint256 ethBefore2 = address(this).balance;
+        uint256 out = adapter.swapExactIn(USDG, address(0), 1e6, 1, address(this));
+        assertEq(address(this).balance - ethBefore2, out);
+        assertGt(out, 0);
+        assertLt(out, amountIn, "round trip loses fees");
+        assertEq(IERC20(USDG).balanceOf(address(adapter)), 0);
+
+        // exact-in from native ETH
+        (ok,) = address(adapter).call{value: 0.001 ether}("");
+        assertTrue(ok);
+        uint256 usdgOut = adapter.swapExactIn(address(0), USDG, 0.001 ether, 1, address(this));
+        assertEq(IERC20(USDG).balanceOf(address(this)), usdgOut);
+        assertEq(address(adapter).balance, 0);
+    }
+
+    /// @dev PayWithStock end-to-end on real state: live NVDA/USD Chainlink feed (already includes uiMultiplier),
+    /// real NVDA stock token, real USDG, V3 SwapRouter02 NVDA/USDG 0.05% pool as primary.
+    function test_fork_payWithStockNvdaViaV3() public {
+        UniswapV3Adapter v3 = new UniswapV3Adapter(ISwapRouter02(SWAP_ROUTER_02), address(this));
+        v3.setPath(NVDA, USDG, abi.encodePacked(NVDA, uint24(500), USDG));
+
+        ChainlinkStockOracle oracle = new ChainlinkStockOracle(address(this));
+        oracle.setFeed(NVDA, AggregatorV3Interface(NVDA_USD_FEED), 302_400, false);
+        (uint256 fair, bool ok) = oracle.fairPrice(NVDA);
+        assertTrue(ok, "live NVDA feed ok (weekend staleness within 3.5d)");
+        emit log_named_decimal_uint("NVDA fair price (USD)", fair, 18);
+
+        MockCredits credits = new MockCredits(IERC20(USDG));
+        address router = makeAddr("router");
+        PayWithStock pws =
+            new PayWithStock(IERC20(USDG), ICredits(address(credits)), oracle, router, address(this));
+        pws.setMaxSlip(1000);
+        pws.registerToken(NVDA, address(v3), address(adapter), true); // V4 adapter as (route-less) fallback
+        v3.setCaller(address(pws), true);
+        adapter.setCaller(address(pws), true);
+
+        address wallet = makeAddr("nvdaWallet");
+        deal(NVDA, wallet, 1e18); // stdstore write into the proxy's balance slot
+        assertEq(IERC20(NVDA).balanceOf(wallet), 1e18, "dealt NVDA");
+        bytes32 key = keccak256("fork-key");
+        vm.startPrank(wallet);
+        IERC20(NVDA).approve(address(pws), type(uint256).max);
+        pws.openSession(key, NVDA, 1e18);
+        vm.stopPrank();
+
+        (uint256 raw,) = pws.quoteRaw(NVDA, 1e6);
+        vm.prank(router);
+        uint256 spent = pws.payCall(key, 1e6, 300);
+        emit log_named_uint("rawNeeded at fair value", raw);
+        emit log_named_uint("raw NVDA spent via V3", spent);
+        assertEq(credits.credited(key), 1e6);
+        assertEq(IERC20(USDG).balanceOf(address(credits)), 1e6);
+        assertEq(1e18 - IERC20(NVDA).balanceOf(wallet), spent);
+        assertLe(spent, Math.mulDiv(raw, 10_300, 10_000, Math.Rounding.Ceil));
+        assertEq(IERC20(NVDA).balanceOf(address(pws)), 0);
+        assertEq(IERC20(NVDA).balanceOf(address(v3)), 0);
+        assertEq(IERC20(USDG).balanceOf(address(pws)), 0);
+    }
 }
