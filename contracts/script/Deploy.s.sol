@@ -310,4 +310,72 @@ contract Deploy is Script {
         }
         require(_stocks.length != 0, "Deploy: no stock tokens in config");
     }
+
+    // =============================================================================================
+    // Local (MOCK=1)
+    // =============================================================================================
+
+    function deployLocal(Params memory p, Roles memory r) public {
+        _p = p;
+        _r = r;
+        _requireRoles(r, false);
+        address deployer = vm.addr(p.deployerKey);
+        _d.deployer = deployer;
+        _d.blockNumber = block.number;
+        _d.timestamp = block.timestamp;
+
+        vm.startBroadcast(p.deployerKey);
+
+        MockUSDG3009 usdg = new MockUSDG3009();
+        _d.usdg = address(usdg);
+        MockStockToken nvda = new MockStockToken("NVIDIA (mock)", "NVDA", 18);
+        _d.mockNvda = address(nvda);
+        _d.mockNvdaFeed = address(new MockAggregator(8, 225e8, "NVDA / USD"));
+        _d.mockSwapAdapter = address(new MockSwapAdapter(225e18)); // fills exact-out at $225 / NVDA
+        usdg.mint(_d.mockSwapAdapter, 10_000_000e6);
+
+        _d.entryPoint = address(new EntryPoint());
+        _d.poolManager = address(new PoolManager(deployer));
+        _d.uniswapV4Adapter = address(new UniswapV4Adapter(IPoolManager(_d.poolManager), deployer));
+
+        AnyrToken anyr = new AnyrToken(r.anyrRecipients);
+        _d.anyrToken = address(anyr);
+        _d.buybackAdapter = address(new MockBuybackAdapter(100e18, 1e6)); // 1 USDG = 100 ANYR
+        if (anyr.balanceOf(deployer) >= 10_000_000e18) {
+            require(anyr.transfer(_d.buybackAdapter, 10_000_000e18));
+        }
+
+        _deployCore(deployer);
+
+        UniswapV4Adapter(payable(_d.uniswapV4Adapter)).setCaller(_d.payWithStock, true);
+        UniswapV4Adapter(payable(_d.uniswapV4Adapter)).setCaller(_d.anyrStaking, true);
+
+        ChainlinkStockOracle(_d.stockOracle)
+            .setFeed(address(nvda), AggregatorV3Interface(_d.mockNvdaFeed), MAX_STALENESS, false);
+        PayWithStock(_d.payWithStock).registerToken(address(nvda), _d.mockSwapAdapter, address(0), true);
+        _stocks.push(
+            StockEntry({
+                symbol: "NVDA",
+                token: address(nvda),
+                decimals: 18,
+                feed: _d.mockNvdaFeed,
+                primaryAdapter: _d.mockSwapAdapter,
+                fallbackAdapter: address(0),
+                v3Path: ""
+            })
+        );
+
+        if (p.paymasterDeposit != 0) {
+            AnyrPaymaster(payable(_d.paymaster)).deposit{value: p.paymasterDeposit}();
+        }
+
+        for (uint32 i = 7; i <= 9; ++i) {
+            usdg.mint(_anvil(i), 1_000_000e6);
+            nvda.mint(_anvil(i), 1_000e18);
+        }
+
+        vm.stopBroadcast();
+
+        _writeDeployments();
+    }
 }
