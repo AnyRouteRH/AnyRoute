@@ -313,4 +313,85 @@ contract ChainlinkStockOracleTest is Test {
         oracle.removeFeed(address(nvda));
         vm.stopPrank();
     }
+
+    function test_setFeedValidation() public {
+        vm.startPrank(owner);
+        vm.expectRevert(ChainlinkStockOracle.InvalidStaleness.selector);
+        oracle.setFeed(address(nvda), feed, 0, true);
+        vm.expectRevert(ChainlinkStockOracle.ZeroAddress.selector);
+        oracle.setFeed(address(0), feed, 1, true);
+        vm.expectRevert(ChainlinkStockOracle.ZeroAddress.selector);
+        oracle.setFeed(address(nvda), AggregatorV3Interface(address(0)), 1, true);
+        MockAggregator f37 = new MockAggregator(37, 1, "x");
+        vm.expectRevert(ChainlinkStockOracle.InvalidFeed.selector);
+        oracle.setFeed(address(nvda), f37, 1, true);
+        vm.stopPrank();
+    }
+
+    function test_setFeedEmits() public {
+        vm.expectEmit(true, true, false, true);
+        emit ChainlinkStockOracle.FeedSet(address(nvda), address(feed), 8, 123, true);
+        vm.prank(owner);
+        oracle.setFeed(address(nvda), feed, 123, true);
+        assertEq(oracle.configOf(address(nvda)).maxStaleness, 123);
+    }
+
+    function test_setFeedWithoutMultiplier() public {
+        // Chainlink Robinhood feeds already include the multiplier: configured with applyUiMultiplier = false
+        nvda.setUiMultiplier(2e18);
+        vm.prank(owner);
+        oracle.setFeed(address(nvda), feed, 302_400, false);
+        (uint256 p, bool ok) = oracle.fairPrice(address(nvda));
+        assertTrue(ok);
+        assertEq(p, 180e18);
+        assertFalse(oracle.configOf(address(nvda)).applyMultiplier);
+        // 3.5 days of weekend staleness tolerated
+        vm.warp(block.timestamp + 302_400);
+        (, ok) = oracle.fairPrice(address(nvda));
+        assertTrue(ok);
+        vm.warp(block.timestamp + 1);
+        (, ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_tokenPausedIsNotOk() public {
+        nvda.setPaused(true);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+        nvda.setPaused(false);
+        (, ok) = oracle.fairPrice(address(nvda));
+        assertTrue(ok);
+    }
+
+    function test_tokenOraclePausedIsNotOk() public {
+        nvda.setOraclePaused(true);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_tokenWithoutPauseViewsIsFine() public {
+        // MockAggregator has neither paused() nor oraclePaused(): calls revert and are ignored
+        MockAggregator notAToken = new MockAggregator(8, 1e8, "x");
+        vm.prank(owner);
+        oracle.setFeed(address(notAToken), feed, STALENESS, false);
+        (uint256 p, bool ok) = oracle.fairPrice(address(notAToken));
+        assertTrue(ok);
+        assertEq(p, 180e18);
+    }
+
+    function test_removeFeed() public {
+        vm.prank(owner);
+        oracle.removeFeed(address(nvda));
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_ownable2Step() public {
+        vm.prank(owner);
+        oracle.transferOwnership(alice);
+        assertEq(oracle.owner(), owner);
+        vm.prank(alice);
+        oracle.acceptOwnership();
+        assertEq(oracle.owner(), alice);
+    }
 }
