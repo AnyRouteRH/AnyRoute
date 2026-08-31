@@ -317,4 +317,82 @@ contract UniswapV4AdapterLocalTest is Test {
         assertEq(nvda.balanceOf(owner), 5);
         _assertClean();
     }
+
+    // ------------------------------------------------------------------ PayWithStock end-to-end
+
+    function _pws()
+        internal
+        returns (PayWithStock pws, MockCredits credits, MockAggregator feed, address router)
+    {
+        router = makeAddr("router");
+        credits = new MockCredits(IERC20(address(usdg)));
+        ChainlinkStockOracle oracle = new ChainlinkStockOracle(owner);
+        feed = new MockAggregator(8, 180e8, "NVDA / USD");
+        pws = new PayWithStock(IERC20(address(usdg)), ICredits(address(credits)), oracle, router, owner);
+        backup = new MockSwapAdapter(180e18);
+        vm.startPrank(owner);
+        oracle.setFeed(address(nvda), feed, 302_400, true);
+        pws.registerToken(address(nvda), address(adapter), address(backup), true);
+        adapter.setCaller(address(pws), true);
+        vm.stopPrank();
+    }
+
+    function test_payWithStockThroughV4() public {
+        (PayWithStock pws, MockCredits credits,, address router) = _pws();
+        address wallet = makeAddr("wallet");
+        bytes32 key = keccak256("key");
+        IERC20(address(nvda)).safeTransfer(wallet, 10e18);
+        vm.startPrank(wallet);
+        nvda.approve(address(pws), type(uint256).max);
+        pws.openSession(key, address(nvda), 5e18);
+        vm.stopPrank();
+
+        (uint256 raw,) = pws.quoteRaw(address(nvda), 50e6);
+        vm.prank(router);
+        uint256 spent = pws.payCall(key, 50e6, 100);
+        assertGt(spent, raw, "pool fee paid on top of fair value");
+        assertLe(spent, Math.mulDiv(raw, 10_100, 10_000, Math.Rounding.Ceil));
+        assertEq(10e18 - nvda.balanceOf(wallet), spent);
+        assertEq(credits.credited(key), 50e6);
+        assertEq(nvda.balanceOf(address(pws)), 0);
+        assertEq(usdg.balanceOf(address(pws)), 0);
+        _assertClean();
+    }
+
+    function test_payWithStockFallsBackWhenV4Deviates() public {
+        (PayWithStock pws, MockCredits credits, MockAggregator feed, address router) = _pws();
+        feed.setAnswer(200e8); // oracle says $200, pool still at $180: V4 needs > maxIn at 1% slippage
+        backup.setPrice(200e18); // the fallback venue trades at the oracle price
+        address wallet = makeAddr("wallet");
+        bytes32 key = keccak256("key");
+        IERC20(address(nvda)).safeTransfer(wallet, 10e18);
+        vm.startPrank(wallet);
+        nvda.approve(address(pws), type(uint256).max);
+        pws.openSession(key, address(nvda), 5e18);
+        vm.stopPrank();
+
+        vm.prank(router);
+        vm.expectEmit(true, true, false, false);
+        emit PayWithStock.SwapAttemptFailed(key, address(adapter), "");
+        pws.payCall(key, 50e6, 100);
+        assertEq(credits.credited(key), 50e6);
+        assertEq(backup.calls(), 1);
+        assertEq(nvda.balanceOf(address(adapter)), 0, "failed V4 attempt fully rolled back");
+        _assertClean();
+    }
+}
+
+/// @notice Robinhood Chain (4663) fork tests. Skipped unless RHC_RPC_URL is set:
+///   RHC_RPC_URL=https://rpc.mainnet.chain.robinhood.com forge test --match-path "test/fork/*"
+contract RhcForkTest is Test {
+    using StateLibrary for IPoolManager;
+    using SafeERC20 for IERC20;
+
+    address constant POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
+    address constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
+    address constant ENTRY_POINT_V07 = 0x0000000071727De22E5E9d8BAf0edAc6f37da032;
+    address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
+    address constant NVDA_USD_FEED = 0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15;
+    address constant SWAP_ROUTER_02 = 0xCaf681a66D020601342297493863E78C959E5cb2;
+    address constant NVDA_USDG_V3_POOL = 0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3; // 0.05%
 }
