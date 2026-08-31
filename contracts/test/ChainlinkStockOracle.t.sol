@@ -200,4 +200,117 @@ contract ChainlinkStockOracleTest is Test {
         vm.prank(owner);
         oracle.setSequencerFeed(seq, GRACE);
     }
+
+    function test_sequencerUpPastGrace() public {
+        seq.setSequencerStatus(true, block.timestamp - GRACE - 1);
+        _enableSequencer();
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertTrue(ok);
+        assertTrue(oracle.isSequencerUp());
+    }
+
+    function test_sequencerDown() public {
+        seq.setSequencerStatus(false, block.timestamp - 10 days);
+        _enableSequencer();
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+        assertFalse(oracle.isSequencerUp());
+    }
+
+    function testFuzz_sequencerGrace(uint32 sinceUp) public {
+        sinceUp = uint32(bound(sinceUp, 0, 3 * GRACE));
+        seq.setSequencerStatus(true, block.timestamp - sinceUp);
+        _enableSequencer();
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertEq(ok, sinceUp > GRACE); // startedAt + GRACE must be passed
+    }
+
+    function test_sequencerStartedAtZeroIsNotOk() public {
+        seq.setSequencerStatus(true, 0);
+        _enableSequencer();
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_sequencerFeedReverts() public {
+        seq.setSequencerStatus(true, block.timestamp - 10 days);
+        seq.setShouldRevert(true);
+        _enableSequencer();
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    function test_sequencerDisabled() public {
+        seq.setSequencerStatus(false, block.timestamp);
+        _enableSequencer();
+        vm.prank(owner);
+        oracle.setSequencerFeed(AggregatorV3Interface(address(0)), 0);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertTrue(ok);
+    }
+
+    // ------------------------------------------------------------------ pause / guardian
+
+    function test_guardianPausesOnlyOwnerUnpauses() public {
+        vm.expectEmit(true, true, false, false);
+        emit ChainlinkStockOracle.TokenPaused(address(nvda), guardian);
+        vm.prank(guardian);
+        oracle.pause(address(nvda));
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+
+        vm.prank(guardian);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+        oracle.unpause(address(nvda));
+
+        vm.prank(owner);
+        oracle.unpause(address(nvda));
+        (, ok) = oracle.fairPrice(address(nvda));
+        assertTrue(ok);
+    }
+
+    function test_ownerCanPause() public {
+        vm.prank(owner);
+        oracle.pause(address(nvda));
+        assertTrue(oracle.configOf(address(nvda)).paused);
+    }
+
+    function test_strangerCannotPause() public {
+        vm.prank(alice);
+        vm.expectRevert(ChainlinkStockOracle.NotGuardian.selector);
+        oracle.pause(address(nvda));
+    }
+
+    function test_pauseUnknownTokenReverts() public {
+        vm.prank(guardian);
+        vm.expectRevert(ChainlinkStockOracle.UnknownToken.selector);
+        oracle.pause(alice);
+    }
+
+    function test_setFeedKeepsPause() public {
+        vm.prank(guardian);
+        oracle.pause(address(nvda));
+        MockAggregator f2 = new MockAggregator(8, 200e8, "x");
+        vm.prank(owner);
+        oracle.setFeed(address(nvda), f2, STALENESS, true);
+        (, bool ok) = oracle.fairPrice(address(nvda));
+        assertFalse(ok);
+    }
+
+    // ------------------------------------------------------------------ admin
+
+    function test_onlyOwnerSetters() public {
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        oracle.setFeed(address(nvda), feed, 1, true);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        oracle.setSequencerFeed(seq, 1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        oracle.setGuardian(alice);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        oracle.setUiMultiplierEnabled(address(nvda), false);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, alice));
+        oracle.removeFeed(address(nvda));
+        vm.stopPrank();
+    }
 }
