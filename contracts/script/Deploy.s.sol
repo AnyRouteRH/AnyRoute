@@ -588,4 +588,132 @@ contract Deploy is Script {
         f[17] = _kvA("buybackAdapter", d.buybackAdapter);
         return _obj(f);
     }
+
+    function _rolesJson() internal view returns (string memory) {
+        Roles memory r = _r;
+        address[] memory callers = new address[](2);
+        callers[0] = _d.payWithStock;
+        callers[1] = _d.anyrStaking;
+        address[] memory creditors = new address[](1);
+        creditors[0] = _d.payWithStock;
+        address[] memory rec = new address[](4);
+        for (uint256 i; i < 4; ++i) {
+            rec[i] = r.anyrRecipients[i];
+        }
+        string[] memory f = new string[](15);
+        f[0] = _kvA("ownerSafe", r.ownerSafe);
+        f[1] = _kvA("slasher", r.slasher);
+        f[2] = _kvA("router", r.router);
+        f[3] = _kvA("settlement", r.settlement);
+        f[4] = _kvA("anchorer", r.anchorer);
+        f[5] = _kvA("registrar", r.registrar);
+        f[6] = _kvA("keeper", r.keeper);
+        f[7] = _kvA("opsWallet", r.opsWallet);
+        f[8] = _kvA("paymasterSigner", r.paymasterSigner);
+        f[9] = _kvA("refundPool", r.refundPool);
+        f[10] = _kvA("callPayTreasury", r.callPayTreasury);
+        f[11] = _kvA("guardian", r.guardian);
+        f[12] = _kv("anyrRecipients", _addrArray(rec));
+        f[13] = _kv("creditors", _addrArray(creditors));
+        f[14] = _kv("adapterCallers", _addrArray(callers));
+        return _obj(f);
+    }
+
+    function _paramsJson() internal view returns (string memory) {
+        string[] memory f = new string[](7);
+        f[0] = _kvU("timelockMinDelay", _p.mock ? 0 : TIMELOCK_DELAY);
+        f[1] = _kvU("maxStaleness", MAX_STALENESS);
+        f[2] = _kv("applyUiMultiplier", "false");
+        f[3] = _kvU("payWithStockMaxSlipBps", PayWithStock(_d.payWithStock).maxSlipCapBps());
+        f[4] = _kvS("paymasterDailyCap", vm.toString(_p.paymasterDailyCap));
+        f[5] = _kvS("paymasterDeposit", vm.toString(_p.paymasterDeposit));
+        f[6] = _kvS("paymasterStake", vm.toString(_p.paymasterStake));
+        return _obj(f);
+    }
+
+    function _stocksJson() internal view returns (string memory out) {
+        out = "[";
+        for (uint256 i; i < _stocks.length; ++i) {
+            StockEntry memory e = _stocks[i];
+            string[] memory f = new string[](7);
+            f[0] = _kvS("symbol", e.symbol);
+            f[1] = _kvA("address", e.token);
+            f[2] = _kvU("decimals", e.decimals);
+            f[3] = _kvA("feed", e.feed);
+            f[4] = _kvA("primaryAdapter", e.primaryAdapter);
+            f[5] = _kvA("fallbackAdapter", e.fallbackAdapter);
+            f[6] = _kvS("v3Path", vm.toString(e.v3Path));
+            out = string.concat(out, i == 0 ? "" : ",", _obj(f));
+        }
+        out = string.concat(out, "]");
+    }
+
+    function _mocksJson() internal view returns (string memory) {
+        string[] memory f = new string[](4);
+        f[0] = _kvA("nvda", _d.mockNvda);
+        f[1] = _kvA("nvdaFeed", _d.mockNvdaFeed);
+        f[2] = _kvA("swapAdapter", _d.mockSwapAdapter);
+        f[3] = _kvA("buybackAdapter", _d.buybackAdapter);
+        return _obj(f);
+    }
+
+    /// @dev Safe Transaction Builder batch for OWNER_SAFE. `transactions` = step 1, timelock.scheduleBatch(
+    /// acceptOwnership on every contract). Step 2, after TIMELOCK_DELAY, is `anyroute.executeTransactions`
+    /// (timelock.executeBatch with the same arguments), also written standalone to
+    /// <chainid>-accept-ownership-execute.json so it can be imported directly.
+    function _writeSafeBatch() internal {
+        if (bytes(_p.safeBatchPath).length == 0) return;
+        (string memory scheduleTx, string memory executeTx) = _acceptTxs();
+        string[] memory f = new string[](6);
+        f[0] = _kvS("version", "1.0");
+        f[1] = _kvS("chainId", vm.toString(block.chainid));
+        f[2] = _kvU("createdAt", block.timestamp * 1000);
+        f[3] = _kv("meta", _safeMeta("Anyroute: timelock accepts ownership (step 1/2: schedule)"));
+        f[4] = _kv("transactions", string.concat("[", scheduleTx, "]"));
+        f[5] = _kv("anyroute", _acceptInfo(executeTx));
+        vm.writeFile(_p.safeBatchPath, _obj(f));
+
+        string[] memory g = new string[](5);
+        g[0] = f[0];
+        g[1] = f[1];
+        g[2] = f[2];
+        g[3] = _kv("meta", _safeMeta("Anyroute: timelock accepts ownership (step 2/2: execute)"));
+        g[4] = _kv("transactions", string.concat("[", executeTx, "]"));
+        vm.writeFile(_executePath(_p.safeBatchPath), _obj(g));
+    }
+
+    function _safeMeta(string memory name) internal view returns (string memory) {
+        string[] memory f = new string[](5);
+        f[0] = _kvS("name", name);
+        f[1] = _kvS(
+            "description",
+            string.concat(
+                "OWNER_SAFE proposes/executes on the TimelockController: acceptOwnership() on ",
+                vm.toString(_ownedContracts().length),
+                " contracts; execute no earlier than ",
+                vm.toString(TIMELOCK_DELAY),
+                "s after scheduling."
+            )
+        );
+        f[2] = _kvS("txBuilderVersion", "1.16.5");
+        f[3] = _kvA("createdFromSafeAddress", _r.ownerSafe);
+        f[4] = _kvS("createdFromOwnerAddress", "");
+        return _obj(f);
+    }
+
+    function _acceptTxs() internal view returns (string memory scheduleTx, string memory executeTx) {
+        (address[] memory targets, uint256[] memory values, bytes[] memory payloads, bytes32 salt) =
+            acceptBatch();
+        scheduleTx = _safeTx(
+            _d.timelock,
+            abi.encodeCall(
+                TimelockController.scheduleBatch,
+                (targets, values, payloads, bytes32(0), salt, TIMELOCK_DELAY)
+            )
+        );
+        executeTx = _safeTx(
+            _d.timelock,
+            abi.encodeCall(TimelockController.executeBatch, (targets, values, payloads, bytes32(0), salt))
+        );
+    }
 }
