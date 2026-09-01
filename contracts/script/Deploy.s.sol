@@ -516,4 +516,76 @@ contract Deploy is Script {
         address[] memory rec = vm.envOr("ANYR_RECIPIENTS", ",", none);
         if (rec.length == 4) r.anyrRecipients = [rec[0], rec[1], rec[2], rec[3]];
     }
+
+    function _requireRoles(Roles memory r, bool prod) internal pure {
+        require(
+            r.slasher != address(0) && r.router != address(0) && r.settlement != address(0)
+                && r.anchorer != address(0) && r.registrar != address(0) && r.keeper != address(0)
+                && r.opsWallet != address(0) && r.paymasterSigner != address(0) && r.refundPool != address(0)
+                && r.callPayTreasury != address(0) && r.guardian != address(0),
+            "Deploy: missing role address"
+        );
+        if (prod) require(r.ownerSafe != address(0), "Deploy: OWNER_SAFE required");
+    }
+
+    // =============================================================================================
+    // Output
+    // =============================================================================================
+
+    /// @dev Schema "anyroute.deployments/v1":
+    /// { schema, chainId, mode, blockNumber, timestamp, deployer, owner, pendingOwner,
+    ///   contracts: { usdg, anyrToken, credits, callPay, receiptAnchor, royalty, providerBond, anyrStaking,
+    ///                payWithStock, stockOracle, uniswapV4Adapter, uniswapV3Adapter, paymaster, entryPoint,
+    ///                poolManager, swapRouter02, timelock, buybackAdapter },
+    ///   roles: { ownerSafe, slasher, router, settlement, anchorer, registrar, keeper, opsWallet, paymasterSigner,
+    ///            refundPool, callPayTreasury, guardian, anyrRecipients[4], creditors[], adapterCallers[] },
+    ///   params: { timelockMinDelay, maxStaleness, applyUiMultiplier, payWithStockMaxSlipBps,
+    ///             paymasterDailyCap, paymasterDeposit, paymasterStake },
+    ///   stockTokens: [ { symbol, address, decimals, feed, primaryAdapter, fallbackAdapter, v3Path } ],
+    ///   mocks: { nvda, nvdaFeed, swapAdapter, buybackAdapter } | null }
+    /// Addresses are checksummed strings (0x0 when not deployed in this mode); wei amounts are decimal strings.
+    function _writeDeployments() internal {
+        if (bytes(_p.outPath).length == 0) return; // tests may skip artifacts
+        bool prod = !_p.mock;
+        string[] memory f = new string[](14);
+        f[0] = _kvS("schema", "anyroute.deployments/v1");
+        f[1] = _kvU("chainId", block.chainid);
+        f[2] = _kvS("mode", prod ? "production" : "local");
+        f[3] = _kvU("blockNumber", _d.blockNumber);
+        f[4] = _kvU("timestamp", _d.timestamp);
+        f[5] = _kvA("deployer", _d.deployer);
+        f[6] = _kvA("owner", _d.deployer);
+        f[7] = _kvA("pendingOwner", prod ? _d.timelock : address(0));
+        f[8] = _kv("contracts", _contractsJson());
+        f[9] = _kv("roles", _rolesJson());
+        f[10] = _kv("params", _paramsJson());
+        f[11] = _kv("stockTokens", _stocksJson());
+        f[12] = _kv("mocks", prod ? "null" : _mocksJson());
+        f[13] = _kvS("generator", "contracts/script/Deploy.s.sol");
+        vm.writeFile(_p.outPath, _obj(f));
+    }
+
+    function _contractsJson() internal view returns (string memory) {
+        Deployed memory d = _d;
+        string[] memory f = new string[](18);
+        f[0] = _kvA("usdg", d.usdg);
+        f[1] = _kvA("anyrToken", d.anyrToken);
+        f[2] = _kvA("credits", d.credits);
+        f[3] = _kvA("callPay", d.callPay);
+        f[4] = _kvA("receiptAnchor", d.receiptAnchor);
+        f[5] = _kvA("royalty", d.royalty);
+        f[6] = _kvA("providerBond", d.providerBond);
+        f[7] = _kvA("anyrStaking", d.anyrStaking);
+        f[8] = _kvA("payWithStock", d.payWithStock);
+        f[9] = _kvA("stockOracle", d.stockOracle);
+        f[10] = _kvA("uniswapV4Adapter", d.uniswapV4Adapter);
+        f[11] = _kvA("uniswapV3Adapter", d.uniswapV3Adapter);
+        f[12] = _kvA("paymaster", d.paymaster);
+        f[13] = _kvA("entryPoint", d.entryPoint);
+        f[14] = _kvA("poolManager", d.poolManager);
+        f[15] = _kvA("swapRouter02", d.swapRouter02);
+        f[16] = _kvA("timelock", d.timelock);
+        f[17] = _kvA("buybackAdapter", d.buybackAdapter);
+        return _obj(f);
+    }
 }
