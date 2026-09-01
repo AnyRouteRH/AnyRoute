@@ -716,4 +716,104 @@ contract Deploy is Script {
             abi.encodeCall(TimelockController.executeBatch, (targets, values, payloads, bytes32(0), salt))
         );
     }
+
+    function _acceptInfo(string memory executeTx) internal view returns (string memory) {
+        (address[] memory targets, uint256[] memory values, bytes[] memory payloads, bytes32 salt) =
+            acceptBatch();
+        bytes32 opId = TimelockController(payable(_d.timelock))
+            .hashOperationBatch(targets, values, payloads, bytes32(0), salt);
+        string[] memory f = new string[](8);
+        f[0] = _kvA("timelock", _d.timelock);
+        f[1] = _kvU("minDelay", TIMELOCK_DELAY);
+        f[2] = _kvS("predecessor", vm.toString(bytes32(0)));
+        f[3] = _kvS("salt", vm.toString(salt));
+        f[4] = _kvS("operationId", vm.toString(opId));
+        f[5] = _kv("targets", _addrArray(targets));
+        f[6] = _kvS("call", "acceptOwnership()");
+        f[7] = _kv("executeTransactions", string.concat("[", executeTx, "]"));
+        return _obj(f);
+    }
+
+    function _executePath(string memory batchPath) internal pure returns (string memory) {
+        bytes memory b = bytes(batchPath);
+        bytes memory stem = new bytes(b.length - 5); // strip ".json"
+        for (uint256 i; i < stem.length; ++i) {
+            stem[i] = b[i];
+        }
+        return string.concat(string(stem), "-execute.json");
+    }
+
+    /// @notice (Re)write the artifacts to the given paths (used by tests; `run()` writes them automatically).
+    function writeArtifacts(string memory outPath, string memory safeBatchPath) external {
+        _p.outPath = outPath;
+        _p.safeBatchPath = safeBatchPath;
+        _writeDeployments();
+        if (!_p.mock) _writeSafeBatch();
+    }
+
+    function executeBatchPath() external view returns (string memory) {
+        return _executePath(_p.safeBatchPath);
+    }
+
+    function _safeTx(address to, bytes memory data) internal pure returns (string memory) {
+        string[] memory f = new string[](5);
+        f[0] = _kvA("to", to);
+        f[1] = _kvS("value", "0");
+        f[2] = _kvS("data", vm.toString(data));
+        f[3] = _kv("contractMethod", "null");
+        f[4] = _kv("contractInputsValues", "null");
+        return _obj(f);
+    }
+
+    // =============================================================================================
+    // Helpers
+    // =============================================================================================
+
+    function _anvil(uint32 i) internal pure returns (address) {
+        return vm.addr(vm.deriveKey(ANVIL_MNEMONIC, i));
+    }
+
+    function _idx(uint256 i) internal pure returns (string memory) {
+        return string.concat(".stockTokens[", vm.toString(i), "]");
+    }
+
+    function _eq(string memory a, string memory b) internal pure returns (bool) {
+        return keccak256(bytes(a)) == keccak256(bytes(b));
+    }
+
+    function _q(string memory s) internal pure returns (string memory) {
+        return string.concat('"', s, '"');
+    }
+
+    function _kv(string memory k, string memory rawJson) internal pure returns (string memory) {
+        return string.concat(_q(k), ":", rawJson);
+    }
+
+    function _obj(string[] memory fields) internal pure returns (string memory out) {
+        out = "{";
+        for (uint256 i; i < fields.length; ++i) {
+            out = string.concat(out, i == 0 ? "" : ",", fields[i]);
+        }
+        out = string.concat(out, "}");
+    }
+
+    function _kvS(string memory k, string memory v) internal pure returns (string memory) {
+        return string.concat(_q(k), ":", _q(v));
+    }
+
+    function _kvA(string memory k, address v) internal pure returns (string memory) {
+        return _kvS(k, vm.toString(v));
+    }
+
+    function _kvU(string memory k, uint256 v) internal pure returns (string memory) {
+        return string.concat(_q(k), ":", vm.toString(v));
+    }
+
+    function _addrArray(address[] memory a) internal pure returns (string memory out) {
+        out = "[";
+        for (uint256 i; i < a.length; ++i) {
+            out = string.concat(out, i == 0 ? "" : ",", _q(vm.toString(a[i])));
+        }
+        out = string.concat(out, "]");
+    }
 }

@@ -87,4 +87,98 @@ contract DeployLocalTest is Test {
         assertEq(address(AnyrPaymaster(payable(d.paymaster)).entryPoint()), d.entryPoint);
         assertEq(AnyrPaymaster(payable(d.paymaster)).getDeposit(), 10 ether);
     }
+
+    function test_adapterCallers() public view {
+        UniswapV4Adapter v4 = UniswapV4Adapter(payable(d.uniswapV4Adapter));
+        assertTrue(v4.isCaller(d.payWithStock));
+        assertTrue(v4.isCaller(d.anyrStaking));
+        assertFalse(v4.isCaller(deployer));
+        assertEq(address(v4.poolManager()), d.poolManager);
+    }
+
+    function test_tokenRegisteredAndOracleOk() public view {
+        (bool enabled, address primary, address fallbackAdapter) =
+            PayWithStock(d.payWithStock).tokens(d.mockNvda);
+        assertTrue(enabled);
+        assertEq(primary, d.mockSwapAdapter);
+        assertEq(fallbackAdapter, address(0));
+        (uint256 price, bool ok) = ChainlinkStockOracle(d.stockOracle).fairPrice(d.mockNvda);
+        assertTrue(ok);
+        assertEq(price, 225e18);
+        ChainlinkStockOracle.FeedConfig memory c = ChainlinkStockOracle(d.stockOracle).configOf(d.mockNvda);
+        assertEq(c.maxStaleness, 302_400);
+        assertFalse(c.applyMultiplier);
+        assertEq(script.stockCount(), 1);
+    }
+
+    function test_balancesFunded() public view {
+        assertEq(IERC20(d.usdg).balanceOf(d.mockSwapAdapter), 10_000_000e6);
+        assertEq(IERC20(d.anyrToken).balanceOf(d.buybackAdapter), 10_000_000e18);
+        address[3] memory funded = [
+            0x14dC79964da2C08b23698B3D3cc7Ca32193d9955, // anvil #7
+            0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f, // anvil #8
+            0xa0Ee7A142d267C1f36714E4a8F75612F20a79720 // anvil #9
+        ];
+        for (uint256 i; i < 3; ++i) {
+            assertEq(IERC20(d.usdg).balanceOf(funded[i]), 1_000_000e6);
+            assertEq(IERC20(d.mockNvda).balanceOf(funded[i]), 1_000e18);
+        }
+    }
+
+    /// @dev The local stack is usable end-to-end: session -> router payCall -> Credits balance.
+    function test_localPayWithStockEndToEnd() public {
+        address wallet = 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955; // anvil #7
+        bytes32 keyHash = keccak256(abi.encodePacked(makeAddr("apiKeyAddress")));
+        vm.startPrank(wallet);
+        IERC20(d.mockNvda).approve(d.payWithStock, type(uint256).max);
+        PayWithStock(d.payWithStock).openSession(keyHash, d.mockNvda, 10e18);
+        vm.stopPrank();
+
+        vm.prank(r.router);
+        uint256 spent = PayWithStock(d.payWithStock).payCall(keyHash, 5e6, 100);
+        assertEq(spent, uint256(5e18) / 225 + 1); // ceil(5 / 225 NVDA)
+        assertEq(Credits(d.credits).deposited(keyHash), 5e6);
+        assertEq(IERC20(d.usdg).balanceOf(d.credits), 5e6);
+    }
+
+    function test_localArtifact() public {
+        Deploy s2 = new Deploy();
+        Deploy.Params memory p = s2.localParams();
+        p.outPath = "deployments/test-local-artifact.json";
+        s2.deployLocal(p, s2.localRoles());
+        Deploy.Deployed memory d2 = s2.deployed();
+
+        string memory json = vm.readFile(p.outPath);
+        vm.removeFile(p.outPath);
+        assertEq(vm.parseJsonString(json, ".schema"), "anyroute.deployments/v1");
+        assertEq(vm.parseJsonString(json, ".mode"), "local");
+        assertEq(vm.parseJsonUint(json, ".chainId"), block.chainid);
+        assertEq(vm.parseJsonAddress(json, ".owner"), deployer);
+        assertEq(vm.parseJsonAddress(json, ".pendingOwner"), address(0));
+        assertEq(vm.parseJsonAddress(json, ".contracts.credits"), d2.credits);
+        assertEq(vm.parseJsonAddress(json, ".contracts.payWithStock"), d2.payWithStock);
+        assertEq(vm.parseJsonAddress(json, ".contracts.paymaster"), d2.paymaster);
+        assertEq(vm.parseJsonAddress(json, ".contracts.entryPoint"), d2.entryPoint);
+        assertEq(vm.parseJsonAddress(json, ".contracts.usdg"), d2.usdg);
+        assertEq(vm.parseJsonAddress(json, ".roles.router"), r.router);
+        assertEq(vm.parseJsonAddress(json, ".roles.adapterCallers[1]"), d2.anyrStaking);
+        assertEq(vm.parseJsonAddress(json, ".roles.creditors[0]"), d2.payWithStock);
+        assertEq(vm.parseJsonString(json, ".stockTokens[0].symbol"), "NVDA");
+        assertEq(vm.parseJsonAddress(json, ".stockTokens[0].address"), d2.mockNvda);
+        assertEq(vm.parseJsonUint(json, ".stockTokens[0].decimals"), 18);
+        assertEq(vm.parseJsonAddress(json, ".mocks.nvdaFeed"), d2.mockNvdaFeed);
+        assertEq(vm.parseJsonAddress(json, ".mocks.swapAdapter"), d2.mockSwapAdapter);
+        assertEq(vm.parseJsonString(json, ".params.paymasterDeposit"), "10000000000000000000");
+    }
+}
+
+/// @notice Production-mode deployment against a Robinhood Chain fork (skipped unless RHC_RPC_URL is set), including
+/// the Safe -> timelock acceptOwnership batch replayed from the written JSON.
+contract DeployProductionForkTest is Test {
+    Deploy script;
+    Deploy.Deployed d;
+    Deploy.Roles r;
+    address deployer;
+    string constant OUT = "deployments/test-fork-prod.json";
+    string constant BATCH = "deployments/test-fork-prod-accept.json";
 }
