@@ -181,4 +181,45 @@ contract DeployProductionForkTest is Test {
     address deployer;
     string constant OUT = "deployments/test-fork-prod.json";
     string constant BATCH = "deployments/test-fork-prod-accept.json";
+
+    function setUp() public {
+        string memory rpc = vm.envOr("RHC_RPC_URL", string(""));
+        if (bytes(rpc).length == 0) {
+            vm.skip(true);
+            return;
+        }
+        vm.createSelectFork(rpc);
+        script = new Deploy();
+
+        Deploy.Params memory p;
+        p.deployerKey = uint256(keccak256("anyroute.fork.deployer"));
+        p.configPath = "../config/rhc-mainnet.json";
+        // artifacts are written by test_fork_productionWiringAndTimelockHandover only (tests run in parallel)
+        p.paymasterDailyCap = 0.01 ether;
+        p.paymasterDeposit = 0.05 ether;
+        p.paymasterStake = 0.05 ether;
+        p.paymasterUnstakeDelay = 1 days;
+        p.wethUsdgFee = 100;
+        deployer = vm.addr(p.deployerKey);
+        vm.deal(deployer, 1 ether);
+
+        Deploy.Roles memory roles;
+        roles.ownerSafe = makeAddr("ownerSafe");
+        roles.slasher = makeAddr("slasherSafe");
+        roles.router = makeAddr("router");
+        roles.settlement = makeAddr("settlement");
+        roles.anchorer = makeAddr("anchorer");
+        roles.registrar = roles.router;
+        roles.keeper = makeAddr("keeper");
+        roles.opsWallet = makeAddr("ops");
+        roles.paymasterSigner = makeAddr("pmSigner");
+        roles.refundPool = makeAddr("refundPool");
+        roles.callPayTreasury = makeAddr("treasury");
+        roles.guardian = roles.ownerSafe;
+        roles.anyrRecipients = [makeAddr("a0"), makeAddr("a1"), makeAddr("a2"), makeAddr("a3")];
+
+        script.deployProduction(p, roles);
+        d = script.deployed();
+        r = script.roles();
+    }
 }
