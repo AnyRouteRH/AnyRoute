@@ -124,3 +124,8 @@ export async function processEvents(ctx: Ctx, filter: { chainKeyHash?: string; r
   }
   return applied;
 }
+
+async function unclaimed(ctx: Ctx, e: EventRow) {
+  await ctx.db.update(chainEvents).set({ error: "unclaimed: no key registered for this hash yet" }).where(and(eq(chainEvents.txHash, e.txHash), eq(chainEvents.logIndex, e.logIndex)));
+  return false;
+}
