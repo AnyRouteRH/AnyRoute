@@ -66,3 +66,61 @@ export async function pollChain(ctx: Ctx, maxRange = 2_000n) {
   const retried = await processEvents(ctx, { retry: true });
   return { head: head.toString(), recorded: total, applied, retried };
 }
+
+type EventRow = typeof chainEvents.$inferSelect;
+const ref = (e: EventRow, p: string) => `${p}:${e.txHash}:${e.logIndex}`;
+
+async function keyByChainHash(ctx: Ctx, chainKeyHash: string) {
+  const [k] = await ctx.db.select().from(keys).where(eq(keys.chainKeyHash, chainKeyHash));
+  return k ?? null;
+}
+
+async function setKv(ctx: Ctx, key: string, value: unknown) {
+  await ctx.db.insert(kv).values({ key, value }).onConflictDoUpdate({ target: kv.key, set: { value, updatedAt: new Date() } });
+}
+async function getKv<T>(ctx: Ctx, key: string): Promise<T | null> {
+  const [r] = await ctx.db.select().from(kv).where(eq(kv.key, key));
+  return (r?.value as T) ?? null;
+}
+
+/** Apply unprocessed events in chain order. Returns number applied.
+ *  - default pass: fresh events only (no recorded error), drained in batches, so stuck events can
+ *    never starve new ones;
+ *  - { retry: true }: events that failed before (not unclaimed deposits), bounded;
+ *  - { chainKeyHash }: every pending event for one key hash — used when a key first appears, which
+ *    is how deposits made before registration ("unclaimed") are credited. */
+export async function processEvents(ctx: Ctx, filter: { chainKeyHash?: string; retry?: boolean } = {}) {
+  const pageSize = filter.retry ? 500 : 5_000;
+  const where = filter.chainKeyHash
+    ? and(eq(chainEvents.processed, false), sql`${chainEvents.args}->>'keyHash' = ${filter.chainKeyHash}`)
+    : filter.retry
+      ? and(eq(chainEvents.processed, false), isNotNull(chainEvents.error), sql`${chainEvents.error} NOT LIKE 'unclaimed%'`)
+      : and(eq(chainEvents.processed, false), isNull(chainEvents.error));
+  let applied = 0;
+  for (let page = 0; page < (filter.retry || filter.chainKeyHash ? 1 : 100); page++) {
+    const rows = await ctx.db.select().from(chainEvents).where(where).orderBy(asc(chainEvents.blockNumber), asc(chainEvents.logIndex)).limit(pageSize);
+    let progressed = 0;
+    for (const e of rows) {
+      try {
+        const done = await applyEvent(ctx, e);
+        if (done) {
+          await ctx.db
+            .update(chainEvents)
+            .set({ processed: true, processedAt: new Date(), error: null })
+            .where(and(eq(chainEvents.txHash, e.txHash), eq(chainEvents.logIndex, e.logIndex)));
+          applied++;
+        }
+        progressed++;
+      } catch (err) {
+        log.error("chain event failed", { event: e.event, tx: e.txHash, error: (err as Error).message });
+        await ctx.db
+          .update(chainEvents)
+          .set({ error: ("failed: " + (err as Error).message).slice(0, 500) })
+          .where(and(eq(chainEvents.txHash, e.txHash), eq(chainEvents.logIndex, e.logIndex)));
+        progressed++;
+      }
+    }
+    if (rows.length < pageSize || !progressed) break;
+  }
+  return applied;
+}
