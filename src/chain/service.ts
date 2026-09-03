@@ -37,3 +37,6 @@ export const CONTRACT_ABIS: Record<ContractName, Abi> = {
   royalty: RoyaltyAbi as unknown as Abi,
   staking: AnyrStakingAbi as unknown as Abi,
 };
+
+export type DecodedLog = { contract: ContractName; event: string; args: Record<string, unknown>; txHash: Hex; logIndex: number; blockNumber: bigint };
+export type CallPayment = { nonce: Hex; payer: Hex; amount: bigint; blockNumber: bigint; confirmations: number; logIndex: number };
