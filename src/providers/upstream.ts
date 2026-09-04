@@ -58,3 +58,81 @@ export function providerKey(c: Candidate, secret: string, byokKey?: string) {
   if (!c.provider.apiKeyEnc) return undefined;
   return decrypt(secret, c.provider.apiKeyEnc);
 }
+
+function classifyStatus(status: number): ErrorKind {
+  if (status >= 500) return "http_5xx";
+  if (status === 429) return "rate_limited";
+  if (status === 401 || status === 402 || status === 403) return "provider_auth";
+  return "rejected";
+}
+
+/** Provider error text is shown to callers: strip URLs, credentials and long hex, cap the length. */
+export function sanitizeUpstream(msg: string) {
+  return msg
+    .replace(/https?:\/\/\S+/gi, "[url]")
+    .replace(/\b(?:sk|pk|rk|key|token)[-_][A-Za-z0-9_-]{8,}/gi, "[redacted]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\b0x[0-9a-fA-F]{32,}\b/g, "[hex]")
+    .replace(/\b[0-9a-fA-F]{32,}\b/g, "[hex]")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
+    .slice(0, 200);
+}
+
+async function errorMessage(res: Response) {
+  try {
+    const text = await res.text();
+    try {
+      const j = JSON.parse(text);
+      return sanitizeUpstream(String(j?.error?.message ?? j?.message ?? text));
+    } catch {
+      return sanitizeUpstream(text);
+    }
+  } catch {
+    return `HTTP ${res.status}`;
+  }
+}
+
+export async function* parseSse(body: ReadableStream<Uint8Array>, signal: AbortSignal): AsyncGenerator<any> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const reader = body.getReader();
+  try {
+    while (true) {
+      if (signal.aborted) throw signal.reason ?? new Error("aborted");
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      let end;
+      while ((end = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, end);
+        buffer = buffer.slice(end + 2);
+        const data = block
+          .split("\n")
+          .filter((l) => l.startsWith("data:"))
+          .map((l) => l.slice(5).replace(/^ /, ""))
+          .join("\n");
+        if (!data) continue; // comment / keep-alive
+        if (data.trim() === "[DONE]") return;
+        let parsed;
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          throw Object.assign(new Error("Provider sent an unreadable stream event."), { errorKind: "unreadable" as ErrorKind });
+        }
+        yield parsed;
+      }
+    }
+    if (buffer.trim().startsWith("data:")) {
+      const data = buffer.trim().slice(5).trim();
+      if (data && data !== "[DONE]") {
+        try {
+          yield JSON.parse(data);
+        } catch {
+          /* trailing garbage */
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
