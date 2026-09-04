@@ -1,0 +1,82 @@
+import { eq } from "drizzle-orm";
+import type { Db } from "../db/client.ts";
+import { models, offers, providers } from "../db/schema.ts";
+
+export type ModelRow = typeof models.$inferSelect;
+export type OfferRow = typeof offers.$inferSelect;
+export type ProviderRow = typeof providers.$inferSelect;
+export type Candidate = OfferRow & { provider: ProviderRow };
+
+// Routing suffixes: `author/model:nitro` (fastest), `:floor` (cheapest), `:free` (free offers
+// only), `:private` (attested TEE providers only). Other suffixes are part of the model id.
+export const ROUTING_SUFFIXES = ["nitro", "floor", "free", "private"] as const;
+export type Modifier = (typeof ROUTING_SUFFIXES)[number];
+
+export class Catalog {
+  models = new Map<string, ModelRow>();
+  providers = new Map<string, ProviderRow>();
+  offersByModel = new Map<string, Candidate[]>();
+  loadedAt = 0;
+  private loading: Promise<void> | null = null;
+
+  constructor(private db: Db) {}
+
+  async refresh() {
+    this.loading ??= (async () => {
+      try {
+        const [m, p, o] = await Promise.all([
+          this.db.select().from(models),
+          this.db.select().from(providers),
+          this.db.select().from(offers),
+        ]);
+        const pm = new Map(p.map((x) => [x.id, x]));
+        const byModel = new Map<string, Candidate[]>();
+        for (const offer of o) {
+          const provider = pm.get(offer.providerId);
+          if (!provider) continue;
+          const list = byModel.get(offer.modelId) ?? [];
+          list.push({ ...offer, provider });
+          byModel.set(offer.modelId, list);
+        }
+        this.models = new Map(m.map((x) => [x.id, x]));
+        this.providers = pm;
+        this.offersByModel = byModel;
+        this.loadedAt = Date.now();
+      } finally {
+        this.loading = null;
+      }
+    })();
+    return this.loading;
+  }
+
+  async ensureFresh(maxAgeMs = 5_000) {
+    if (Date.now() - this.loadedAt > maxAgeMs) await this.refresh();
+  }
+
+  /** Resolve `author/model[:suffix...]` into a catalog model plus routing modifiers. */
+  resolve(param: string): { model: ModelRow; modifiers: Set<Modifier> } | null {
+    if (typeof param !== "string" || !param) return null;
+    const direct = this.models.get(param);
+    if (direct) return { model: direct, modifiers: new Set() };
+    const parts = param.split(":");
+    const modifiers = new Set<Modifier>();
+    while (parts.length > 1 && (ROUTING_SUFFIXES as readonly string[]).includes(parts[parts.length - 1])) {
+      modifiers.add(parts.pop() as Modifier);
+      const id = parts.join(":");
+      const m = this.models.get(id);
+      if (m) return { model: m, modifiers };
+    }
+    return null;
+  }
+
+  offers(modelId: string) {
+    return this.offersByModel.get(modelId) ?? [];
+  }
+
+  async provider(id: string) {
+    const cached = this.providers.get(id);
+    if (cached) return cached;
+    const [row] = await this.db.select().from(providers).where(eq(providers.id, id));
+    return row ?? null;
+  }
+}
