@@ -98,3 +98,113 @@ export function weightedShuffle<T>(items: T[], weight: (t: T) => number, rand: (
     .sort((a, b) => b.key - a.key)
     .map((x) => x.item);
 }
+
+export function selectProviders(input: SelectInput): Selection {
+  const { prefs, modifiers, health } = input;
+  const excluded: Exclusion[] = [];
+  const wantPrivate = prefs.private === true || modifiers.has("private");
+  const wantFree = modifiers.has("free");
+  const only = prefs.only?.length ? new Set(prefs.only.map((s) => s.toLowerCase())) : null;
+  const ignore = new Set((prefs.ignore ?? []).map((s) => s.toLowerCase()));
+  const quants = prefs.quantizations?.length ? new Set(prefs.quantizations.map((q) => q.toLowerCase())) : null;
+  const maxPrompt = prefs.max_price?.prompt != null ? usdToPico(prefs.max_price.prompt) : null; // USD per 1M tokens
+  const maxCompletion = prefs.max_price?.completion != null ? usdToPico(prefs.max_price.completion) : null;
+  const maxRequest = prefs.max_price?.request != null ? usdToPico(prefs.max_price.request) : null;
+  const byok = input.byokProviders ?? new Set<string>();
+
+  const pass: Candidate[] = [];
+  for (const c of input.offers) {
+    const id = c.providerId.toLowerCase();
+    const policy = (c.provider.dataPolicy ?? {}) as { training?: boolean; retains_prompts?: boolean; zdr?: boolean };
+    const isFree = c.pricePrompt === 0n && c.priceCompletion === 0n && c.priceRequest === 0n;
+    const reason =
+      c.provider.status !== "live"
+        ? `provider ${c.provider.status}`
+        : c.status !== "live"
+          ? `offer ${c.status}`
+          : only && !only.has(id)
+            ? "not in provider.only"
+            : ignore.has(id)
+              ? "in provider.ignore"
+              : wantFree && !isFree
+                ? "not free"
+                : !wantFree && isFree && !byok.has(c.providerId) && input.offers.some((o) => o.pricePrompt > 0n || o.priceCompletion > 0n)
+                  ? "free tier requires :free"
+                  : prefs.data_collection === "deny" && (policy.training || policy.retains_prompts)
+                    ? "data_collection=deny"
+                    : prefs.zdr && !policy.zdr
+                      ? "zdr required"
+                      : quants && !quants.has((c.quant || "unknown").toLowerCase())
+                        ? `quantization ${c.quant} not allowed`
+                        : wantPrivate && !attestationFresh(c, input.attestationMaxAgeMs, input.production)
+                          ? "private route requires a fresh TEE attestation"
+                          : maxPrompt != null && c.pricePrompt * PER_MILLION > maxPrompt
+                            ? "above max_price.prompt"
+                            : maxCompletion != null && c.priceCompletion * PER_MILLION > maxCompletion
+                              ? "above max_price.completion"
+                              : maxRequest != null && c.priceRequest > maxRequest
+                                ? "above max_price.request"
+                                : prefs.require_parameters &&
+                                    input.requestParams.some((p) => !(c.supportedParameters ?? []).includes(p))
+                                  ? "missing required parameters"
+                                  : (c.ctx ?? Number.MAX_SAFE_INTEGER) < input.estimatedTokens
+                                    ? "context length exceeded"
+                                    : health.outage(c.modelId, c.providerId)
+                                      ? "outage in the last 30s"
+                                      : null;
+    if (reason) excluded.push({ provider: c.providerId, reason });
+    else pass.push(c);
+  }
+
+  const sortBy = modifiers.has("nitro")
+    ? "throughput"
+    : modifiers.has("floor")
+      ? "price"
+      : typeof prefs.sort === "string"
+        ? prefs.sort
+        : prefs.sort?.by;
+
+  const stake = (c: Candidate) => c.provider.anyrStake ?? 0n;
+  const tieBreak = (a: Candidate, b: Candidate) => (stake(b) > stake(a) ? 1 : stake(b) < stake(a) ? -1 : a.providerId.localeCompare(b.providerId));
+  const p50 = (c: Candidate, k: "latency" | "throughput") => health.stats(c.modelId, c.providerId)?.[k]?.p50;
+
+  let ordered: Candidate[];
+  if (sortBy === "price") {
+    ordered = [...pass].sort((a, b) => blendedPrice(a) - blendedPrice(b) || tieBreak(a, b));
+  } else if (sortBy === "throughput") {
+    ordered = [...pass].sort((a, b) => (p50(b, "throughput") ?? -1) - (p50(a, "throughput") ?? -1) || tieBreak(a, b));
+  } else if (sortBy === "latency") {
+    ordered = [...pass].sort(
+      (a, b) => (p50(a, "latency") ?? Number.MAX_SAFE_INTEGER) - (p50(b, "latency") ?? Number.MAX_SAFE_INTEGER) || tieBreak(a, b),
+    );
+  } else {
+    const minPrice = Math.min(...pass.map((c) => blendedPrice(c)).filter((p) => p > 0), Number.MAX_VALUE);
+    ordered = weightedShuffle(
+      pass,
+      (c) => {
+        const price = Math.max(blendedPrice(c), minPrice === Number.MAX_VALUE ? 1 : minPrice / 10);
+        const rel = price / (minPrice === Number.MAX_VALUE ? 1 : minPrice); // scale-free
+        return (1 / (rel * rel)) * health.uptime30d(c.modelId, c.providerId) * health.quality(c.modelId, c.providerId);
+      },
+      input.rand,
+    );
+  }
+
+  // Preferred throughput/latency: providers that miss the target move to the back, in order.
+  if (prefs.preferred_min_throughput != null || prefs.preferred_max_latency != null) {
+    const good = ordered.filter((c) => meetsPreferred(c, health, prefs.preferred_min_throughput, prefs.preferred_max_latency));
+    ordered = [...good, ...ordered.filter((c) => !good.includes(c))];
+  }
+
+  // Pinned order: listed providers first, in the given order.
+  if (prefs.order?.length) {
+    const byId = new Map(ordered.map((c) => [c.providerId.toLowerCase(), c]));
+    const pinned = prefs.order.map((id) => byId.get(id.toLowerCase())).filter((c): c is Candidate => !!c);
+    const rest = ordered.filter((c) => !pinned.includes(c));
+    ordered = prefs.allow_fallbacks === false ? pinned : [...pinned, ...rest];
+  } else if (prefs.allow_fallbacks === false) {
+    ordered = ordered.slice(0, 1);
+  }
+
+  return { ordered, excluded };
+}
