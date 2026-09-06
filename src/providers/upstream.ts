@@ -136,3 +136,111 @@ export async function* parseSse(body: ReadableStream<Uint8Array>, signal: AbortS
     reader.releaseLock();
   }
 }
+
+export async function callUpstream(opts: {
+  candidate: Candidate;
+  path: "/chat/completions" | "/completions" | "/embeddings";
+  body: Record<string, unknown>;
+  stream: boolean;
+  apiKey?: string;
+  signal: AbortSignal;
+  timeoutMs: number;
+  firstTokenTimeoutMs: number;
+}): Promise<UpstreamResult> {
+  const { candidate: c } = opts;
+  const started = performance.now();
+  const ctl = new AbortController();
+  const onAbort = () => ctl.abort(opts.signal.reason);
+  opts.signal.addEventListener("abort", onAbort, { once: true });
+  const totalTimer = setTimeout(() => ctl.abort(new DOMException("timeout", "TimeoutError")), c.provider.timeoutMs ?? opts.timeoutMs);
+  const cleanup = () => {
+    clearTimeout(totalTimer);
+    opts.signal.removeEventListener("abort", onAbort);
+  };
+  const elapsed = () => performance.now() - started;
+  const fail = (errorKind: ErrorKind, message: string, status?: number): UpstreamFailure => {
+    cleanup();
+    return { ok: false, errorKind, message, status, latencyMs: elapsed() };
+  };
+
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    accept: opts.stream ? "text/event-stream" : "application/json",
+    ...((c.provider.headers as Record<string, string> | null) ?? {}),
+  };
+  if (opts.apiKey) headers.authorization = `Bearer ${opts.apiKey}`;
+
+  let res: Response;
+  // Time-to-first-token applies to streams only: non-streaming providers send headers after generating.
+  const firstTimer = opts.stream
+    ? setTimeout(() => ctl.abort(new DOMException("first token timeout", "TimeoutError")), opts.firstTokenTimeoutMs)
+    : undefined;
+  try {
+    res = await fetch(c.provider.baseUrl.replace(/\/$/, "") + opts.path, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(opts.body),
+      signal: ctl.signal,
+    });
+  } catch (e) {
+    clearTimeout(firstTimer);
+    if (opts.signal.aborted) {
+      cleanup();
+      throw e;
+    }
+    const timeout = (e as Error)?.name === "TimeoutError" || (ctl.signal.reason as Error)?.name === "TimeoutError";
+    return fail(timeout ? "timeout" : "connection", timeout ? "Provider timed out." : "Provider could not be reached.");
+  }
+  if (!res.ok) {
+    clearTimeout(firstTimer);
+    const message = await errorMessage(res);
+    return fail(classifyStatus(res.status), message, res.status);
+  }
+
+  if (!opts.stream) {
+    try {
+      const json = await res.json();
+      clearTimeout(firstTimer);
+      cleanup();
+      return { ok: true, kind: "json", status: res.status, json, latencyMs: elapsed() };
+    } catch (e) {
+      clearTimeout(firstTimer);
+      if (opts.signal.aborted) {
+        cleanup();
+        throw e;
+      }
+      const timeout = (ctl.signal.reason as Error)?.name === "TimeoutError";
+      return fail(timeout ? "timeout" : "unreadable", timeout ? "Provider timed out." : "Provider returned unreadable JSON.");
+    }
+  }
+
+  if (!res.body) {
+    clearTimeout(firstTimer);
+    return fail("unreadable", "Provider returned an empty stream.");
+  }
+  const events = parseSse(res.body, ctl.signal);
+  // Wait for the first event so connection-level failures still allow fallback.
+  let first: IteratorResult<any>;
+  try {
+    first = await events.next();
+  } catch (e) {
+    clearTimeout(firstTimer);
+    if (opts.signal.aborted) {
+      cleanup();
+      throw e;
+    }
+    const kind: ErrorKind = (e as { errorKind?: ErrorKind }).errorKind ?? ((ctl.signal.reason as Error)?.name === "TimeoutError" ? "timeout" : "interrupted");
+    return fail(kind, kind === "timeout" ? "Provider timed out before the first token." : "Provider stream failed.");
+  }
+  clearTimeout(firstTimer);
+  if (first.done) return fail("empty200", "Provider stream ended without any event.");
+  const latencyMs = elapsed();
+  const wrapped = (async function* () {
+    try {
+      for await (const ev of events) yield ev;
+    } finally {
+      cleanup();
+    }
+  })();
+  return { ok: true, kind: "stream", status: res.status, events: wrapped, first: first.value, latencyMs, abort: () => ctl.abort() };
+}
