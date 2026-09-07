@@ -281,3 +281,30 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   if (cacheMode && !stream) await ctx.cache.put(cacheMode, billing.accountId, body, out, fin.upstream, (body.cache as { ttl?: number } | undefined)?.ttl ?? ctx.cfg.gateway.cacheTtlS);
   return c.json(out, 200, { "x-generation-id": fin.id });
 }
+
+function allFailed(attempts: Attempt[], last?: { status?: number; errorKind: string; message: string }): ApiError {
+  const allRejected = attempts.length > 0 && attempts.every((a) => a.error_kind === "rejected");
+  const status = allRejected ? (last?.status && last.status >= 400 && last.status < 500 ? last.status : 400) : 502;
+  return new ApiError(
+    status,
+    allRejected ? `Provider rejected the request: ${last?.message ?? "invalid request"}` : "All providers for this request failed. Nothing was charged.",
+    allRejected ? "provider_rejected" : "providers_unavailable",
+    { attempts: attempts.map(({ message, ...a }) => ({ ...a, message: message?.slice(0, 200) })) },
+  );
+}
+
+type Common = {
+  ctx: Ctx;
+  c: Context;
+  body: Record<string, unknown>;
+  billing: Billing;
+  holdId: string;
+  t0: number;
+  bodySha: string;
+  stream: boolean;
+  kind: Kind;
+  byok: Map<string, string>;
+  meta: { guard: ReturnType<typeof applyGuardrails>; middle: { removed: number; truncated: number } | null; paywithNote?: string; cacheMode: CacheMode | null; excluded: unknown[] };
+  guardCfg: GuardrailConfig | null;
+  promptTokens: number;
+};
