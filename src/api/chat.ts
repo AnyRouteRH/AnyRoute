@@ -308,3 +308,165 @@ type Common = {
   guardCfg: GuardrailConfig | null;
   promptTokens: number;
 };
+
+async function finalize(
+  p: Common & {
+    r: RouteSuccess;
+    usage: Usage;
+    responseText: string;
+    finishReason: string | null;
+    nativeFinish: string | null;
+    generationMs: number;
+    cancelled: boolean;
+  },
+) {
+  const { ctx, billing, r } = p;
+  const isByok = p.byok.has(r.candidate.providerId);
+  const mode: Mode = isByok ? "byok" : billing.mode;
+  const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: ctx.cfg.fees.perCallMarginBps, byokFeeBps: ctx.cfg.fees.byokFeeBps };
+  const cost = priceUsage(r.candidate, r.model, p.usage, billing.mode === "per_call" ? "per_call" : mode, fees, isByok);
+  const id = p.holdId;
+  const settled = await settle(ctx.db, p.holdId, cost.total, {
+    description: `${r.model.id} via ${r.candidate.providerId}`,
+    generationId: id,
+    creditLine: billing.mode === "paywith" ? billing.grant.creditLine : 0n,
+  });
+  const charged = settled.charged;
+
+  // Pay-with: record the debt and an estimate of the share fraction it will cost.
+  let paidWith: Record<string, unknown> | null = null;
+  if (billing.mode === "paywith") {
+    const raw = await recordDebt(ctx, { key: billing.key, generationId: id, amount: charged, grant: billing.grant });
+    paidWith = { token: billing.grant.symbol, token_address: billing.grant.token, raw_units: raw?.toString() ?? "0", fair_price: billing.grant.fairPrice18.toString(), swap_tx: null, status: "accrued" };
+  }
+
+  const attestation = r.candidate.provider.attested && r.candidate.provider.attestationHash ? r.candidate.provider.attestationHash : null;
+  const privateRoute = (p.body.provider as ProviderPrefs | undefined)?.private === true || String(p.body.model ?? "").includes(":private");
+  const payer = billing.key ? billing.key.chainKeyHash : billing.mode === "per_call" ? billing.payer : null;
+  const payload = {
+    v: 1,
+    id,
+    issued: new Date().toISOString(),
+    router: ctx.cfg.publicUrl,
+    model: r.model.id,
+    provider: r.candidate.providerId,
+    tokens: { prompt: p.usage.prompt, completion: p.usage.completion, reasoning: p.usage.reasoning, cached: p.usage.cachedRead, estimated: p.usage.estimated },
+    cost: picoToUsdString(charged),
+    cost_details: { upstream: picoToUsdString(cost.upstream), royalty: picoToUsdString(cost.royalty), margin: picoToUsdString(cost.margin) },
+    paid_with: paidWith,
+    latency_ms: Math.round(r.latencyMs),
+    generation_ms: p.generationMs,
+    quant: r.candidate.quant,
+    mode,
+    private: privateRoute,
+    attestation,
+    payer,
+    payment_tx: billing.mode === "per_call" ? (billing.paymentTx ?? null) : null,
+    request_sha256: p.bodySha,
+    response_sha256: sha256(p.responseText),
+  };
+  const signed = ctx.signer.sign(payload);
+  const leaf = receiptLeaf(signed.bytes, signed.sigBytes);
+
+  const referer = p.c.req.header("http-referer") ?? p.c.req.header("referer");
+  const title = p.c.req.header("x-title");
+  let appId: string | null = null;
+  if (referer || title) {
+    appId = sha256((referer ?? "") + "|" + (title ?? "")).slice(0, 24);
+    await ctx.db.insert(apps).values({ id: appId, url: referer?.slice(0, 500) ?? null, title: title?.slice(0, 200) ?? null }).onConflictDoNothing();
+  }
+
+  const tps = p.usage.completion > 0 && p.generationMs > r.latencyMs ? p.usage.completion / ((p.generationMs - r.latencyMs) / 1000) : null;
+  ctx.health.record({ modelId: r.candidate.modelId, providerId: r.candidate.providerId, ok: true, latencyMs: r.latencyMs, tps, source: "traffic" });
+
+  await ctx.db.insert(generations).values({
+    id,
+    keyHash: billing.key?.keyHash ?? null,
+    accountId: billing.accountId,
+    modelId: r.model.id,
+    providerId: r.candidate.providerId,
+    tokensIn: p.usage.prompt,
+    tokensOut: p.usage.completion,
+    reasoningTokens: p.usage.reasoning,
+    cachedTokens: p.usage.cachedRead,
+    cacheWriteTokens: p.usage.cacheWrite,
+    cost: charged,
+    upstreamCost: cost.upstream,
+    royalty: cost.royalty,
+    margin: cost.margin,
+    cacheDiscount: cost.cacheDiscount,
+    mode,
+    latencyMs: Math.round(r.latencyMs),
+    generationTimeMs: p.generationMs,
+    finishReason: p.finishReason,
+    nativeFinishReason: p.nativeFinish,
+    streamed: p.stream,
+    cancelled: p.cancelled,
+    quant: r.candidate.quant,
+    dataRegion: r.candidate.provider.datacenter?.[0] ?? null,
+    isByok,
+    private: privateRoute,
+    attestationHash: attestation,
+    receiptId: id,
+    receiptSig: signed.sig,
+    receiptKeyId: signed.keyId,
+    receipt: payload,
+    receiptLeaf: leaf,
+    paidWith,
+    paymentTx: billing.mode === "per_call" ? (billing.paymentTx ?? null) : null,
+    appId,
+    attempts: r.attempts,
+    requestSha256: p.bodySha,
+    responseSha256: payload.response_sha256,
+  });
+
+  ctx.telemetry.span("chat " + r.model.id, p.t0, Date.now(), {
+    "gen_ai.system": r.candidate.providerId,
+    "gen_ai.operation.name": p.kind === "chat" ? "chat" : "text_completion",
+    "gen_ai.request.model": String(p.body.model ?? r.model.id),
+    "gen_ai.response.model": r.model.id,
+    "gen_ai.usage.input_tokens": p.usage.prompt,
+    "gen_ai.usage.output_tokens": p.usage.completion,
+    "anyroute.generation_id": id,
+    "anyroute.provider": r.candidate.providerId,
+    "anyroute.mode": mode,
+    "anyroute.cost_usd": picoToUsd(charged),
+    "anyroute.attempts": r.attempts.length,
+    "anyroute.streamed": p.stream,
+  }, undefined, p.c.req.header("traceparent")?.split("-")[1]);
+
+  const usageJson = {
+    prompt_tokens: p.usage.prompt,
+    completion_tokens: p.usage.completion,
+    total_tokens: p.usage.prompt + p.usage.completion,
+    cost: picoToUsd(charged),
+    is_byok: isByok,
+    cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), margin: picoToUsd(cost.margin) },
+    prompt_tokens_details: { cached_tokens: p.usage.cachedRead, cache_write_tokens: p.usage.cacheWrite },
+    completion_tokens_details: { reasoning_tokens: p.usage.reasoning },
+  };
+  const receiptJson = {
+    id,
+    sig: signed.sig,
+    key_id: signed.keyId,
+    alg: "Ed25519",
+    payload,
+    leaf,
+    anchor_hint: `Anchored on chain ${ctx.cfg.chain.id} within the hour; GET /api/v1/generation?id=${id} returns the merkle proof.`,
+    ...(paidWith ? { paid_with: paidWith } : {}),
+  };
+  return {
+    id,
+    upstream: cost.upstream,
+    usageJson,
+    receiptJson,
+    extras: (redactions: number) => {
+      const x: Record<string, unknown> = {};
+      if (p.meta.guard || redactions) x.guardrails = { ...(p.meta.guard ?? {}), output_redactions: redactions };
+      if (p.meta.middle && (p.meta.middle.removed || p.meta.middle.truncated)) x.transforms = { "middle-out": p.meta.middle };
+      if (p.meta.paywithNote) x.pay_with_fallback = p.meta.paywithNote;
+      if (r.dropped.length) x.dropped_parameters = r.dropped;
+      return Object.keys(x).length ? x : null;
+    },
+  };
+}
