@@ -75,3 +75,15 @@ async function byokFor(ctx: Ctx, accountId: string | undefined) {
   }
   return map;
 }
+
+function chunkBase(id: string, created: number, model: ModelRow, provider: string, kind: Kind) {
+  return { id, object: kind === "chat" ? "chat.completion.chunk" : "text_completion", created, model: model.id, provider };
+}
+
+export function chatRoutes(app: Hono, ctx: Ctx) {
+  app.post("/api/v1/chat/completions", (c) => handle(ctx, c, "chat"));
+  app.post("/api/v1/completions", (c) => handle(ctx, c, "completion"));
+  // OpenAI-SDK style base URLs (…/api/v1) already covered; also accept /v1/* for convenience.
+  app.post("/v1/chat/completions", (c) => handle(ctx, c, "chat"));
+  app.post("/v1/completions", (c) => handle(ctx, c, "completion"));
+}
