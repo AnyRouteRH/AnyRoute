@@ -580,3 +580,60 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
     headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-generation-id": p.holdId, "x-accel-buffering": "no" },
   });
 }
+
+async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, unknown>; hit: { response: any; upstream: bigint; similarity: number }; billing: Billing; model: ModelRow; t0: number; bodySha: string }) {
+  const id = genId();
+  const payload = {
+    v: 1,
+    id,
+    issued: new Date().toISOString(),
+    router: ctx.cfg.publicUrl,
+    model: p.model.id,
+    provider: "cache",
+    tokens: { prompt: 0, completion: 0, reasoning: 0, cached: 0, estimated: false },
+    cost: "0",
+    cost_details: { upstream: "0", royalty: "0", margin: "0" },
+    paid_with: null,
+    latency_ms: Date.now() - p.t0,
+    mode: "cache",
+    cache: { similarity: Number(p.hit.similarity.toFixed(4)), original: p.hit.response?.id ?? null },
+    payer: p.billing.key?.chainKeyHash ?? (p.billing.mode === "per_call" ? p.billing.payer : null),
+    request_sha256: p.bodySha,
+    response_sha256: sha256((p.hit.response?.choices ?? []).map((ch: any) => ch?.message?.content ?? "").join("")),
+  };
+  const signed = ctx.signer.sign(payload);
+  const leaf = receiptLeaf(signed.bytes, signed.sigBytes);
+  await ctx.db.insert(generations).values({
+    id,
+    keyHash: p.billing.key?.keyHash ?? null,
+    accountId: p.billing.accountId,
+    modelId: p.model.id,
+    providerId: "cache",
+    mode: "cache",
+    cost: 0n,
+    cacheDiscount: p.hit.upstream,
+    latencyMs: Date.now() - p.t0,
+    generationTimeMs: Date.now() - p.t0,
+    receiptId: id,
+    receiptSig: signed.sig,
+    receiptKeyId: signed.keyId,
+    receipt: payload,
+    receiptLeaf: leaf,
+    requestSha256: p.bodySha,
+    responseSha256: payload.response_sha256,
+    finishReason: p.hit.response?.choices?.[0]?.finish_reason ?? null,
+  });
+  return c.json(
+    {
+      ...p.hit.response,
+      id,
+      cached: true,
+      usage: { ...(p.hit.response?.usage ?? {}), cost: 0, cost_details: { upstream_inference_cost: 0, royalty: 0, margin: 0, cache_savings: picoToUsd(p.hit.upstream) } },
+      receipt: { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload, leaf },
+    },
+    200,
+    { "x-generation-id": id, "x-anyroute-cache": "hit" },
+  );
+}
+
+export { canonical };
