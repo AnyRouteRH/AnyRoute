@@ -75,3 +75,13 @@ function depositInfo(ctx: Ctx, k: Pick<KeyRow, "chainKeyHash" | "keyAddress">) {
 async function sub(ctx: Ctx, c: Context): Promise<KeyRow> {
   return requireKey(ctx, c.req.header("authorization"));
 }
+
+async function ownedKey(ctx: Ctx, caller: KeyRow, hash: string) {
+  const [k] = await ctx.db.select().from(keys).where(and(eq(keys.keyHash, hash), eq(keys.accountId, caller.accountId)));
+  if (!k) fail(404, "Key not found.", "not_found");
+  if (!caller.management) {
+    // Team admins manage keys in their own team only.
+    if (!caller.teamId || k.teamId !== caller.teamId) fail(403, "This key cannot manage that key.", "forbidden");
+  }
+  return k;
+}
