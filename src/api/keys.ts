@@ -85,3 +85,20 @@ async function ownedKey(ctx: Ctx, caller: KeyRow, hash: string) {
   }
   return k;
 }
+
+function applySpec(v: z.infer<typeof keySpec>) {
+  const budget = v.budget_usd !== undefined ? v.budget_usd : v.limit;
+  return {
+    ...(v.name !== undefined ? { name: v.name } : {}),
+    ...(budget !== undefined ? { budget: budget == null ? null : usdToPico(budget) } : {}),
+    ...(v.limit_reset !== undefined ? { budgetReset: v.limit_reset } : {}),
+    ...(v.rpm !== undefined ? { rpm: v.rpm } : {}),
+    ...(v.tpm !== undefined ? { tpm: v.tpm } : {}),
+    ...(v.allowed_models !== undefined ? { allowedModels: v.allowed_models } : {}),
+    ...(v.pay_with_default !== undefined ? { payWithDefault: v.pay_with_default } : {}),
+    ...(v.disabled !== undefined ? { disabled: v.disabled } : {}),
+    ...(v.expires_at !== undefined ? { expiresAt: v.expires_at ? new Date(v.expires_at) : null } : {}),
+    ...(v.guardrails !== undefined ? { guardrails: v.guardrails } : {}),
+    ...(v.routing !== undefined ? { routing: v.routing } : {}),
+  };
+}
