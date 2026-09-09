@@ -113,3 +113,330 @@ async function pendingWithdrawal(ctx: Ctx, chainKeyHash: string) {
     return null;
   }
 }
+
+export function keysRoutes(app: Hono, ctx: Ctx) {
+  // Create a key. Without auth: a new root key with its own (empty) balance — no account needed.
+  // With a management/admin key: a virtual sub-key sharing that account's balance.
+  app.post("/api/v1/keys", async (c) => {
+    const spec = keySpec.parse(await readJson(c));
+    const auth = c.req.header("authorization");
+    const secret = generateApiKey();
+    if (!auth) {
+      const r = await ctx.limiter.take(`newkey:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.newKeysPerHour, 3_600_000);
+      if (!r.ok) fail(429, "Too many new keys from this address. Try again later.", "rate_limited");
+      const k = await registerRootKey(ctx, secret, spec.name ?? "");
+      const patch = applySpec({ ...spec, management: undefined, team: undefined });
+      if (Object.keys(patch).length) await ctx.db.update(keys).set(patch).where(eq(keys.keyHash, k.keyHash));
+      const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, k.keyHash));
+      return c.json({ data: keyJson(row), key: secret, deposit: depositInfo(ctx, row) }, 201);
+    }
+    const caller = await sub(ctx, c);
+    await requireRole(ctx, caller, ["owner", "admin"]);
+    if (spec.management && !caller.management) fail(403, "Only a management key can create management keys.", "forbidden");
+    const teamId = spec.team ?? (caller.management ? null : caller.teamId);
+    if (teamId) {
+      const [t] = await ctx.db.select().from(teams).where(and(eq(teams.id, teamId), eq(teams.ownerAccount, caller.accountId)));
+      if (!t) fail(404, "Team not found.", "not_found");
+    }
+    const d = deriveKey(secret);
+    await ctx.db.insert(keys).values({
+      keyHash: d.keyHash,
+      chainKeyHash: d.chainKeyHash,
+      keyAddress: d.keyAddress,
+      accountId: caller.accountId,
+      parentHash: caller.keyHash,
+      label: d.label,
+      teamId,
+      management: !!spec.management,
+      rpm: ctx.cfg.limits.defaultRpm || null,
+      tpm: ctx.cfg.limits.defaultTpm || null,
+      ...applySpec(spec),
+    });
+    if (teamId) await ctx.db.insert(teamMembers).values({ teamId, keyHash: d.keyHash, role: "member" }).onConflictDoNothing();
+    const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, d.keyHash));
+    return c.json({ data: keyJson(row), key: secret, deposit: depositInfo(ctx, row) }, 201);
+  });
+
+  app.get("/api/v1/keys", async (c) => {
+    const caller = await sub(ctx, c);
+    await requireRole(ctx, caller, ["owner", "admin", "viewer"]);
+    const rows = await ctx.db.select().from(keys).where(eq(keys.accountId, caller.accountId)).orderBy(desc(keys.createdAt));
+    const visible = caller.management ? rows : rows.filter((k) => k.teamId && k.teamId === caller.teamId);
+    return c.json({ data: visible.map(keyJson) });
+  });
+  app.get("/api/v1/keys/:hash", async (c) => {
+    const caller = await sub(ctx, c);
+    await requireRole(ctx, caller, ["owner", "admin", "viewer"]);
+    return c.json({ data: keyJson(await ownedKey(ctx, caller, c.req.param("hash"))) });
+  });
+  app.patch("/api/v1/keys/:hash", async (c) => {
+    const caller = await sub(ctx, c);
+    await requireRole(ctx, caller, ["owner", "admin"]);
+    const k = await ownedKey(ctx, caller, c.req.param("hash"));
+    const spec = keySpec.parse(await readJson(c));
+    if (spec.management !== undefined && !caller.management) fail(403, "Only a management key can change management rights.", "forbidden");
+    const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}) };
+    if (Object.keys(patch).length) await ctx.db.update(keys).set(patch).where(eq(keys.keyHash, k.keyHash));
+    const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, k.keyHash));
+    return c.json({ data: keyJson(row) });
+  });
+  app.delete("/api/v1/keys/:hash", async (c) => {
+    const caller = await sub(ctx, c);
+    await requireRole(ctx, caller, ["owner", "admin"]);
+    const k = await ownedKey(ctx, caller, c.req.param("hash"));
+    if (k.keyHash === caller.keyHash) fail(400, "A key cannot delete itself; disable it with PATCH instead.", "invalid_request");
+    // Keys are disabled rather than removed: generations and on-chain balances reference them.
+    await ctx.db.update(keys).set({ disabled: true }).where(eq(keys.keyHash, k.keyHash));
+    return c.json({ data: { hash: k.keyHash, deleted: true } });
+  });
+
+  // Current key (OpenRouter GET /api/v1/key shape).
+  app.get("/api/v1/key", async (c) => {
+    const k = await sub(ctx, c);
+    const bal = await balanceOf(ctx.db, k.accountId);
+    return c.json({
+      data: {
+        ...keyJson(k),
+        is_free_tier: false,
+        rate_limit: { requests: k.rpm ?? ctx.cfg.limits.defaultRpm, interval: "1m" },
+        balance: picoToUsd(bal.available),
+        deposit: depositInfo(ctx, k),
+      },
+    });
+  });
+
+  app.get("/api/v1/credits", async (c) => {
+    const k = await sub(ctx, c);
+    const bal = await balanceOf(ctx.db, k.accountId);
+    const [dep] = await ctx.db
+      .select({ n: sql<string>`coalesce(sum(${ledger.amount}), 0)` })
+      .from(ledger)
+      .where(and(eq(ledger.accountId, k.accountId), sql`${ledger.amount} > 0`));
+    const [use] = await ctx.db
+      .select({ n: sql<string>`coalesce(sum(${generations.cost}), 0)` })
+      .from(generations)
+      .where(eq(generations.accountId, k.accountId));
+    return c.json({
+      data: {
+        total_credits: picoToUsd(BigInt(dep?.n ?? 0)),
+        total_usage: picoToUsd(BigInt(use?.n ?? 0)),
+        balance: picoToUsd(bal.balance),
+        held: picoToUsd(bal.held),
+        available: picoToUsd(bal.available),
+        currency: "USDG",
+        deposit: depositInfo(ctx, k),
+        pending_withdrawal: await pendingWithdrawal(ctx, k.chainKeyHash),
+      },
+    });
+  });
+
+  // Merkle proof of this key's cumulative spend in the latest posted root: the input to
+  // Credits.finalizeWithdrawal(keyHash, cumulativeSpent, proof).
+  app.get("/api/v1/credits/withdrawal-proof", async (c) => {
+    const k = await sub(ctx, c);
+    // Only roots that landed on-chain (or local-only roots without a chain) can back a proof.
+    const [root] = await ctx.db.select().from(spentRoots).where(inArray(spentRoots.status, ["confirmed", "local"])).orderBy(desc(spentRoots.epoch)).limit(1);
+    if (!root) fail(404, "No spent root has been posted yet.", "not_found");
+    const leaves = root.leaves as [string, string][];
+    const idx = leaves.findIndex(([h]) => h === k.chainKeyHash);
+    const cumulative = idx >= 0 ? BigInt(leaves[idx][1]) : 0n;
+    const tree = new MerkleTree(leaves.map(([h, s]) => spentLeaf(h as Hex, BigInt(s))));
+    return c.json({
+      data: {
+        epoch: root.epoch,
+        root: root.root,
+        as_of: root.asOf.toISOString(),
+        status: root.status,
+        key_hash: k.chainKeyHash,
+        cumulative_spent_usdg: cumulative.toString(),
+        proof: idx >= 0 ? tree.proof(idx) : null,
+        pending: await pendingWithdrawal(ctx, k.chainKeyHash),
+        transactions:
+          idx >= 0 && ctx.chain.address("credits")
+            ? [{ to: ctx.chain.address("credits"), data: encodeFunctionData({ abi: CreditsAbi, functionName: "finalizeWithdrawal", args: [k.chainKeyHash as Hex, cumulative, tree.proof(idx)] }), description: "Finalize the pending withdrawal" }]
+            : [],
+        note: idx >= 0 ? null : "This key has no recorded spend; any leaf-less key cannot finalize until included in a root.",
+      },
+    });
+  });
+
+  // Unsigned transactions for the user's wallet: approve USDG, then deposit to this key's hash.
+  app.post("/api/v1/credits/deposit-tx", async (c) => {
+    const k = await sub(ctx, c);
+    const v = z.object({ amount: z.string().regex(/^\d+(\.\d{1,6})?$/, "amount must be a USDG amount with up to 6 decimals") }).parse(await readJson(c));
+    const credits = ctx.chain.require("credits");
+    const units = parseUnits(v.amount, 6);
+    if (units <= 0n) fail(400, "Deposit a positive amount.", "invalid_request");
+    return c.json({
+      data: {
+        chain: ctx.cfg.chain.id,
+        amount_usdg_units: units.toString(),
+        key_hash: k.chainKeyHash,
+        transactions: [
+          { to: ctx.cfg.chain.usdg, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [credits, units] }), description: `Approve ${v.amount} USDG for Credits` },
+          { to: credits, data: encodeFunctionData({ abi: CreditsAbi, functionName: "deposit", args: [k.chainKeyHash as Hex, units] }), description: `Deposit ${v.amount} USDG to this key` },
+        ],
+      },
+    });
+  });
+
+  // Step 1 of a self-custodial withdrawal: the router signs the EIP-712 request with the key's derived
+  // address (it only ever sees the key the caller presents) and returns the transaction any wallet
+  // can submit. Step 2 (after the next spent root) uses /credits/withdrawal-proof.
+  app.post("/api/v1/credits/withdraw-request", async (c) => {
+    const secret = bearer(c.req.header("authorization"));
+    const k = await sub(ctx, c);
+    const v = z.object({ amount: z.string().regex(/^\d+(\.\d{1,6})?$/), to: z.string().regex(/^0x[0-9a-fA-F]{40}$/) }).parse(await readJson(c));
+    const credits = ctx.chain.require("credits");
+    const units = parseUnits(v.amount, 6);
+    if (units <= 0n) fail(400, "Withdraw a positive amount.", "invalid_request");
+    const d = deriveKey(secret!);
+    if (d.chainKeyHash !== k.chainKeyHash) fail(403, "Sign in with the key that holds the deposit.", "forbidden");
+    const withdrawable = await withdrawableFor(ctx, k.accountId, k.chainKeyHash);
+    if (units > withdrawable) fail(400, `At most ${formatUnits(withdrawable, 6)} USDG can be withdrawn from this key right now.`, "withdrawal_too_large", { withdrawable_usdg: formatUnits(withdrawable, 6) });
+    const nonce = (await ctx.chain.client.readContract({ address: credits, abi: CreditsAbi, functionName: "nonces", args: [k.chainKeyHash as Hex] })) as bigint;
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+    const sig = await d.account.signTypedData({
+      domain: { name: "Anyroute Credits", version: "1", chainId: ctx.cfg.chain.id, verifyingContract: credits },
+      types: { WithdrawRequest: [{ name: "keyHash", type: "bytes32" }, { name: "amount", type: "uint256" }, { name: "to", type: "address" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+      primaryType: "WithdrawRequest",
+      message: { keyHash: k.chainKeyHash as Hex, amount: units, to: v.to as Hex, nonce, deadline },
+    });
+    return c.json({
+      data: {
+        chain: ctx.cfg.chain.id,
+        amount_usdg_units: units.toString(),
+        deadline: Number(deadline),
+        transactions: [{ to: credits, data: encodeFunctionData({ abi: CreditsAbi, functionName: "requestWithdrawal", args: [d.keyAddress, units, v.to as Hex, deadline, sig] }), description: `Request a ${v.amount} USDG withdrawal to ${v.to}` }],
+        next: "After the next spent root is posted (hourly), finalize with the proof from GET /api/v1/credits/withdrawal-proof.",
+      },
+    });
+  });
+
+  // Cancel a pending withdrawal: the key signs a zero-amount request (Credits.cancelWithdrawal), which
+  // releases the locked amount back to the balance once indexed.
+  app.post("/api/v1/credits/withdraw-cancel", async (c) => {
+    const secret = bearer(c.req.header("authorization"));
+    const k = await sub(ctx, c);
+    const credits = ctx.chain.require("credits");
+    const d = deriveKey(secret!);
+    if (d.chainKeyHash !== k.chainKeyHash) fail(403, "Sign in with the key that holds the deposit.", "forbidden");
+    if (!(await pendingWithdrawal(ctx, k.chainKeyHash))) fail(409, "This key has no pending withdrawal.", "no_pending_withdrawal");
+    const nonce = (await ctx.chain.client.readContract({ address: credits, abi: CreditsAbi, functionName: "nonces", args: [k.chainKeyHash as Hex] })) as bigint;
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+    const zero = "0x0000000000000000000000000000000000000000" as Hex;
+    const sig = await d.account.signTypedData({
+      domain: { name: "Anyroute Credits", version: "1", chainId: ctx.cfg.chain.id, verifyingContract: credits },
+      types: { WithdrawRequest: [{ name: "keyHash", type: "bytes32" }, { name: "amount", type: "uint256" }, { name: "to", type: "address" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+      primaryType: "WithdrawRequest",
+      message: { keyHash: k.chainKeyHash as Hex, amount: 0n, to: zero, nonce, deadline },
+    });
+    return c.json({
+      data: {
+        chain: ctx.cfg.chain.id,
+        deadline: Number(deadline),
+        transactions: [{ to: credits, data: encodeFunctionData({ abi: CreditsAbi, functionName: "cancelWithdrawal", args: [d.keyAddress, deadline, sig] }), description: "Cancel the pending withdrawal" }],
+      },
+    });
+  });
+
+  // Local development faucet (DEV_FAUCET): mock USDG deposited straight to this key, no wallet needed.
+  const faucetUse = new Map<string, number[]>();
+  app.post("/api/v1/dev/faucet", async (c) => {
+    if (!ctx.chain.devFaucet) fail(404, "The test USDG faucet is only available on a local development chain.", "not_found");
+    const k = await sub(ctx, c);
+    const v = z.object({ amount: z.string().regex(/^\d+(\.\d{1,6})?$/).default("10") }).parse(await readJson(c));
+    const units = parseUnits(v.amount, 6);
+    if (units <= 0n || units > 1000_000000n) fail(400, "Request between 0.000001 and 1000 test USDG.", "invalid_request");
+    const now = Date.now();
+    const recent = (faucetUse.get(k.chainKeyHash) ?? []).filter((t) => now - t < 3_600_000);
+    if (recent.length >= 20) fail(429, "Faucet limit reached for this key; try again within the hour.", "rate_limited");
+    faucetUse.set(k.chainKeyHash, [...recent, now]);
+    const { hash } = await ctx.chain.faucetDeposit(k.chainKeyHash as Hex, units);
+    await ctx.jobs.run("chain-indexer").catch(() => undefined); // credit it now rather than on the next tick
+    return c.json({ data: { amount_usdg_units: units.toString(), tx: hash, test_funds: true } }, 201);
+  });
+
+  // BYOK: store an upstream provider key (encrypted at rest). Calls routed to that provider use it.
+  app.post("/api/v1/byok", async (c) => {
+    const k = await sub(ctx, c);
+    await requireRole(ctx, k, ["owner", "admin"]);
+    const v = z.object({ provider: z.string().min(1), key: z.string().min(8).max(500) }).parse(await readJson(c));
+    if (!(await ctx.catalog.provider(v.provider))) fail(404, `Unknown provider ${v.provider}.`, "not_found");
+    await ctx.db
+      .insert(byokKeys)
+      .values({ id: uid("byok_"), accountId: k.accountId, providerId: v.provider, keyEnc: encrypt(ctx.cfg.appSecret, v.key), label: `${v.key.slice(0, 4)}…${v.key.slice(-4)}` })
+      .onConflictDoUpdate({ target: [byokKeys.accountId, byokKeys.providerId], set: { keyEnc: encrypt(ctx.cfg.appSecret, v.key), label: `${v.key.slice(0, 4)}…${v.key.slice(-4)}` } });
+    return c.json({ data: { provider: v.provider, stored: true } }, 201);
+  });
+  app.get("/api/v1/byok", async (c) => {
+    const k = await sub(ctx, c);
+    const rows = await ctx.db.select().from(byokKeys).where(eq(byokKeys.accountId, k.accountId));
+    return c.json({ data: rows.map((r) => ({ provider: r.providerId, label: r.label, created_at: r.createdAt.toISOString() })) });
+  });
+  app.delete("/api/v1/byok/:provider", async (c) => {
+    const k = await sub(ctx, c);
+    await requireRole(ctx, k, ["owner", "admin"]);
+    await ctx.db.delete(byokKeys).where(and(eq(byokKeys.accountId, k.accountId), eq(byokKeys.providerId, c.req.param("provider"))));
+    return c.json({ data: { provider: c.req.param("provider"), deleted: true } });
+  });
+
+  // Teams / RBAC
+  app.post("/api/v1/teams", async (c) => {
+    const k = await sub(ctx, c);
+    if (!k.management) fail(403, "Only a management key can create teams.", "forbidden");
+    const v = z.object({ name: z.string().min(1).max(100) }).parse(await readJson(c));
+    const id = uid("team_");
+    await ctx.db.insert(teams).values({ id, name: v.name, ownerAccount: k.accountId });
+    return c.json({ data: { id, name: v.name } }, 201);
+  });
+  app.get("/api/v1/teams", async (c) => {
+    const k = await sub(ctx, c);
+    const rows = await ctx.db.select().from(teams).where(eq(teams.ownerAccount, k.accountId));
+    const members = await ctx.db.select().from(teamMembers);
+    return c.json({ data: rows.map((t) => ({ id: t.id, name: t.name, members: members.filter((m) => m.teamId === t.id).map((m) => ({ key_hash: m.keyHash, role: m.role })) })) });
+  });
+  app.put("/api/v1/teams/:id/members/:hash", async (c) => {
+    const k = await sub(ctx, c);
+    const teamId = c.req.param("id");
+    const [t] = await ctx.db.select().from(teams).where(and(eq(teams.id, teamId), eq(teams.ownerAccount, k.accountId)));
+    if (!t) fail(404, "Team not found.", "not_found");
+    const RANK = { viewer: 0, member: 1, admin: 2, owner: 3 } as const;
+    let myRank: number = RANK.owner + 1; // management keys outrank every team role
+    if (!k.management) {
+      const [me] = await ctx.db.select().from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.keyHash, k.keyHash)));
+      if (me?.role !== "owner" && me?.role !== "admin") fail(403, "Only team owners/admins can change membership.", "forbidden");
+      myRank = RANK[me.role as keyof typeof RANK];
+    }
+    const v = z.object({ role: z.enum(["owner", "admin", "member", "viewer"]) }).parse(await readJson(c));
+    const [target] = await ctx.db.select().from(keys).where(and(eq(keys.keyHash, c.req.param("hash")), eq(keys.accountId, k.accountId)));
+    if (!target) fail(404, "Key not found.", "not_found");
+    if (!k.management) {
+      // Team admins only manage keys already in their team (or unassigned), never management keys,
+      // and never grant a role above their own.
+      if (target.management || (target.teamId && target.teamId !== teamId)) fail(403, "That key is outside this team.", "forbidden");
+      if (RANK[v.role] >= myRank && !(RANK[v.role] === myRank && myRank === RANK.owner)) fail(403, "You cannot grant a role at or above your own.", "forbidden");
+      const [current] = await ctx.db.select().from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.keyHash, target.keyHash)));
+      if (current && RANK[current.role as keyof typeof RANK] >= myRank && myRank !== RANK.owner) fail(403, "You cannot change a member at or above your role.", "forbidden");
+    }
+    await ctx.db.update(keys).set({ teamId }).where(eq(keys.keyHash, target.keyHash));
+    await ctx.db.insert(teamMembers).values({ teamId, keyHash: target.keyHash, role: v.role }).onConflictDoUpdate({ target: [teamMembers.teamId, teamMembers.keyHash], set: { role: v.role } });
+    return c.json({ data: { team: teamId, key_hash: target.keyHash, role: v.role } });
+  });
+
+  // Wallet sign-in: turn a per-call payer's change balance into a regular API key.
+  // Sign: "anyroute:wallet-key:<unixSeconds>" with the payer address.
+  app.post("/api/v1/auth/wallet", async (c) => {
+    const v = z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/), timestamp: z.number().int(), signature: z.string().regex(/^0x[0-9a-fA-F]+$/), name: z.string().max(100).optional() }).parse(await readJson(c));
+    if (Math.abs(Date.now() / 1000 - v.timestamp) > 300) fail(401, "Signature timestamp is outside the 5-minute window.", "invalid_wallet_auth");
+    const who = await recoverMessageAddress({ message: `anyroute:wallet-key:${v.timestamp}`, signature: v.signature as Hex }).catch(() => null);
+    if (!who || who.toLowerCase() !== v.address.toLowerCase()) fail(401, "Signature does not match the address.", "invalid_wallet_auth");
+    const accountId = walletAccountId(v.address);
+    await ensureAccount(ctx.db, accountId, "wallet", v.address.toLowerCase());
+    const secret = generateApiKey();
+    const d = deriveKey(secret);
+    await ctx.db.insert(keys).values({ keyHash: d.keyHash, chainKeyHash: d.chainKeyHash, keyAddress: d.keyAddress, accountId, label: d.label, name: v.name ?? "wallet", management: true, rpm: ctx.cfg.limits.defaultRpm || null });
+    const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, d.keyHash));
+    return c.json({ data: keyJson(row), key: secret }, 201);
+  });
+}
