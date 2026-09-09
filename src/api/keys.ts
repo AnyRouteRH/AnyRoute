@@ -102,3 +102,14 @@ function applySpec(v: z.infer<typeof keySpec>) {
     ...(v.routing !== undefined ? { routing: v.routing } : {}),
   };
 }
+
+async function pendingWithdrawal(ctx: Ctx, chainKeyHash: string) {
+  const credits = ctx.chain.address("credits");
+  if (!credits) return null;
+  try {
+    const [amount, to, requestedAt] = (await ctx.chain.client.readContract({ address: credits, abi: CreditsAbi, functionName: "pendingWithdrawal", args: [chainKeyHash as Hex] })) as [bigint, Hex, bigint];
+    return amount > 0n ? { amount_usdg_units: amount.toString(), to, requested_at: new Date(Number(requestedAt) * 1000).toISOString() } : null;
+  } catch {
+    return null;
+  }
+}
