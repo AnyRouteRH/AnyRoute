@@ -58,3 +58,90 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     royalty_bps: m.creator ? m.royaltyBps : 0,
   };
 }
+
+export function modelsRoutes(app: Hono, ctx: Ctx) {
+  const list = async (c: import("hono").Context) => {
+    await ctx.catalog.ensureFresh();
+    const need = (c.req.query("supported_parameters") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    const data = [...ctx.catalog.models.values()]
+      .filter((m) => !m.hidden && ctx.catalog.offers(m.id).some(live))
+      .map((m) => modelJson(ctx, m))
+      .filter((m) => need.every((p) => m.supported_parameters.includes(p)))
+      .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id));
+    return c.json({ data });
+  };
+  app.get("/api/v1/models", list);
+  app.get("/v1/models", list);
+
+  app.get("/api/v1/models/:author/:slug/endpoints", async (c) => {
+    await ctx.catalog.ensureFresh();
+    const id = `${c.req.param("author")}/${c.req.param("slug")}`;
+    const r = ctx.catalog.resolve(id);
+    if (!r) fail(404, `Model ${id} not found.`, "model_not_found");
+    const m = r.model;
+    const endpoints = ctx.catalog.offers(m.id).filter(live).map((o) => {
+      const h = ctx.health.snapshot(m.id, o.providerId);
+      const observed = ctx.health.observedUptime(m.id, o.providerId);
+      return {
+        name: `${o.provider.name} | ${m.id}`,
+        provider_name: o.provider.name,
+        provider_slug: o.providerId,
+        tag: o.providerId,
+        context_length: o.ctx ?? m.ctx,
+        max_completion_tokens: o.maxOut ?? m.maxOut ?? null,
+        max_prompt_tokens: null,
+        pricing: offerPricing(o),
+        quantization: o.quant,
+        supported_parameters: o.supportedParameters ?? [],
+        status: h.outage ? -1 : 0,
+        uptime_last_30d: observed ? Number((observed.rate * 100).toFixed(2)) : null,
+        quality_score: Number(h.quality.toFixed(3)),
+        latency_last_30m: h.stats?.latency ?? null,
+        throughput_last_30m: h.stats?.throughput ?? null,
+        data_policy: o.provider.dataPolicy,
+        attested: attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production),
+        attestation_hash: o.provider.attestationHash ?? null,
+        bond_usdg: o.provider.bondUsdg.toString(),
+        is_moderated: o.isModerated,
+      };
+    });
+    const mj = modelJson(ctx, m);
+    return c.json({ data: { id: m.id, name: m.name, created: m.createdUnix, description: m.description, architecture: mj.architecture, endpoints } });
+  });
+
+  app.get("/api/v1/providers", async (c) => {
+    await ctx.catalog.ensureFresh();
+    const data = [...ctx.catalog.providers.values()]
+      .filter((p) => p.status !== "applied")
+      .map((p) => {
+        const live = [...ctx.catalog.offersByModel.values()].flat().filter((o) => o.providerId === p.id && o.status === "live");
+        const snaps = live.map((o) => ctx.health.snapshot(o.modelId, o.providerId));
+        const lat = snaps.map((h) => h.stats?.latency.p50).filter((x): x is number => x != null).sort((a, b) => a - b);
+        const fresh = live.some((o) => attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production));
+        // Measured success rate across this provider's models (the routing weight uses a smoothed prior instead).
+        const obs = live.map((o) => ctx.health.observedUptime(o.modelId, o.providerId)).filter((x): x is { rate: number; events: number } => !!x);
+        const events = obs.reduce((a, x) => a + x.events, 0);
+        return {
+        name: p.name,
+        slug: p.id,
+        status: p.status,
+        uptime_30d: events ? Number(((obs.reduce((a, x) => a + x.rate * x.events, 0) / events) * 100).toFixed(2)) : null,
+        health_events_30d: events,
+        latency_p50_ms: lat.length ? lat[Math.floor(lat.length / 2)] : null,
+        outage: snaps.some((h) => h.outage),
+        quantizations: [...new Set(live.map((o) => o.quant))],
+        attestation_fresh: fresh,
+        attestation_hash: p.attestationHash ?? null,
+        data_policy: p.dataPolicy,
+        datacenters: p.datacenter ?? [],
+        attested: p.attested,
+        tee: p.teeKind,
+        attested_at: p.attestedAt?.toISOString() ?? null,
+        bond_usdg: p.bondUsdg.toString(),
+        anyr_stake: p.anyrStake.toString(),
+        models: live.length,
+        };
+      });
+    return c.json({ data });
+  });
+}
