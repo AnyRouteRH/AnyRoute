@@ -1,0 +1,36 @@
+import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { cors } from "hono/cors";
+import { ZodError } from "zod";
+import { loadConfig } from "./config.ts";
+import { openDatabase } from "./db/client.ts";
+import { Catalog } from "./catalog/catalog.ts";
+import { HealthTracker } from "./services/health.ts";
+import { ReceiptSigner } from "./receipts/signer.ts";
+import { MemoryRateLimiter, RedisRateLimiter, type RateLimiter } from "./lib/ratelimit.ts";
+import { ChainService } from "./chain/service.ts";
+import { ResponseCache } from "./gateway/cache.ts";
+import { Telemetry } from "./gateway/otel.ts";
+import { Jobs } from "./services/jobs.ts";
+import type { Ctx } from "./context.ts";
+import { ApiError } from "./lib/errors.ts";
+import { log, setLogLevel } from "./lib/util.ts";
+import { chatRoutes } from "./api/chat.ts";
+import { modelsRoutes } from "./api/models.ts";
+import { generationRoutes } from "./api/generation.ts";
+import { keysRoutes } from "./api/keys.ts";
+import { publicRoutes } from "./api/public.ts";
+import { embeddingsRoutes } from "./api/embeddings.ts";
+import { adminRoutes } from "./admin/trpc.ts";
+import { paymasterRoutes } from "./api/paymaster.ts";
+import { registerJobs } from "./services/register.ts";
+import { siteRoutes } from "./api/site.ts";
+
+export type AppOptions = {
+  env?: Record<string, unknown>;
+  rand?: () => number;
+  chain?: ChainService;
+  startJobs?: boolean;
+};
