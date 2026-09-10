@@ -67,3 +67,100 @@ export async function grantFor(ctx: Ctx, key: KeyRow, symbol: string): Promise<{
   const line = minPico(usdToPico(ctx.cfg.paywith.maxDebtUsd), capUsd);
   return { grant: { symbol: tok.symbol, token: tok.address.toLowerCase(), decimals: tok.decimals, fairPrice18: fair, creditLine: line > 0n ? line : 0n } };
 }
+
+export async function recordDebt(ctx: Ctx, d: { key: KeyRow; generationId: string; amount: Pico; grant: PaywithGrant }) {
+  if (d.amount <= 0n) return null;
+  const raw = picoToRaw(d.amount, d.grant.decimals, d.grant.fairPrice18);
+  await ctx.db.insert(paywithDebts).values({
+    id: uid("debt_"),
+    chainKeyHash: d.key.chainKeyHash,
+    accountId: d.key.accountId,
+    generationId: d.generationId,
+    token: d.grant.token,
+    amount: d.amount,
+    rawEstimate: raw,
+    fairPrice18: d.grant.fairPrice18.toString(),
+  });
+  return raw;
+}
+
+/** Settle accrued debts on-chain: >= threshold USD or oldest >= max age. The debts being paid are
+ *  claimed by the swap before it is sent, so calls that finish while it is mined stay open for the next
+ *  one; a failed swap releases its claim. */
+export async function runPaywithAggregator(ctx: Ctx) {
+  if (!ctx.chain.address("payWithStock")) return { skipped: "PayWithStock not configured" };
+  const open = await ctx.db
+    .select({
+      chainKeyHash: paywithDebts.chainKeyHash,
+      total: sql<string>`sum(${paywithDebts.amount})`,
+      oldest: sql<Date>`min(${paywithDebts.createdAt})`,
+    })
+    .from(paywithDebts)
+    .where(isNull(paywithDebts.swapId))
+    .groupBy(paywithDebts.chainKeyHash);
+  const threshold = usdToPico(ctx.cfg.paywith.thresholdUsd);
+  const maxAgeMs = ctx.cfg.paywith.maxAgeH * 3_600_000;
+  const results: unknown[] = [];
+  for (const g of open) {
+    if (BigInt(g.total) < threshold && Date.now() - new Date(g.oldest).getTime() < maxAgeMs) continue;
+    const swapId = uid("swap_");
+    // Claim exactly the debts this swap pays.
+    const claimed = await ctx.db.transaction(async (tx) => {
+      const debts = await tx.select().from(paywithDebts).where(and(eq(paywithDebts.chainKeyHash, g.chainKeyHash), isNull(paywithDebts.swapId))).orderBy(asc(paywithDebts.createdAt)).for("update");
+      if (!debts.length) return null;
+      const total = debts.reduce((a, d) => a + d.amount, 0n);
+      const usdgOwed = picoToUsdg(total, "ceil");
+      await tx.insert(paywithSwaps).values({ id: swapId, keyHash: g.chainKeyHash, token: debts[0].token, usdgOut: usdgOwed, status: "submitted" });
+      await tx.update(paywithDebts).set({ swapId }).where(inArray(paywithDebts.id, debts.map((d) => d.id)));
+      return { usdgOwed, count: debts.length };
+    });
+    if (!claimed || claimed.usdgOwed <= 0n) continue;
+    try {
+      const r = await ctx.chain.payCall(g.chainKeyHash as Hex, claimed.usdgOwed, ctx.cfg.paywith.maxSlipBps);
+      await ctx.db.update(paywithSwaps).set({ tx: r.hash }).where(eq(paywithSwaps.id, swapId));
+      // Apply this transaction's events right away (Credited -> ledger credit; PaidWithStock -> allocations).
+      await recordEvents(ctx, r.logs);
+      await processEvents(ctx, { chainKeyHash: g.chainKeyHash });
+      const paid = r.logs.find((d) => d.event === "PaidWithStock");
+      if (paid)
+        await allocateSwap(ctx, { keyHash: g.chainKeyHash, token: String(paid.args.token), rawSpent: paid.args.rawSpent as bigint, fairPrice18: String(paid.args.fairPrice18), usdgOwed: claimed.usdgOwed, tx: r.hash });
+      results.push({ key: g.chainKeyHash, usdg: claimed.usdgOwed.toString(), debts: claimed.count, tx: r.hash });
+    } catch (e) {
+      const msg = (e as Error).message.slice(0, 300);
+      await ctx.db.transaction(async (tx) => {
+        await tx.update(paywithSwaps).set({ status: "failed", error: msg }).where(eq(paywithSwaps.id, swapId));
+        await tx.update(paywithDebts).set({ swapId: null }).where(eq(paywithDebts.swapId, swapId)); // back to open
+      });
+      log.warn("pay-with swap failed; debt stays open", { key: g.chainKeyHash, error: msg });
+      results.push({ key: g.chainKeyHash, error: msg });
+    }
+  }
+  return { settled: results };
+}
+
+export async function statement(ctx: Ctx, chainKeyHash: string, month: string) {
+  const [y, m] = month.split("-").map(Number);
+  const from = new Date(Date.UTC(y, m - 1, 1));
+  const to = new Date(Date.UTC(y, m, 1));
+  const swaps = await ctx.db
+    .select()
+    .from(paywithSwaps)
+    .where(and(eq(paywithSwaps.keyHash, chainKeyHash), eq(paywithSwaps.status, "confirmed"), gte(paywithSwaps.ts, from), lt(paywithSwaps.ts, to)))
+    .orderBy(asc(paywithSwaps.ts));
+  const byToken = new Map<string, bigint>();
+  for (const s of swaps) byToken.set(s.token, (byToken.get(s.token) ?? 0n) + (s.rawSpent ?? 0n));
+  const totals = [...byToken.entries()].map(([token, raw]) => {
+    const t = ctx.cfg.paywith.tokens.find((x) => x.address.toLowerCase() === token);
+    const dec = t?.decimals ?? 18;
+    const whole = Number(raw) / 10 ** dec;
+    const shown = whole.toLocaleString("en-US", { maximumSignificantDigits: 2, maximumFractionDigits: 20 });
+    return { token, symbol: t?.symbol ?? "?", raw_spent: raw.toString(), amount: whole, line: `${shown} ${t?.symbol ?? "tokens"} spent on inference` };
+  });
+  const pending = await openDebt(ctx, chainKeyHash);
+  return {
+    month,
+    swaps: swaps.map((s) => ({ tx: s.tx, token: s.token, raw_spent: s.rawSpent?.toString() ?? null, fair_price: s.fairPrice, usdg: s.usdgOut.toString(), at: s.ts.toISOString(), allocations: s.allocations })),
+    totals,
+    pending_usd: Number(pending) / 1e12,
+  };
+}

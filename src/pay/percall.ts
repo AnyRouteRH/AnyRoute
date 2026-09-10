@@ -72,3 +72,77 @@ export async function paymentRequired(ctx: Ctx, opts: { pricePico: Pico; bodySha
     { "x-payment-required": "usdg", "www-authenticate": `Payment realm="anyroute", chain="${ctx.cfg.chain.id}", nonce="${nonce}"` },
   );
 }
+
+export type Eip3009Auth = { from: Hex; value: bigint; validAfter: bigint; validBefore: bigint; nonce: Hex; signature: Hex };
+export type PaymentHeader = { kind: "tx"; hash: Hex } | { kind: "eip3009"; auth: Eip3009Auth };
+
+export function parsePaymentHeader(v: string): PaymentHeader {
+  const t = v.trim();
+  if (/^0x[0-9a-fA-F]{64}$/.test(t)) return { kind: "tx", hash: t.toLowerCase() as Hex };
+  try {
+    const j = JSON.parse(t.startsWith("{") ? t : Buffer.from(t, "base64").toString("utf8"));
+    if (typeof j?.tx === "string" && /^0x[0-9a-fA-F]{64}$/.test(j.tx)) return { kind: "tx", hash: j.tx.toLowerCase() as Hex };
+    if (j?.scheme === "eip3009") {
+      const hex = (x: unknown, n?: number) => typeof x === "string" && (n ? new RegExp(`^0x[0-9a-fA-F]{${n}}$`) : /^0x[0-9a-fA-F]+$/).test(x);
+      if (!hex(j.from, 40) || !hex(j.nonce, 64) || !hex(j.signature)) throw new Error("bad fields");
+      return { kind: "eip3009", auth: { from: j.from, value: BigInt(j.value), validAfter: BigInt(j.validAfter ?? 0), validBefore: BigInt(j.validBefore), nonce: j.nonce, signature: j.signature } };
+    }
+  } catch {
+    /* fallthrough */
+  }
+  fail(400, "X-Payment must be a transaction hash, JSON {\"tx\": \"0x...\"}, or base64 JSON {\"scheme\": \"eip3009\", ...}.", "invalid_payment");
+}
+
+/** Gasless path: relay the signed authorization on-chain, then redeem the resulting payment. */
+export async function relayAuthorization(ctx: Ctx, auth: Eip3009Auth): Promise<Hex> {
+  const [q] = await ctx.db.select().from(quotes).where(eq(quotes.nonce, auth.nonce));
+  if (!q) fail(402, "This authorization's nonce is not a quote from this router.", "payment_unknown_quote");
+  if (q.status !== "open") fail(409, "This quote was already paid or used.", "payment_used");
+  if (auth.value < q.priceUsdg) fail(402, `Authorization is for ${auth.value} base units; the quote is ${q.priceUsdg}.`, "payment_insufficient");
+  try {
+    return (await ctx.chain.payWithAuthorization({ nonce: auth.nonce, amount: auth.value, expiry: BigInt(Math.floor(q.expiresAt.getTime() / 1000)), from: auth.from, validAfter: auth.validAfter, validBefore: auth.validBefore, signature: auth.signature })).toLowerCase() as Hex;
+  } catch (e) {
+    fail(402, `The payment authorization was rejected on-chain: ${(e as Error).message.split("\n")[0].slice(0, 200)}`, "payment_failed");
+  }
+}
+
+/** Verify a CallPay transaction for this exact request and credit the payer's wallet account. */
+export async function redeemPayment(ctx: Ctx, txHash: Hex, bodySha: string, waitMs = 8_000) {
+  let payments = await ctx.chain.readCallPayments(txHash);
+  const deadline = Date.now() + waitMs;
+  while (!Array.isArray(payments) && Date.now() < deadline) {
+    await sleep(750);
+    payments = await ctx.chain.readCallPayments(txHash);
+  }
+  if (!Array.isArray(payments))
+    fail(402, `Payment ${txHash} is not confirmed yet (${payments.confirmations}/${ctx.cfg.chain.confirmations}). Retry shortly.`, "payment_pending", { confirmations: payments.confirmations });
+  // Credit every payment in the transaction to its own payer (a bundle may carry several); whatever
+  // happens next, payers keep what they paid as change. Same ledger refs as the indexer.
+  for (const p of payments) {
+    const acct = walletAccountId(p.payer.toLowerCase());
+    await ctx.db.transaction(async (tx) => {
+      await ensureAccount(tx, acct, "wallet", p.payer.toLowerCase());
+      await post(tx, { accountId: acct, amount: usdgToPico(p.amount), kind: "per_call_payment", ref: `callpay:${txHash}:${p.logIndex}`, description: `Per-call payment ${txHash}` });
+    });
+  }
+  // Which of them pays for this request: the one whose quote was issued for this exact body.
+  const quoteRows = await ctx.db.select().from(quotes).where(inArray(quotes.nonce, payments.map((p) => p.nonce)));
+  const q = quoteRows.find((r) => r.requestSha256 === bodySha) ?? quoteRows[0];
+  const paid = payments.find((p) => p.nonce === q?.nonce) ?? payments[0];
+  const payer = paid.payer.toLowerCase();
+  const accountId = walletAccountId(payer);
+  if (!q) fail(402, "This payment does not match any quote from this router. It was kept as change on your wallet account.", "payment_unknown_quote");
+  if (q.requestSha256 !== bodySha)
+    fail(409, "This payment was quoted for a different request body. It was kept as change on your wallet account; spend it with X-Wallet-Auth.", "payment_request_mismatch");
+  if (q.status === "used") fail(409, "This quote was already used.", "payment_used");
+  if (paid.amount < q.priceUsdg)
+    fail(402, `Underpaid: quote was ${q.priceUsdg} base units, paid ${paid.amount}. The payment was kept as change.`, "payment_insufficient");
+  // Compare-and-set: of two concurrent redemptions of the same payment, exactly one wins.
+  const updated = await ctx.db
+    .update(quotes)
+    .set({ status: "used", payer, txHash, accountId })
+    .where(and(eq(quotes.nonce, q.nonce), inArray(quotes.status, ["open", "paid"])))
+    .returning({ nonce: quotes.nonce });
+  if (!updated.length) fail(409, "This quote was already used.", "payment_used");
+  return { accountId, payer, txHash, quote: q };
+}
