@@ -131,3 +131,11 @@ export class ReceiptSigner {
     };
   }
 }
+
+export function verifyWithRawKey(payload: unknown, sigB64: string, publicKeyHex: string) {
+  try {
+    return edVerify(null, canonicalBytes(payload), publicFromRaw(publicKeyHex), Buffer.from(sigB64, "base64"));
+  } catch {
+    return false;
+  }
+}
