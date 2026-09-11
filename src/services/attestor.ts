@@ -54,3 +54,93 @@ async function verifyQuote(ctx: Ctx, quoteHex: string) {
   const ok = j.verified === true || status === "UpToDate" || status === "SWHardeningNeeded";
   return { ok, reason: ok ? undefined : `quote not verified (${status ?? "unknown"})`, status };
 }
+
+async function verifyNvidia(ctx: Ctx, payload: string) {
+  const res = await fetch(ctx.cfg.attestation.nrasUrl, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: payload, signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) return { ok: false, reason: `NRAS HTTP ${res.status}` };
+  const j = (await res.json()) as unknown;
+  // NRAS returns [["JWT", "<overall token>"], {...per-GPU tokens}]; read the overall claim.
+  const tokens = JSON.stringify(j).match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g) ?? [];
+  for (const t of tokens) {
+    try {
+      const claims = JSON.parse(Buffer.from(t.split(".")[1], "base64url").toString("utf8"));
+      if (claims["x-nvidia-overall-att-result"] === true) return { ok: true };
+    } catch {
+      /* next */
+    }
+  }
+  return { ok: false, reason: "NRAS overall attestation result was not true" };
+}
+
+export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect) {
+  const nonce = randomBytes(32).toString("hex");
+  const url = new URL(p.attestationUrl!);
+  url.searchParams.set("nonce", nonce);
+  let report: Record<string, any>;
+  const fail = async (reason: string, extra: Record<string, unknown> = {}) => {
+    await ctx.db.insert(attestations).values({ providerId: p.id, ok: false, teeKind: p.teeKind, nonce, detail: { reason, ...extra } });
+    await ctx.db.update(providers).set({ attested: false, updatedAt: new Date() }).where(eq(providers.id, p.id));
+    return { provider: p.id, ok: false, reason };
+  };
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) return fail(`attestation endpoint HTTP ${res.status}`);
+    report = (await res.json()) as Record<string, any>;
+  } catch (e) {
+    return fail(`attestation endpoint unreachable: ${(e as Error).message}`);
+  }
+  const [allow] = await ctx.db.select().from(kv).where(eq(kv.key, `attest-allow:${p.id}`));
+  const allowlist = (allow?.value ?? null) as { mrtd?: string[]; rtmr3?: string[]; measurement?: string[] } | null;
+  const measurements: Record<string, string> = {};
+
+  if (p.teeKind === "dev" || report.kind === "dev") {
+    if (!ctx.cfg.attestation.allowDev) return fail("dev attestation is disabled");
+    if (String(report.nonce).replace(/^0x/, "") !== nonce) return fail("nonce mismatch");
+    measurements.measurement = String(report.measurement ?? "");
+    if (allowlist?.measurement?.length && !allowlist.measurement.includes(measurements.measurement)) return fail("measurement not in allowlist", measurements);
+  } else {
+    if (!report.intel_quote && !report.snp_report) return fail("report has no TEE quote");
+    if (report.intel_quote) {
+      let f: TdxFields;
+      try {
+        f = parseTdxQuote(report.intel_quote);
+      } catch (e) {
+        return fail(`unparseable TDX quote: ${(e as Error).message}`);
+      }
+      Object.assign(measurements, { mrtd: f.mrtd, rtmr0: f.rtmr0, rtmr1: f.rtmr1, rtmr2: f.rtmr2, rtmr3: f.rtmr3 });
+      if (!nonceBound(f.reportData, nonce, report.signing_address)) return fail("nonce is not bound into report_data", measurements);
+      const q = await verifyQuote(ctx, report.intel_quote);
+      if (!q.ok) return fail(q.reason!, measurements);
+      if (allowlist?.mrtd?.length && !allowlist.mrtd.includes(f.mrtd)) return fail("MRTD not in allowlist", measurements);
+      if (allowlist?.rtmr3?.length && !allowlist.rtmr3.includes(f.rtmr3)) return fail("RTMR3 not in allowlist", measurements);
+    } else {
+      const q = await verifyQuote(ctx, report.snp_report);
+      if (!q.ok) return fail(q.reason!);
+    }
+    if (p.teeKind === "nvidia-cc" || report.nvidia_payload) {
+      if (!report.nvidia_payload) return fail("GPU evidence missing");
+      const payload = typeof report.nvidia_payload === "string" ? report.nvidia_payload : JSON.stringify(report.nvidia_payload);
+      if (!payload.includes(nonce)) return fail("GPU evidence is not bound to our nonce");
+      const g = await verifyNvidia(ctx, payload);
+      if (!g.ok) return fail(g.reason!);
+    }
+  }
+  const reportHash = "0x" + sha256(canonicalJson({ report, nonce }));
+  await ctx.db.insert(attestations).values({ providerId: p.id, ok: true, teeKind: p.teeKind ?? report.kind ?? null, reportHash, nonce, measurements, detail: { signing_address: report.signing_address ?? null } });
+  await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), updatedAt: new Date() }).where(eq(providers.id, p.id));
+  return { provider: p.id, ok: true, hash: reportHash };
+}
+
+export async function runAttestor(ctx: Ctx) {
+  const rows = await ctx.db.select().from(providers).where(and(isNotNull(providers.attestationUrl), isNotNull(providers.teeKind)));
+  const results = [];
+  for (const p of rows) {
+    try {
+      results.push(await attestProvider(ctx, p));
+    } catch (e) {
+      log.error("attestation crashed", { provider: p.id, error: (e as Error).message });
+    }
+  }
+  await ctx.catalog.refresh();
+  return { results };
+}
