@@ -77,3 +77,91 @@ function readFingerprint(json: any): Fingerprint {
     top: Array.isArray(t.top_logprobs) ? t.top_logprobs.map((x: any) => ({ token: String(x.token), logprob: Number(x.logprob) })) : [],
   }));
 }
+
+async function ask(ctx: Ctx, c: Candidate, body: Record<string, unknown>) {
+  const r = await callUpstream({
+    candidate: c,
+    path: "/chat/completions",
+    body: upstreamBody(c, { ...body, model: c.modelId }, false).body,
+    stream: false,
+    apiKey: providerKey(c, ctx.cfg.appSecret),
+    signal: AbortSignal.timeout(60_000),
+    timeoutMs: 60_000,
+    firstTokenTimeoutMs: 30_000,
+  });
+  ctx.health.record({ modelId: c.modelId, providerId: c.providerId, ok: r.ok, errorKind: r.ok ? null : r.errorKind, latencyMs: r.latencyMs, source: "canary" });
+  return r.ok && r.kind === "json" ? r.json : null;
+}
+
+export async function runCanaryFor(ctx: Ctx, c: Candidate, threshold = 0.35) {
+  const supportsLogprobs = (c.supportedParameters ?? []).includes("logprobs");
+  let fp: Fingerprint = [];
+  if (supportsLogprobs) {
+    const j = await ask(ctx, c, { messages: [{ role: "user", content: FINGERPRINT_PROMPT }], temperature: 0, max_tokens: 12, logprobs: true, top_logprobs: 5, seed: 7 });
+    fp = readFingerprint(j);
+  }
+  let correct = 0;
+  let answered = 0;
+  for (const item of EXACT_SET) {
+    const j = await ask(ctx, c, { messages: [{ role: "user", content: item.q }], temperature: 0, max_tokens: 8, seed: 7 });
+    const text = String(j?.choices?.[0]?.message?.content ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (j) answered++;
+    if (text === item.a) correct++;
+  }
+  const accuracy = answered ? correct / EXACT_SET.length : 0;
+
+  // Trusted reference: an attested provider declaring full precision records the reference.
+  const declared = family(c.quant);
+  if (fp.length && c.provider.attested && declared === "full") {
+    await ctx.db
+      .insert(canaryReferences)
+      .values({ modelId: c.modelId, quant: c.quant.toLowerCase(), fingerprint: { fp, accuracy }, source: c.providerId })
+      .onConflictDoUpdate({ target: [canaryReferences.modelId, canaryReferences.quant], set: { fingerprint: { fp, accuracy }, source: c.providerId, createdAt: new Date() } });
+  }
+  const refRows = await ctx.db.select().from(canaryReferences).where(eq(canaryReferences.modelId, c.modelId));
+  const refs = refRows.map((r) => ({ quant: r.quant, fingerprint: (r.fingerprint as { fp: Fingerprint }).fp, accuracy: (r.fingerprint as { accuracy?: number }).accuracy }));
+  const { guess, distance } = classify(fp, refs, threshold);
+  const quantMatch = guess == null || declared === "unknown" ? null : guess === "lower" ? declared !== "full" : family(guess) === declared;
+  const refAcc = Math.max(0.01, ...refs.map((r) => r.accuracy ?? 0), accuracy);
+  const quality = answered ? 0.5 + 0.5 * Math.min(1, accuracy / refAcc) : null;
+  await ctx.db.insert(canaries).values({
+    modelId: c.modelId,
+    providerId: c.providerId,
+    quantMatch,
+    quantGuess: guess,
+    distance,
+    quality,
+    detail: { accuracy, answered, declared: c.quant, logprobs: supportsLogprobs, fingerprint_tokens: fp.length },
+  });
+  if (quality != null) ctx.health.setQuality(c.modelId, c.providerId, quality);
+  return { model: c.modelId, provider: c.providerId, quantMatch, guess, distance, quality, accuracy };
+}
+
+export async function runCanaries(ctx: Ctx, opts: { threshold?: number; limit?: number } = {}) {
+  await ctx.catalog.ensureFresh(0);
+  const all = [...ctx.catalog.offersByModel.values()].flat().filter((o) => (o.status === "live" || o.status === "shadow") && ["live", "shadow"].includes(o.provider.status));
+  // Attested full-precision providers first, so references exist before the others are compared.
+  all.sort((a, b) => Number(b.provider.attested) - Number(a.provider.attested));
+  const results = [];
+  for (const c of all.slice(0, opts.limit ?? 10_000)) {
+    try {
+      results.push(await runCanaryFor(ctx, c, opts.threshold));
+    } catch (e) {
+      log.warn("canary failed", { model: c.modelId, provider: c.providerId, error: (e as Error).message });
+    }
+  }
+  return { ran: results.length, mismatches: results.filter((r) => r.quantMatch === false).length, results };
+}
+
+/** Latest N canaries for model x provider (used by slasher). */
+export async function latestCanaries(ctx: Ctx, providerId: string, modelIds: string[], n = 3) {
+  if (!modelIds.length) return new Map<string, (typeof canaries.$inferSelect)[]>();
+  const rows = await ctx.db.select().from(canaries).where(and(eq(canaries.providerId, providerId), inArray(canaries.modelId, modelIds))).orderBy(desc(canaries.ts));
+  const map = new Map<string, (typeof canaries.$inferSelect)[]>();
+  for (const r of rows) {
+    const list = map.get(r.modelId) ?? [];
+    if (list.length < n) list.push(r);
+    map.set(r.modelId, list);
+  }
+  return map;
+}
