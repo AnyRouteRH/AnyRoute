@@ -87,3 +87,97 @@ export async function fetchProviderModels(ctx: Ctx, p: typeof providers.$inferSe
   if (!res.ok) throw new Error(`GET /models returned ${res.status}`);
   return parseProviderModels(await res.json());
 }
+
+const MIN_BOND_USDG = 10_000n * 1_000_000n;
+
+export async function syncProvider(ctx: Ctx, p: typeof providers.$inferSelect) {
+  const { ok, errors } = await fetchProviderModels(ctx, p);
+  const now = new Date();
+  const seen: string[] = [];
+  for (const m of ok) {
+    const slug = slugFor(m);
+    const [author] = slug.split("/");
+    await ctx.db
+      .insert(models)
+      .values({
+        id: slug,
+        author: author ?? "unknown",
+        name: m.name ?? slug,
+        description: m.description ?? "",
+        ctx: m.context_length,
+        maxOut: m.max_completion_tokens ?? m.max_output_length ?? null,
+        arch: {
+          modality: `${(m.input_modalities ?? ["text"]).join("+")}->${(m.output_modalities ?? ["text"]).join("+")}`,
+          input_modalities: m.input_modalities ?? ["text"],
+          output_modalities: m.output_modalities ?? ["text"],
+          tokenizer: "Other",
+        },
+        hfRepo: m.hugging_face_id ?? null,
+        createdUnix: m.created ?? Math.floor(Date.now() / 1000),
+      })
+      .onConflictDoNothing();
+    const offerStatus = p.status === "live" ? "live" : "shadow";
+    const values = {
+      providerModelId: m.id,
+      pricePrompt: usdToPico(m.pricing.prompt),
+      priceCompletion: usdToPico(m.pricing.completion),
+      priceRequest: usdToPico(m.pricing.request ?? "0"),
+      priceImage: usdToPico(m.pricing.image ?? "0"),
+      priceWebSearch: usdToPico(m.pricing.web_search ?? "0"),
+      priceReasoning: usdToPico(m.pricing.internal_reasoning ?? "0"),
+      priceCacheRead: m.pricing.input_cache_read != null ? usdToPico(m.pricing.input_cache_read) : null,
+      priceCacheWrite: m.pricing.input_cache_write != null ? usdToPico(m.pricing.input_cache_write) : null,
+      quant: (m.quantization ?? "unknown").toLowerCase(),
+      ctx: m.context_length,
+      maxOut: m.max_completion_tokens ?? m.max_output_length ?? null,
+      supportedParameters: supportedParams(m),
+      features: { supported_features: m.supported_features ?? [] },
+      isModerated: !!m.is_moderated,
+      updatedAt: now,
+    };
+    await ctx.db
+      .insert(offers)
+      .values({ modelId: slug, providerId: p.id, status: offerStatus, ...values })
+      .onConflictDoUpdate({ target: [offers.modelId, offers.providerId], set: values });
+    seen.push(slug);
+  }
+  // Offers the provider no longer lists are disabled (never deleted: generations reference them).
+  if (seen.length) await ctx.db.update(offers).set({ status: "disabled", updatedAt: now }).where(and(eq(offers.providerId, p.id), notInArray(offers.modelId, seen)));
+  return { models: ok.length, errors };
+}
+
+async function advanceOnboarding(ctx: Ctx, p: typeof providers.$inferSelect, schemaOk: boolean) {
+  if (p.status === "applied" && schemaOk && p.bondUsdg >= MIN_BOND_USDG) {
+    const until = new Date(Date.now() + ctx.cfg.canaries.shadowDays * 86_400_000);
+    await ctx.db.update(providers).set({ status: "shadow", shadowUntil: until, updatedAt: new Date() }).where(eq(providers.id, p.id));
+    log.info("provider entered shadow", { provider: p.id, until });
+  }
+  if (p.status === "shadow" && p.shadowUntil && p.shadowUntil.getTime() <= Date.now()) {
+    // Promote only with canary data and no quantization mismatch in the shadow window.
+    const rows = await ctx.db.select().from(canaries).where(eq(canaries.providerId, p.id));
+    const recent = rows.filter((r) => r.ts.getTime() >= p.shadowUntil!.getTime() - ctx.cfg.canaries.shadowDays * 86_400_000);
+    const mismatch = recent.some((r) => r.quantMatch === false);
+    if (recent.length && !mismatch) {
+      await ctx.db.update(providers).set({ status: "live", updatedAt: new Date() }).where(eq(providers.id, p.id));
+      await ctx.db.update(offers).set({ status: "live" }).where(and(eq(offers.providerId, p.id), eq(offers.status, "shadow")));
+      log.info("provider promoted to live", { provider: p.id });
+    }
+  }
+}
+
+export async function runRegistry(ctx: Ctx) {
+  const rows = await ctx.db.select().from(providers).where(inArray(providers.status, ["applied", "shadow", "live"]));
+  const results: Record<string, unknown> = {};
+  for (const p of rows) {
+    try {
+      const r = await syncProvider(ctx, p);
+      results[p.id] = r;
+      await advanceOnboarding(ctx, p, r.models > 0);
+    } catch (e) {
+      results[p.id] = { error: (e as Error).message };
+      log.warn("provider sync failed", { provider: p.id, error: (e as Error).message });
+    }
+  }
+  await ctx.catalog.refresh();
+  return results;
+}
