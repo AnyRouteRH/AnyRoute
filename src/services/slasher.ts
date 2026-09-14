@@ -135,3 +135,60 @@ async function affectedCallers(ctx: Ctx, s: typeof slashes.$inferSelect) {
     .where(and(eq(generations.providerId, s.providerId), ...(s.modelId ? [eq(generations.modelId, s.modelId)] : []), gte(generations.ts, new Date(w.from)), lte(generations.ts, new Date(w.to))))
     .groupBy(generations.accountId);
 }
+
+async function refund(ctx: Ctx, s: typeof slashes.$inferSelect, pool: bigint, tag: string) {
+  const callers = (await affectedCallers(ctx, s)).filter((c) => c.accountId);
+  if (!callers.length || pool <= 0n) return 0n;
+  const owed = callers.map((c) => BigInt(c.cost));
+  const totalOwed = owed.reduce((a, b) => a + b, 0n);
+  const budget = pool < totalOwed ? pool : totalOwed;
+  const parts = allocate(budget, owed);
+  let paid = 0n;
+  for (let i = 0; i < callers.length; i++) {
+    if (parts[i] <= 0n) continue;
+    const ok = await post(ctx.db, { accountId: callers[i].accountId!, amount: parts[i], kind: "refund", ref: `${tag}:${s.id}:${callers[i].accountId}`, description: `Refund: ${s.kind} by ${s.providerId}` });
+    if (ok) paid += parts[i];
+  }
+  return paid;
+}
+
+async function executeReady(ctx: Ctx, now: number) {
+  const ready = await ctx.db.select().from(slashes).where(and(eq(slashes.status, "proposed"), lte(slashes.executableAt, new Date(now))));
+  const out: unknown[] = [];
+  for (const s of ready) {
+    let chain: unknown = null;
+    if (s.onchainId && ctx.chain.address("providerBond")) {
+      try {
+        chain = await ctx.chain.executeSlash(BigInt(s.onchainId));
+      } catch (e) {
+        log.error("slash execution failed", { id: s.id, error: (e as Error).message });
+        continue;
+      }
+    }
+    const refunded = await refund(ctx, s, usdgToPico(s.amountUsdg), "slashrefund");
+    await ctx.db.update(slashes).set({ status: "executed", executedAt: new Date(now), refunded }).where(eq(slashes.id, s.id));
+    if (s.delist) {
+      await ctx.db.update(providers).set({ status: "delisted", updatedAt: new Date() }).where(eq(providers.id, s.providerId));
+      await ctx.db.update(offers).set({ status: "disabled" }).where(eq(offers.providerId, s.providerId));
+    }
+    out.push({ id: s.id, refunded: refunded.toString(), chain });
+  }
+  if (out.length) await ctx.catalog.refresh();
+  return out;
+}
+
+async function autoRefundStaleDisputes(ctx: Ctx, now: number) {
+  const stale = await ctx.db.select().from(slashes).where(and(eq(slashes.status, "disputed"), lte(slashes.executableAt, new Date(now - 72 * 3_600_000))));
+  const out: unknown[] = [];
+  for (const s of stale) {
+    // Refund from margin: the router eats it; the dispute continues but callers are made whole.
+    const callers = await affectedCallers(ctx, s);
+    const total = callers.reduce((a, c) => a + BigInt(c.cost), 0n);
+    const refunded = await refund(ctx, s, total, "disputerefund");
+    await ctx.db.update(slashes).set({ status: "auto_refunded", refunded }).where(eq(slashes.id, s.id));
+    out.push({ id: s.id, refunded: refunded.toString() });
+  }
+  return out;
+}
+
+export { mulBps };
