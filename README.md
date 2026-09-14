@@ -45,3 +45,71 @@ Full local chain (anvil + every contract deployed + router wired to it):
 bun scripts/deploy-local.ts --keep         # starts anvil :8546, deploys, writes .env.local
 bun --env-file=.env.local run dev
 ```
+
+Production stack: `docker compose up` (router + Postgres/TimescaleDB + Redis). Copy `.env.example` to `.env` first.
+Going live also needs real provider API keys (`config/providers.example.yaml`), a mainnet deployment of the contracts
+through the owner Safe + 24h timelock (`contracts/script/Deploy.s.sol`), and a DCAP verifier (`TDX_VERIFIER_URL`)
+for the private route. With `ANYROUTE_ENV=production` the router refuses to start without an https base URL and
+strong secrets, or with an in-memory database, dev attestation or the test faucet.
+
+### Website
+
+The website (landing page, live model catalog, docs, dashboard) lives in `web/` and is served by the router
+itself at `/` once built — same origin as the API, so no CORS or extra hosting:
+
+```bash
+cd web && pnpm install --frozen-lockfile && pnpm build && cd ..   # writes web/out/
+bun run dev                                                        # site at /, API at /api/v1
+```
+
+The dashboard talks to the live API: create or paste a key, deposit USDG and withdraw with your wallet, open
+Stock Token sessions, stream calls in the playground, and verify each receipt against the chain. A clearly
+labelled sample workspace (`?demo=1`) keeps the original browser-only preview for demos. `WEB_DIR` points at
+another build; `PUBLIC_RPC_URL` / `EXPLORER_URL` are what the site tells wallets to use.
+
+---
+
+## What's in the box
+
+| Layer | Where | What |
+|---|---|---|
+| Edge router | `src/api/chat.ts`, `src/router/*` | OpenRouter API parity, provider selection (1/price² × uptime × quality), fallback, empty-200 detection, SSE |
+| Ledger | `src/ledger/ledger.ts`, `drizzle/0001_invariants.sql` | Append-only pico-USD ledger, reserve → settle/release holds, DB-enforced invariants |
+| Payments | `src/pay/*` | Prepaid (0%), HTTP 402 per-call (tx hash or gasless EIP-3009), Pay-with-Stock-Token |
+| Receipts | `src/receipts/*`, `src/services/anchor.ts` | Ed25519 per generation, weekly key rotation (pubkeys on-chain), hourly merkle anchors |
+| Providers | `src/services/registry.ts`, `health.ts`, `probes.ts` | Provider spec import, onboarding (apply → bond → 7-day shadow → live), 30s outage window |
+| Accountability | `src/services/canaries.ts`, `slasher.ts` | Quant fingerprints + quality score, bond slashing with a 72h dispute window and refunds |
+| Privacy | `src/services/attestor.ts` | TEE attestation (TDX quote + NVIDIA NRAS, nonce-bound), fail-closed private route |
+| Settlement | `src/services/settlement.ts` | Hourly provider invoices (2% fee), royalties, spent roots for self-custodial withdrawals, margin → staking |
+| Gateway floor | `src/gateway/*`, `src/api/keys.ts` | Virtual keys/budgets/RPM/TPM, teams/RBAC, BYOK, cache, guardrails, OTel, LiteLLM import |
+| Admin | `src/admin/trpc.ts` | tRPC v11 at `/trpc` |
+| Website | `web/` (Next.js static export), `src/app.ts` | Landing, live catalog, docs, dashboard; served at `/` by the router |
+| Contracts | `contracts/src/*` | Credits, CallPay, PayWithStock (+ Chainlink oracle, Uniswap V3/V4 adapters), ProviderBond, ReceiptAnchor, Royalty, AnyrToken, AnyrStaking, AnyrPaymaster |
+
+---
+
+## API
+
+All routes are under `/api/v1` (also `/v1/*` for the three OpenAI-style endpoints).
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/chat/completions` | OpenAI body + `model` (`author/model[:nitro\|:floor\|:free\|:private]`), `models[]`, `provider{…}`, `route`, `transforms`, `usage`, `reasoning`, `tools`, `response_format`, `stream`. Headers: `X-Pay-With`, `X-Payment`, `X-Wallet-Auth`, `HTTP-Referer`, `X-Title` |
+| POST | `/completions`, `/embeddings` | Legacy completions; embeddings (prepaid) |
+| GET | `/models`, `/models/:author/:slug/endpoints`, `/providers` | OpenRouter shapes + `data_policy`, `quantization`, `attested_available`, `creator`, `royalty_bps` |
+| GET | `/generation?id=` | Full generation record, `paid_with`, `anchor {root, index, proof[]}` |
+| POST/GET/PATCH/DELETE | `/keys`, `/keys/:hash` | No auth → new self-custodial root key. With a management key → virtual sub-keys (`limit`, `limit_reset`, `rpm`, `tpm`, `allowed_models`, `team`, `pay_with_default`, `guardrails`, `routing`) |
+| GET | `/key`, `/credits`, `/credits/withdrawal-proof` | Balance; merkle proof for `Credits.finalizeWithdrawal` |
+| POST/GET/DELETE | `/byok` | Bring-your-own provider keys (encrypted at rest) |
+| POST/GET/PUT | `/teams`, `/teams/:id/members/:hash` | Roles: owner, admin, member, viewer |
+| POST | `/auth/wallet` | Turn a per-call payer's change into a key (signed message) |
+| GET/POST | `/paywith/tokens`, `/paywith/open`, `/paywith/close`, `/paywith/session`, `/paywith/statement` | Stock-Token sessions (unsigned txs for the wallet) and monthly statements |
+| GET/POST | `/receipts/:id`, `/receipts/verify`, `/receipts/keys` | Public receipt proofs; JWKS of signing keys |
+| GET | `/rankings?period=day\|week\|month` | Tokens by model and app, paid to creators |
+| POST | `/providers/apply` | Provider onboarding (OpenRouter provider spec) |
+| POST | `/paymaster` | ERC-7677 paymaster service (sponsors Anyroute actions only) |
+| GET | `/status`, `/health` | Configuration and job status |
+
+Response additions: `provider`, `usage.cost`, `usage.cost_details {upstream_inference_cost, royalty, margin}`,
+`usage.prompt_tokens_details.cached_tokens`, `usage.completion_tokens_details.reasoning_tokens`, and
+`receipt {id, sig, key_id, payload, leaf, anchor_hint, paid_with?}`.
