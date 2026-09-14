@@ -60,3 +60,51 @@ function mapText(body: Record<string, unknown>, fn: (s: string) => string) {
     });
   if (typeof body.prompt === "string") body.prompt = fn(body.prompt);
 }
+
+function allText(body: Record<string, unknown>) {
+  const parts: string[] = [];
+  mapText(structuredClone(body), (s) => {
+    parts.push(s);
+    return s;
+  });
+  return parts.join("\n");
+}
+
+/** Apply input guardrails in place. Returns what happened (for response metadata). */
+export function applyGuardrails(body: Record<string, unknown>, g: GuardrailConfig | null | undefined) {
+  if (!g) return null;
+  const report: { redactions: number; blocked?: string } = { redactions: 0 };
+  const text = allText(body);
+  if (g.max_input_chars && text.length > g.max_input_chars)
+    fail(400, `Input exceeds this key's guardrail limit of ${g.max_input_chars} characters.`, "guardrail_blocked", { guardrail: "max_input_chars" });
+  // Deny patterns are case-insensitive substrings, never regexes: caller-supplied regexes could pin
+  // the event loop (catastrophic backtracking). Bounded in count and length.
+  const lower = text.toLowerCase();
+  for (const p of (g.deny_patterns ?? []).slice(0, MAX_PATTERNS)) {
+    const needle = String(p).slice(0, MAX_PATTERN_LEN).toLowerCase();
+    if (needle && lower.includes(needle)) fail(400, "Input matched a blocked pattern for this key.", "guardrail_blocked", { guardrail: "deny_patterns" });
+  }
+  if (g.pii === "block") {
+    const hits = findPii(text);
+    if (hits.length) fail(400, `Input contains personal data (${[...new Set(hits.map((h) => h.type))].join(", ")}) and this key blocks it.`, "guardrail_blocked", { guardrail: "pii" });
+  } else if (g.pii === "redact") {
+    mapText(body, (s) => {
+      const r = redactText(s);
+      report.redactions += r.count;
+      return r.text;
+    });
+  }
+  return report;
+}
+
+export function redactOutput(json: any) {
+  let n = 0;
+  for (const ch of json?.choices ?? []) {
+    if (typeof ch?.message?.content === "string") {
+      const r = redactText(ch.message.content);
+      ch.message.content = r.text;
+      n += r.count;
+    }
+  }
+  return n;
+}
