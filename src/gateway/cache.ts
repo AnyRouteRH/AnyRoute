@@ -47,3 +47,61 @@ const cosine = (a: Float32Array, b: Float32Array) => {
   for (let i = 0; i < a.length; i++) s += a[i] * b[i];
   return s;
 };
+
+export class ResponseCache {
+  private entries = new Map<string, Entry>();
+  constructor(private secret: string, private maxEntries = 5_000, readonly redis?: import("ioredis").Redis) {}
+
+  private seal(scope: string, v: unknown) {
+    return encrypt(this.secret + ":" + scope, JSON.stringify(v));
+  }
+  private open(scope: string, s: string) {
+    return JSON.parse(decrypt(this.secret + ":" + scope, s));
+  }
+
+  async get(mode: CacheMode, scope: string, body: Record<string, unknown>, threshold: number): Promise<{ response: any; upstream: bigint; similarity: number } | null> {
+    const key = cacheKey(scope, body);
+    const now = Date.now();
+    if (this.redis) {
+      const raw = await this.redis.get(`cache:${key}`);
+      if (raw) {
+        const e = JSON.parse(raw) as { payload: string; upstream: string };
+        return { response: this.open(scope, e.payload), upstream: BigInt(e.upstream), similarity: 1 };
+      }
+    }
+    const exact = this.entries.get(key);
+    if (exact && exact.expires > now) return { response: this.open(scope, exact.payload), upstream: BigInt(exact.upstream), similarity: 1 };
+    if (mode !== "semantic") return null;
+    const q = lexicalVector(textOf(body));
+    let best: Entry | null = null;
+    let bestSim = -1;
+    for (const e of this.entries.values()) {
+      if (e.scope !== scope || e.model !== body.model || !e.vector || e.expires <= now) continue;
+      const s = cosine(q, e.vector);
+      if (s > bestSim) {
+        bestSim = s;
+        best = e;
+      }
+    }
+    return best && bestSim >= threshold ? { response: this.open(scope, best.payload), upstream: BigInt(best.upstream), similarity: bestSim } : null;
+  }
+
+  async put(mode: CacheMode, scope: string, body: Record<string, unknown>, response: unknown, upstream: bigint, ttlS: number) {
+    const key = cacheKey(scope, body);
+    const payload = this.seal(scope, response);
+    if (this.redis) await this.redis.set(`cache:${key}`, JSON.stringify({ payload, upstream: upstream.toString() }), "PX", ttlS * 1000);
+    if (this.entries.size >= this.maxEntries) this.entries.delete(this.entries.keys().next().value!);
+    this.entries.set(key, {
+      scope,
+      model: String(body.model),
+      vector: mode === "semantic" ? lexicalVector(textOf(body)) : undefined,
+      payload,
+      expires: Date.now() + ttlS * 1000,
+      upstream: upstream.toString(),
+    });
+  }
+
+  size() {
+    return this.entries.size;
+  }
+}
