@@ -181,3 +181,125 @@ export async function withdrawableFor(ctx: Ctx, accountId: string, chainKeyHash:
   const w = k.deposited - k.withdrawn - spent;
   return w > 0n ? w : 0n;
 }
+
+export async function postSpentRoot(ctx: Ctx) {
+  const { leaves, ratchet, settledTotal } = await computeSpentLeaves(ctx);
+  if (!leaves.length) return { posted: false, reason: "no funded keys" };
+  const tree = new MerkleTree(leaves.map(([h, s]) => spentLeaf(h as Hex, s)));
+  const onChain = !!(ctx.chain.address("credits") && ctx.chain.roleAddress("settlement"));
+  let [last] = await ctx.db.select().from(spentRoots).orderBy(desc(spentRoots.epoch)).limit(1);
+  // A root whose post failed (or never confirmed) must not block later roots: keep it if it did land,
+  // otherwise drop it and rebuild that epoch.
+  if (last?.status === "pending" && onChain) {
+    const landed = await ctx.chain.latestSpentRoot().catch(() => null);
+    if (landed && landed.root === last.root) await ctx.db.update(spentRoots).set({ status: "confirmed" }).where(eq(spentRoots.epoch, last.epoch));
+    else {
+      await ctx.db.delete(spentRoots).where(eq(spentRoots.epoch, last.epoch));
+      [last] = await ctx.db.select().from(spentRoots).orderBy(desc(spentRoots.epoch)).limit(1);
+    }
+  }
+  const lastTotal = last ? last.totalSpentUsdg : 0n;
+  const total = leaves.reduce((a, [, s]) => a + s, 0n);
+  const totalSpent = total > lastTotal ? total : lastTotal; // Credits requires non-decreasing totals
+  if (last && last.root === tree.root) return { posted: false, reason: "unchanged", epoch: last.epoch };
+  const epoch = (last?.epoch ?? 0) + 1;
+  // Credits rejects roots dated after the latest block, so never date one past the chain's own clock
+  // (a chain can trail wall time: a restored local node, or a slow block). The ledger snapshot above is
+  // taken now, so it covers every spend up to asOf.
+  let asOfSec = Math.floor(Date.now() / 1000);
+  if (onChain) asOfSec = Math.min(asOfSec, await ctx.chain.latestBlockTime());
+  if (last && asOfSec <= Math.floor(last.asOf.getTime() / 1000)) return { posted: false, reason: "chain time has not advanced past the last root", epoch: last.epoch };
+  const asOf = new Date(asOfSec * 1000);
+  await ctx.db.insert(spentRoots).values({ epoch, root: tree.root, asOf, totalSpentUsdg: totalSpent, leaves: leaves.map(([h, s]) => [h, s.toString()]), status: "pending" });
+  await setKv(ctx, "spent_ratchet", ratchet);
+  // totalSpent (monotonic, includes holds) bounds Credits.sweep on-chain; sweep at most this settled figure.
+  await setKv(ctx, `spent_settled:${epoch}`, settledTotal.toString());
+  let tx: string | null = null;
+  if (onChain) {
+    try {
+      const r = await ctx.chain.postSpentRoot(tree.root, Math.floor(asOf.getTime() / 1000), totalSpent);
+      tx = r.hash;
+      await ctx.db.update(spentRoots).set({ status: "confirmed", txHash: tx }).where(eq(spentRoots.epoch, epoch));
+    } catch (e) {
+      log.error("postSpentRoot failed", { epoch, error: (e as Error).message });
+    }
+  } else await ctx.db.update(spentRoots).set({ status: "local" }).where(eq(spentRoots.epoch, epoch));
+  return { posted: true, epoch, root: tree.root, keys: leaves.length, total_spent_usdg: totalSpent.toString(), tx };
+}
+
+/** 2: weekly payouts for providers paid in USDG on-chain. Invoice providers are just marked. */
+export async function runPayouts(ctx: Ctx, minAgeMs = 7 * 86_400_000) {
+  const cutoff = hourKey(new Date(Date.now() - minAgeMs));
+  const due = await ctx.db
+    .select({ providerId: settlements.providerId, owed: sql<string>`sum(${settlements.usdgOwed})` })
+    .from(settlements)
+    .where(and(isNull(settlements.payoutId), sql`${settlements.period} <= ${cutoff}`))
+    .groupBy(settlements.providerId);
+  const out: unknown[] = [];
+  for (const d of due) {
+    const [p] = await ctx.db.select().from(providers).where(eq(providers.id, d.providerId));
+    if (!p) continue;
+    const id = uid("pay_");
+    const amount = BigInt(d.owed);
+    const onchain = p.payoutMode === "usdg" && !!p.payoutAddress && ctx.chain.roleAddress("settlement");
+    await ctx.db.insert(payouts).values({ id, providerId: p.id, usdg: amount, to: p.payoutAddress, status: onchain ? "pending" : "invoice" });
+    await ctx.db.update(settlements).set({ payoutId: id }).where(and(eq(settlements.providerId, p.id), isNull(settlements.payoutId), sql`${settlements.period} <= ${cutoff}`));
+    if (onchain && amount > 0n) {
+      try {
+        const r = await ctx.chain.transferUsdg("settlement", p.payoutAddress as Hex, amount);
+        await ctx.db.update(payouts).set({ status: "paid", tx: r.hash }).where(eq(payouts.id, id));
+        await ctx.db.update(settlements).set({ paidTx: r.hash }).where(eq(settlements.payoutId, id));
+        out.push({ provider: p.id, usdg: amount.toString(), tx: r.hash });
+      } catch (e) {
+        await ctx.db.update(payouts).set({ status: "pending" }).where(eq(payouts.id, id));
+        log.error("provider payout failed", { provider: p.id, error: (e as Error).message });
+      }
+    } else out.push({ provider: p.id, usdg: amount.toString(), status: "invoice" });
+  }
+  return { payouts: out };
+}
+
+/** 3b: stream accrued royalties on-chain for models with a registered creator. */
+export async function streamRoyalties(ctx: Ctx) {
+  if (!ctx.chain.address("royalty") || !ctx.chain.roleAddress("settlement")) return { streamed: 0 };
+  const due = await ctx.db
+    .select({ modelId: royalties.modelId, usdg: sql<string>`sum(${royalties.usdg})` })
+    .from(royalties)
+    .where(and(isNull(royalties.streamTx), sql`${royalties.creator} IS NOT NULL`))
+    .groupBy(royalties.modelId);
+  let n = 0;
+  for (const d of due) {
+    const amount = BigInt(d.usdg);
+    if (amount <= 0n) continue;
+    try {
+      const r = await ctx.chain.streamRoyalty(keccak256(toBytes(d.modelId)), amount);
+      await ctx.db.update(royalties).set({ streamTx: r.hash }).where(and(eq(royalties.modelId, d.modelId), isNull(royalties.streamTx)));
+      n++;
+    } catch (e) {
+      log.error("royalty stream failed", { model: d.modelId, error: (e as Error).message });
+    }
+  }
+  return { streamed: n };
+}
+
+/** 5: send accrued margin to AnyrStaking (it splits 50% buyback / 50% ops). */
+export async function sendMargin(ctx: Ctx) {
+  const unsent = BigInt((await getKv<string>(ctx, "margin_unsent")) ?? "0");
+  const usdg = picoToUsdg(unsent, "floor");
+  if (usdg <= 0n) return { sent: "0" };
+  if (!ctx.chain.address("staking") || !ctx.chain.roleAddress("settlement")) return { sent: "0", accrued_usdg: usdg.toString(), reason: "staking not configured" };
+  const r = await ctx.chain.notifyMargin(usdg);
+  await setKv(ctx, "margin_unsent", (unsent - usdg * PICO_PER_USDG_UNIT).toString());
+  return { sent: usdg.toString(), tx: r.hash };
+}
+
+export async function runSettlement(ctx: Ctx) {
+  const hours = await settleHours(ctx);
+  const roots = await postSpentRoot(ctx);
+  const royaltiesResult = await streamRoyalties(ctx).catch((e) => ({ error: (e as Error).message }));
+  const margin = await sendMargin(ctx).catch((e) => ({ error: (e as Error).message }));
+  const weekly = new Date().getUTCDay() === 1 && new Date().getUTCHours() === 0 ? await runPayouts(ctx) : { skipped: "weekly (Mondays 00 UTC)" };
+  return { hours, roots, royalties: royaltiesResult, margin, payouts: weekly };
+}
+
+export { desc };
