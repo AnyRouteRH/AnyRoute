@@ -88,3 +88,75 @@ async function listening(port: number) {
     return false;
   }
 }
+
+async function rpc<T>(method: string, params: unknown[] = []): Promise<T> {
+  const res = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+  const body = (await res.json()) as { result?: T; error?: { message: string } };
+  if (body.error) throw new Error(body.error.message);
+  return body.result as T;
+}
+
+async function waitFor(what: string, check: () => Promise<boolean>, timeoutMs = 60_000) {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    if (await check().catch(() => false)) return;
+    await Bun.sleep(250);
+  }
+  die(`${what} did not come up within ${timeoutMs / 1000}s.`);
+}
+
+function readEnvFile(file: string): Record<string, string> {
+  if (!existsSync(file)) return {};
+  const out: Record<string, string> = {};
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m) out[m[1]] = m[2].replace(/^'(.*)'$/, "$1");
+  }
+  return out;
+}
+
+function newestMtime(dir: string): number {
+  let t = 0;
+  for (const name of readdirSync(dir, { withFileTypes: true })) {
+    if (name.name === "node_modules" || name.name.startsWith(".")) continue;
+    const p = resolve(dir, name.name);
+    t = Math.max(t, name.isDirectory() ? newestMtime(p) : statSync(p).mtimeMs);
+  }
+  return t;
+}
+
+async function buildWebsite() {
+  const index = resolve(WEB, "out/index.html");
+  const sources = ["app", "components", "lib", "public"].map((d) => resolve(WEB, d)).filter(existsSync);
+  const stale = !existsSync(index) || Math.max(...sources.map(newestMtime), statSync(resolve(WEB, "package.json")).mtimeMs) > statSync(index).mtimeMs;
+  if (!stale) return say("website build is up to date");
+  if (!Bun.which("pnpm")) {
+    if (existsSync(index)) return say("website sources changed but pnpm is not installed; serving the existing build");
+    return say("pnpm is not installed, so the website cannot be built; the router will serve its small built-in page");
+  }
+  if (!existsSync(resolve(WEB, "node_modules"))) {
+    say("installing website dependencies (first run)…");
+    await run(["pnpm", "install", "--frozen-lockfile"], WEB);
+  }
+  say("building the website…");
+  await run(["pnpm", "build"], WEB);
+}
+
+/** An Anyroute router started by this launcher (local chain + test faucet) already serving on a nearby port? */
+async function runningInstance(): Promise<string | null> {
+  for (let port = 8787; port < 8807; port++) {
+    if (!(await listening(port))) continue;
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/api/v1/status`, { signal: AbortSignal.timeout(1500) });
+      const d = ((await r.json()) as { data?: { dev_faucet?: boolean; chain?: { chain_id?: number } } }).data;
+      if (d?.dev_faucet && d.chain?.chain_id === CHAIN_ID) return `http://127.0.0.1:${port}`;
+    } catch {
+      /* not ours */
+    }
+  }
+  return null;
+}
+
+function openUrl(url: string) {
+  Bun.spawn(process.platform === "darwin" ? ["open", url] : process.platform === "win32" ? ["cmd", "/c", "start", url] : ["xdg-open", url], { stdout: "ignore", stderr: "ignore" });
+}
