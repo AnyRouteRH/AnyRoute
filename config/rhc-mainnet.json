@@ -1,0 +1,36 @@
+{
+  "_note": "Robinhood Chain mainnet (4663) addresses verified on-chain via eth_getCode/eth_call. Chainlink stock feeds already include the ERC-8056 uiMultiplier (applyMultiplier=false), update 24/5 with an 86400s heartbeat (use ~302400s staleness to span weekends). No L2 sequencer uptime feed exists on RHC.",
+  "chainId": 4663,
+  "rpc": "https://rpc.mainnet.chain.robinhood.com",
+  "usdg": { "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", "decimals": 6, "eip2612": true, "eip3009": true, "domainName": "Global Dollar", "domainVersion": "1" },
+  "weth": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+  "entryPointV07": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+  "entryPointV08": "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+  "safe141": { "singleton": "0x41675C099F32341bf84BFc5382aF534df5C7461a", "proxyFactory": "0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67" },
+  "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+  "uniswap": {
+    "v4PoolManager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "v4Quoter": "0x8dc178efb8111bb0973dd9d722ebeff267c98f94",
+    "v4StateView": "0xf3334192d15450cdd385c8b70e03f9a6bd9e673b",
+    "universalRouter": "0x8876789976decbfcbbbe364623c63652db8c0904",
+    "v3Factory": "0x1f7d7550b1b028f7571e69a784071f0205fd2efa",
+    "v3SwapRouter02": "0xcaf681a66d020601342297493863e78c959e5cb2",
+    "v3QuoterV2": "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7"
+  },
+  "stockTokens": [
+    { "symbol": "NVDA", "address": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC", "decimals": 18, "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15", "v3Pool": { "pair": "USDG", "fee": 500, "address": "0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3" } },
+    { "symbol": "TSLA", "address": "0x322F0929c4625eD5bAd873c95208D54E1c003b2d", "decimals": 18, "feed": "0x4A1166a659A55625345e9515b32adECea5547C38", "v3Pool": { "pair": "USDG", "fee": 3000, "address": "0xf4ACdAEEB7022862A763C9B1B885e11191c889E3" } },
+    { "symbol": "AAPL", "address": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9", "decimals": 18, "feed": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0", "v3Pool": { "pair": "USDG", "fee": 500, "address": "0xAae0d815EE56e4092a5E5C2911E676Fea50B2d6D" } },
+    { "symbol": "AMZN", "address": "0x12f190a9F9d7D37a250758b26824B97CE941bF54", "decimals": 18, "feed": "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C", "v3Pool": { "pair": "USDG", "fee": 3000, "address": "0x8AC92DA74AB5F3b1d024Dc1943Ad7e15Dc4179Ef" } },
+    { "symbol": "MSFT", "address": "0xe93237C50D904957Cf27E7B1133b510C669c2e74", "decimals": 18, "feed": "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E", "v3Pool": { "pair": "USDG", "fee": 3000, "address": "0xeb60bCD1D920ad6E102690CCFC6fB488899E1510" } },
+    { "symbol": "GOOGL", "address": "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3", "decimals": 18, "feed": "0xF6f373a037c30F0e5010d854385cA89185AE638b", "v3Pool": { "pair": "USDG", "fee": 500, "address": "0x34D0dC122CF9A8Eb296fC5e0D3A233625D7d19b7" } },
+    { "symbol": "META", "address": "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35", "decimals": 18, "feed": "0x7C38C00C30BEe9378381E7B6135d7283356D71b1", "v3Pool": { "pair": "USDG", "fee": 3000, "address": "0x107a7Cb40d8665360ba10E59471Af06150A50922" } },
+    { "symbol": "SPY", "address": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C", "decimals": 18, "feed": "0x319724394D3A0e3669269846abE664Cd621f9f6A", "v3Pool": { "pair": "USDG", "fee": 500, "address": "0xa7Bb1AC63BBaB0C44316E6c8C455213441689167" } },
+    { "symbol": "QQQ", "address": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68", "decimals": 18, "feed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae", "v3Pool": { "pair": "USDG", "fee": 500, "address": "0xD60A5d14dB690B7Afad71F76B108071D7175597d" } },
+    { "symbol": "MSTR", "address": "0xec262a75e413fAfD0dF80480274532C79D42da09", "decimals": 18, "feed": "0x396118bdFB181e6240E74D243F266B061c0edc3D", "v3Pool": { "pair": "USDG", "fee": 10000, "address": "0x17578C0e0D15da44f31677263114F71aE76653EA" } },
+    { "symbol": "AMD", "address": "0x86923f96303D656E4aa86D9d42D1e57ad2023fdC", "decimals": 18, "feed": "0x943A29E7ae51A4798823ca9eEd2ed533B2A22C72", "v3Pool": { "pair": "USDG", "fee": 3000, "address": "0x48D284A2A4d3DC1b3Da08231Fe44317e7e7Aa51f" } },
+    { "symbol": "PLTR", "address": "0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A", "decimals": 18, "feed": "0x820ABedFF239034956B7A9d2F0a331f9F075eB4c", "v3Pool": { "pair": "USDG", "fee": 3000, "address": "0x851680416A4f4E1c463d45171d61ACDdBc8554c0" } },
+    { "symbol": "COIN", "address": "0x6330D8C3178a418788dF01a47479c0ce7CCF450b", "decimals": 18, "feed": "0xA3a468A452940B7D6b69991207B508c609a98Ef2", "v3Pool": { "pair": "WETH", "fee": 3000, "address": "0x6707aeAc7D0e519B083219d27BB427364363183A" } }
+  ]
+}
