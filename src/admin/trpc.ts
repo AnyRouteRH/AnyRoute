@@ -190,3 +190,20 @@ export const adminRouter = t.router({
   chainKeyHash: t.procedure.input(z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/) })).query(({ input }) => chainKeyHashOf(input.address as `0x${string}`)),
 });
 export type AdminRouter = typeof adminRouter;
+
+export function adminRoutes(app: Hono, ctx: Ctx) {
+  app.use(
+    "/trpc/*",
+    trpcServer({
+      router: adminRouter,
+      createContext: async (_opts, c) => {
+        const token = c.req.header("x-admin-token") ?? bearer(c.req.header("authorization"));
+        const admin = !!ctx.cfg.adminToken && !!token && safeEqual(token, ctx.cfg.adminToken);
+        let key: KeyRow | null = null;
+        if (!admin && token?.startsWith("sk-ar-")) key = await resolveKey(ctx, token).catch(() => null);
+        const appFetch = (path: string, init: RequestInit) => app.request(path, init);
+        return { app: { ...ctx, appFetch }, admin, key, secret: key ? token : null } as TCtx as unknown as Record<string, unknown>;
+      },
+    }),
+  );
+}
