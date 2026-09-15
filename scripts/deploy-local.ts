@@ -171,3 +171,75 @@ function writeEnvLocal(d: Deployments, accts: ReturnType<typeof anvilAccount>[])
   writeFileSync(ENV_FILE, body);
   return vars;
 }
+
+async function smokeCheck(d: Deployments, router: Address): Promise<void> {
+  const client = createPublicClient({ transport: http(RPC) });
+  const abi = parseAbi([
+    "function isCreditor(address) view returns (bool)",
+    "function router() view returns (address)",
+    "function fairPrice(address) view returns (uint256, bool)",
+    "function owner() view returns (address)",
+  ]);
+  const nvda = d.stockTokens[0].address;
+  const [creditor, pwsRouter, price] = await Promise.all([
+    client.readContract({ address: d.contracts.credits, abi, functionName: "isCreditor", args: [d.contracts.payWithStock] }),
+    client.readContract({ address: d.contracts.payWithStock, abi, functionName: "router" }),
+    client.readContract({ address: d.contracts.stockOracle, abi, functionName: "fairPrice", args: [nvda] }),
+  ]);
+  if (!creditor) throw new Error("Credits.isCreditor(PayWithStock) is false");
+  if (pwsRouter.toLowerCase() !== router.toLowerCase()) throw new Error(`PayWithStock.router ${pwsRouter} != ${router}`);
+  if (!price[1]) throw new Error("oracle fairPrice(NVDA) not ok");
+  log(`smoke check ok: creditor=true router=${pwsRouter} NVDA fairPrice=${Number(price[0]) / 1e18} USD`);
+}
+
+async function main() {
+  const accts = Array.from({ length: 10 }, (_, i) => anvilAccount(i));
+  let anvil: Subprocess | null = null;
+
+  if (await isListening()) {
+    const id = await remoteChainId();
+    if (id !== CHAIN_ID) throw new Error(`port ${PORT} is in use but eth_chainId=${id} (expected ${CHAIN_ID}); stop it first`);
+    log(`reusing the node already listening on ${RPC}`);
+  } else {
+    log(`starting anvil on ${RPC} (chain id ${CHAIN_ID}, block time 1s, log ${ANVIL_LOG})`);
+    anvil = await startAnvil();
+  }
+
+  let ok = false;
+  try {
+    await forgeDeploy(accts[0].key);
+    const d = JSON.parse(readFileSync(DEPLOYMENTS, "utf8")) as Deployments;
+    if (d.chainId !== CHAIN_ID || d.mode !== "local") throw new Error(`unexpected deployments file ${DEPLOYMENTS}`);
+    const expect: [string, Address][] = [
+      ["router", accts[1].address], ["settlement", accts[2].address], ["anchorer", accts[3].address],
+      ["slasher", accts[4].address], ["paymasterSigner", accts[5].address],
+    ];
+    for (const [role, addr] of expect) {
+      if ((d.roles[role] as string).toLowerCase() !== addr.toLowerCase()) {
+        throw new Error(`role ${role} is ${d.roles[role]}, expected anvil account ${addr}`);
+      }
+    }
+    const vars = writeEnvLocal(d, accts);
+    log(`wrote ${ENV_FILE} (${Object.keys(vars).length} vars) from ${DEPLOYMENTS}`);
+    await smokeCheck(d, accts[1].address);
+    ok = true;
+  } finally {
+    if (anvil) {
+      if (keep && ok) {
+        anvil.unref();
+        log(`anvil left running (pid ${anvil.pid}); stop it with: kill ${anvil.pid}`);
+      } else {
+        anvil.kill("SIGINT"); // graceful: anvil dumps its state to --state on exit
+        await anvil.exited;
+        log(`anvil stopped. State saved to ${STATE_FILE}. To bring this deployment back up:`);
+        log(`  ${FOUNDRY_BIN}/anvil --port ${PORT} --chain-id ${CHAIN_ID} --block-time 1 --state ${STATE_FILE}`);
+        log(`or re-run with --keep: bun scripts/deploy-local.ts --keep`);
+      }
+    }
+  }
+}
+
+main().catch((err) => {
+  console.error(`[deploy-local] ${(err as Error).message}`);
+  process.exit(1);
+});
