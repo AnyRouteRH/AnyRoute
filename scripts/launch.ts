@@ -160,3 +160,116 @@ async function runningInstance(): Promise<string | null> {
 function openUrl(url: string) {
   Bun.spawn(process.platform === "darwin" ? ["open", url] : process.platform === "win32" ? ["cmd", "/c", "start", url] : ["xdg-open", url], { stdout: "ignore", stderr: "ignore" });
 }
+
+async function main() {
+  const existing = fresh ? null : await runningInstance();
+  if (existing) {
+    console.log(`\n  Anyroute is already running: ${existing}/  (dashboard: ${existing}/dashboard/)\n  Stop it with Ctrl-C in the terminal that started it, then run this again to restart.\n`);
+    if (openBrowser) openUrl(existing + "/");
+    process.exit(0);
+  }
+  for (const tool of ["anvil", "forge"]) if (!existsSync(`${FOUNDRY_BIN}/${tool}`)) die(`${tool} not found in ${FOUNDRY_BIN}. Install Foundry: https://getfoundry.sh`);
+  if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) die("--port needs a port number.");
+  if (await listening(PORT)) {
+    if (PORT_FIXED) die(`port ${PORT} is already in use. Stop whatever is using it or pick another --port.`);
+    const first = PORT;
+    while (PORT < first + 20 && (await listening(PORT))) PORT++;
+    if (await listening(PORT)) die(`ports ${first}-${PORT} are all in use; pass --port.`);
+    URL_BASE = `http://127.0.0.1:${PORT}`;
+    say(`port ${first} is busy (another program), using ${PORT} instead`);
+  }
+  for (const port of PROVIDER_PORTS) if (await listening(port)) die(`port ${port} (mock providers) is already in use — is another "bun run launch" still running? Stop it and retry.`);
+  mkdirSync(DATA, { recursive: true });
+
+  if (fresh) {
+    say("--fresh: removing the local chain state and launch database");
+    for (const p of [STATE_FILE, DB_DIR]) rmSync(p, { recursive: true, force: true });
+  }
+
+  await buildWebsite();
+
+  // ---- chain
+  if (await listening(CHAIN_PORT)) {
+    const id = Number(await rpc<string>("eth_chainId").catch(() => "0x0"));
+    if (id !== CHAIN_ID) die(`port ${CHAIN_PORT} is in use by something that is not the local Anyroute chain (chain id ${id}).`);
+    say(`reusing the local chain already running on ${RPC}`);
+  } else {
+    say(`starting the local chain on ${RPC}${existsSync(STATE_FILE) ? " (restoring saved state)" : ""}`);
+    spawn("anvil", [`${FOUNDRY_BIN}/anvil`, "--port", String(CHAIN_PORT), "--chain-id", String(CHAIN_ID), "--block-time", "1", "--state", STATE_FILE, "--state-interval", "15", "--silent"], { signal: "SIGINT" });
+    await waitFor("the local chain", async () => Number(await rpc<string>("eth_chainId")) === CHAIN_ID, 30_000);
+  }
+  const deployed = async () => {
+    const credits = readEnvFile(ENV_LOCAL).CREDITS_ADDRESS;
+    return !!credits && (await rpc<string>("eth_getCode", [credits, "latest"]).catch(() => "0x")) !== "0x";
+  };
+  if (!(await deployed())) {
+    say("deploying the contracts (first run, about a minute)…");
+    rmSync(DB_DIR, { recursive: true, force: true }); // a new chain needs a new ledger
+    await run(["bun", "scripts/deploy-local.ts"], ROOT);
+    if (!(await deployed())) die("the contracts did not deploy; see the output above.");
+  } else say("contracts already deployed");
+
+  // ---- secrets for this local install (never committed; .data/ is ignored)
+  if (!existsSync(SECRETS_FILE)) {
+    writeFileSync(SECRETS_FILE, `APP_SECRET=${randomBytes(32).toString("hex")}\nADMIN_TOKEN=${randomBytes(24).toString("hex")}\n`, { mode: 0o600 });
+  }
+  const local = readEnvFile(ENV_LOCAL);
+  const env: Record<string, string> = {
+    ...local,
+    ...readEnvFile(SECRETS_FILE),
+    ANYROUTE_ENV: "development",
+    HOST: "127.0.0.1",
+    PORT: String(PORT),
+    PUBLIC_BASE_URL: URL_BASE,
+    DATABASE_URL: `pglite://${DB_DIR}`,
+    PUBLIC_RPC_URL: RPC,
+    EXPLORER_URL: "",
+    CHAIN_START_BLOCK: local.DEPLOY_BLOCK ?? "0",
+    ALLOW_DEV_ATTESTATION: "true",
+    CANARIES: "false",
+    DEV_FAUCET: "true",
+    DEV_FAUCET_PRIVATE_KEY: FAUCET_KEY,
+    // Faster than production so the full flow is visible within minutes.
+    ANCHOR_INTERVAL_MS: "120000",
+    SETTLEMENT_INTERVAL_MS: "300000",
+    PAYWITH_THRESHOLD_USD: "0.000001",
+    LOG_LEVEL: process.env.LOG_LEVEL ?? "warn",
+    WEB_DIR: resolve(WEB, "out"),
+  };
+
+  // ---- mock providers, then seed them (the database is single-process, so seed before the router)
+  say("starting three mock model providers (ports 9101-9103)");
+  spawn("mock providers", ["bun", "scripts/mock-providers.ts"], { log: resolve(DATA, "launch-providers.log") });
+  await waitFor("the mock providers", async () => (await Promise.all(PROVIDER_PORTS.map(listening))).every(Boolean), 20_000);
+  await run(["bun", "scripts/seed.ts", "config/providers.local.yaml"], ROOT, env);
+
+  // ---- router + website
+  say(`starting the router on ${URL_BASE}`);
+  spawn("router", ["bun", "src/index.ts"], { env });
+  await waitFor("the router", async () => (await fetch(`${URL_BASE}/health`)).ok, 60_000);
+
+  const token = readEnvFile(SECRETS_FILE).ADMIN_TOKEN;
+  console.log(`
+  Anyroute is running locally.
+
+    Website    ${URL_BASE}/
+    Dashboard  ${URL_BASE}/dashboard/
+    API        ${URL_BASE}/api/v1   (OpenAI/OpenRouter-compatible)
+    Chain      ${RPC}   (local test chain, id ${CHAIN_ID})
+
+  Try it: open the dashboard → "Create a new key" → Payments → Deposit → "Add 10 test USDG" →
+  Playground. All money and models here are test fixtures.
+
+  Admin token (tRPC at /trpc, header x-admin-token): ${token.slice(0, 6)}… in .data/launch.env
+  Your chain, keys and balances are kept in .data/ between runs; "bun run launch --fresh" starts over.
+  Press Ctrl-C to stop everything.
+`);
+  if (openBrowser) openUrl(URL_BASE + "/");
+}
+
+main().catch((e) => {
+  if (!stopping) {
+    console.error(`[launch] ${(e as Error).message}`);
+    void shutdown(1);
+  }
+});
