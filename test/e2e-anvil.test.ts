@@ -57,4 +57,104 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
     if (init.json !== undefined) headers.set("content-type", "application/json");
     return app.app.request(path, { ...init, headers, body: init.json !== undefined ? JSON.stringify(init.json) : init.body });
   };
+
+  beforeAll(async () => {
+    const forge = `${process.env.HOME}/.foundry/bin`;
+    anvil = Bun.spawn([`${forge}/anvil`, "--port", "8547", "--chain-id", "4663", "--silent"], { stdout: "ignore", stderr: "ignore" });
+    for (let i = 0; i < 50; i++) {
+      try {
+        await pub.getBlockNumber();
+        break;
+      } catch {
+        await Bun.sleep(100);
+      }
+    }
+    await $`${forge}/forge script script/Deploy.s.sol --rpc-url ${RPC} --broadcast --slow --private-key ${PK.deployer}`.cwd(resolve(ROOT, "contracts")).env({ ...process.env, MOCK: "1", DEPLOYER_PRIVATE_KEY: PK.deployer, DEPLOYMENTS_PATH: "deployments/4663-e2e.json" }).quiet();
+    const outFile = resolve(ROOT, "contracts/deployments/4663-e2e.json");
+    dep = JSON.parse(readFileSync(outFile, "utf8"));
+    const C = dep.contracts;
+    // USDG's EIP-712 domain name (the mock's differs from mainnet's "Global Dollar").
+    void (await pub.readContract({ address: C.usdg, abi: [{ type: "function", name: "eip712Domain", stateMutability: "view", inputs: [], outputs: [{ type: "bytes1" }, { type: "string" }, { type: "string" }, { type: "uint256" }, { type: "address" }, { type: "bytes32" }, { type: "uint256[]" }] }], functionName: "eip712Domain" })) as unknown[];
+    mock = serveMockProvider({ name: "Alpha", models: [MODELS.llama] });
+    app = await createApp({
+      startJobs: false,
+      env: {
+        ANYROUTE_ENV: "test",
+        DATABASE_URL: "pglite://memory",
+        LOG_LEVEL: "error",
+        APP_SECRET: "e2e-secret-e2e-secret-e2e-secret-1234",
+        ADMIN_TOKEN: "e2e-admin-token-0123456789",
+        RHC_RPC_URL: RPC,
+        CHAIN_ID: "4663",
+        CHAIN_CONFIRMATIONS: "1",
+        CHAIN_START_BLOCK: "0",
+        USDG_ADDRESS: C.usdg,
+        // USDG_EIP712_NAME deliberately unset: the router must read the mock domain from the chain.
+        CREDITS_ADDRESS: C.credits,
+        CALLPAY_ADDRESS: C.callPay,
+        PAYWITHSTOCK_ADDRESS: C.payWithStock,
+        PROVIDER_BOND_ADDRESS: C.providerBond,
+        RECEIPT_ANCHOR_ADDRESS: C.receiptAnchor,
+        ROYALTY_ADDRESS: C.royalty,
+        ANYR_STAKING_ADDRESS: C.anyrStaking,
+        PAYMASTER_ADDRESS: C.paymaster,
+        CALLPAY_TREASURY: dep.roles.callPayTreasury,
+        ROUTER_PRIVATE_KEY: PK.router,
+        SETTLEMENT_PRIVATE_KEY: PK.settlement,
+        ANCHORER_PRIVATE_KEY: PK.anchorer,
+        SLASHER_PRIVATE_KEY: PK.slasher,
+        PAYMASTER_SIGNER_KEY: PK.paymaster,
+        PAYWITH_TOKENS: JSON.stringify([{ symbol: "NVDA", address: dep.mocks.nvda, decimals: 18 }]),
+        PAYWITH_THRESHOLD_USD: "0.000001",
+        PAYMENT_WAIT_MS: "5000",
+        NEW_KEYS_PER_HOUR: "1000",
+        DEV_FAUCET: "true",
+        DEV_FAUCET_PRIVATE_KEY: "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e", // anvil #6
+      },
+    });
+    await app.ctx.db.insert(providers).values({ id: "alpha", name: "Alpha", baseUrl: mock.url, status: "live", dataPolicy: { training: false, retains_prompts: false, zdr: true } });
+    await runRegistry(app.ctx);
+    // Test wallets approve Credits once so every test stands alone.
+    for (const pk of [PK.userA, PK.userC]) await send(pk, C.usdg, erc20Abi, "approve", [C.credits, 2n ** 255n]);
+  }, 180_000);
+
+  afterAll(async () => {
+    await app?.close();
+    mock?.stop();
+    anvil?.kill();
+  });
+
+  const newKey = async () => {
+    const r = await req("/api/v1/keys", { method: "POST", json: {} });
+    const j = (await r.json()) as any;
+    return { secret: j.key as string, hash: j.data.hash as string, chainKeyHash: j.data.chain_key_hash as Hex, auth: { authorization: `Bearer ${j.key}` } };
+  };
+
+  test("prepaid: approve + deposit on-chain -> indexer credits the key -> chat -> receipt", async () => {
+    const k = await newKey();
+    const C = dep.contracts;
+    await send(PK.userA, C.credits, CreditsAbi, "deposit", [k.chainKeyHash, parseUnits("10", 6)]);
+    await pollChain(app.ctx);
+    const credits = await (await req("/api/v1/credits", { headers: k.auth })).json();
+    expect(credits.data.available).toBe(10);
+    const r = await req("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: "on-chain funded" }] } });
+    expect(r.status).toBe(200);
+    expect((await r.json()).receipt.payload.payer).toBe(k.chainKeyHash);
+  }, 60_000);
+
+  test("receipts: signing key registered on-chain, hourly anchor posted, proof verifies against chain", async () => {
+    const k = await newKey();
+    const C = dep.contracts;
+    await send(PK.userA, C.credits, CreditsAbi, "deposit", [k.chainKeyHash, parseUnits("1", 6)]);
+    await pollChain(app.ctx);
+    const j = await (await req("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: "anchor me" }] } })).json();
+    const rot = await runKeyRotation(app.ctx);
+    expect(rot.published).toBeGreaterThan(0);
+    const a = await runAnchor(app.ctx);
+    expect(a.status).toBe("confirmed");
+    const g = (await (await req(`/api/v1/generation?id=${j.id}`, { headers: k.auth })).json()).data;
+    const v = await (await req("/api/v1/receipts/verify", { method: "POST", json: { payload: g.receipt, sig: g.receipt_sig, key_id: g.receipt_key_id, anchor: { root: g.anchor.root, proof: g.anchor.proof, index: g.anchor.index } } })).json();
+    expect(v.data).toMatchObject({ signature_valid: true, key_source: "chain", inclusion_valid: true, valid: true });
+    expect(v.data.onchain_root.toLowerCase()).toBe(g.anchor.root.toLowerCase());
+  }, 60_000);
 });
