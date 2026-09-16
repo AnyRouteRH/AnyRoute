@@ -1,0 +1,38 @@
+# Providers the router can route to. Copy to config/providers.yaml, set the API key env vars,
+# then: bun scripts/seed.ts config/providers.yaml
+#
+# status: live    -> operator-onboarded public inference API (the router is a usage-reconciled
+#                    customer via the provider's partner program; no bond required)
+# status: shadow  -> canaries only for SHADOW_DAYS, then promoted automatically
+# Self-serve providers use POST /api/v1/providers/apply instead (bond + shadow required).
+#
+# `models` is only needed when the provider's /models does not publish the OpenRouter provider
+# spec (pricing, context_length, quantization, supported_features). Prices are USD per token.
+# Verify every price against the provider's pricing page before going live.
+providers:
+  - id: deepinfra
+    name: DeepInfra
+    base_url: https://api.deepinfra.com/v1/openai
+    api_key_env: DEEPINFRA_API_KEY
+    status: shadow
+    data_policy: { training: false, retains_prompts: false, retention_days: 0, zdr: true }
+    datacenters: [US]
+    models:
+      - id: meta-llama/Llama-3.3-70B-Instruct
+        slug: meta-llama/llama-3.3-70b-instruct
+        name: Llama 3.3 70B Instruct
+        context_length: 131072
+        quantization: bf16
+        # $0.10 / $0.32 per 1M tokens
+        pricing: { prompt: "0.0000001", completion: "0.00000032" }
+        supported_sampling_parameters: [temperature, top_p, stop, seed, max_tokens, frequency_penalty, presence_penalty, logprobs, top_logprobs]
+        supported_features: [tools, json_mode]
+
+  # Template for an attested private provider (e.g. a TDX + NVIDIA CC inference node):
+  # - id: studio-tee-1
+  #   name: Studio TEE 1
+  #   base_url: https://tee-1.example.com/v1
+  #   api_key_env: STUDIO_TEE_1_KEY
+  #   status: live
+  #   data_policy: { training: false, retains_prompts: false, retention_days: 0, zdr: true }
+  #   tee: { kind: nvidia-cc, attestation_url: https://tee-1.example.com/v1/attestation/report }
