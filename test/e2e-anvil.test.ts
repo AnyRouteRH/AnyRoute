@@ -157,4 +157,102 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
     expect(v.data).toMatchObject({ signature_valid: true, key_source: "chain", inclusion_valid: true, valid: true });
     expect(v.data.onchain_root.toLowerCase()).toBe(g.anchor.root.toLowerCase());
   }, 60_000);
+
+  test("402 per-call: gasless EIP-3009 authorization relayed by the router", async () => {
+    const body = { model: LLAMA, max_tokens: 40, messages: [{ role: "user", content: "gasless" }] };
+    const r = await req("/api/v1/chat/completions", { method: "POST", json: body });
+    expect(r.status).toBe(402);
+    const m = (await r.json()).error.metadata;
+    const payer = privateKeyToAccount(PK.userB);
+    const td = m.eip3009;
+    const signature = await payer.signTypedData({ domain: td.domain, types: td.types, primaryType: td.primaryType, message: { ...td.message, from: payer.address, value: BigInt(td.message.value), validAfter: 0n, validBefore: BigInt(td.message.validBefore) } });
+    const header = Buffer.from(JSON.stringify({ scheme: "eip3009", from: payer.address, value: td.message.value, validAfter: "0", validBefore: td.message.validBefore, nonce: m.nonce, signature })).toString("base64");
+    const before = (await pub.readContract({ address: dep.contracts.usdg, abi: erc20Abi, functionName: "balanceOf", args: [dep.roles.callPayTreasury] })) as bigint;
+    const paid = await req("/api/v1/chat/completions", { method: "POST", headers: { "x-payment": header }, json: body });
+    expect(paid.status).toBe(200);
+    const j = await paid.json();
+    expect(j.receipt.payload.mode).toBe("per_call");
+    expect(j.receipt.payload.payment_tx).toMatch(/^0x[0-9a-f]{64}$/);
+    const after = (await pub.readContract({ address: dep.contracts.usdg, abi: erc20Abi, functionName: "balanceOf", args: [dep.roles.callPayTreasury] })) as bigint;
+    expect(after - before).toBe(BigInt(m.price_usdg_units));
+  }, 60_000);
+
+  test("402 per-call: CallPay.pay transaction + X-Payment: <txHash>", async () => {
+    const body = { model: LLAMA, max_tokens: 40, messages: [{ role: "user", content: "tx hash" }] };
+    const m = (await (await req("/api/v1/chat/completions", { method: "POST", json: body })).json()).error.metadata;
+    await send(PK.userC, dep.contracts.usdg, erc20Abi, "approve", [dep.contracts.callPay, BigInt(m.price_usdg_units)]);
+    const tx = await send(PK.userC, dep.contracts.callPay, CallPayAbi, "pay", [m.nonce, BigInt(m.price_usdg_units), BigInt(m.expiry)]);
+    const r = await req("/api/v1/chat/completions", { method: "POST", headers: { "x-payment": tx }, json: body });
+    expect(r.status).toBe(200);
+    // A payment authorizes exactly one request.
+    const reuse = await req("/api/v1/chat/completions", { method: "POST", headers: { "x-payment": tx }, json: { ...body, stream: true } });
+    expect(reuse.status).toBe(409);
+    void sse;
+  }, 60_000);
+
+  test("pay with NVDA: session opened on-chain -> calls accrue -> real payCall swap -> credited + allocated", async () => {
+    clearFairCache();
+    const k = await newKey();
+    const userA = privateKeyToAccount(PK.userA).address;
+    const open = await (await req("/api/v1/paywith/open", { method: "POST", headers: k.auth, json: { token: "NVDA", cap_raw_per_day: parseUnits("1", 18).toString(), wallet: userA } })).json();
+    for (const t of open.data.transactions) {
+      const hash = await wallet(PK.userA).sendTransaction({ to: t.to, data: t.data } as never);
+      expect((await pub.waitForTransactionReceipt({ hash })).status).toBe("success");
+    }
+    await pollChain(app.ctx);
+    const s = await (await req("/api/v1/paywith/session", { headers: k.auth })).json();
+    expect(s.data.active).toBe(true);
+    const nvdaBefore = (await pub.readContract({ address: dep.mocks.nvda, abi: erc20Abi, functionName: "balanceOf", args: [userA] })) as bigint;
+    for (let i = 0; i < 2; i++) {
+      const r = await req("/api/v1/chat/completions", { method: "POST", headers: { ...k.auth, "x-pay-with": "NVDA" }, json: { model: LLAMA, max_tokens: 30, messages: [{ role: "user", content: `nvda pays ${i}` }] } });
+      expect(r.status).toBe(200);
+      expect((await r.json()).receipt.paid_with.token).toBe("NVDA");
+    }
+    const res = await runPaywithAggregator(app.ctx);
+    expect((res.settled as any[])[0].tx).toMatch(/^0x/);
+    const nvdaAfter = (await pub.readContract({ address: dep.mocks.nvda, abi: erc20Abi, functionName: "balanceOf", args: [userA] })) as bigint;
+    expect(nvdaAfter).toBeLessThan(nvdaBefore);
+    const debts = await app.ctx.db.select().from(paywithDebts).where(eq(paywithDebts.chainKeyHash, k.chainKeyHash));
+    expect(debts.every((d) => d.swapId && d.rawAllocated != null)).toBe(true);
+    expect(debts.reduce((a, d) => a + (d.rawAllocated ?? 0n), 0n)).toBe(nvdaBefore - nvdaAfter);
+    const [key] = await app.ctx.db.select().from(keys).where(eq(keys.keyHash, k.hash));
+    expect((await balanceOf(app.ctx.db, key.accountId)).balance >= 0n).toBe(true);
+  }, 90_000);
+
+  test("self-custodial withdrawal: request (key signature) -> spent root -> finalize with proof -> USDG out", async () => {
+    const k = await newKey();
+    const C = dep.contracts;
+    await send(PK.userA, C.credits, CreditsAbi, "deposit", [k.chainKeyHash, parseUnits("5", 6)]);
+    await pollChain(app.ctx);
+    await req("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: "spend a little first" }] } });
+    const d = deriveKey(k.secret);
+    const to = "0x000000000000000000000000000000000000dEaD" as Hex;
+    const nonce = (await pub.readContract({ address: C.credits, abi: CreditsAbi, functionName: "nonces", args: [k.chainKeyHash] })) as bigint;
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+    const amount = parseUnits("4", 6);
+    const sig = await d.account.signTypedData({
+      domain: { name: "Anyroute Credits", version: "1", chainId: 4663, verifyingContract: C.credits },
+      types: { WithdrawRequest: [{ name: "keyHash", type: "bytes32" }, { name: "amount", type: "uint256" }, { name: "to", type: "address" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+      primaryType: "WithdrawRequest",
+      message: { keyHash: k.chainKeyHash, amount, to, nonce, deadline },
+    });
+    await send(PK.userC, C.credits, CreditsAbi, "requestWithdrawal", [d.keyAddress, amount, to, deadline, sig]); // anyone can submit
+    await pollChain(app.ctx);
+    const [key] = await app.ctx.db.select().from(keys).where(eq(keys.keyHash, k.hash));
+    const locked = await balanceOf(app.ctx.db, key.accountId);
+    expect(locked.balance).toBeLessThan(parseUnits("1", 6) * 1_000_000n + 1n); // 4 of ~5 USDG locked
+    // Let chain time pass the request, then settlement posts a root covering it.
+    await pub.request({ method: "evm_increaseTime" as never, params: [5] as never });
+    await pub.request({ method: "evm_mine" as never, params: [] as never });
+    await Bun.sleep(1100);
+    const root = await postSpentRoot(app.ctx);
+    expect(root.posted).toBe(true);
+    const proof = (await (await req("/api/v1/credits/withdrawal-proof", { headers: k.auth })).json()).data;
+    const before = (await pub.readContract({ address: C.usdg, abi: erc20Abi, functionName: "balanceOf", args: [to] })) as bigint;
+    await send(PK.userC, C.credits, CreditsAbi, "finalizeWithdrawal", [k.chainKeyHash, BigInt(proof.cumulative_spent_usdg), proof.proof]);
+    const after = (await pub.readContract({ address: C.usdg, abi: erc20Abi, functionName: "balanceOf", args: [to] })) as bigint;
+    expect(after - before).toBe(amount);
+    await pollChain(app.ctx);
+    expect((await verifyInvariants(app.ctx.db)).ok).toBe(true);
+  }, 90_000);
 });
