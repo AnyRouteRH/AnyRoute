@@ -152,4 +152,106 @@ describe("Pay with Stock Tokens (X-Pay-With)", () => {
     expect(st.data.totals[0].line).toContain("NVDA spent on inference");
     expect((await verifyInvariants(h.ctx.db)).ok).toBe(true);
   });
+
+  test("oracle stale -> falls back to prepaid USDG, else 402", async () => {
+    clearFairCache();
+    const k = await sessionKey();
+    h.chain.fair18 = null;
+    const body = { model: LLAMA, max_tokens: 20, messages: [{ role: "user", content: "stale" }] };
+    const r = await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...k.auth, "x-pay-with": "NVDA" }, json: body });
+    expect(r.status).toBe(402);
+    expect((await r.json()).error.metadata.pay_with).toContain("stale");
+    await h.chain.deposit(h.ctx, k.chainKeyHash, 1_000_000n);
+    const ok = await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...k.auth, "x-pay-with": "NVDA" }, json: body });
+    expect(ok.status).toBe(200);
+    const j = await ok.json();
+    expect(j.receipt.payload.mode).toBe("prepaid");
+    expect(j.pay_with_fallback).toContain("stale");
+    h.chain.fair18 = 225n * 10n ** 18n;
+    clearFairCache();
+  });
+
+  test("daily cap bounds the credit line", async () => {
+    clearFairCache();
+    const tiny = 10n ** 9n; // 1e-9 NVDA ≈ $2.25e-7 per day
+    const k = await sessionKey(tiny);
+    const r = await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...k.auth, "x-pay-with": "NVDA" }, json: { model: LLAMA, max_tokens: 2000, messages: [{ role: "user", content: "big" }] } });
+    expect(r.status).toBe(402);
+  });
+
+  test("failed swaps leave the debt open (and the key blocked beyond its line)", async () => {
+    clearFairCache();
+    const k = await sessionKey();
+    await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...k.auth, "x-pay-with": "NVDA" }, json: { model: LLAMA, max_tokens: 20, messages: [{ role: "user", content: "x" }] } });
+    await h.ctx.db.execute(sql`UPDATE paywith_debts SET created_at = now() - interval '25 hours' WHERE swap_id IS NULL`);
+    h.chain.failPayCall = true;
+    const res = await runPaywithAggregator(h.ctx);
+    expect((res.settled as any[]).some((s) => s.error)).toBe(true);
+    const open = await h.ctx.db.select().from(paywithDebts).where(eq(paywithDebts.chainKeyHash, k.chainKeyHash));
+    expect(open.every((d) => d.swapId === null)).toBe(true);
+    h.chain.failPayCall = false;
+  });
+});
+
+describe("self-custodial withdrawals: spent roots", () => {
+  let h: Harness;
+  beforeAll(async () => (h = await startRouter()));
+  afterAll(async () => h.close());
+
+  test("every funded key has a leaf; usage is attributed FIFO; proofs verify; totals never decrease", async () => {
+    const a = await h.fundedKey(2n);
+    const unclaimed = "0x" + "77".repeat(32);
+    await h.chain.deposit(h.ctx, unclaimed, 5_000_000n); // deposit to a key nobody registered yet
+    await h.request("/api/v1/chat/completions", { method: "POST", headers: a.auth, json: { model: LLAMA, messages: [{ role: "user", content: "spend" }] } });
+    const { leaves } = await computeSpentLeaves(h.ctx);
+    expect(leaves.map(([k]) => k)).toContain(a.chainKeyHash);
+    expect(leaves.find(([k]) => k === unclaimed)![1]).toBe(0n);
+    const spentA = leaves.find(([k]) => k === a.chainKeyHash)![1];
+    expect(spentA).toBeGreaterThan(0n);
+    const r1 = await postSpentRoot(h.ctx);
+    expect(r1.posted).toBe(true);
+    expect(h.chain.spentRoots.at(-1)!.root).toBe(r1.root as `0x${string}`);
+    // The proof endpoint yields the inputs to Credits.finalizeWithdrawal.
+    const p = await (await h.request("/api/v1/credits/withdrawal-proof", { headers: a.auth })).json();
+    expect(BigInt(p.data.cumulative_spent_usdg)).toBe(spentA);
+    expect(MerkleTree.verify(spentLeaf(a.chainKeyHash as `0x${string}`, spentA), p.data.proof, p.data.root)).toBe(true);
+    // An off-chain refund must not make on-chain funds withdrawable twice (ratchet keeps U_on).
+    const [key] = await h.ctx.db.select().from(keys).where(eq(keys.keyHash, a.hash));
+    const { post } = await import("../src/ledger/ledger.ts");
+    await post(h.ctx.db, { accountId: key.accountId, amount: usdgToPico(1_000_000n), kind: "refund", ref: "test-refund" });
+    await h.request("/api/v1/chat/completions", { method: "POST", headers: a.auth, json: { model: LLAMA, messages: [{ role: "user", content: "more" }] } });
+    const r2 = await postSpentRoot(h.ctx);
+    const [latest] = await h.ctx.db.select().from(spentRoots).where(eq(spentRoots.epoch, (r2 as any).epoch ?? r1.epoch));
+    expect(latest.totalSpentUsdg >= BigInt(r1.total_spent_usdg!)).toBe(true);
+    const spentA2 = (latest.leaves as [string, string][]).find(([k]) => k === a.chainKeyHash)![1];
+    expect(BigInt(spentA2)).toBeGreaterThanOrEqual(spentA);
+  });
+
+  test("roots are dated by the chain's clock; a failed post is retried, and proofs only use landed roots", async () => {
+    const a = await h.fundedKey(2n);
+    await h.request("/api/v1/chat/completions", { method: "POST", headers: a.auth, json: { model: LLAMA, messages: [{ role: "user", content: "lagging chain" }] } });
+    await Bun.sleep(1100); // past the previous root's second
+    h.chain.clockOffsetSec = 0;
+    h.chain.failNextSpentRoot = true;
+    const failed = await postSpentRoot(h.ctx);
+    expect(failed.tx).toBeNull();
+    const [pending] = await h.ctx.db.select().from(spentRoots).where(eq(spentRoots.epoch, failed.epoch!));
+    expect(pending.status).toBe("pending");
+    const proofBefore = await (await h.request("/api/v1/credits/withdrawal-proof", { headers: a.auth })).json();
+    expect(proofBefore.data?.root ?? null).not.toBe(failed.root); // never a proof against a root that did not land
+    // Next run: the chain's clock now trails wall time (like a restored local node), sitting just one
+    // second after the last landed root. The failed epoch is rebuilt and dated by the chain, not the server.
+    await Bun.sleep(2100);
+    const landedBefore = h.chain.spentRoots.at(-1)!.asOf;
+    h.chain.clockOffsetSec = landedBefore + 1 - Math.floor(Date.now() / 1000);
+    expect(h.chain.clockOffsetSec).toBeLessThan(0);
+    const retried = await postSpentRoot(h.ctx);
+    expect(retried.posted).toBe(true);
+    expect(retried.epoch).toBe(failed.epoch);
+    expect(retried.tx).not.toBeNull();
+    expect(h.chain.spentRoots.at(-1)!.asOf).toBe(landedBefore + 1);
+    const proof = await (await h.request("/api/v1/credits/withdrawal-proof", { headers: a.auth })).json();
+    expect(proof.data.root).toBe(h.chain.spentRoots.at(-1)!.root);
+    h.chain.clockOffsetSec = 0;
+  });
 });
