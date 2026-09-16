@@ -131,3 +131,33 @@ export class FakeChain extends ChainService {
     return tx;
   }
 }
+
+export const MODELS = {
+  llama: { id: "llama-3.3-70b", slug: "meta-llama/llama-3.3-70b-instruct", prompt: "0.0000001", completion: "0.00000032" },
+  llamaPricey: { id: "llama-3.3-70b", slug: "meta-llama/llama-3.3-70b-instruct", prompt: "0.0000004", completion: "0.0000008" },
+  qwen: { id: "qwen3-32b", slug: "qwen/qwen3-32b", prompt: "0.0000002", completion: "0.0000006" },
+  embed: { id: "embed-small", slug: "acme/embed-small", prompt: "0.00000002", completion: "0", output: ["embeddings"] },
+};
+
+export type Harness = Awaited<ReturnType<typeof startRouter>>;
+
+/** With TEST_PG_URL set, every harness gets its own fresh database on a real Postgres server. */
+async function freshDatabase(): Promise<{ url: string; drop: () => Promise<void> }> {
+  const base = process.env.TEST_PG_URL;
+  if (!base) return { url: "pglite://memory", drop: async () => {} };
+  const postgres = (await import("postgres")).default;
+  const name = "ar_test_" + Math.random().toString(36).slice(2, 10);
+  const admin = postgres(base, { max: 1, onnotice: () => {} });
+  await admin.unsafe(`CREATE DATABASE ${name}`);
+  await admin.end();
+  const u = new URL(base);
+  u.pathname = "/" + name;
+  return {
+    url: u.toString(),
+    drop: async () => {
+      const a = postgres(base, { max: 1, onnotice: () => {} });
+      await a.unsafe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      await a.end();
+    },
+  };
+}
