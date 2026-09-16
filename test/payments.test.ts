@@ -254,4 +254,66 @@ describe("self-custodial withdrawals: spent roots", () => {
     expect(proof.data.root).toBe(h.chain.spentRoots.at(-1)!.root);
     h.chain.clockOffsetSec = 0;
   });
+
+  test("withdrawal requests lock the balance off-chain; completion reconciles; cancellation releases", async () => {
+    const k = await h.fundedKey(3n);
+    const [key] = await h.ctx.db.select().from(keys).where(eq(keys.keyHash, k.hash));
+    const before = await balanceOf(h.ctx.db, key.accountId);
+    await recordEvents(h.ctx, [{ contract: "credits", event: "WithdrawalRequested", args: { keyHash: k.chainKeyHash, to: "0x0000000000000000000000000000000000000abc", amount: 2_000_000n, requestedAt: 1n }, txHash: fakeTx(), logIndex: 0, blockNumber: 70n }]);
+    await processEvents(h.ctx);
+    const locked = await balanceOf(h.ctx.db, key.accountId);
+    expect(locked.balance).toBe(before.balance - usdgToPico(2_000_000n));
+    await recordEvents(h.ctx, [{ contract: "credits", event: "Withdrawn", args: { keyHash: k.chainKeyHash, to: "0x0000000000000000000000000000000000000abc", amount: 1_500_000n }, txHash: fakeTx(), logIndex: 0, blockNumber: 71n }]);
+    await processEvents(h.ctx);
+    expect((await balanceOf(h.ctx.db, key.accountId)).balance).toBe(before.balance - usdgToPico(1_500_000n));
+    await recordEvents(h.ctx, [{ contract: "credits", event: "WithdrawalRequested", args: { keyHash: k.chainKeyHash, to: "0x0000000000000000000000000000000000000abc", amount: 500_000n, requestedAt: 2n }, txHash: fakeTx(), logIndex: 0, blockNumber: 72n }]);
+    await recordEvents(h.ctx, [{ contract: "credits", event: "WithdrawalCancelled", args: { keyHash: k.chainKeyHash }, txHash: fakeTx(), logIndex: 0, blockNumber: 73n }]);
+    await processEvents(h.ctx);
+    expect((await balanceOf(h.ctx.db, key.accountId)).balance).toBe(before.balance - usdgToPico(1_500_000n));
+    expect((await verifyInvariants(h.ctx.db)).ok).toBe(true);
+  });
+
+  test("deposit before registration: the key works on first use (no account step)", async () => {
+    const { generateApiKey, deriveKey } = await import("../src/chain/keys.ts");
+    const secret = generateApiKey();
+    await h.chain.deposit(h.ctx, deriveKey(secret).chainKeyHash, 1_000_000n);
+    const r = await h.request("/api/v1/chat/completions", { method: "POST", headers: { authorization: `Bearer ${secret}` }, json: { model: LLAMA, messages: [{ role: "user", content: "first call" }] } });
+    expect(r.status).toBe(200);
+    const acct = await h.ctx.db.select().from(accounts).where(sql`${accounts.id} LIKE 'k_%'`);
+    expect(acct.length).toBeGreaterThan(0);
+  });
+});
+
+export { sha256, sse, paywithSessions };
+
+describe("indexer robustness", () => {
+  let h: Harness;
+  beforeAll(async () => (h = await startRouter()));
+  afterAll(async () => h.close());
+
+  test("thousands of unclaimed deposits never starve newer events", async () => {
+    const junk = Array.from({ length: 6000 }, (_, i) => ({ contract: "credits" as const, event: "Deposited", args: { keyHash: "0x" + (i + 1).toString(16).padStart(64, "0"), from: "0x0000000000000000000000000000000000000abc", amount: 1n }, txHash: ("0x" + "e".repeat(56) + i.toString(16).padStart(8, "0")) as `0x${string}`, logIndex: 0, blockNumber: 10n }));
+    for (let i = 0; i < junk.length; i += 1000) await recordEvents(h.ctx, junk.slice(i, i + 1000));
+    await processEvents(h.ctx); // marks them unclaimed
+    const k = await h.fundedKey(3n); // a later deposit to a registered key
+    const [key] = await h.ctx.db.select().from(keys).where(eq(keys.keyHash, k.hash));
+    expect((await balanceOf(h.ctx.db, key.accountId)).balance).toBe(usdgToPico(3_000_000n));
+  }, 60_000);
+});
+
+describe("402 concurrency", () => {
+  let h: Harness;
+  beforeAll(async () => (h = await startRouter()));
+  afterAll(async () => h.close());
+  test("two concurrent redemptions of one payment serve exactly one request", async () => {
+    const body = { model: LLAMA, max_tokens: 20, messages: [{ role: "user", content: "race" }] };
+    await h.request("/api/v1/chat/completions", { method: "POST", json: body });
+    const [q] = await h.ctx.db.select().from(quotes).where(eq(quotes.status, "open")).limit(1);
+    const tx = fakeTx();
+    h.chain.payments.set(tx, { nonce: q.nonce as `0x${string}`, payer: "0x000000000000000000000000000000000000f00d", amount: q.priceUsdg });
+    const rs = await Promise.all(Array.from({ length: 5 }, () => h.request("/api/v1/chat/completions", { method: "POST", headers: { "x-payment": tx }, json: body })));
+    const codes = rs.map((r) => r.status).sort();
+    expect(codes.filter((c) => c === 200).length).toBe(1);
+    expect(codes.filter((c) => c === 409).length).toBe(4);
+  });
 });
