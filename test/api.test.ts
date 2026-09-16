@@ -167,4 +167,98 @@ describe("routing behaviour (fallback, empty-200, failures, budgets)", () => {
     expect(g.data.attempts.map((a: any) => [a.provider, a.ok])).toEqual([["alpha", false], ["beta", true]]);
     expect(g.data.provider_name).toBe("beta");
   });
+
+  test("empty-200 is a failure: falls back and is recorded as slash evidence", async () => {
+    await reset();
+    await fetch(h.mocks.alpha.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "empty200" }) });
+    const k = await h.fundedKey(5n);
+    for (const stream of [false, true]) {
+      const r = await chat(h, k.auth, { stream, provider: { order: ["alpha", "beta"] } });
+      expect(r.status).toBe(200);
+      if (stream) {
+        const s = await sse(r);
+        expect(s.events.at(-1).receipt.payload.provider).toBe("beta");
+      } else expect((await r.json()).provider).toBe("Beta");
+    }
+    expect(h.ctx.health.empty200Rate(LLAMA, "alpha").rate).toBe(1);
+    await h.ctx.health.flush(h.ctx.db);
+    const rows = await h.ctx.db.execute(sql`SELECT count(*)::int AS n FROM health WHERE provider_id = 'alpha' AND empty200`);
+    expect(((rows as any).rows ?? rows)[0].n).toBeGreaterThanOrEqual(2);
+  });
+
+  test("after 2 hard failures a provider is in outage for 30s and skipped without being tried", async () => {
+    await reset();
+    await fetch(h.mocks.alpha.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "error500" }) });
+    const k = await h.fundedKey(5n);
+    await chat(h, k.auth, { provider: { order: ["alpha", "beta"] } });
+    await chat(h, k.auth, { provider: { order: ["alpha", "beta"] } });
+    expect(h.ctx.health.outage(LLAMA, "alpha")).toBe(true);
+    const before = (await (await fetch(h.mocks.alpha.url + "/_stats")).json()).requests;
+    const j = await (await chat(h, k.auth, { provider: { order: ["alpha", "beta"] } })).json();
+    const after = (await (await fetch(h.mocks.alpha.url + "/_stats")).json()).requests;
+    expect(j.provider).toBe("Beta");
+    expect(after).toBe(before);
+  });
+
+  test("all providers failing: 502, nothing charged, hold released", async () => {
+    await reset();
+    for (const m of Object.values(h.mocks)) await fetch(m.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "error500" }) });
+    const k = await h.fundedKey(2n);
+    const [row] = await h.ctx.db.select().from(keysTable).where(sql`${keysTable.keyHash} = ${k.hash}`);
+    const before = await balanceOf(h.ctx.db, row.accountId);
+    const r = await chat(h, k.auth, {});
+    expect(r.status).toBe(502);
+    expect((await r.json()).error.metadata.attempts.length).toBeGreaterThan(0);
+    const after = await balanceOf(h.ctx.db, row.accountId);
+    expect(after.balance).toBe(before.balance);
+    expect(after.held).toBe(0n);
+    // Both providers are now in their 30s outage window, so the next request is refused up front.
+    expect((await chat(h, k.auth, {})).status).toBe(404);
+    // Streaming failure (fresh health) reports the error in-stream and also charges nothing.
+    h.ctx.health = new (h.ctx.health.constructor as any)(h.ctx.cfg.routing.outageWindowMs);
+    const s = await sse(await chat(h, k.auth, { stream: true }));
+    expect(s.events.at(-1).error.code).toBe(502);
+    expect((await balanceOf(h.ctx.db, row.accountId)).balance).toBe(before.balance);
+    expect((await verifyInvariants(h.ctx.db)).ok).toBe(true);
+  });
+
+  test("provider-side 400s surface the provider message when every provider rejects", async () => {
+    await reset();
+    for (const m of Object.values(h.mocks)) await fetch(m.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "reject400" }) });
+    const k = await h.fundedKey(1n);
+    const r = await chat(h, k.auth, {});
+    expect(r.status).toBe(400);
+    expect((await r.json()).error.message).toContain("bad parameter foo");
+  });
+
+  test("mid-stream provider error is forwarded in-stream and partial output is billed", async () => {
+    await reset();
+    await fetch(h.mocks.alpha.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "midstream_error" }) });
+    const k = await h.fundedKey(1n);
+    const s = await sse(await chat(h, k.auth, { stream: true, provider: { only: ["alpha"] }, messages: [{ role: "user", content: "a fairly long question so the answer has several chunks" }] }));
+    expect(s.events.some((e: any) => e.error?.type === "provider_error")).toBe(true);
+    const final = s.events.at(-1);
+    expect(final.receipt).toBeDefined();
+    expect(final.usage.completion_tokens).toBeGreaterThan(0);
+  });
+
+  test("models[] fallback moves to the next model when the first has no working provider", async () => {
+    await reset();
+    await fetch(h.mocks.alpha.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "error500" }) });
+    const k = await h.fundedKey(2n);
+    const r = await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { models: ["qwen/qwen3-32b", LLAMA], route: "fallback", messages: [{ role: "user", content: "x" }] } });
+    const j = await r.json();
+    expect(r.status).toBe(200);
+    expect(j.model).toBe(LLAMA); // qwen only lives on alpha, which is down
+    expect(j.provider).toBe("Beta");
+  });
+
+  test("tools are only sent to providers that support them; tool_calls are not empty-200s", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    const r = await chat(h, k.auth, { tools: [{ type: "function", function: { name: "lookup", parameters: { type: "object", properties: {} } } }] });
+    const j = await r.json();
+    expect(r.status).toBe(200);
+    expect(j.choices[0].message.tool_calls[0].function.name).toBe("lookup");
+  });
 });
