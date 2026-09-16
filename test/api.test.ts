@@ -95,4 +95,76 @@ describe("API parity (OpenRouter shapes)", () => {
     const tampered = await (await h.request("/api/v1/receipts/verify", { method: "POST", json: { payload: { ...receipt.payload, cost: "0" }, sig: receipt.sig, key_id: receipt.key_id } })).json();
     expect(tampered.data.signature_valid).toBe(false);
   });
+
+  test("streaming: SSE chunks, keep-alive comment, final usage+receipt chunk, [DONE]", async () => {
+    const k = await h.fundedKey(5n);
+    const r = await chat(h, k.auth, { stream: true });
+    expect(r.headers.get("content-type")).toContain("text/event-stream");
+    const s = await sse(r);
+    expect(s.raw.startsWith(": ANYROUTE PROCESSING")).toBe(true);
+    expect(s.done).toBe(true);
+    const last = s.events.at(-1);
+    expect(last.usage.cost).toBeGreaterThan(0);
+    expect(last.receipt.sig).toBeTruthy();
+    expect(s.events.every((e: any) => e.id === last.id && e.model === LLAMA)).toBe(true);
+    const text = s.events.map((e: any) => e.choices?.[0]?.delta?.content ?? "").join("");
+    expect(text).toContain("hello");
+  });
+
+  test("dev faucet is off unless configured for a local chain", async () => {
+    expect((await (await h.request("/api/v1/status")).json()).data.dev_faucet).toBe(false);
+    const k = await h.fundedKey(1n);
+    const r = await h.request("/api/v1/dev/faucet", { method: "POST", headers: k.auth, json: { amount: "10" } });
+    expect(r.status).toBe(404);
+    expect((await r.json()).error.type).toBe("not_found");
+  });
+
+  test("legacy /completions works", async () => {
+    const k = await h.fundedKey(1n);
+    const r = await h.request("/api/v1/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, prompt: "Once upon" } });
+    expect(r.status).toBe(200);
+    expect((await r.json()).choices[0].text).toContain("Once upon");
+  });
+
+  test("validation errors are OpenRouter-shaped", async () => {
+    const k = await h.fundedKey(1n);
+    const r = await chat(h, k.auth, { messages: [] });
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toMatchObject({ code: 400, message: expect.any(String) });
+    expect((await chat(h, k.auth, { model: "nope/nope" })).status).toBe(404);
+    expect((await chat(h, { authorization: "Bearer sk-ar-v1-" + "0".repeat(64) }, {})).status).toBe(401);
+  });
+
+  test("privacy: no prompt/output columns anywhere in the schema", async () => {
+    const r = await h.ctx.db.execute(sql`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`);
+    const cols = ((r as any).rows ?? r) as { table_name: string; column_name: string }[];
+    // Hashes (…_sha256) and prices (price_…) are allowed; anything that could hold text is not.
+    const bad = cols.filter((c) => /(^|_)(prompt|content|messages?|completion|output|response|input|answer|text|body)($|_)/.test(c.column_name) && !/_sha256$|^price_|^max_out$|^tokens_|_tokens$/.test(c.column_name));
+    expect(bad.map((c) => `${c.table_name}.${c.column_name}`)).toEqual([]);
+  });
+});
+
+describe("routing behaviour (fallback, empty-200, failures, budgets)", () => {
+  let h: Harness;
+  beforeAll(async () => {
+    h = await startRouter({ rand: () => 0.5 });
+  });
+  afterAll(async () => h.close());
+  const reset = async () => {
+    for (const m of Object.values(h.mocks)) await fetch(m.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "ok", delayMs: 0 }) });
+    h.ctx.health = new (h.ctx.health.constructor as any)(h.ctx.cfg.routing.outageWindowMs);
+  };
+
+  test("5xx on the preferred provider falls back; attempts recorded; only the winner is billed", async () => {
+    await reset();
+    await fetch(h.mocks.alpha.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "error500" }) });
+    const k = await h.fundedKey(5n);
+    const r = await chat(h, k.auth, { provider: { order: ["alpha", "beta"] } });
+    expect(r.status).toBe(200);
+    const j = await r.json();
+    expect(j.provider).toBe("Beta");
+    const g = await (await h.request(`/api/v1/generation?id=${j.id}`, { headers: k.auth })).json();
+    expect(g.data.attempts.map((a: any) => [a.provider, a.ok])).toEqual([["alpha", false], ["beta", true]]);
+    expect(g.data.provider_name).toBe("beta");
+  });
 });
