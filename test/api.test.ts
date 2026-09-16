@@ -261,4 +261,81 @@ describe("routing behaviour (fallback, empty-200, failures, budgets)", () => {
     expect(r.status).toBe(200);
     expect(j.choices[0].message.tool_calls[0].function.name).toBe("lookup");
   });
+
+  test("budgets: a key stops at its budget; rpm enforced", async () => {
+    await reset();
+    const k = await h.fundedKey(5n);
+    const sub = await (await h.request("/api/v1/keys", { method: "POST", headers: k.auth, json: { name: "capped", limit: 0.000004, rpm: 3 } })).json();
+    const auth = { authorization: `Bearer ${sub.key}` };
+    // Each call worst-case hold > $0.000004 with default max_tokens, so cap max_tokens small.
+    const body = { max_tokens: 5, provider: { only: ["alpha"] } };
+    const r1 = await chat(h, auth, body);
+    expect(r1.status).toBe(200);
+    let blocked = 0;
+    for (let i = 0; i < 3; i++) {
+      const r = await chat(h, auth, body);
+      if (r.status === 402) {
+        expect((await r.json()).error.type).toBe("key_budget_exceeded");
+        blocked++;
+      } else if (r.status === 429) {
+        expect((await r.json()).error.type).toBe("rate_limited");
+        blocked++;
+      }
+    }
+    expect(blocked).toBeGreaterThan(0);
+    // rpm: 4th request in the same minute is rate limited even for a fresh budget key.
+    const fast = await (await h.request("/api/v1/keys", { method: "POST", headers: k.auth, json: { name: "rpm", rpm: 2 } })).json();
+    const fa = { authorization: `Bearer ${fast.key}` };
+    const codes = [];
+    for (let i = 0; i < 3; i++) codes.push((await chat(h, fa, { max_tokens: 5 })).status);
+    expect(codes).toEqual([200, 200, 429]);
+  });
+
+  test("insufficient balance -> 402 with required/available", async () => {
+    await reset();
+    const k = await h.newKey();
+    const r = await chat(h, k.auth, {});
+    expect(r.status).toBe(402);
+    expect((await r.json()).error.type).toBe("insufficient_credits");
+  });
+
+  test("allowed_models and viewer role", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    const sub = await (await h.request("/api/v1/keys", { method: "POST", headers: k.auth, json: { allowed_models: ["qwen/qwen3-32b"] } })).json();
+    expect((await chat(h, { authorization: `Bearer ${sub.key}` }, {})).status).toBe(403);
+    const team = await (await h.request("/api/v1/teams", { method: "POST", headers: k.auth, json: { name: "eng" } })).json();
+    const viewer = await (await h.request("/api/v1/keys", { method: "POST", headers: k.auth, json: { team: team.data.id } })).json();
+    await h.request(`/api/v1/teams/${team.data.id}/members/${viewer.data.hash}`, { method: "PUT", headers: k.auth, json: { role: "viewer" } });
+    expect((await chat(h, { authorization: `Bearer ${viewer.key}` }, {})).status).toBe(403);
+  });
+
+  test("BYOK: provider called with the caller's key; upstream not charged", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    expect((await h.request("/api/v1/byok", { method: "POST", headers: k.auth, json: { provider: "beta", key: "my-own-beta-key" } })).status).toBe(201);
+    const j = await (await chat(h, k.auth, { provider: { only: ["beta"] } })).json();
+    const stats = await (await fetch(h.mocks.beta.url + "/_stats")).json();
+    expect(stats.lastAuth).toBe("Bearer my-own-beta-key");
+    expect(j.usage.is_byok).toBe(true);
+    expect(j.usage.cost_details.upstream_inference_cost).toBe(0);
+  });
+
+  test("opt-in exact cache: second identical call is a free hit with its own receipt", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    const body = { cache: { mode: "exact" }, temperature: 0, messages: [{ role: "user", content: "cache me" }] };
+    const a = await (await chat(h, k.auth, body)).json();
+    const r = await chat(h, k.auth, body);
+    const b = await r.json();
+    expect(r.headers.get("x-anyroute-cache")).toBe("hit");
+    expect(b.cached).toBe(true);
+    expect(b.usage.cost).toBe(0);
+    expect(b.choices[0].message.content).toBe(a.choices[0].message.content);
+    expect(b.receipt.payload.mode).toBe("cache");
+    // Never shared across accounts.
+    const other = await h.fundedKey(1n);
+    const c = await chat(h, other.auth, body);
+    expect(c.headers.get("x-anyroute-cache")).toBeNull();
+  });
 });
