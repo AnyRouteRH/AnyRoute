@@ -338,4 +338,108 @@ describe("routing behaviour (fallback, empty-200, failures, budgets)", () => {
     const c = await chat(h, other.auth, body);
     expect(c.headers.get("x-anyroute-cache")).toBeNull();
   });
+
+  test("guardrails (per key): redaction reaches the provider redacted", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    await h.request(`/api/v1/keys/${k.hash}`, { method: "PATCH", headers: k.auth, json: { guardrails: { pii: "redact" } } });
+    await chat(h, k.auth, { provider: { only: ["alpha"] }, messages: [{ role: "user", content: "email me: me@corp.com" }] });
+    const stats = await (await fetch(h.mocks.alpha.url + "/_stats")).json();
+    expect(stats.lastBody.messages[0].content).toBe("email me: [REDACTED_EMAIL]");
+  });
+
+  test("OpenRouter provider/model fields never leak upstream", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    await chat(h, k.auth, { provider: { only: ["alpha"] }, transforms: ["middle-out"], usage: { include: true }, models: [LLAMA] });
+    const stats = await (await fetch(h.mocks.alpha.url + "/_stats")).json();
+    expect(stats.lastBody.model).toBe("llama-3.3-70b"); // provider's own model id
+    for (const f of ["provider", "models", "transforms", "usage", "route"]) expect(stats.lastBody).not.toHaveProperty(f);
+    expect(stats.lastAuth).toBe("Bearer upstream-key-alpha");
+  });
+
+  test("ledger invariants hold after everything above", async () => {
+    expect((await verifyInvariants(h.ctx.db)).ok).toBe(true);
+  });
+});
+
+describe("limits and log privacy", () => {
+  let h: Harness;
+  beforeAll(async () => (h = await startRouter({ env: { LOG_LEVEL: "debug" } })));
+  afterAll(async () => h.close());
+
+  test("tpm: prompt tokens per minute are enforced per key", async () => {
+    const k = await h.fundedKey(1n);
+    const sub = await (await h.request("/api/v1/keys", { method: "POST", headers: k.auth, json: { tpm: 60 } })).json();
+    const auth = { authorization: `Bearer ${sub.key}` };
+    const big = "word ".repeat(60); // ~100 estimated tokens
+    expect((await chat(h, auth, { max_tokens: 5, messages: [{ role: "user", content: "small" }] })).status).toBe(200);
+    const r = await chat(h, auth, { max_tokens: 5, messages: [{ role: "user", content: big }] });
+    expect(r.status).toBe(429);
+    expect((await r.json()).error.message).toContain("tokens/min");
+  });
+
+  test("logs never contain prompts, completions or keys, even at debug level (also on failures)", async () => {
+    const lines: string[] = [];
+    const orig = { log: console.log, error: console.error, warn: console.warn };
+    console.log = console.error = console.warn = (...a: unknown[]) => void lines.push(a.map(String).join(" "));
+    try {
+      const k = await h.fundedKey(1n);
+      const secretPrompt = "TOP-SECRET-PROMPT-7f3a";
+      await chat(h, k.auth, { messages: [{ role: "user", content: secretPrompt }] });
+      await chat(h, k.auth, { stream: true, messages: [{ role: "user", content: secretPrompt }] });
+      for (const m of Object.values(h.mocks)) await fetch(m.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "error500" }) });
+      await chat(h, k.auth, { messages: [{ role: "user", content: secretPrompt }] });
+      const joined = lines.join("\n");
+      expect(joined).not.toContain(secretPrompt);
+      expect(joined).not.toContain("Hello from"); // mock completions
+      expect(joined).not.toContain(k.secret);
+    } finally {
+      Object.assign(console, orig);
+    }
+  });
+
+  test("tRPC paywith.open returns the wallet's unsigned transactions", async () => {
+    const k = await h.fundedKey(1n);
+    const r = await (await h.request("/trpc/paywith.open", { method: "POST", headers: { ...k.auth, "content-type": "application/json" }, body: JSON.stringify({ token: "NVDA", capRawPerDay: "1000", wallet: "0x0000000000000000000000000000000000001111" }) })).json();
+    expect(r.result.data.transactions.length).toBe(2);
+  });
+});
+
+describe("retries", () => {
+  let h: Harness;
+  beforeAll(async () => (h = await startRouter({ providers: [{ id: "solo", name: "Solo", models: [MODELS.llama] }] })));
+  afterAll(async () => h.close());
+
+  test("a single provider that 429s once is retried after a short backoff; timeouts are not retried", async () => {
+    const k = await h.fundedKey(1n);
+    // Fail exactly one request, then recover.
+    await fetch(h.mocks.solo.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "rate429" }) });
+    setTimeout(() => void fetch(h.mocks.solo.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "ok" }) }), 100);
+    const r = await chat(h, k.auth, {});
+    expect(r.status).toBe(200);
+    const g = await (await h.request(`/api/v1/generation?id=${(await r.json()).id}`, { headers: k.auth })).json();
+    expect(g.data.attempts.map((a: any) => [a.provider, a.error_kind ?? "ok"])).toEqual([["solo", "rate_limited"], ["solo", "ok"]]);
+  });
+});
+
+describe("empty-200 abuse resistance", () => {
+  let h: Harness;
+  beforeAll(async () => (h = await startRouter()));
+  afterAll(async () => h.close());
+  test("one caller provoking empty answers cannot put a provider into outage for everyone", async () => {
+    await fetch(h.mocks.alpha.url + "/_control", { method: "POST", body: JSON.stringify({ behaviour: "empty200" }) });
+    const attacker = await h.fundedKey(1n);
+    for (let i = 0; i < 4; i++) await chat(h, attacker.auth, { provider: { order: ["alpha", "beta"] } });
+    expect(h.ctx.health.outage(LLAMA, "alpha")).toBe(false);
+    const victim = await h.fundedKey(1n);
+    await chat(h, victim.auth, { provider: { order: ["alpha", "beta"] } });
+    expect(h.ctx.health.outage(LLAMA, "alpha")).toBe(true); // two independent callers: real outage
+  });
+  test("an empty answer that ends on the caller's stop sequence is a valid answer", async () => {
+    h.ctx.health = new (h.ctx.health.constructor as any)(h.ctx.cfg.routing.outageWindowMs);
+    const k = await h.fundedKey(1n);
+    const r = await chat(h, k.auth, { stop: ["Hello"], provider: { only: ["alpha"] } });
+    expect(r.status).toBe(200);
+  });
 });
