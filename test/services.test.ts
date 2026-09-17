@@ -281,4 +281,74 @@ describe("provider onboarding + admin (tRPC) + LiteLLM import", () => {
     const usage = await h.request(`/trpc/keys.usage?input=${encodeURIComponent(JSON.stringify({}))}`, { headers: k.auth });
     expect(usage.status).toBe(200);
   });
+
+  test("LiteLLM config import: aliases, fallbacks and strategy become key routing presets", async () => {
+    const k = await h.fundedKey(1n);
+    const yaml = `
+model_list:
+  - model_name: fast
+    litellm_params: { model: openrouter/meta-llama/llama-3.3-70b-instruct }
+  - model_name: backup
+    litellm_params: { model: together_ai/qwen3-32b }
+  - model_name: unknown
+    litellm_params: { model: azure/gpt-nope }
+router_settings:
+  routing_strategy: cost-based-routing
+  fallbacks: [{ fast: [backup] }]
+`;
+    const r = await (await h.request("/trpc/keys.importLiteLLM", { method: "POST", headers: k.auth, json: { yaml } })).json();
+    expect(r.result.data.aliases.fast).toEqual({ model: LLAMA, models: [LLAMA, "qwen/qwen3-32b"] });
+    expect(r.result.data.unresolved).toEqual(["unknown -> azure/gpt-nope"]);
+    expect(r.result.data.provider).toEqual({ sort: "price" });
+    const j = await (await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: "fast", messages: [{ role: "user", content: "alias" }] } })).json();
+    expect(j.model).toBe(LLAMA);
+  });
+
+  test("status endpoint reports configuration honestly", async () => {
+    const s = await (await h.request("/api/v1/status")).json();
+    expect(s.data.fees).toEqual({ prepaid_bps: 0, per_call_margin_bps: 100, provider_fee_bps: 200, byok_fee_bps: 0 });
+    expect(s.data.database).toBe(h.ctx.dbKind);
+    expect(Array.isArray(s.data.jobs)).toBe(true);
+  });
+});
+
+export { generations };
+
+describe("creator royalty claims (Hugging Face proof) and launch metrics", () => {
+  let h: Harness;
+  let hf: ReturnType<typeof Bun.serve>;
+  let published: Record<string, unknown> | null = null;
+  beforeAll(async () => {
+    hf = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (req) => (new URL(req.url).pathname === "/acme/llama-ft/raw/main/anyroute.json" && published ? Response.json(published) : new Response("not found", { status: 404 })) });
+    h = await startRouter({ env: { HF_BASE_URL: `http://127.0.0.1:${hf.port}` } });
+    await h.ctx.db.update(models).set({ hfRepo: "acme/llama-ft" }).where(eq(models.id, LLAMA));
+  });
+  afterAll(async () => {
+    await h.close();
+    hf.stop(true);
+  });
+
+  test("claim requires anyroute.json in the repo naming the address; then royalty applies per call", async () => {
+    const creator = "0x00000000000000000000000000000000000C0dE5";
+    expect((await h.request("/api/v1/creators/claim", { method: "POST", json: { model: LLAMA, address: creator } })).status).toBe(400);
+    published = { creator: "0x0000000000000000000000000000000000000bad" };
+    expect((await h.request("/api/v1/creators/claim", { method: "POST", json: { model: LLAMA, address: creator } })).status).toBe(403);
+    published = { creator, royalty_bps: 300 };
+    const ok = await h.request("/api/v1/creators/claim", { method: "POST", json: { model: LLAMA, address: creator } });
+    expect(ok.status).toBe(201);
+    expect((await ok.json()).data.royalty_bps).toBe(300);
+    const k = await h.fundedKey(1n);
+    const j = await (await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: "royalty" }] } })).json();
+    const up = usdToPico(String(j.receipt.payload.cost_details.upstream));
+    expect(usdToPico(String(j.receipt.payload.cost_details.royalty))).toBe(mulBps(up, 300));
+  });
+
+  test("status exposes usage metrics", async () => {
+    const s = (await (await h.request("/api/v1/status")).json()).data.launch;
+    expect(s.tokens_24h).toBeGreaterThan(0);
+    expect(s.tokens_per_day_7d).toBeGreaterThan(0);
+    expect(s.active_keys_24h).toBeGreaterThanOrEqual(1);
+    expect(s.active_keys_30d).toBeGreaterThanOrEqual(s.active_keys_24h);
+    expect(Object.keys(s).sort()).toEqual(["active_keys_24h", "active_keys_30d", "tokens_24h", "tokens_per_day_7d"]);
+  });
 });
