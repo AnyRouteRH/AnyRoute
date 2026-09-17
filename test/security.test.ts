@@ -128,4 +128,66 @@ describe("abuse and access control", () => {
     expect(r.status).toBe(402);
     expect(performance.now() - t).toBeLessThan(500);
   });
+
+  test("M1/M2: sub-keys cannot edit others' routing; team admins stay inside their team and below their role", async () => {
+    const root = await h.fundedKey(1n);
+    const member = await (await h.request("/api/v1/keys", { method: "POST", headers: root.auth, json: { name: "member" } })).json();
+    const r = await h.request("/trpc/keys.importLiteLLM", { method: "POST", headers: { authorization: `Bearer ${member.key}`, "content-type": "application/json" }, body: JSON.stringify({ hash: root.hash, yaml: "model_list: []" }) });
+    expect(r.status).toBe(403);
+    const teamA = (await (await h.request("/api/v1/teams", { method: "POST", headers: root.auth, json: { name: "A" } })).json()).data.id;
+    const teamB = (await (await h.request("/api/v1/teams", { method: "POST", headers: root.auth, json: { name: "B" } })).json()).data.id;
+    const adminA = await (await h.request("/api/v1/keys", { method: "POST", headers: root.auth, json: { team: teamA } })).json();
+    await h.request(`/api/v1/teams/${teamA}/members/${adminA.data.hash}`, { method: "PUT", headers: root.auth, json: { role: "admin" } });
+    const inB = await (await h.request("/api/v1/keys", { method: "POST", headers: root.auth, json: { team: teamB } })).json();
+    const adminAuth = { authorization: `Bearer ${adminA.key}` };
+    expect((await h.request(`/api/v1/teams/${teamA}/members/${inB.data.hash}`, { method: "PUT", headers: adminAuth, json: { role: "member" } })).status).toBe(403);
+    expect((await h.request(`/api/v1/teams/${teamA}/members/${adminA.data.hash}`, { method: "PUT", headers: adminAuth, json: { role: "owner" } })).status).toBe(403);
+  });
+
+  test("M3: a re-encoded wallet signature is still a replay", async () => {
+    const wallet = privateKeyToAccount("0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a");
+    await h.request("/api/v1/chat/completions", { method: "POST", json: { model: LLAMA, max_tokens: 20, messages: [{ role: "user", content: "fund" }] } });
+    const [q] = await h.ctx.db.select().from(quotes).where(eq(quotes.status, "open")).limit(1);
+    const tx = fakeTx();
+    h.chain.payments.set(tx, { nonce: q.nonce as `0x${string}`, payer: wallet.address.toLowerCase() as `0x${string}`, amount: 1_000_000n });
+    await h.request("/api/v1/chat/completions", { method: "POST", headers: { "x-payment": tx }, json: { model: LLAMA, max_tokens: 20, messages: [{ role: "user", content: "fund" }] } });
+    const body = { model: LLAMA, max_tokens: 20, messages: [{ role: "user", content: "spend change" }] };
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = await wallet.signMessage({ message: `anyroute:${ts}:${requestHash(body)}` });
+    const p = parseSignature(sig);
+    const reencoded = serializeSignature({ r: p.r, s: p.s, yParity: p.yParity, v: undefined as never }); // v 27/28 -> 0/1 form
+    expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: { "x-wallet-auth": `${wallet.address}:${ts}:${sig}` }, json: body })).status).toBe(200);
+    expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: { "x-wallet-auth": `${wallet.address}:${ts}:${reencoded}` }, json: body })).status).toBe(401);
+  });
+
+  test("M5: a pending provider application cannot be overwritten without its token", async () => {
+    const spec = { id: "pending-co", name: "Pending", base_url: h.mocks.alpha.url, data_policy: { training: false, retains_prompts: false } };
+    const first = await (await h.request("/api/v1/providers/apply", { method: "POST", json: spec })).json();
+    const hijack = await h.request("/api/v1/providers/apply", { method: "POST", json: { ...spec, base_url: "https://evil.example", payout_address: "0x1111111111111111111111111111111111111111" } });
+    expect(hijack.status).toBe(409);
+    const [p] = await h.ctx.db.select().from(providers).where(eq(providers.id, "pending-co"));
+    expect(p.baseUrl).toBe(h.mocks.alpha.url);
+    const update = await h.request("/api/v1/providers/apply", { method: "POST", headers: { "x-application-token": first.data.application_token }, json: { ...spec, name: "Pending Inc" } });
+    expect(update.status).toBe(201);
+  });
+
+  test("L2: upstream error text is sanitized before reaching callers", () => {
+    const s = sanitizeUpstream("auth failed for key sk-live_ABCDEFGHIJKLMNOP at https://internal.host/v1?token=x (Bearer abc.def) contact ops@provider.com 0x" + "ab".repeat(32));
+    expect(s).not.toContain("sk-live_");
+    expect(s).not.toContain("internal.host");
+    expect(s).not.toContain("abc.def");
+    expect(s).not.toContain("ops@provider.com");
+    expect(s.length).toBeLessThanOrEqual(200);
+  });
+
+  test("L3: X-Forwarded-For is ignored unless a trusted proxy is configured", async () => {
+    const h2 = await startRouter({ env: { UNAUTH_RPM: "2" }, providers: [{ id: "alpha", name: "Alpha", models: [MODELS.llama] }] });
+    try {
+      const codes: number[] = [];
+      for (let i = 0; i < 3; i++) codes.push((await h2.request("/api/v1/chat/completions", { method: "POST", headers: { "x-forwarded-for": `9.9.9.${i}` }, json: { model: LLAMA, messages: [{ role: "user", content: "x" }] } })).status);
+      expect(codes[2]).toBe(429); // rotating the header does not reset the limit
+    } finally {
+      await h2.close();
+    }
+  });
 });
