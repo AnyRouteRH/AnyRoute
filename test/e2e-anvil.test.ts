@@ -255,4 +255,48 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
     await pollChain(app.ctx);
     expect((await verifyInvariants(app.ctx.db)).ok).toBe(true);
   }, 90_000);
+
+  test("local faucet deposits test USDG; a pending withdrawal can be cancelled and the lock is released", async () => {
+    const k = await newKey();
+    expect((await (await req("/api/v1/status")).json()).data.dev_faucet).toBe(true);
+    const f = await req("/api/v1/dev/faucet", { method: "POST", headers: k.auth, json: { amount: "3" } });
+    expect(f.status).toBe(201);
+    const credits = async () => (await (await req("/api/v1/credits", { headers: k.auth })).json()).data;
+    expect((await credits()).available).toBe(3); // the faucet indexes its own deposit
+    const to = "0x000000000000000000000000000000000000dEaD";
+    const w = (await (await req("/api/v1/credits/withdraw-request", { method: "POST", headers: k.auth, json: { amount: "2", to } })).json()).data;
+    await send(PK.userC, w.transactions[0].to, CreditsAbi, "requestWithdrawal", decodeFunctionData({ abi: CreditsAbi, data: w.transactions[0].data }).args as unknown[]);
+    await pollChain(app.ctx);
+    let c = await credits();
+    expect(c.available).toBe(1);
+    expect(c.pending_withdrawal.amount_usdg_units).toBe("2000000");
+    const cancel = await req("/api/v1/credits/withdraw-cancel", { method: "POST", headers: k.auth });
+    expect(cancel.status).toBe(200);
+    const tx = (await cancel.json()).data.transactions[0];
+    await send(PK.userC, tx.to, CreditsAbi, "cancelWithdrawal", decodeFunctionData({ abi: CreditsAbi, data: tx.data }).args as unknown[]);
+    await pollChain(app.ctx);
+    c = await credits();
+    expect(c.available).toBe(3);
+    expect(c.pending_withdrawal).toBeNull();
+    expect((await req("/api/v1/credits/withdraw-cancel", { method: "POST", headers: k.auth })).status).toBe(409);
+    expect((await verifyInvariants(app.ctx.db)).ok).toBe(true);
+  }, 90_000);
+
+  test("provider bond on-chain is indexed; slash proposed on-chain by the slasher", async () => {
+    const C = dep.contracts;
+    const operator = PK.userA;
+    await send(operator, C.usdg, erc20Abi, "approve", [C.providerBond, parseUnits("10000", 6)]);
+    await send(operator, C.providerBond, ProviderBondAbi, "bond", [keccak256(toBytes("alpha")), parseUnits("10000", 6)]);
+    await pollChain(app.ctx);
+    const [p] = await app.ctx.db.select().from(providers).where(eq(providers.id, "alpha"));
+    expect(p.bondUsdg).toBe(parseUnits("10000", 6));
+    // Force an empty-200 streak (evidence) and run the slasher: proposal lands on-chain.
+    for (let i = 0; i < 60; i++) app.ctx.health.record({ modelId: LLAMA, providerId: "alpha", ok: i >= 5, empty200: i < 5, errorKind: i < 5 ? "empty200" : null, source: "traffic", caller: `caller-${i}` });
+    await app.ctx.health.flush(app.ctx.db);
+    const r = await runSlasher(app.ctx);
+    const prop = (r.proposed as any[]).find((x) => x.provider === "alpha");
+    expect(prop.chain.submitted).toBe(true);
+    const pending = (await pub.readContract({ address: C.providerBond, abi: ProviderBondAbi, functionName: "pendingSlashes", args: [keccak256(toBytes("alpha"))] })) as bigint;
+    expect(pending).toBe(1n);
+  }, 60_000);
 });
