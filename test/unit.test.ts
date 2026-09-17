@@ -201,3 +201,92 @@ describe("empty-200 detection", () => {
     expect(meaningfulDelta({ choices: [{ delta: { content: "x" } }] })).toBe(true);
   });
 });
+
+describe("guardrails & transforms", () => {
+  test("PII detection, redaction and blocking", () => {
+    expect(findPii("mail me at a.b@example.com or 4111 1111 1111 1111").map((h) => h.type).sort()).toEqual(["CARD", "EMAIL"]);
+    expect(findPii("order 1234 5678 9012 3456").length).toBe(0); // fails Luhn
+    const body: Record<string, unknown> = { messages: [{ role: "user", content: "ssn 123-45-6789, key sk-abcdefghijklmnopqrstuv" }] };
+    const r = applyGuardrails(body, { pii: "redact" });
+    expect(r?.redactions).toBe(2);
+    expect((body.messages as any)[0].content).toBe("ssn [REDACTED_SSN], key [REDACTED_API_KEY]");
+    expect(() => applyGuardrails({ messages: [{ role: "user", content: "me@x.io" }] }, { pii: "block" })).toThrow();
+    expect(() => applyGuardrails({ messages: [{ role: "user", content: "please DROP TABLE users" }] }, { deny_patterns: ["drop table"] })).toThrow();
+    // Patterns are literal substrings: a catastrophic-backtracking regex is inert text, and fast.
+    const t0 = performance.now();
+    applyGuardrails({ messages: [{ role: "user", content: "a".repeat(50_000) }] }, { deny_patterns: ["(.*a){12}x", "(a+)+$"] });
+    expect(performance.now() - t0).toBeLessThan(50);
+  });
+  test("middle-out keeps system + latest turns", () => {
+    const messages = [{ role: "system", content: "sys" }, ...Array.from({ length: 50 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: `turn ${i} ` + "x".repeat(300) })), { role: "user", content: "latest question" }];
+    const body: Record<string, unknown> = { messages };
+    const r = middleOut(body, 2000, 500);
+    const out = body.messages as any[];
+    expect(r.removed).toBeGreaterThan(0);
+    expect(out[0].content).toBe("sys");
+    expect(out.at(-1).content).toBe("latest question");
+    expect(estimatePromptTokens(body)).toBeLessThanOrEqual(1500);
+  });
+  test("lexical vectors: near-duplicates score higher than unrelated", () => {
+    const dot = (x: Float32Array, y: Float32Array) => x.reduce((s, v, i) => s + v * y[i], 0);
+    const a = lexicalVector("what is the capital of france");
+    const b = lexicalVector("what is the capital of france?");
+    const c = lexicalVector("write a haiku about octopuses");
+    expect(dot(a, b)).toBeGreaterThan(0.99);
+    expect(dot(a, c)).toBeLessThan(0.3);
+  });
+});
+
+describe("canary fingerprints", () => {
+  const fp = (noise: number): Fingerprint =>
+    Array.from({ length: 10 }, (_, i) => ({ token: "t" + i, logprob: -0.1 - i * 0.02 + Math.sin(i * 7.3) * noise, top: [{ token: "t" + i, logprob: -0.1 - i * 0.02 + Math.sin(i * 7.3) * noise }, { token: "alt" + i, logprob: -3 - Math.sin(i * 7.3) * noise }] }));
+  test("distance grows with quantization noise and classification picks nearest", () => {
+    expect(fingerprintDistance(fp(0), fp(0))).toBe(0);
+    expect(fingerprintDistance(fp(0), fp(0.8))).toBeGreaterThan(fingerprintDistance(fp(0), fp(0.1)));
+    expect(classify(fp(0.9), [{ quant: "bf16", fingerprint: fp(0) }], 0.35).guess).toBe("lower");
+    expect(classify(fp(0.02), [{ quant: "bf16", fingerprint: fp(0) }], 0.35).guess).toBe("bf16");
+    expect(classify(fp(0.5), [{ quant: "bf16", fingerprint: fp(0) }, { quant: "int4", fingerprint: fp(0.5) }], 0.35).guess).toBe("int4");
+  });
+});
+
+describe("attestation parsing", () => {
+  test("TDX v4 quote fields and nonce binding", () => {
+    const q = Buffer.alloc(700);
+    q.writeUInt16LE(4, 0);
+    Buffer.from("aa".repeat(48), "hex").copy(q, 48 + 136);
+    const nonce = "ab".repeat(32);
+    Buffer.from("00".repeat(32) + nonce, "hex").copy(q, 48 + 520);
+    const f = parseTdxQuote(q.toString("hex"));
+    expect(f.mrtd).toBe("aa".repeat(48));
+    expect(nonceBound(f.reportData, nonce)).toBe(true);
+    expect(nonceBound(f.reportData, "cd".repeat(32))).toBe(false);
+    expect(() => parseTdxQuote("00")).toThrow();
+  });
+});
+
+describe("measured uptime", () => {
+  test("null until observed; client rejections and rate limits never count against a provider", () => {
+    const h = new HealthTracker();
+    expect(h.observedUptime("m/x", "p")).toBeNull();
+    for (let i = 0; i < 3; i++) h.record({ modelId: "m/x", providerId: "p", ok: true });
+    h.record({ modelId: "m/x", providerId: "p", ok: false, errorKind: "http_5xx" });
+    h.record({ modelId: "m/x", providerId: "p", ok: false, errorKind: "rejected" });
+    h.record({ modelId: "m/x", providerId: "p", ok: false, errorKind: "rate_limited" });
+    expect(h.observedUptime("m/x", "p")).toEqual({ rate: 0.75, events: 4 });
+    expect(h.observedUptime("m/x", "other")).toBeNull();
+  });
+});
+
+describe("dev faucet guard", () => {
+  const key = "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e";
+  test("off by default; refused in production, against a remote RPC, or without a key", async () => {
+    const { loadConfig } = await import("../src/config.ts");
+    expect(loadConfig({ ANYROUTE_ENV: "test" }).chain.faucetKey).toBeUndefined();
+    expect(loadConfig({ ANYROUTE_ENV: "test", DEV_FAUCET: "true", RHC_RPC_URL: "http://127.0.0.1:8546", DEV_FAUCET_PRIVATE_KEY: key }).chain.faucetKey).toBe(key);
+    expect(() => loadConfig({ ANYROUTE_ENV: "test", DEV_FAUCET: "true", RHC_RPC_URL: "https://rpc.mainnet.chain.robinhood.com", DEV_FAUCET_PRIVATE_KEY: key })).toThrow(/local chain/);
+    expect(() => loadConfig({ ANYROUTE_ENV: "test", DEV_FAUCET: "true", RHC_RPC_URL: "http://localhost:8546" })).toThrow(/DEV_FAUCET_PRIVATE_KEY/);
+    expect(() =>
+      loadConfig({ ANYROUTE_ENV: "production", APP_SECRET: "x".repeat(40), ADMIN_TOKEN: "y".repeat(30), PUBLIC_BASE_URL: "https://a.example", DATABASE_URL: "postgres://x", DEV_FAUCET: "true", RHC_RPC_URL: "http://127.0.0.1:8546", DEV_FAUCET_PRIVATE_KEY: key }),
+    ).toThrow(/production/);
+  });
+});
