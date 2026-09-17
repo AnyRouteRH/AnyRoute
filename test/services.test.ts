@@ -98,4 +98,71 @@ describe("settlement, royalties, rankings", () => {
     expect(row.paid_to_creator_usd).toBeGreaterThan(0);
     expect(rk.data.apps[0].app).toBe("Demo App");
   });
+
+  test("full settlement run posts a spent root", async () => {
+    const r = await runSettlement(h.ctx);
+    expect((r.roots as any).posted).toBe(true);
+    expect(h.chain.spentRoots.length).toBeGreaterThan(0);
+  });
+});
+
+describe("canaries -> slash -> refunds", () => {
+  let h: Harness;
+  beforeAll(async () => {
+    h = await startRouter({
+      providers: [
+        { id: "ref", name: "Reference TEE", models: [MODELS.llama], tee: "dev" },
+        { id: "honest", name: "Honest", models: [MODELS.llama] },
+        { id: "cheater", name: "Cheater", models: [{ ...MODELS.llama, quant: "bf16" }], quantNoise: 0.9, wrongAnswers: true },
+      ],
+    });
+    await runAttestor(h.ctx); // the reference provider attests (dev TEE, allowed in tests)
+    await h.ctx.catalog.refresh();
+  });
+  afterAll(async () => h.close());
+
+  test("reference fingerprint from the attested provider; honest matches; cheater mismatches with lower quality", async () => {
+    const r = await runCanaries(h.ctx);
+    const by = Object.fromEntries(r.results.map((x) => [x.provider, x]));
+    expect(by.ref.quantMatch).toBe(true);
+    expect(by.honest.quantMatch).toBe(true);
+    expect(by.cheater.quantMatch).toBe(false);
+    expect(by.cheater.quality!).toBeLessThan(by.honest.quality!);
+    expect(h.ctx.health.quality(LLAMA, "cheater")).toBe(0.5);
+  });
+
+  test("3/3 mismatches -> proposal (72h window, traffic pulled) -> execute -> callers refunded -> delisted", async () => {
+    // Callers served by the cheater before detection.
+    const k = await h.fundedKey(2n);
+    const [key] = await h.ctx.db.select().from(keys).where(eq(keys.keyHash, k.hash));
+    for (let i = 0; i < 3; i++) await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, provider: { only: ["cheater"] }, messages: [{ role: "user", content: `victim ${i}` }] } });
+    await runCanaries(h.ctx);
+    await runCanaries(h.ctx);
+    const balBefore = await balanceOf(h.ctx.db, key.accountId);
+    const now = Date.now();
+    const p = await runSlasher(h.ctx, now);
+    const fraud = (p.proposed as any[]).find((x) => x.provider === "cheater" && x.kind === "quant_fraud");
+    expect(fraud).toBeDefined();
+    expect(BigInt(fraud.amount_usdg)).toBe((20_000n * 10n ** 6n * 2500n) / 10_000n); // 25% of bond
+    expect(h.chain.slashProposals.length).toBe(1);
+    // Traffic to that model on that provider stops immediately (offer back to shadow).
+    const [o] = await h.ctx.db.select().from(offers).where(and(eq(offers.providerId, "cheater"), eq(offers.modelId, LLAMA)));
+    expect(o.status).toBe("shadow");
+    expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, provider: { only: ["cheater"] }, messages: [{ role: "user", content: "x" }] } })).status).toBe(404);
+    // Not executable before 72h; no duplicate proposal the same day.
+    const early = await runSlasher(h.ctx, now + 3_600_000);
+    expect(early.executed).toEqual([]);
+    expect((early.proposed as any[]).filter((x) => x.provider === "cheater").length).toBe(0);
+    // After the dispute window: executed, refunds credited, provider delisted.
+    const late = await runSlasher(h.ctx, now + 73 * 3_600_000);
+    expect((late.executed as any[]).length).toBe(1);
+    const balAfter = await balanceOf(h.ctx.db, key.accountId);
+    expect(balAfter.balance).toBeGreaterThan(balBefore.balance);
+    const [prov] = await h.ctx.db.select().from(providers).where(eq(providers.id, "cheater"));
+    expect(prov.status).toBe("delisted");
+    const [s] = await h.ctx.db.select().from(slashes).where(eq(slashes.providerId, "cheater"));
+    expect(s.status).toBe("executed");
+    expect(s.refunded).toBeGreaterThan(0n);
+    expect((await verifyInvariants(h.ctx.db)).ok).toBe(true);
+  });
 });
