@@ -76,3 +76,128 @@ const offer = (pid: string, prompt: bigint, completion: bigint, extra: Partial<C
 const healthy = (over: Partial<HealthView> = {}): HealthView => ({ outage: () => false, uptime30d: () => 1, quality: () => 1, stats: () => null, ...over });
 const sel = (offers: Candidate[], prefs = {}, extra: Record<string, unknown> = {}) =>
   selectProviders({ modelId: "m/x", offers, prefs, modifiers: new Set(), requestParams: [], estimatedTokens: 100, health: healthy(), production: false, attestationMaxAgeMs: 3_600_000, ...extra } as never);
+
+describe("provider selection", () => {
+  const a = offer("a", 100n, 300n);
+  const b = offer("b", 200n, 600n);
+  const c = offer("c", 400n, 1200n);
+  test("weights follow 1/price^2 (2x price -> ~1/4 as often first)", () => {
+    let seed = 1;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const firsts: Record<string, number> = { a: 0, b: 0, c: 0 };
+    for (let i = 0; i < 20_000; i++) firsts[sel([a, b, c], {}, { rand }).ordered[0].providerId]++;
+    // expected shares ∝ 1 : 1/4 : 1/16  -> 76.2% : 19.0% : 4.8%
+    expect(firsts.a / 20_000).toBeGreaterThan(0.72);
+    expect(firsts.a / 20_000).toBeLessThan(0.8);
+    expect(firsts.b / 20_000).toBeGreaterThan(0.16);
+    expect(firsts.b / 20_000).toBeLessThan(0.22);
+    expect(firsts.c / 20_000).toBeGreaterThan(0.03);
+    expect(firsts.c / 20_000).toBeLessThan(0.07);
+  });
+  test("uptime and quality scale weights", () => {
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const same = [offer("p", 100n, 100n), offer("q", 100n, 100n)];
+    const health = healthy({ quality: (_m, p) => (p === "q" ? 0.5 : 1) });
+    let p = 0;
+    for (let i = 0; i < 10_000; i++) if (sel(same, {}, { rand, health }).ordered[0].providerId === "p") p++;
+    expect(p / 10_000).toBeGreaterThan(0.63); // 1 : 0.5 -> 66.7%
+    expect(p / 10_000).toBeLessThan(0.7);
+  });
+  test("30s outage excludes", () => {
+    const r = sel([a, b], {}, { health: healthy({ outage: (_m, p) => p === "a" }) });
+    expect(r.ordered.map((x) => x.providerId)).toEqual(["b"]);
+    expect(r.excluded).toContainEqual({ provider: "a", reason: "outage in the last 30s" });
+  });
+  test("pinned order respected; allow_fallbacks=false restricts", () => {
+    expect(sel([a, b, c], { order: ["c", "a"] }).ordered.map((x) => x.providerId).slice(0, 2)).toEqual(["c", "a"]);
+    expect(sel([a, b, c], { order: ["c", "a"], allow_fallbacks: false }).ordered.map((x) => x.providerId)).toEqual(["c", "a"]);
+    expect(sel([a, b, c], { sort: "price", allow_fallbacks: false }).ordered.map((x) => x.providerId)).toEqual(["a"]);
+  });
+  test("sort / :floor / :nitro", () => {
+    expect(sel([c, a, b], { sort: "price" }).ordered.map((x) => x.providerId)).toEqual(["a", "b", "c"]);
+    expect(sel([c, a, b], {}, { modifiers: new Set(["floor"]) }).ordered.map((x) => x.providerId)).toEqual(["a", "b", "c"]);
+    const stats = (_m: string, p: string) => ({ latency: { p50: p === "b" ? 50 : 500 }, throughput: { p50: p === "c" ? 300 : 50 } });
+    expect(sel([a, b, c], {}, { modifiers: new Set(["nitro"]), health: healthy({ stats }) }).ordered[0].providerId).toBe("c");
+    expect(sel([a, b, c], { sort: "latency" }, { health: healthy({ stats }) }).ordered[0].providerId).toBe("b");
+  });
+  test("filters: only/ignore/data_collection/zdr/quantizations/max_price/require_parameters/context", () => {
+    const trains = offer("t", 50n, 50n, {}, { dataPolicy: { training: true } } as never);
+    const noZdr = offer("n", 60n, 60n, {}, { dataPolicy: { training: false, zdr: false } } as never);
+    const fp8 = offer("f", 70n, 70n, { quant: "fp8" });
+    expect(sel([a, b, c], { only: ["b"] }).ordered.map((x) => x.providerId)).toEqual(["b"]);
+    expect(sel([a, b, c], { ignore: ["a"], sort: "price" }).ordered.map((x) => x.providerId)).toEqual(["b", "c"]);
+    expect(sel([a, trains], { data_collection: "deny" }).ordered.map((x) => x.providerId)).toEqual(["a"]);
+    expect(sel([a, noZdr], { zdr: true }).ordered.map((x) => x.providerId)).toEqual(["a"]);
+    expect(sel([a, fp8], { quantizations: ["fp8"] }).ordered.map((x) => x.providerId)).toEqual(["f"]);
+    expect(sel([a, b, c], { max_price: { prompt: 0.0003, completion: 1 }, sort: "price" }).ordered.map((x) => x.providerId)).toEqual(["a", "b"]);
+    const noTools = offer("x", 10n, 10n, { supportedParameters: ["temperature"] });
+    expect(sel([a, noTools], { require_parameters: true }, { requestParams: ["tools"] }).ordered.map((x) => x.providerId)).toEqual(["a"]);
+    const small = offer("s", 1n, 1n, { ctx: 50 });
+    expect(sel([a, small], {}).ordered.map((x) => x.providerId)).toEqual(["a"]);
+  });
+  test(":free only free offers; free offers hidden otherwise", () => {
+    const free = offer("free", 0n, 0n);
+    expect(sel([a, free], {}).ordered.map((x) => x.providerId)).toEqual(["a"]);
+    expect(sel([a, free], {}, { modifiers: new Set(["free"]) }).ordered.map((x) => x.providerId)).toEqual(["free"]);
+  });
+  test("private route: only freshly attested, never dev in production", () => {
+    const att = offer("tee", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date(), teeKind: "tdx" } as never);
+    const stale = offer("old", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date(Date.now() - 86_400_000), teeKind: "tdx" } as never);
+    const dev = offer("dev", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date(), teeKind: "dev" } as never);
+    expect(sel([a, att, stale, dev], { private: true }).ordered.map((x) => x.providerId).sort()).toEqual(["dev", "tee"]);
+    expect(sel([a, att, stale, dev], { private: true }, { production: true }).ordered.map((x) => x.providerId)).toEqual(["tee"]);
+    expect(sel([a, att], {}, { modifiers: new Set(["private"]) }).ordered.map((x) => x.providerId)).toEqual(["tee"]);
+  });
+  test("ANYR stake breaks ties", () => {
+    const x = offer("x", 100n, 100n, {}, { anyrStake: 10n } as never);
+    const y = offer("y", 100n, 100n, {}, { anyrStake: 99n } as never);
+    expect(sel([x, y], { sort: "price" }).ordered.map((o) => o.providerId)).toEqual(["y", "x"]);
+  });
+  test("weightedShuffle is a permutation", () => {
+    const items = [1, 2, 3, 4, 5];
+    expect(weightedShuffle(items, () => 1).sort()).toEqual(items);
+  });
+});
+
+describe("pricing", () => {
+  const o = offer("a", usdToPico("0.000001"), usdToPico("0.000002"), { priceCacheRead: usdToPico("0.0000001") });
+  const model = { id: "m/x", royaltyBps: 500, creator: "0xcreator", ctx: 1000, maxOut: 100 } as never;
+  const fees = { royaltyBps: 500, perCallMarginBps: 100, byokFeeBps: 0 };
+  test("royalty == upstream x bps; margin only per-call and <= 1%", () => {
+    const u = readUsage({ prompt_tokens: 1000, completion_tokens: 500 });
+    const pre = priceUsage(o, model, u, "prepaid", fees, false);
+    expect(pre.upstream).toBe(usdToPico("0.002"));
+    expect(pre.royalty).toBe(usdToPico("0.0001"));
+    expect(pre.margin).toBe(0n);
+    const per = priceUsage(o, model, u, "per_call", fees, false);
+    expect(per.margin).toBe(mulBps(per.upstream + per.royalty, 100));
+    expect(Number(per.margin) / Number(per.upstream + per.royalty)).toBeLessThanOrEqual(0.01);
+  });
+  test("cached prompt tokens use the cache-read price", () => {
+    const u = readUsage({ prompt_tokens: 1000, completion_tokens: 0, prompt_tokens_details: { cached_tokens: 800 } });
+    const c = priceUsage(o, model, u, "prepaid", fees, false);
+    expect(c.upstream).toBe(usdToPico("0.0002") + usdToPico("0.00008"));
+    expect(c.cacheDiscount).toBe(usdToPico("0.00072"));
+  });
+  test("BYOK: provider cost not charged, royalty still applies", () => {
+    const c = priceUsage(o, model, readUsage({ prompt_tokens: 1000, completion_tokens: 0 }), "byok", fees, true);
+    expect(c.upstream).toBe(0n);
+    expect(c.royalty).toBe(mulBps(usdToPico("0.001"), 500));
+  });
+  test("estimates count images and tools", () => {
+    expect(estimatePromptTokens({ messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "x" } }] }] })).toBeGreaterThan(1600);
+  });
+});
+
+describe("empty-200 detection", () => {
+  test("null/empty content without tools and finish != length is empty", () => {
+    expect(isEmptyCompletion({ choices: [{ message: { content: null }, finish_reason: "stop" }] })).toBe(true);
+    expect(isEmptyCompletion({ choices: [{ message: { content: "" }, finish_reason: "stop" }] })).toBe(true);
+    expect(isEmptyCompletion({ choices: [{ message: { content: "" }, finish_reason: "length" }] })).toBe(false);
+    expect(isEmptyCompletion({ choices: [{ message: { content: null, tool_calls: [{ id: "1" }] }, finish_reason: "tool_calls" }] })).toBe(false);
+    expect(isEmptyCompletion({ choices: [] })).toBe(true);
+    expect(meaningfulDelta({ choices: [{ delta: { role: "assistant", content: "" } }] })).toBe(false);
+    expect(meaningfulDelta({ choices: [{ delta: { content: "x" } }] })).toBe(true);
+  });
+});
