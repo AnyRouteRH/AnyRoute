@@ -165,4 +165,120 @@ describe("canaries -> slash -> refunds", () => {
     expect(s.refunded).toBeGreaterThan(0n);
     expect((await verifyInvariants(h.ctx.db)).ok).toBe(true);
   });
+
+  test("a disputed slash left unresolved >72h past its window auto-refunds from margin", async () => {
+    const [s] = await h.ctx.db.select().from(slashes).limit(1);
+    const id = "slash_dispute_test";
+    await h.ctx.db.insert(slashes).values({ ...s, id, status: "disputed", refunded: 0n, executableAt: new Date(Date.now() - 80 * 3_600_000), onchainId: null });
+    const r = await runSlasher(h.ctx, Date.now());
+    expect((r.autoRefunded as any[]).map((x) => x.id)).toContain(id);
+  });
+
+  test("empty-200 rate > 2% over 24h -> 1% slash proposal, but only with independent callers", async () => {
+    // One caller provoking empties is not evidence.
+    for (let i = 0; i < 60; i++) h.ctx.health.record({ modelId: LLAMA, providerId: "honest", ok: i >= 6, empty200: i < 6, errorKind: i < 6 ? "empty200" : null, source: "traffic", caller: "attacker" });
+    await h.ctx.health.flush(h.ctx.db);
+    expect(((await runSlasher(h.ctx, Date.now())).proposed as any[]).find((x) => x.provider === "honest")).toBeUndefined();
+    // Five independent callers seeing empties is.
+    for (let i = 0; i < 5; i++) h.ctx.health.record({ modelId: LLAMA, providerId: "honest", ok: false, empty200: true, errorKind: "empty200", source: "traffic", caller: `caller-${i}` });
+    await h.ctx.health.flush(h.ctx.db);
+    const r = await runSlasher(h.ctx, Date.now());
+    const e = (r.proposed as any[]).find((x) => x.provider === "honest" && x.kind === "empty200");
+    expect(e).toBeDefined();
+    expect(BigInt(e.amount_usdg)).toBe((20_000n * 10n ** 6n * 100n) / 10_000n);
+  });
+});
+
+describe("attested private route", () => {
+  let h: Harness;
+  beforeAll(async () => {
+    h = await startRouter({
+      providers: [
+        { id: "open", name: "Open", models: [MODELS.llama] },
+        { id: "tee", name: "Enclave", models: [MODELS.llamaPricey], tee: "dev" },
+      ],
+    });
+  });
+  afterAll(async () => h.close());
+
+  test("before attestation the private route has no providers; after, only the attested one; hash in receipt", async () => {
+    const k = await h.fundedKey(1n);
+    const body = { model: LLAMA, provider: { private: true }, messages: [{ role: "user", content: "secret" }] };
+    expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: body })).status).toBe(404);
+    await runAttestor(h.ctx);
+    for (let i = 0; i < 5; i++) {
+      const j = await (await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: body })).json();
+      expect(j.provider).toBe("Enclave");
+      expect(j.receipt.payload.attestation).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(j.receipt.payload.private).toBe(true);
+    }
+    const suffix = await (await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { ...body, model: LLAMA + ":private", provider: undefined } })).json();
+    expect(suffix.provider).toBe("Enclave");
+    // A failed re-attestation removes it from the private route (fail closed).
+    await fetch(h.mocks.tee.url + "/_control", { method: "POST", body: JSON.stringify({ tee: null }) });
+    await runAttestor(h.ctx);
+    expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: body })).status).toBe(404);
+  });
+
+  test("dev attestation is refused when not explicitly allowed", async () => {
+    const h2 = await startRouter({ env: { ALLOW_DEV_ATTESTATION: "false" }, providers: [{ id: "tee", name: "Enclave", models: [MODELS.llama], tee: "dev" }] });
+    try {
+      const r = await runAttestor(h2.ctx);
+      expect((r.results[0] as any).ok).toBe(false);
+    } finally {
+      await h2.close();
+    }
+  });
+});
+
+describe("provider onboarding + admin (tRPC) + LiteLLM import", () => {
+  let h: Harness;
+  beforeAll(async () => {
+    h = await startRouter({ providers: [{ id: "alpha", name: "Alpha", models: [MODELS.llama, MODELS.qwen] }, { id: "newbie", name: "Newbie", models: [MODELS.llama], live: false }] });
+  });
+  afterAll(async () => h.close());
+
+  test("apply -> schema check -> bond -> shadow (canaries) -> live", async () => {
+    const [p0] = await h.ctx.db.select().from(providers).where(eq(providers.id, "newbie"));
+    expect(p0.status).toBe("applied");
+    expect(h.ctx.catalog.offers(LLAMA).find((o) => o.providerId === "newbie")?.status).toBe("shadow");
+    // Bond arrives on-chain.
+    await recordEvents(h.ctx, [{ contract: "providerBond", event: "Bonded", args: { providerId: providerIdHash("newbie"), operator: "0x0000000000000000000000000000000000000e0e", amount: 10_000_000_000n, total: 10_000_000_000n }, txHash: fakeTx(), logIndex: 0, blockNumber: 80n }]);
+    await processEvents(h.ctx);
+    await runRegistry(h.ctx);
+    const [p1] = await h.ctx.db.select().from(providers).where(eq(providers.id, "newbie"));
+    expect(p1.status).toBe("shadow");
+    expect(p1.bondUsdg).toBe(10_000_000_000n);
+    // Shadow traffic is never routed real requests.
+    const k = await h.fundedKey(1n);
+    expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, provider: { only: ["newbie"] }, messages: [{ role: "user", content: "x" }] } })).status).toBe(404);
+    // Canaries during shadow, window elapses -> live.
+    await runCanaries(h.ctx);
+    await h.ctx.db.update(providers).set({ shadowUntil: new Date(Date.now() - 1000) }).where(eq(providers.id, "newbie"));
+    await runRegistry(h.ctx);
+    const [p2] = await h.ctx.db.select().from(providers).where(eq(providers.id, "newbie"));
+    expect(p2.status).toBe("live");
+    expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, provider: { only: ["newbie"] }, messages: [{ role: "user", content: "x" }] } })).status).toBe(200);
+  });
+
+  test("REST apply validates the provider spec", async () => {
+    const bad = await h.request("/api/v1/providers/apply", { method: "POST", json: { id: "x" } });
+    expect(bad.status).toBe(400);
+    const ok = await h.request("/api/v1/providers/apply", { method: "POST", json: { id: "fresh", name: "Fresh", base_url: h.mocks.alpha.url, data_policy: { training: false, retains_prompts: false } } });
+    expect(ok.status).toBe(201);
+    expect((await ok.json()).data.models_found).toBe(2);
+  });
+
+  test("tRPC: operator procedures need the admin token; account procedures accept a key", async () => {
+    expect((await h.request("/trpc/jobs.status")).status).toBe(401);
+    const s = await h.request("/trpc/jobs.status", { headers: { "x-admin-token": ADMIN } });
+    expect(s.status).toBe(200);
+    const inv = await (await h.request("/trpc/invariants", { headers: { "x-admin-token": ADMIN } })).json();
+    expect(inv.result.data.ok).toBe(true);
+    const m = await (await h.request(`/trpc/models.get?input=${encodeURIComponent(JSON.stringify({ id: LLAMA }))}`)).json();
+    expect(m.result.data.offers.length).toBeGreaterThan(0);
+    const k = await h.fundedKey(1n);
+    const usage = await h.request(`/trpc/keys.usage?input=${encodeURIComponent(JSON.stringify({}))}`, { headers: k.auth });
+    expect(usage.status).toBe(200);
+  });
 });
