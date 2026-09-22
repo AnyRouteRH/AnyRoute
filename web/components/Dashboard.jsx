@@ -122,3 +122,56 @@ function ReceiptDetails({ receipt, onClose, apiKey, status }) {
     </Modal>
   );
 }
+
+function ReceiptTable({ receipts, onInspect, emptyAction, live, emptyTitle, emptyText }) {
+  return receipts.length ? (
+    <div className="table-wrap">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Generation</th>
+            <th>Route</th>
+            <th className="num">Tokens</th>
+            <th className="num">Cost / USDG</th>
+            <th>Payment</th>
+            <th>
+              <span className="sr-only">Receipt</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {receipts.map((r, i) => (
+            <tr key={r.id} style={{ "--i": Math.min(i, 12) }}>
+              <td className="cell-primary">
+                <strong>{r.model}</strong>
+                <small>{new Date(r.time).toLocaleString("en-GB")}</small>
+              </td>
+              <td data-label="Route">
+                <span className={"route-tag" + (r.private ? " private" : "")}>{r.private ? "Private" : "Standard"}</span>
+                <small>{r.provider}</small>
+              </td>
+              <td className="num" data-label="Tokens">
+                {r.tokens.toLocaleString("en-US")}
+              </td>
+              <td className="num" data-label="Cost / USDG">
+                {money(r.cost, 6)}
+              </td>
+              <td data-label="Payment">{r.paidWith}</td>
+              <td className="cell-action">
+                <button className="text-button" onClick={() => onInspect(r)} aria-label={"Inspect receipt " + r.id}>
+                  Inspect →
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  ) : (
+    <div className="empty">
+      <h3>{emptyTitle || "No generations yet."}</h3>
+      <p>{emptyText || (live ? "Your calls will appear here, each with a signed receipt." : "Your sample calls will appear here with an itemized receipt.")}</p>
+      {emptyAction && <Button onClick={emptyAction}>Run your first call</Button>}
+    </div>
+  );
+}
