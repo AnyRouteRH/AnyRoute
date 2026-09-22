@@ -1,0 +1,37 @@
+/* Section-specific additions for Accountability, Gateway and Privacy. */
+
+/* accountability: evidence console */
+html:not(.js) .log{opacity:1;transform:none}
+html:not(.js) .meter i{transform:scaleX(var(--v,1))}
+.log time{white-space:nowrap}
+.log>span{white-space:normal}
+.log em{display:inline-block;width:4.4ch;margin-right:12px;font-style:normal;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.log>b{font-weight:400;color:var(--muted-dark);text-align:right;white-space:nowrap}
+.bond-row+.bond-row{margin-top:8px}
+.bond-row .warn{color:var(--warn)}
+.timeline .done{color:var(--signal)}
+.timeline .now{color:var(--warn);background:var(--ink-3);box-shadow:inset 0 2px 0 var(--warn)}
+
+/* gateway: key settings preview */
+.config .ln{display:block;margin:0 -18px;padding:0 18px}
+.gateway-panel{min-width:0}
+.gateway-panel .panel-bar b{color:var(--ink);font-weight:600}
+
+/* privacy: attestation card */
+.attest-body.shielded{position:relative}
+.attest-body.shielded .attest-row:nth-child(-n+3){padding-right:84px}
+.attest-row dd{line-height:1.5}
+.attest-body dl{margin:0;display:grid;gap:14px}
+.attest-row{transition:opacity .45s var(--ease)}
+.attest-row.wait{opacity:.38}
+.attest-row b{font-weight:500;color:var(--signal-deep)}
+.verdict:not(.ok) span{color:var(--muted)}
+.shield .check{stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .7s var(--ease-out) .15s,stroke .4s}
+.attest.done .shield .check{stroke-dashoffset:0;stroke:var(--signal-deep)}
+
+@media (max-width:600px){
+  .log{grid-template-columns:auto minmax(0,1fr)}
+  .console-extra{display:none}
+  .attest-body.shielded .attest-row:nth-child(-n+3){padding-right:52px}
+  .attest-body .shield{width:40px;height:40px;top:18px;right:18px}
+}
