@@ -9,3 +9,20 @@ import ModelCatalog from "./ModelCatalog";
 const tabs = ["Overview", "Playground", "Models", "API keys", "Receipts", "Payments", "Providers", "Settings"];
 const tabId = (t) => t.toLowerCase().replace(" ", "-");
 const publicTabs = ["Models", "Providers"];
+
+function Field({ label, id, children }) {
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+/** Decimal token amount -> raw base units (exact, no floats). */
+function toRaw(amount, decimals) {
+  const [whole, frac = ""] = String(amount).trim().split(".");
+  if (!/^\d+$/.test(whole || "0") || !/^\d*$/.test(frac) || frac.length > decimals) throw new Error(`Use at most ${decimals} decimal places.`);
+  return (BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt((frac + "0".repeat(decimals)).slice(0, decimals) || "0")).toString();
+}
+const fromRaw = (raw, decimals) => Number(BigInt(raw || "0")) / 10 ** decimals;
