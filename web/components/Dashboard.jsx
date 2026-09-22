@@ -175,3 +175,52 @@ function ReceiptTable({ receipts, onInspect, emptyAction, live, emptyTitle, empt
     </div>
   );
 }
+
+function KeyDialog({ existing, onSave, onClose, live }) {
+  const [name, setName] = useState(existing?.name || "");
+  const [budget, setBudget] = useState(existing?.budget == null ? (existing ? "" : "10") : String(existing.budget));
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const noun = live ? "key" : "demo key";
+  return (
+    <Modal title={existing ? "Edit " + noun : "Create a " + noun} onClose={onClose}>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const n = budget === "" && live ? null : Number(budget);
+          if (!name.trim() || name.length > 60 || (n !== null && (!Number.isFinite(n) || n <= 0 || n > 100000))) {
+            setError("Enter a name (up to 60 characters) and a budget greater than 0, up to 100,000 USDG" + (live ? " (leave empty for no budget limit)." : "."));
+            return;
+          }
+          setBusy(true);
+          try {
+            await onSave({ name: name.trim(), budget: n });
+          } catch (err) {
+            setError(err.message);
+            setBusy(false);
+          }
+        }}
+      >
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+        <Field label="Key name" id="key-name">
+          <input id="key-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required placeholder="e.g. Research agent" autoFocus />
+        </Field>
+        <Field label={live ? "Budget / USDG" : "Total demo budget / USDG"} id="key-budget">
+          <input id="key-budget" type="number" min="0.000001" max="100000" step="any" value={budget} onChange={(e) => setBudget(e.target.value)} required={!live} placeholder={live ? "No limit" : undefined} />
+        </Field>
+        <div className="note">
+          {live
+            ? "Sub-keys share this workspace’s USDG balance and stop at their own budget. The secret is shown once; the router stores only its hash."
+            : "Demo keys work only in this browser preview. They cannot authenticate with an API."}
+        </div>
+        <Button type="submit" disabled={busy}>
+          {busy ? "Saving…" : existing ? "Save changes" : "Create " + noun}
+        </Button>
+      </form>
+    </Modal>
+  );
+}
