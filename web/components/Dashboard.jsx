@@ -26,3 +26,24 @@ function toRaw(amount, decimals) {
   return (BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt((frac + "0".repeat(decimals)).slice(0, decimals) || "0")).toString();
 }
 const fromRaw = (raw, decimals) => Number(BigInt(raw || "0")) / 10 ** decimals;
+
+function chainOf(status) {
+  const c = status?.chain || {};
+  return { id: c.chain_id, name: c.chain_id === 4663 ? "Robinhood Chain" : "Chain " + c.chain_id, rpc: c.public_rpc, explorer: c.explorer };
+}
+
+/** Settled swaps replace the accrual estimate with the exact token units and the swap transaction. */
+function paidWithText(receipt, full) {
+  const pw = full?.paid_with;
+  if (!pw) return receipt.paidWith + (receipt.units ? " · " + receipt.units.toFixed(10) + " units" : "");
+  const units = pw.raw_units ? (Number(pw.raw_units) / 10 ** (receipt.decimals ?? 18)).toFixed(10) : "0";
+  return `${pw.token} · ${units} units · ${pw.status === "settled" ? "swapped in " + String(pw.swap_tx).slice(0, 12) + "…" : "accrued, swaps at the next settlement"}`;
+}
+
+// How often the router runs a periodic job, in words ("hourly", "every 2 minutes").
+const cadence = (ms) => {
+  if (!ms || ms === 3_600_000) return "hourly";
+  if (ms % 3_600_000 === 0) return `every ${ms / 3_600_000} hours`;
+  const m = Math.max(1, Math.round(ms / 60_000));
+  return m === 1 ? "every minute" : `every ${m} minutes`;
+};
