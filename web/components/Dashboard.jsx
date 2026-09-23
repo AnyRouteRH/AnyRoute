@@ -224,3 +224,62 @@ function KeyDialog({ existing, onSave, onClose, live }) {
     </Modal>
   );
 }
+
+function SessionDialog({ onSave, onClose, existing, live, tokens = [], paywith = {} }) {
+  const symbols = live ? tokens.map((t) => t.symbol) : ["NVDA", "TSLA"];
+  const [token, setToken] = useState(existing?.token || symbols[0] || "NVDA");
+  const [cap, setCap] = useState(String(existing?.cap ?? 0.01));
+  const [error, setError] = useState("");
+  const [step, setStep] = useState("");
+  return (
+    <Modal title={existing ? "Edit session cap" : live ? "Open a Stock Token session" : "Open a sample session"} onClose={onClose}>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const n = Number(cap);
+          if (!Number.isFinite(n) || n <= 0 || n > 1000) {
+            setError("Set a daily cap greater than 0 and up to 1,000 token units.");
+            return;
+          }
+          if (live && !symbols.length) return setError("No Stock Tokens are registered on this router.");
+          setError("");
+          try {
+            await onSave({ token, cap: n, cap_text: cap }, setStep);
+          } catch (err) {
+            setError(err?.message || String(err));
+            setStep("");
+          }
+        }}
+      >
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+        {step && (
+          <div className="success" role="status">
+            {step}
+          </div>
+        )}
+        <Field label={live ? "Stock Token" : "Sample Stock Token"} id="session-token">
+          <select id="session-token" disabled={!!existing || !!step} value={token} onChange={(e) => setToken(e.target.value)}>
+            {symbols.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Daily cap / token units" id="session-cap">
+          <input id="session-cap" type="number" min="0.0000000001" max="1000" step="any" value={cap} onChange={(e) => setCap(e.target.value)} required disabled={!!step} />
+        </Field>
+        <div className="note">
+          {live
+            ? `Your wallet approves the token and opens a capped session for this key (two transactions). Calls accrue in USDG; at $${paywith.threshold_usd ?? 1} (or after ${paywith.max_age_hours ?? 24}h) the router swaps exactly what is owed at the Chainlink fair value, never more than your daily cap. Close it any time.`
+            : "No wallet is connected. Sample conversion values are NVDA = 100 USDG and TSLA = 200 USDG, purely for testing. No swap or transfer occurs."}
+        </div>
+        <Button type="submit" disabled={!!step}>
+          {step ? "Working…" : existing ? "Save cap" : live ? "Connect wallet and open" : "Open sample session"}
+        </Button>
+      </form>
+    </Modal>
+  );
+}
