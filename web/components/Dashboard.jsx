@@ -615,3 +615,1151 @@ function SignIn({ onKey, onDemo, onSecret }) {
     </section>
   );
 }
+
+export default function Dashboard() {
+  // ---- mode & connection ----
+  const [mode, setModeState] = useState(null); // "live" | "demo"
+  const [connection, setConnection] = useState("checking"); // checking | ok | unreachable
+  const [status, setStatus] = useState(null);
+  const [apiKey, setApiKey] = useState("");
+  const [ws, setWs] = useState(null); // live workspace
+  const [secrets, setSecrets] = useState({}); // key hash -> secret, for keys created in this session
+  const [catalog, setCatalog] = useState([]);
+  const [liveProviders, setLiveProviders] = useState(null);
+  const [reveal, setReveal] = useState(null);
+  // ---- sample workspace (explicit demo mode) ----
+  const [state, setState] = useState(initialWorkspace);
+  const [loaded, setLoaded] = useState(false);
+  const [storageError, setStorageError] = useState("");
+  // ---- shared UI ----
+  const [tab, setTab] = useState("Overview");
+  const [modal, setModal] = useState(null);
+  const [notice, setNotice] = useState("");
+  const [modelId, setModelId] = useState(sampleModels[0].id);
+  const [prompt, setPrompt] = useState("Explain how a generation receipt makes AI usage easier to audit.");
+  const [privateRoute, setPrivate] = useState(false);
+  const [payWith, setPayWith] = useState("USDG");
+  const [keyId, setKeyId] = useState("key_seed");
+  const [forceFailure, setForceFailure] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [errorKind, setErrorKind] = useState("");
+  const [result, setResult] = useState(null);
+  const [streamText, setStreamText] = useState("");
+  const [receiptQuery, setReceiptQuery] = useState("");
+  const [receiptMode, setReceiptMode] = useState("All");
+  const lock = useRef(false);
+  const timer = useRef(null);
+  const abort = useRef(null);
+  const navRef = useRef(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const live = mode === "live";
+
+  async function refresh(key = apiKey) {
+    const next = await loadWorkspace(key);
+    setWs(next);
+    return next;
+  }
+  async function signInWith(key, remember) {
+    const next = await loadWorkspace(key);
+    saveKey(key, remember);
+    setApiKey(key);
+    setWs(next);
+    setKeyId(next.me.hash);
+    setSecrets((s) => ({ ...s, [next.me.hash]: key }));
+    setNotice("Connected with " + next.me.label + ".");
+  }
+  async function connectLive() {
+    setConnection("checking");
+    try {
+      const s = await api("/api/v1/status");
+      setStatus(s.data);
+      setConnection("ok");
+      api("/api/v1/models").then((r) => setCatalog(r.data.map(toCatalogModel))).catch(() => setCatalog([]));
+      const stored = loadKey();
+      if (stored) {
+        try {
+          const next = await loadWorkspace(stored);
+          setApiKey(stored);
+          setWs(next);
+          setKeyId(next.me.hash);
+          setSecrets((x) => ({ ...x, [next.me.hash]: stored }));
+        } catch (e) {
+          if (e instanceof ApiError && (e.status === 401 || e.status === 403)) clearKey();
+          else setError(e.message);
+        }
+      }
+    } catch {
+      setConnection("unreachable");
+    }
+  }
+
+  useEffect(() => {
+    const m = getMode();
+    setModeState(m);
+    if (m === "live") connectLive().finally(() => setLoaded(true));
+    else {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (validWorkspace(parsed)) {
+            setState(parsed);
+            setKeyId(parsed.keys.find((k) => k.active)?.id || "");
+          } else setStorageError("The saved workspace could not be read. A fresh in-memory sample is open; reset it in Settings to resume saving.");
+        }
+      } catch {
+        setStorageError("Browser storage is unavailable or contains unreadable data. Changes will stay in memory for this visit.");
+      }
+      setLoaded(true);
+    }
+    const selectHash = () => {
+      const match = tabs.find((t) => tabId(t) === window.location.hash.slice(1));
+      setTab(match || "Overview");
+    };
+    selectHash();
+    const model = new URLSearchParams(window.location.search).get("model");
+    if (model) setModelId(model);
+    window.addEventListener("hashchange", selectHash);
+    return () => {
+      window.removeEventListener("hashchange", selectHash);
+      clearTimeout(timer.current);
+      abort.current?.abort();
+    };
+  }, []);
+  useEffect(() => {
+    if (mode !== "demo" || !loaded || storageError) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {
+      setStorageError("This browser could not save the workspace. Changes remain available for this visit.");
+    }
+  }, [state, loaded, storageError, mode]);
+  useEffect(() => {
+    if (live && connection === "ok" && tab === "Providers" && !liveProviders)
+      api("/api/v1/providers")
+        .then((r) => setLiveProviders(r.data.map(toProvider)))
+        .catch((e) => setError(e.message));
+  }, [live, connection, tab, liveProviders]);
+  useEffect(() => {
+    if (live && catalog.length && !catalog.some((m) => m.id === modelId)) setModelId(catalog.find((m) => m.type !== "Embeddings")?.id || catalog[0].id);
+  }, [live, catalog, modelId]);
+  // Keep the selected section visible in the horizontally scrolling tab bar (phones).
+  useEffect(() => {
+    const nav = navRef.current;
+    const current = nav?.querySelector("[aria-current]");
+    if (!nav || !current || nav.scrollWidth <= nav.clientWidth) return;
+    const left = current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2;
+    nav.scrollTo({ left: Math.max(0, left), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, [tab]);
+
+  function switchMode(next) {
+    setMode(next);
+    window.location.reload();
+  }
+  function navigate(next) {
+    window.location.hash = tabId(next);
+    setTab(next);
+    setNotice("");
+    setError("");
+  }
+  function update(fn) {
+    setState((previous) => {
+      const next = fn(previous);
+      stateRef.current = next;
+      return next;
+    });
+  }
+
+  // ---- normalized view (same shapes for both workspaces) ----
+  const decimalsOf = (sym) => ws?.tokens?.find((t) => t.symbol === sym)?.decimals ?? 18;
+  const liveKeys = (ws?.keys || []).map((k) => ({
+    id: k.hash,
+    name: k.name || k.label,
+    token: k.label,
+    budget: k.limit,
+    spent: k.usage_period ?? k.usage ?? 0,
+    active: !k.disabled,
+    chainKeyHash: k.chain_key_hash,
+    current: k.hash === ws?.me?.hash,
+    secret: secrets[k.hash],
+  }));
+  const liveSession = ws?.session
+    ? {
+        id: "session",
+        token: ws.session.symbol,
+        cap: fromRaw(ws.session.cap_raw_per_day, ws.session.decimals),
+        spent: fromRaw(ws.session.spent_raw_today, ws.session.decimals),
+        active: ws.session.active && ws.session.pay_with_default === ws.session.symbol,
+        open: ws.session.active,
+        wallet: ws.session.wallet,
+        debt: ws.session.open_debt_usd,
+        day: new Date().toISOString().slice(0, 10),
+      }
+    : null;
+  const view = live
+    ? { balance: ws?.credits?.available ?? 0, keys: liveKeys, sessions: liveSession ? [liveSession] : [], receipts: ws?.receipts || [] }
+    : { balance: state.balance, keys: state.keys, sessions: state.sessions, receipts: state.receipts };
+  const playModels = live ? catalog.filter((m) => m.type !== "Embeddings") : sampleModels;
+  const payOptions = live ? ["USDG", ...(ws?.tokens || []).map((t) => t.symbol)] : ["USDG", "NVDA", "TSLA"];
+  const providerRows = live ? liveProviders || [] : sampleProviders;
+  const signedIn = !live || (!!apiKey && !!ws);
+
+  // ---- actions ----
+  function run(e) {
+    e.preventDefault();
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setResult(null);
+    setStreamText("");
+    if (!live) {
+      const args = { modelId, prompt, privateRoute, payWith, keyId, forceFailure };
+      timer.current = setTimeout(() => {
+        try {
+          const outcome = routeCall({ state: stateRef.current, ...args });
+          stateRef.current = outcome.state;
+          setState(outcome.state);
+          setResult(outcome.receipt);
+          setNotice("Sample call completed. Its receipt is ready.");
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          lock.current = false;
+          setBusy(false);
+        }
+      }, 750);
+      return;
+    }
+    const k = view.keys.find((x) => x.id === keyId);
+    const ctl = new AbortController();
+    abort.current = ctl;
+    setErrorKind("");
+    (async () => {
+      try {
+        if (!k?.secret) throw new Error("Choose a key whose secret is available in this browser (your signed-in key or one created this session).");
+        if (!prompt.trim()) throw new Error("Enter a prompt before routing a call.");
+        const out = await streamChat({ key: k.secret, body: liveRequest.body, headers: liveRequest.headers, signal: ctl.signal, onDelta: setStreamText });
+        const g = (await api("/api/v1/generation?id=" + encodeURIComponent(out.id), { key: k.secret })).data;
+        setResult({ ...toReceiptRow({ ...g, anchored: !!g.anchor, created_at: g.created_at }, ws?.tokens), text: out.text });
+        setNotice(out.error ? "The provider stopped mid-stream; the delivered part was billed. Its receipt is ready." : "Call completed. Its signed receipt is ready.");
+        refresh().catch(() => {});
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+        const hint = err?.metadata?.pay_with ? " (" + err.metadata.pay_with + ")" : "";
+        setErrorKind(err?.type || "");
+        setError(err.message + hint);
+      } finally {
+        lock.current = false;
+        setBusy(false);
+      }
+    })();
+  }
+  function cancel() {
+    if (!live) {
+      clearTimeout(timer.current);
+      lock.current = false;
+      setBusy(false);
+      setError("Sample request cancelled. No balance or budget was spent.");
+      return;
+    }
+    abort.current?.abort();
+    lock.current = false;
+    setBusy(false);
+    setError("Request cancelled. Anything the provider already generated is billed and appears in Receipts.");
+    setTimeout(() => refresh().catch(() => {}), 1500);
+  }
+  async function saveKeyValues(values) {
+    if (!live) {
+      if (modal.data) update((s) => ({ ...s, keys: s.keys.map((k) => (k.id === modal.data.id ? { ...k, ...values } : k)) }));
+      else {
+        const id = crypto.randomUUID();
+        update((s) => ({ ...s, keys: [...s.keys, { ...values, id, token: "demo_anyr_" + id.replaceAll("-", "").slice(0, 20), spent: 0, active: true }] }));
+        setKeyId(id);
+      }
+      setNotice(modal.data ? "Demo key updated." : "Demo key created. It is not a production credential.");
+      setModal(null);
+      return;
+    }
+    if (modal.data) {
+      await api("/api/v1/keys/" + modal.data.id, { key: apiKey, method: "PATCH", body: { name: values.name, limit: values.budget } });
+      setNotice("Key updated.");
+    } else {
+      const r = await api("/api/v1/keys", { key: apiKey, method: "POST", body: { name: values.name, limit: values.budget } });
+      setSecrets((s) => ({ ...s, [r.data.hash]: r.key }));
+      setReveal({ secret: r.key, deposit: r.deposit });
+      setNotice("Key created. Copy its secret now; it is shown once.");
+    }
+    setModal(null);
+    await refresh();
+  }
+  async function saveSession(values, onStep) {
+    if (!live) {
+      const existing = modal.data || state.sessions.find((s) => s.token === values.token);
+      update((s) => ({
+        ...s,
+        sessions: existing
+          ? s.sessions.map((x) => (x.id === existing.id ? { ...x, ...values, active: true } : x))
+          : [...s.sessions, { ...values, id: crypto.randomUUID(), active: true, spent: 0, day: new Date().toISOString().slice(0, 10) }],
+      }));
+      setNotice("Sample session saved. No wallet permission or transaction was created.");
+      setModal(null);
+      return;
+    }
+    const wallet = await connect();
+    await ensureChain(chainOf(status));
+    const raw = toRaw(values.cap_text, decimalsOf(values.token));
+    const open = (await api("/api/v1/paywith/open", { key: apiKey, method: "POST", body: { token: values.token, cap_raw_per_day: raw, wallet } })).data;
+    await sendTransactions(wallet, open.transactions, onStep);
+    onStep("Session opened. Waiting for the router to index it…");
+    await api("/api/v1/keys/" + ws.me.hash, { key: apiKey, method: "PATCH", body: { pay_with_default: values.token } }).catch(() => {});
+    for (let i = 0; i < 30; i++) {
+      const next = await refresh();
+      if (next.session?.active) break;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    setPayWith(values.token);
+    setNotice(`${values.token} session is open with a daily cap of ${values.cap_text} ${values.token}.`);
+    setModal(null);
+  }
+  async function toggleSession(s) {
+    if (!live) {
+      update((w) => ({ ...w, sessions: w.sessions.map((x) => (x.id === s.id ? { ...x, active: !x.active } : x)) }));
+      setNotice(s.active ? "Sample session paused." : "Sample session resumed.");
+      return;
+    }
+    try {
+      await api("/api/v1/keys/" + ws.me.hash, { key: apiKey, method: "PATCH", body: { pay_with_default: s.active ? null : s.token } });
+      await refresh();
+      setNotice(s.active ? `Paused: calls from this key pay in USDG unless they send X-Pay-With: ${s.token}.` : `Resumed: calls from this key pay with ${s.token} by default.`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  async function confirmAction() {
+    if (modal.type === "reset") {
+      if (live) {
+        clearKey();
+        setApiKey("");
+        setWs(null);
+        setSecrets({});
+        setResult(null);
+        setNotice("Signed out of this browser. Your key and balance are unchanged.");
+      } else {
+        setState(structuredClone(initialWorkspace));
+        setStorageError("");
+        setResult(null);
+        setKeyId("key_seed");
+        setPayWith("USDG");
+        setNotice("Sample workspace reset.");
+      }
+    } else if (modal.type === "revoke") {
+      if (live) {
+        await api("/api/v1/keys/" + modal.data.id, { key: apiKey, method: "DELETE" });
+        await refresh();
+        setNotice("Key revoked. It stops working immediately.");
+      } else {
+        update((s) => ({ ...s, keys: s.keys.map((k) => (k.id === modal.data.id ? { ...k, active: false } : k)) }));
+        setNotice("Demo key revoked.");
+      }
+    } else if (live) {
+      const wallet = await connect();
+      await ensureChain(chainOf(status));
+      const tx = (await api("/api/v1/paywith/close", { key: apiKey, method: "POST" })).data;
+      await sendTransactions(wallet, tx.transactions);
+      for (let i = 0; i < 30; i++) {
+        const next = await refresh();
+        if (!next.session?.active) break;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (payWith !== "USDG") setPayWith("USDG");
+      setNotice("Session closed on-chain. Any accrued debt is still settled from it.");
+    } else {
+      update((s) => ({ ...s, sessions: s.sessions.filter((x) => x.id !== modal.data.id) }));
+      setNotice("Sample session closed.");
+    }
+    setModal(null);
+  }
+
+  const total = live ? (ws?.credits?.total_usage ?? 0) : view.receipts.reduce((s, r) => s + r.cost, 0);
+  const tokens = view.receipts.reduce((s, r) => s + r.tokens, 0);
+  const filtered = view.receipts.filter(
+    (r) => (r.id + " " + r.model + " " + r.provider).toLowerCase().includes(receiptQuery.toLowerCase()) && (receiptMode === "All" || (receiptMode === "Private" ? r.private : !r.private)),
+  );
+  const stats = [
+    [live ? "Available USDG" : "USDG balance", money(view.balance, 4), live ? "Prepaid · 0% router fee" : "Sample credits"],
+    ["Calls routed", String(view.receipts.length), live ? "Latest " + view.receipts.length : "This browser"],
+    ["Tokens processed", tokens.toLocaleString("en-US"), live ? "Metered by providers" : "Sample usage"],
+    ["Total cost", money(total, 6), live ? "USDG · all time" : "USDG · illustrative"],
+  ];
+  const sampleRequest = {
+    model: modelId,
+    messages: [{ role: "user", content: prompt }],
+    provider: { private: privateRoute, allow_fallbacks: true },
+    ...(payWith !== "USDG" ? { headers: { "X-Pay-With": payWith } } : {}),
+  };
+  const liveRequest = {
+    headers: payWith !== "USDG" ? { "X-Pay-With": payWith } : {},
+    body: { model: modelId, messages: [{ role: "user", content: prompt }], max_tokens: 512, provider: { ...(privateRoute ? { private: true } : {}), allow_fallbacks: !forceFailure } },
+  };
+  const origin = typeof window !== "undefined" ? API_BASE || window.location.origin : "";
+  const currentKey = liveKeys.find((k) => k.current);
+  // Until the mode is read from the URL and storage, label nothing as live or sample.
+  const booting = mode === null;
+  const workspaceState = booting ? "loading" : !live ? "demo" : connection;
+
+  return (
+    <main className="dashboard-main" id="content" data-workspace={workspaceState}>
+      <div className="dashboard-heading">
+        <div>
+          <span className="eyebrow">ANYROUTE WORKSPACE</span>
+          <h1>Your routes, in detail.</h1>
+        </div>
+        <span className="badge dark workspace-status" data-state={workspaceState}>
+          <span className="live-square" />
+          {booting ? "LOADING" : live ? (connection === "ok" ? "LIVE · CHAIN " + (status?.chain?.chain_id ?? "") : connection === "unreachable" ? "API UNREACHABLE" : "CONNECTING") : "SAMPLE WORKSPACE"}
+        </span>
+      </div>
+      <div className="workspace-notice" data-state={workspaceState}>
+        {booting ? (
+          "Loading workspace…"
+        ) : live ? (
+          signedIn && ws ? (
+            <>
+              Live workspace · Signed in with {ws.me.label} · Balance, keys and receipts come from the Anyroute API.{" "}
+              <button className="text-button" onClick={() => navigate("Settings")}>
+                Manage →
+              </button>
+            </>
+          ) : connection === "unreachable" ? (
+            "Live workspace · The router did not respond, so no balance, keys or receipts are shown."
+          ) : (
+            "Live workspace · Connect a key to see your balance, keys and receipts."
+          )
+        ) : (
+          <>
+            Sample workspace · All activity stays in this browser. No live inference, wallet or payments.{" "}
+            <button className="text-button" onClick={() => switchMode("live")}>
+              Switch to your live workspace →
+            </button>
+          </>
+        )}
+      </div>
+      <nav className="dashboard-nav" aria-label="Workspace sections" ref={navRef}>
+        {tabs.map((t) => (
+          <a key={t} href={"#" + tabId(t)} aria-current={tab === t ? "page" : undefined} onClick={() => navigate(t)}>
+            {t}
+          </a>
+        ))}
+      </nav>
+      {storageError && (
+        <div className="error" role="alert">
+          {storageError}
+        </div>
+      )}
+      {notice && (
+        <div className="success" role="status">
+          {notice}
+        </div>
+      )}
+      {!loaded ? (
+        <div className="empty loading-state" role="status">
+          <span className="loading-bar" aria-hidden="true" />
+          {mode === "demo" ? "Loading sample workspace…" : "Connecting to Anyroute…"}
+        </div>
+      ) : live && connection === "unreachable" ? (
+        <section className="router-status dark" aria-labelledby="router-status-title">
+          <span className="empty-grid" aria-hidden="true" />
+          <div className="router-status-head">
+            <span className="status-dot" aria-hidden="true" />
+            <span>No response</span>
+            <code>GET {origin || ""}/api/v1/status</code>
+          </div>
+          <h2 id="router-status-title">The Anyroute API is not reachable.</h2>
+          <p>
+            Tried {origin || "this site"}/api/v1. Your balance and receipts are safe; this page just cannot reach the router right now. Nothing is shown from sample data unless you choose it.
+          </p>
+          <div className="button-row">
+            <Button light onClick={() => connectLive()}>
+              Retry
+            </Button>
+            <Button secondary onClick={() => switchMode("demo")}>
+              Open the sample workspace
+            </Button>
+          </div>
+        </section>
+      ) : live && !signedIn && !publicTabs.includes(tab) ? (
+        <div className="tab-panel" key="signin">
+          {error && (
+            <div className="error" role="alert">
+              {error}
+            </div>
+          )}
+          <SignIn onKey={signInWith} onDemo={() => switchMode("demo")} onSecret={(secret, deposit, title) => setReveal({ secret, deposit, title })} />
+        </div>
+      ) : (
+        <div className="tab-panel" key={tab}>
+          {tab === "Overview" && (
+            <>
+              <div className="metric-grid">
+                {stats.map(([label, value, sub], i) => (
+                  <article className="metric" key={label} style={{ "--i": i }}>
+                    <span className="eyebrow">{label}</span>
+                    <strong>{value}</strong>
+                    <span>{sub}</span>
+                  </article>
+                ))}
+              </div>
+              <div className="overview-grid">
+                <section className="usage-panel">
+                  <div className="panel-heading">
+                    <h2>Usage by generation</h2>
+                    <span className="eyebrow">{live ? "METERED TOKENS" : "SAMPLE TOKENS"}</span>
+                  </div>
+                  {view.receipts.length ? (
+                    <>
+                      <div className="usage-chart" role="img" aria-label={view.receipts.length + (live ? " generations using " : " sample generations using ") + tokens + " tokens"}>
+                        {view.receipts
+                          .slice(0, 30)
+                          .reverse()
+                          .map((r, i) => (
+                            <div key={r.id} title={r.model + ": " + r.tokens + " tokens"} style={{ "--i": i, height: Math.max(5, (100 * r.tokens) / Math.max(1, ...view.receipts.map((x) => x.tokens))) + "%" }} />
+                          ))}
+                      </div>
+                      <div className="usage-axis" aria-hidden="true">
+                        <span>Earlier</span>
+                        <span>Latest {Math.min(30, view.receipts.length)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="usage-empty">
+                      <span className="empty-grid" aria-hidden="true" />
+                      <span>Your first route starts here.</span>
+                      <button className="text-button" onClick={() => navigate("Playground")}>
+                        {live ? "Run a call →" : "Run a sample call →"}
+                      </button>
+                    </div>
+                  )}
+                </section>
+                <section className="quickstart-card">
+                  <span className="eyebrow">ONE KEY. ONE BALANCE.</span>
+                  <h2>
+                    Make a call.
+                    <br />
+                    Follow the receipt.
+                  </h2>
+                  <p>Choose a model, set your route and inspect every cost line.</p>
+                  <Button light onClick={() => navigate("Playground")}>
+                    Open playground
+                  </Button>
+                  <div className="scan-rule" aria-hidden="true" />
+                </section>
+              </div>
+              <div className="panel-heading">
+                <h2>Recent generations</h2>
+                <button className="text-button" onClick={() => navigate("Receipts")}>
+                  View all receipts →
+                </button>
+              </div>
+              <ReceiptTable live={live} receipts={view.receipts.slice(0, 5)} onInspect={(r) => setModal({ type: "receipt", data: r })} emptyAction={() => navigate("Playground")} />
+            </>
+          )}
+          {tab === "Playground" && (
+            <>
+              <div className="panel-heading">
+                <h2>{live ? "Route a call." : "Route a sample call."}</h2>
+                <span className="badge">{live ? "Live request · billed to the selected key" : "No external request"}</span>
+              </div>
+              <div className="playground-grid">
+                <form className="control-panel" onSubmit={run}>
+                  <Field label="Model" id="play-model">
+                    <select id="play-model" value={modelId} onChange={(e) => setModelId(e.target.value)} disabled={busy}>
+                      {playModels.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {live ? m.id : m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <div className="two-fields">
+                    <Field label={live ? "Key" : "Demo key"} id="play-key">
+                      <select id="play-key" value={keyId} onChange={(e) => setKeyId(e.target.value)} disabled={busy}>
+                        <option value="">Select key</option>
+                        {view.keys
+                          .filter((k) => k.active && (!live || k.secret))
+                          .map((k) => (
+                            <option key={k.id} value={k.id}>
+                              {k.name}
+                            </option>
+                          ))}
+                      </select>
+                    </Field>
+                    <Field label="Pay with" id="play-payment">
+                      <select id="play-payment" value={payWith} onChange={(e) => setPayWith(e.target.value)} disabled={busy}>
+                        {payOptions.map((p) => (
+                          <option key={p}>{p}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                  <label className="check-label">
+                    <input type="checkbox" checked={privateRoute} onChange={(e) => setPrivate(e.target.checked)} disabled={busy} /> Require an attested private route
+                  </label>
+                  <Field label={live ? "Prompt" : "Sample prompt"} id="play-prompt">
+                    <textarea id="play-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={4000} disabled={busy} />
+                  </Field>
+                  <p className="help-text">{live ? "Streams a real completion (up to 512 tokens). Prompts and responses are never stored." : "The demo returns a fixed sample response. Prompt text is not saved."}</p>
+                  <details className="failure-option">
+                    <summary>{live ? "Routing options" : "Test a failure state"}</summary>
+                    <label className="check-label">
+                      <input type="checkbox" checked={forceFailure} onChange={(e) => setForceFailure(e.target.checked)} disabled={busy} /> {live ? "Disallow fallbacks (allow_fallbacks: false)" : "Simulate provider timeout"}
+                    </label>
+                  </details>
+                  {error && (
+                    <div className="error" role="alert">
+                      {error}
+                      {live && errorKind === "insufficient_credits" && (
+                        <>
+                          {" "}
+                          <button type="button" className="text-button" onClick={() => setModal({ type: "credits" })}>
+                            Deposit USDG →
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <div className="button-row">
+                    <Button type="submit" disabled={busy}>
+                      {busy ? (live ? "Routing…" : "Routing sample…") : live ? "Run call" : "Run sample call"}
+                    </Button>
+                    {busy && (
+                      <Button secondary type="button" onClick={cancel}>
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </form>
+                <div className="playground-output">
+                  <Code label="Request preview">
+                    {live
+                      ? JSON.stringify({ url: origin + "/api/v1/chat/completions", headers: { Authorization: "Bearer " + (view.keys.find((k) => k.id === keyId)?.token || "sk-ar-v1-…"), ...liveRequest.headers }, body: liveRequest.body }, null, 2)
+                      : JSON.stringify(sampleRequest, null, 2)}
+                  </Code>
+                  <div className={"response-panel" + (busy ? " is-busy" : "")} aria-live="polite" aria-busy={busy || undefined}>
+                    <span className="eyebrow">{busy ? (live ? "STREAMING…" : "ROUTING…") : live ? "RESPONSE" : "SAMPLE RESPONSE"}</span>
+                    {live && (busy || result) && (streamText || result?.text) ? (
+                      <>
+                        <p style={{ whiteSpace: "pre-wrap" }}>{result?.text ?? streamText}</p>
+                        {result && (
+                          <>
+                            <div className="model-meta">
+                              <span>{result.tokens} tokens</span>
+                              <span>{money(result.cost, 6)} USDG</span>
+                            </div>
+                            <button className="text-button" onClick={() => setModal({ type: "receipt", data: result })}>
+                              Inspect generation receipt →
+                            </button>
+                          </>
+                        )}
+                      </>
+                    ) : result ? (
+                      <>
+                        <p>A generation receipt makes usage easier to audit by recording the model, provider, token counts, payment allocation and cost components for one call.</p>
+                        <div className="model-meta">
+                          <span>{result.tokens} tokens</span>
+                          <span>{money(result.cost, 6)} USDG</span>
+                        </div>
+                        <button className="text-button" onClick={() => setModal({ type: "receipt", data: result })}>
+                          Inspect generation receipt →
+                        </button>
+                      </>
+                    ) : (
+                      <p>{busy ? (live ? "Selecting a provider and holding the worst-case cost…" : "Checking the sample route and budget…") : "Run a call to see the response and its itemized receipt."}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+          {tab === "Models" && (
+            <ModelCatalog
+              source={live ? "live" : "demo"}
+              onChoose={(id) => {
+                setModelId(id);
+                navigate("Playground");
+              }}
+            />
+          )}
+          {tab === "API keys" && (
+            <>
+              <div className="panel-heading">
+                <div>
+                  <h2>A key for every workload.</h2>
+                  <p className="help-text">{live ? "Budgeted sub-keys share this workspace’s balance. Secrets are shown once." : "Local demo keys with enforced sample budgets."}</p>
+                </div>
+                <Button onClick={() => setModal({ type: "key" })}>Create key</Button>
+              </div>
+              {live && ws?.keysError && <div className="note">This key can’t list the workspace’s other keys ({ws.keysError}).</div>}
+              {view.keys.length ? (
+                <div className="key-list">
+                  {view.keys.map((k, i) => (
+                    <article className={"key-card" + (k.active ? "" : " is-revoked")} key={k.id} style={{ "--i": i }}>
+                      <div>
+                        <h3>{k.name}</h3>
+                        <span className={"badge " + (k.active ? "green" : "")}>{k.active ? (k.current ? "Active · this browser" : "Active") : "Revoked"}</span>
+                      </div>
+                      <code className="key-token">{k.token}</code>
+                      <div className="budget-line">
+                        <span>
+                          {money(k.spent, 6)} / {k.budget == null ? "no limit" : money(k.budget, 2) + " USDG"}
+                        </span>
+                        <span>{k.budget == null ? "No budget limit" : Math.min(100, (k.spent / k.budget) * 100).toFixed(1) + "% used"}</span>
+                      </div>
+                      <progress max={k.budget ?? 1} value={k.budget == null ? 0 : Math.min(k.spent, k.budget)} aria-label={"Budget used by " + k.name} />
+                      <div className="button-row">
+                        <CopyButton text={live ? k.chainKeyHash : k.token} label={live ? "Copy deposit hash" : "Copy demo key"} />
+                        <button className="text-button" onClick={() => setModal({ type: "key", data: k })}>
+                          Edit budget
+                        </button>
+                        {k.active ? (
+                          <button className="text-button" disabled={live && k.current} title={live && k.current ? "A key cannot revoke itself. Use Sign out, or revoke it from another management key." : undefined} onClick={() => setModal({ type: "revoke", data: k })}>
+                            Revoke
+                          </button>
+                        ) : (
+                          <button
+                            className="text-button"
+                            onClick={async () => {
+                              if (!live) {
+                                update((s) => ({ ...s, keys: s.keys.map((x) => (x.id === k.id ? { ...x, active: true } : x)) }));
+                                setNotice("Demo key restored.");
+                                return;
+                              }
+                              try {
+                                await api("/api/v1/keys/" + k.id, { key: apiKey, method: "PATCH", body: { disabled: false } });
+                                await refresh();
+                                setNotice("Key restored.");
+                              } catch (e) {
+                                setError(e.message);
+                              }
+                            }}
+                          >
+                            {live ? "Restore key" : "Restore demo key"}
+                          </button>
+                        )}
+                      </div>
+                      <div className="card-ramp" />
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty">
+                  <h3>No keys yet.</h3>
+                  <p>{live ? "Create a key to start routing." : "Create a demo key to start routing."}</p>
+                </div>
+              )}
+              {error && (
+                <div className="error" role="alert">
+                  {error}
+                </div>
+              )}
+            </>
+          )}
+          {tab === "Receipts" && (
+            <>
+              <div className="panel-heading">
+                <h2>Every call, accounted for.</h2>
+                <Button secondary disabled={!view.receipts.length} onClick={() => downloadJSON(view.receipts, live ? "anyroute-receipts.json" : "anyroute-sample-receipts.json")}>
+                  Export receipts
+                </Button>
+              </div>
+              <div className="catalog-tools">
+                <input aria-label="Search receipts" className="search-field" placeholder="Search model, provider or receipt…" value={receiptQuery} onChange={(e) => setReceiptQuery(e.target.value)} />
+                <select aria-label="Filter receipts" value={receiptMode} onChange={(e) => setReceiptMode(e.target.value)}>
+                  <option>All</option>
+                  <option>Private</option>
+                  <option>Standard</option>
+                </select>
+              </div>
+              {filtered.length || !view.receipts.length ? (
+                <ReceiptTable live={live} receipts={filtered} onInspect={(r) => setModal({ type: "receipt", data: r })} emptyAction={() => navigate("Playground")} />
+              ) : (
+                <div className="empty">
+                  <h3>No matching receipts</h3>
+                  <p>Try another search or route type.</p>
+                  <Button
+                    secondary
+                    onClick={() => {
+                      setReceiptQuery("");
+                      setReceiptMode("All");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                </div>
+              )}
+              {live && ws?.next && (
+                <button
+                  className="text-button"
+                  onClick={async () => {
+                    try {
+                      const more = await api("/api/v1/generations?limit=100&before=" + encodeURIComponent(ws.next), { key: apiKey });
+                      setWs((w) => ({ ...w, receipts: [...w.receipts, ...more.data.map((g) => toReceiptRow(g, w.tokens))], next: more.next }));
+                    } catch (e) {
+                      setError(e.message);
+                    }
+                  }}
+                >
+                  Load older receipts →
+                </button>
+              )}
+            </>
+          )}
+          {tab === "Payments" && (
+            <>
+              <div className="panel-heading">
+                <h2>One balance. Your choice.</h2>
+                <span className="badge">{live ? "USDG on " + chainOf(status).name : "Sample funds only"}</span>
+              </div>
+              <div className="payment-balance">
+                <div>
+                  <span className="eyebrow">{live ? "AVAILABLE USDG" : "AVAILABLE DEMO USDG"}</span>
+                  <strong>{money(view.balance, 4)}</strong>
+                  <p>{live
+                      ? `Held for calls in progress: ${money(ws?.credits?.held ?? 0, 6)} · Deposited in total: ${money(ws?.credits?.total_credits ?? 0, 2)}.${ws?.credits?.pending_withdrawal ? ` Withdrawal of ${money(fromRaw(ws.credits.pending_withdrawal.amount_usdg_units, 6), 2)} pending finalization.` : " Withdraw any time."}`
+                      : "No real funds or financial account."}</p>
+                </div>
+                <div className="button-row">
+                  <Button onClick={() => setModal({ type: "credits" })}>{live ? "Deposit USDG" : "Add sample credits"}</Button>
+                  {live && (
+                    <Button secondary onClick={() => setModal({ type: "withdraw" })}>
+                      Withdraw
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="panel-heading">
+                <div>
+                  <h2>Stock Token sessions</h2>
+                  <p className="help-text">{live ? "Daily caps reset at 00:00 UTC, enforced by the PayWithStock contract." : "Daily caps reset at 00:00 UTC in this preview."}</p>
+                </div>
+                <Button onClick={() => setModal({ type: "session" })}>Open session</Button>
+              </div>
+              {view.sessions.length ? (
+                <div className="session-grid">
+                  {view.sessions.map((s, i) => (
+                    <article className="route-card session-card" key={s.id} style={{ "--i": i }}>
+                      <span className="eyebrow">{live ? "CAPPED SESSION · " + shortAddress(s.wallet) : "CAPPED SAMPLE SESSION"}</span>
+                      <h3>{s.token}</h3>
+                      <span className={"badge " + (s.active ? "green" : "")}>{live && !s.open ? "Closed" : s.active ? "Active" : "Paused"}</span>
+                      <dl className="detail-list">
+                        <div>
+                          <dt>Daily cap</dt>
+                          <dd>{s.cap} units</dd>
+                        </div>
+                        <div>
+                          <dt>Spent today</dt>
+                          <dd>{(live || s.day === new Date().toISOString().slice(0, 10) ? s.spent : 0).toFixed(10)} units</dd>
+                        </div>
+                        {live && (
+                          <div>
+                            <dt>Accrued, not swapped</dt>
+                            <dd>{money(s.debt ?? 0, 6)} USDG</dd>
+                          </div>
+                        )}
+                      </dl>
+                      <div className="button-row">
+                        <button className="text-button" onClick={() => setModal({ type: "session", data: s })}>
+                          Edit cap
+                        </button>
+                        <button className="text-button" disabled={live && !s.open} onClick={() => toggleSession(s)}>
+                          {s.active ? "Pause" : "Resume"}
+                        </button>
+                        <button className="text-button" disabled={live && !s.open} onClick={() => setModal({ type: "close-session", data: s })}>
+                          Close
+                        </button>
+                      </div>
+                      <div className="card-ramp" />
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty">
+                  <h3>No sessions open.</h3>
+                  <p>{live ? "Open a capped session to pay for calls with a Stock Token." : "Create a capped sample session to try paying with a Stock Token."}</p>
+                  <Button secondary onClick={() => setModal({ type: "session" })}>
+                    {live ? "Open session" : "Open sample session"}
+                  </Button>
+                </div>
+              )}
+              <div className="note">
+                {live
+                  ? `Fair value comes from the token’s Chainlink feed on ${chainOf(status).name} (it already includes the token’s multiplier). Swaps are exact-output, slippage-bounded and never exceed your daily cap. Pausing keeps the session open but stops using it by default.`
+                  : "Conversion fixtures: NVDA = 100 USDG; TSLA = 200 USDG. These are fictional demo values, not market quotes. No wallet authorization, swap, transfer or settlement occurs."}
+              </div>
+              <div className="panel-heading">
+                <h2>Payment statement</h2>
+                <Button
+                  secondary
+                  disabled={!view.receipts.length}
+                  onClick={async () => {
+                    if (!live) return downloadJSON(state.receipts.map(({ id, time, paidWith, units, cost }) => ({ id, time, paidWith, units, cost })), "anyroute-sample-statement.json");
+                    try {
+                      const month = new Date().toISOString().slice(0, 7);
+                      downloadJSON((await api("/api/v1/paywith/statement?month=" + month, { key: apiKey })).data, "anyroute-statement-" + month + ".json");
+                    } catch (e) {
+                      setError(e.message);
+                    }
+                  }}
+                >
+                  Export statement
+                </Button>
+              </div>
+              <ReceiptTable
+                live={live}
+                receipts={view.receipts.filter((r) => !String(r.paidWith).startsWith("USDG"))}
+                onInspect={(r) => setModal({ type: "receipt", data: r })}
+                emptyTitle="No Stock Token payments yet."
+                emptyText={live ? "Calls paid with a Stock Token appear here with their token allocation." : "Sample calls paid with NVDA or TSLA appear here with their sample token allocation."}
+              />
+            </>
+          )}
+          {tab === "Providers" && (
+            <>
+              <div className="panel-heading">
+                <h2>Know who serves the call.</h2>
+                <span className="badge">{live ? "Live provider registry" : "Fictional providers"}</span>
+              </div>
+              <p className="catalog-note">
+                {live
+                  ? "Uptime is the 30-day share of successful calls and probes; latency is time to first token (p50). Bonds are read from the ProviderBond contract; attestation is re-verified every 10 minutes."
+                  : "Names, health, bonds and attestation states are illustrative fixtures. No provider partnership is implied."}
+              </p>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Provider</th>
+                      <th className="num">{live ? "Uptime (30d)" : "Uptime fixture"}</th>
+                      <th className="num">{live ? "Latency (p50)" : "Latency fixture"}</th>
+                      <th className="num">{live ? "Bond" : "Bond fixture"}</th>
+                      <th>Private route</th>
+                      <th>
+                        <span className="sr-only">Details</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providerRows.map((p, i) => (
+                      <tr key={p.name} style={{ "--i": i }}>
+                        <td className="cell-primary">
+                          <strong>{p.name}</strong>
+                          <small>{p.quant}</small>
+                        </td>
+                        <td className="num" data-label={live ? "Uptime (30d)" : "Uptime fixture"}>
+                          {p.uptime == null ? "No data yet" : p.uptime + "%"}
+                        </td>
+                        <td className="num" data-label={live ? "Latency (p50)" : "Latency fixture"}>
+                          {p.latency == null ? "No data yet" : Math.round(p.latency) + " ms"}
+                        </td>
+                        <td className="num" data-label={live ? "Bond" : "Bond fixture"}>
+                          {p.bond ? p.bond.toLocaleString() + " USDG" : live ? "Operator-onboarded" : "0 USDG"}
+                        </td>
+                        <td data-label="Private route">
+                          <span className={"route-tag" + (p.private ? " private" : " off")}>{p.private ? (live ? "Attested TEE" : "TEE fixture") : "Unavailable"}</span>
+                        </td>
+                        <td className="cell-action">
+                          <button className="text-button" onClick={() => setModal({ type: "provider", data: p })}>
+                            Details →
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {live && !providerRows.length && <div className="empty">{liveProviders ? "No live providers yet." : "Loading providers…"}</div>}
+              <div className="note">
+                {live
+                  ? "Self-serve providers apply with the provider spec, post a 10,000 USDG bond and pass a 7-day canary shadow period before they receive live traffic."
+                  : "Production onboarding is planned to include schema validation, a USDG bond and a canary shadow period before a provider is routed live."}
+              </div>
+            </>
+          )}
+          {tab === "Settings" && (
+            <>
+              <div className="panel-heading">
+                <h2>{live ? "Your workspace." : "Your sample workspace."}</h2>
+              </div>
+              <div className="settings-grid">
+                <div className="settings-panel">
+                  <h3>{live ? "This browser" : "Browser-local data"}</h3>
+                  <p>
+                    {live
+                      ? `Signed in with ${ws?.me?.label ?? "—"}. The key is kept in this browser (this session, unless you chose to remember it). The router stores key hashes, balances and receipt metadata — never prompts or responses. The export contains your keys (no secrets), balance and receipts.`
+                      : "Changes persist only in this browser. No account has been created. The workspace export contains demo keys, receipt metadata, sessions and sample balances; it contains no prompt text."}
+                  </p>
+                  <div className="button-row">
+                    <Button
+                      secondary
+                      onClick={() =>
+                        live ? downloadJSON({ exported_at: new Date().toISOString(), key: ws?.me, keys: ws?.keys, credits: ws?.credits, session: ws?.session, receipts: ws?.receipts }, "anyroute-workspace.json") : downloadJSON(state, "anyroute-sample-workspace.json")
+                      }
+                    >
+                      Export workspace
+                    </Button>
+                    <Button secondary onClick={() => setModal({ type: "reset" })}>
+                      {live ? "Sign out of this browser" : "Reset sample workspace"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="settings-panel">
+                  <h3>{live ? "Connect your app" : "Production integration"}</h3>
+                  <p>
+                    {live
+                      ? `Point any OpenAI- or OpenRouter-compatible client at ${origin}/api/v1 and use this key (or a budgeted sub-key). Requests, streaming, provider preferences and usage fields work unchanged.`
+                      : "Authentication, server storage, inference, payments and verified receipts need backend services. This preview never treats a connected wallet as a payment or entitlement."}
+                  </p>
+                  <div className="button-row">
+                    <Button href="/docs/">Read the docs</Button>
+                    {live ? (
+                      <>
+                        <CopyButton text={origin + "/api/v1"} label="Copy base URL" />
+                        <button className="text-button" onClick={() => switchMode("demo")}>
+                          Open the sample workspace
+                        </button>
+                      </>
+                    ) : (
+                      <button className="text-button" onClick={() => switchMode("live")}>
+                        Connect to the live API
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {modal?.type === "receipt" && <ReceiptDetails receipt={modal.data} apiKey={apiKey} status={status} onClose={() => setModal(null)} />}
+      {modal?.type === "key" && <KeyDialog live={live} existing={modal.data} onClose={() => setModal(null)} onSave={saveKeyValues} />}
+      {modal?.type === "session" && <SessionDialog live={live} tokens={ws?.tokens || []} paywith={ws?.paywith || {}} existing={modal.data} onClose={() => setModal(null)} onSave={saveSession} />}
+      {modal?.type === "provider" && (
+        <Modal title={modal.data.name} onClose={() => setModal(null)}>
+          <span className="badge">{live ? "Provider record · " + modal.data.status : "Fictional provider record"}</span>
+          <dl className="detail-list">
+            <div>
+              <dt>Quantization</dt>
+              <dd>{modal.data.quant}</dd>
+            </div>
+            <div>
+              <dt>{live ? "Attestation" : "Attestation fixture"}</dt>
+              <dd>{live ? (modal.data.private ? `${modal.data.tee?.toUpperCase() || "TEE"} · ${modal.data.attestation?.slice(0, 22)}… · ${new Date(modal.data.attestedAt).toLocaleString("en-GB")}` : "Not attested") : modal.data.private ? "TEE example — not verified" : "Unavailable"}</dd>
+            </div>
+            <div>
+              <dt>{live ? "Data policy" : "Data policy fixture"}</dt>
+              <dd>
+                {live
+                  ? `${modal.data.policy.training ? "May train on data" : "No training"} · ${modal.data.policy.retains_prompts ? "Retains prompts" : "Does not retain prompts"}${modal.data.policy.zdr ? " · Zero data retention" : ""}`
+                  : "Model requests are not sent in this preview."}
+              </dd>
+            </div>
+            <div>
+              <dt>{live ? "Bond" : "Bond fixture"}</dt>
+              <dd>{modal.data.bond} USDG</dd>
+            </div>
+            {live && (
+              <div>
+                <dt>Models served</dt>
+                <dd>{modal.data.models}</dd>
+              </div>
+            )}
+          </dl>
+          <p className="note">{live ? "Health comes from routed traffic and 15-second probes; a provider with two failures in 30 seconds is skipped until it recovers." : "A production record must show verified provider terms, health provenance, bond contract and attestation evidence."}</p>
+          <Button href="/docs/#routing">Routing documentation</Button>
+        </Modal>
+      )}
+      {modal?.type === "credits" &&
+        (live ? (
+          <DepositDialog
+            apiKey={apiKey}
+            credits={ws?.credits}
+            status={status}
+            onClose={() => setModal(null)}
+            onDone={async (amount, kind) => {
+              const before = ws?.credits?.total_credits ?? 0;
+              for (let i = 0; i < 30; i++) {
+                const next = await refresh();
+                if ((next.credits?.total_credits ?? 0) >= before + amount - 1e-9) break;
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+              setNotice(kind === "test" ? amount + " test USDG added." : amount + " USDG deposited.");
+              if (errorKind === "insufficient_credits") {
+                setError("");
+                setErrorKind("");
+              }
+              setModal(null);
+            }}
+          />
+        ) : (
+          <Modal title="Add sample credits" onClose={() => setModal(null)}>
+            <p>Add 25 USDG to this browser’s demo balance. This is a free local simulation, with no deposit, purchase or transfer.</p>
+            <div className="button-row modal-actions">
+              <Button
+                onClick={() => {
+                  update((s) => ({ ...s, balance: s.balance + 25 }));
+                  setNotice("25 sample USDG added. No real funds were transferred.");
+                  setModal(null);
+                }}
+              >
+                Add 25 sample USDG
+              </Button>
+              <Button secondary onClick={() => setModal(null)}>
+                Cancel
+              </Button>
+            </div>
+          </Modal>
+        ))}
+      {modal?.type === "withdraw" && <WithdrawDialog apiKey={apiKey} credits={ws?.credits} status={status} onClose={() => setModal(null)} onDone={() => refresh()} />}
+      {["reset", "revoke", "close-session"].includes(modal?.type) && (
+        <Modal
+          title={modal.type === "reset" ? (live ? "Sign out of this browser?" : "Reset the sample workspace?") : modal.type === "revoke" ? (live ? "Revoke this key?" : "Revoke this demo key?") : live ? "Close this session?" : "Close this sample session?"}
+          onClose={() => setModal(null)}
+        >
+          <p>
+            {modal.type === "reset"
+              ? live
+                ? "This forgets the key in this browser. Your key, balance and receipts stay with the router; connect the key again any time."
+                : "This removes the current browser’s sample records and restores 25 demo USDG and the starter key. Export the workspace first if you want to keep a copy."
+              : modal.type === "revoke"
+                ? live
+                  ? "This key stops working immediately. Existing receipts remain, and you can restore it later from a management key."
+                  : "This key will stop working in the local playground. Existing receipts remain. You can restore the demo key later."
+                : live
+                  ? "Your wallet sends closeSession to the PayWithStock contract. It takes effect immediately; accrued debt is still settled."
+                  : "This sample token session will be removed. Existing generation receipts remain."}
+          </p>
+          <div className="button-row modal-actions">
+            <Button
+              onClick={async () => {
+                try {
+                  await confirmAction();
+                } catch (e) {
+                  setError(e?.message || String(e));
+                  setModal(null);
+                }
+              }}
+            >
+              {modal.type === "reset" ? (live ? "Sign out" : "Reset workspace") : modal.type === "revoke" ? (live ? "Revoke key" : "Revoke demo key") : "Close session"}
+            </Button>
+            <Button secondary onClick={() => setModal(null)}>
+              Cancel
+            </Button>
+          </div>
+        </Modal>
+      )}
+      {reveal && <SecretDialog secret={reveal.secret} deposit={reveal.deposit} title={reveal.title} onClose={() => setReveal(null)} />}
+    </main>
+  );
+}
