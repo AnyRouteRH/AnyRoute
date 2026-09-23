@@ -283,3 +283,27 @@ function SessionDialog({ onSave, onClose, existing, live, tokens = [], paywith =
     </Modal>
   );
 }
+
+function SecretDialog({ secret, deposit, onClose, title = "Your new API key" }) {
+  return (
+    <Modal title={title} onClose={onClose}>
+      <p>Copy this key now. It is shown once; the router stores only its hash.</p>
+      <Code label="API key">{secret}</Code>
+      {deposit?.key_hash && (
+        <dl className="detail-list">
+          <div>
+            <dt>Deposit to</dt>
+            <dd className="mono">{deposit.key_hash}</dd>
+          </div>
+          <div>
+            <dt>Credits contract</dt>
+            <dd className="mono">{deposit.credits_contract || "Not configured on this router"}</dd>
+          </div>
+        </dl>
+      )}
+      <div className="button-row modal-actions">
+        <Button onClick={onClose}>I saved it</Button>
+      </div>
+    </Modal>
+  );
+}
