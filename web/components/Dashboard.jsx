@@ -307,3 +307,91 @@ function SecretDialog({ secret, deposit, onClose, title = "Your new API key" }) 
     </Modal>
   );
 }
+
+function DepositDialog({ onClose, apiKey, credits, status, onDone }) {
+  const [amount, setAmount] = useState("10");
+  const [step, setStep] = useState("");
+  const [error, setError] = useState("");
+  const deposit = credits?.deposit || {};
+  return (
+    <Modal title="Deposit USDG" onClose={onClose}>
+      <p>Add USDG to this key’s balance on {chainOf(status).name}. Prepaid calls carry a 0% router fee.</p>
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
+      {step && (
+        <div className="success" role="status">
+          {step}
+        </div>
+      )}
+      <Field label="Amount / USDG" id="deposit-amount">
+        <input id="deposit-amount" type="number" min="0.000001" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!!step} />
+      </Field>
+      <dl className="detail-list">
+        <div>
+          <dt>Key hash</dt>
+          <dd className="mono">{deposit.key_hash}</dd>
+        </div>
+        <div>
+          <dt>Credits contract</dt>
+          <dd className="mono">{deposit.credits_contract || "Not configured on this router"}</dd>
+        </div>
+        <div>
+          <dt>Token</dt>
+          <dd className="mono">{deposit.token}</dd>
+        </div>
+      </dl>
+      <div className="button-row modal-actions">
+        <Button
+          disabled={!!step || !deposit.credits_contract}
+          onClick={async () => {
+            setError("");
+            try {
+              if (!/^\d+(\.\d{1,6})?$/.test(amount) || Number(amount) <= 0) throw new Error("Enter a USDG amount with up to 6 decimals.");
+              const from = await connect();
+              await ensureChain(chainOf(status));
+              const tx = (await api("/api/v1/credits/deposit-tx", { key: apiKey, method: "POST", body: { amount } })).data;
+              await sendTransactions(from, tx.transactions, setStep);
+              setStep("Deposited. Waiting for the router to index it…");
+              await onDone(Number(amount));
+            } catch (e) {
+              setError(e?.message || String(e));
+              setStep("");
+            }
+          }}
+        >
+          {hasWallet() ? "Deposit with wallet" : "Connect a wallet"}
+        </Button>
+        <CopyButton text={deposit.key_hash || ""} label="Copy key hash" />
+      </div>
+      <p className="help-text">No wallet here? Approve USDG to the Credits contract and call deposit(keyHash, amount) from any wallet.</p>
+      {status?.dev_faucet && (
+        <>
+          <div className="note">Local test chain: add mock USDG to this key without a wallet. It has no value and exists only on this machine’s chain.</div>
+          <div className="button-row modal-actions">
+            <Button
+              secondary
+              disabled={!!step}
+              onClick={async () => {
+                setError("");
+                try {
+                  if (!/^\d+(\.\d{1,6})?$/.test(amount) || Number(amount) <= 0 || Number(amount) > 1000) throw new Error("Enter up to 1000 test USDG.");
+                  setStep("Minting and depositing test USDG…");
+                  await api("/api/v1/dev/faucet", { key: apiKey, method: "POST", body: { amount } });
+                  await onDone(Number(amount), "test");
+                } catch (e) {
+                  setError(e?.message || String(e));
+                  setStep("");
+                }
+              }}
+            >
+              Add {/^\d+(\.\d{1,6})?$/.test(amount) ? amount : "10"} test USDG
+            </Button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
