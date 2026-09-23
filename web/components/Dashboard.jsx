@@ -395,3 +395,132 @@ function DepositDialog({ onClose, apiKey, credits, status, onDone }) {
     </Modal>
   );
 }
+
+function WithdrawDialog({ onClose, apiKey, credits, status, onDone }) {
+  const rootEvery = cadence(status?.settlement?.spent_root_interval_ms);
+  const [amount, setAmount] = useState("");
+  const [to, setTo] = useState("");
+  const [step, setStep] = useState("");
+  const [busy, setBusy] = useState(false); // a wallet or API step is in flight (step also holds success messages)
+  const [error, setError] = useState("");
+  const [proof, setProof] = useState(null);
+  // Pending state is read from the Credits contract, so reloading after each step reflects the chain.
+  const loadProof = () =>
+    api("/api/v1/credits/withdrawal-proof", { key: apiKey })
+      .then((r) => setProof(r.data))
+      .catch(() => setProof(null));
+  useEffect(() => {
+    loadProof();
+  }, [apiKey]);
+  const pending = proof?.pending;
+  async function send(txs) {
+    const from = await connect();
+    await ensureChain(chainOf(status));
+    if (!to) setTo(from);
+    return { from, hashes: await sendTransactions(from, txs, setStep) };
+  }
+  return (
+    <Modal title="Withdraw USDG" onClose={onClose}>
+      <p>Your balance is self-custodial. A withdrawal is requested with this key’s signature, then finalized with a proof from the next spent root (posted {rootEvery}).</p>
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
+      {step && (
+        <div className="success" role="status">
+          {step}
+        </div>
+      )}
+      {pending ? (
+        <>
+          <div className="note">
+            Pending request: {money(fromRaw(pending.amount_usdg_units, 6), 6)} USDG to {shortAddress(pending.to)} (requested {new Date(pending.requested_at).toLocaleString("en-GB")}). Finalize once a spent root newer than the request is posted.
+          </div>
+          <div className="button-row modal-actions">
+            <Button
+              disabled={busy || !proof?.transactions?.length || new Date(proof.as_of) < new Date(pending.requested_at)}
+              onClick={async () => {
+                setError("");
+                setBusy(true);
+                try {
+                  await send(proof.transactions);
+                  await Promise.all([onDone(), loadProof()]);
+                  setStep("Withdrawal finalized. USDG has been sent.");
+                } catch (e) {
+                  setError(e?.message || String(e));
+                  setStep("");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Finalize withdrawal
+            </Button>
+            <Button
+              secondary
+              disabled={busy}
+              onClick={async () => {
+                setError("");
+                setBusy(true);
+                try {
+                  const req = (await api("/api/v1/credits/withdraw-cancel", { key: apiKey, method: "POST" })).data;
+                  await send(req.transactions);
+                  await loadProof();
+                  setStep("Withdrawal cancelled. The locked amount returns to your balance within a few seconds.");
+                  await onDone();
+                  setTimeout(() => onDone(), 6000);
+                } catch (e) {
+                  setError(e?.message || String(e));
+                  setStep("");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Cancel request
+            </Button>
+          </div>
+          {proof && new Date(proof.as_of) < new Date(pending.requested_at) && <p className="help-text">The latest spent root ({new Date(proof.as_of).toLocaleString("en-GB")}) predates the request. Try again after the next root (posted {rootEvery}).</p>}
+        </>
+      ) : (
+        <>
+          <Field label="Amount / USDG" id="withdraw-amount">
+            <input id="withdraw-amount" type="number" min="0.000001" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={busy} placeholder={money(credits?.available ?? 0, 2)} />
+          </Field>
+          <Field label="Send to (defaults to your connected wallet)" id="withdraw-to">
+            <input id="withdraw-to" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder="0x…" disabled={busy} />
+          </Field>
+          <div className="button-row modal-actions">
+            <Button
+              disabled={busy}
+              onClick={async () => {
+                setError("");
+                setBusy(true);
+                try {
+                  if (!/^\d+(\.\d{1,6})?$/.test(amount) || Number(amount) <= 0) throw new Error("Enter a USDG amount with up to 6 decimals.");
+                  const from = await connect();
+                  const dest = to || from;
+                  if (!/^0x[0-9a-fA-F]{40}$/.test(dest)) throw new Error("Enter a valid destination address.");
+                  const req = (await api("/api/v1/credits/withdraw-request", { key: apiKey, method: "POST", body: { amount, to: dest } })).data;
+                  await ensureChain(chainOf(status));
+                  await sendTransactions(from, req.transactions, setStep);
+                  await Promise.all([onDone(), loadProof()]);
+                  setStep(`Withdrawal requested. The amount is locked now; finalize after the next spent root (posted ${rootEvery}).`);
+                  setTimeout(() => onDone(), 6000); // the lock shows in the balance once the router indexes it
+                } catch (e) {
+                  setError(e?.message || String(e));
+                  setStep("");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Request withdrawal
+            </Button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
