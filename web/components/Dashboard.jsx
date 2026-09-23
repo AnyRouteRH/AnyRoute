@@ -524,3 +524,94 @@ function WithdrawDialog({ onClose, apiKey, credits, status, onDone }) {
     </Modal>
   );
 }
+
+function SignIn({ onKey, onDemo, onSecret }) {
+  const [value, setValue] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+  async function run(label, fn) {
+    setError("");
+    setBusy(label);
+    try {
+      await fn();
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+  return (
+    <section className="signin-panel" aria-labelledby="signin-title">
+      <div className="signin-copy">
+        <span className="eyebrow">Live workspace</span>
+        <h2 id="signin-title">Connect your workspace</h2>
+        <p>Anyroute keys are self-custodial: create a key, deposit USDG to it and start calling. No account, email or password.</p>
+        <button className="text-button" onClick={onDemo}>
+          Explore the sample workspace instead →
+        </button>
+        <div className="scan-rule" aria-hidden="true" />
+      </div>
+      <div className="signin-form">
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!validKey(value)) return setError("That is not an Anyroute key (sk-ar-v1- followed by 64 hex characters).");
+            run("key", () => onKey(value.trim(), remember));
+          }}
+        >
+          <Field label="API key" id="signin-key">
+            <input id="signin-key" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} placeholder="sk-ar-v1-…" />
+          </Field>
+          <label className="check-label">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember on this device
+          </label>
+          <div className="button-row">
+            <Button type="submit" disabled={!!busy}>
+              {busy === "key" ? "Connecting…" : "Connect key"}
+            </Button>
+            <Button
+              type="button"
+              secondary
+              disabled={!!busy}
+              onClick={() =>
+                run("new", async () => {
+                  const r = await api("/api/v1/keys", { method: "POST", body: { name: "Workspace key" } });
+                  onSecret(r.key, r.deposit);
+                  await onKey(r.key, remember);
+                })
+              }
+            >
+              {busy === "new" ? "Creating…" : "Create a new key"}
+            </Button>
+            {hasWallet() && (
+              <Button
+                type="button"
+                secondary
+                disabled={!!busy}
+                onClick={() =>
+                  run("wallet", async () => {
+                    const address = await connect();
+                    const timestamp = Math.floor(Date.now() / 1000);
+                    const signature = await personalSign(address, `anyroute:wallet-key:${timestamp}`);
+                    const r = await api("/api/v1/auth/wallet", { method: "POST", body: { address, timestamp, signature, name: "Wallet key" } });
+                    onSecret(r.key, null, "Your wallet’s API key");
+                    await onKey(r.key, remember);
+                  })
+                }
+              >
+                {busy === "wallet" ? "Waiting for signature…" : "Sign in with wallet"}
+              </Button>
+            )}
+          </div>
+        </form>
+        <p className="help-text">Keys stay in this browser (this session only, unless you choose to remember them). Prompts are never stored.</p>
+      </div>
+    </section>
+  );
+}
