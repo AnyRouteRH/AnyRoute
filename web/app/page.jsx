@@ -1,0 +1,12 @@
+import PageFrame from '../components/PageFrame';
+import Hero from '../components/Hero';
+import Ticker from '../components/Ticker';
+import Stats from '../components/Stats';
+import FeatureGrid from '../components/FeatureGrid';
+import RouteModes from '../components/RouteModes';
+import HowItWorks from '../components/HowItWorks';
+import Accountability from '../components/Accountability';
+import Gateway from '../components/Gateway';
+import Privacy from '../components/Privacy';
+import {CaseStudy,Roadmap,About,Developers} from '../components/Extensions';
+export default function Home(){return <PageFrame><main id="content"><Hero/><Ticker/><Stats/><FeatureGrid/><RouteModes/><HowItWorks/><Accountability/><Gateway/><Privacy/><CaseStudy/><Roadmap/><About/><Developers/></main></PageFrame>}
