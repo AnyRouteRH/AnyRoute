@@ -38,3 +38,13 @@ export function Scramble({text,className=''}){
   useEffect(()=>{if(matchMedia('(prefers-reduced-motion: reduce)').matches){setOut(text);return}const glyphs='0123456789abcdef#%/<>_';let frame=0,raf;const total=18;const tick=()=>{frame++;setOut([...text].map((c,i)=>c===' '||i<(frame/total)*text.length?c:glyphs[(Math.random()*glyphs.length)|0]).join(''));if(frame<total)raf=requestAnimationFrame(tick);else setOut(text)};raf=requestAnimationFrame(tick);return()=>cancelAnimationFrame(raf)},[text]);
   return <span className={'scramble '+className}>{out}</span>;
 }
+
+export function CopyButton({text,label='Copy'}){const [status,setStatus]=useState('');useEffect(()=>{if(!status)return;const t=setTimeout(()=>setStatus(''),1800);return()=>clearTimeout(t)},[status]);return <button className="text-button" onClick={async()=>{try{await navigator.clipboard.writeText(text);setStatus('Copied')}catch{setStatus('Select and copy below')}}}>{status||label}</button>}
+
+const TOKEN=/(\/\/[^\n]*)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`[^`]*`)|\b(const|let|await|new|import|from|export|default|async|function|return|true|false|null)\b|\b(\d[\d_.]*)\b/g;
+/** Minimal JS/JSON highlighter for code samples. */
+export function highlight(src){const out=[];let last=0,m,k=0;TOKEN.lastIndex=0;while((m=TOKEN.exec(src))){if(m.index>last)out.push(src.slice(last,m.index));const cls=m[1]?'tok-c':m[2]?'tok-s':m[3]?'tok-k':'tok-n';out.push(<span key={k++} className={cls}>{m[0]}</span>);last=m.index+m[0].length}if(last<src.length)out.push(src.slice(last));return out}
+
+export function Code({children,label='Example request'}){return <div className="code-panel"><div className="code-bar"><span>{label}</span><CopyButton text={children}/></div><pre><code>{highlight(children)}</code></pre></div>}
+
+export function Modal({title,children,onClose}){const ref=useRef(null);useEffect(()=>{const dlg=ref.current;dlg.showModal();return()=>dlg.close()},[]);return <dialog ref={ref} className="modal" onCancel={onClose} onClick={e=>{if(e.target===e.currentTarget)onClose()}} aria-labelledby="modal-title"><div className="modal-head"><h2 id="modal-title">{title}</h2><button aria-label="Close dialog" className="icon-button" onClick={onClose}>×</button></div>{children}</dialog>}
