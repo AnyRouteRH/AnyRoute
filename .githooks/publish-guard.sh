@@ -71,3 +71,76 @@ check_paths() { # stdin: one path per line
   done
   return 0
 }
+
+# stdin: "<path>\t<added line>" (path may be "commit message")
+check_lines() {
+  cat > "$tmp/lines"
+  grep -nE -- "$token_re" "$tmp/lines" | cut -f1 | sort -u | while IFS= read -r hit; do
+    echo "publish-guard: secret-like token in ${hit#*:}" >&2
+  done || true
+  if grep -qE -- "$token_re" "$tmp/lines"; then : > "$tmp/failed"; fi
+
+  # Vendored libraries (contracts/lib/) carry public curve constants and fixtures.
+  grep -v '^contracts/lib/' "$tmp/lines" > "$tmp/own" || true
+  grep -oE '0x[0-9a-fA-F]{64}' "$tmp/own" | tr 'A-F' 'a-f' | sort -u > "$tmp/hex" || true
+  if [ -s "$tmp/hex" ]; then
+    grep -vxF -f <(grep -v '^#' "$hex_allow") "$tmp/hex" > "$tmp/hex_bad" || true
+    if [ -s "$tmp/hex_bad" ]; then
+      while IFS= read -r h; do
+        where=$(grep -iF "$h" "$tmp/own" | head -1 | cut -f1)
+        err "unlisted 32-byte hex ${h:0:8}…${h:62} in $where (a private key? if public, add it to .githooks/public-hex-allowlist.txt)"
+      done < "$tmp/hex_bad"
+    fi
+  fi
+
+  if [ -s "$tmp/deny" ] && grep -qiF -f "$tmp/deny" "$tmp/lines"; then
+    grep -iF -f "$tmp/deny" "$tmp/lines" | cut -f1 | sort -u | while IFS= read -r where; do
+      err "denylisted string in $where (see $denylist)"
+    done
+  fi
+  return 0
+}
+
+added_lines() { # stdin: unified diff
+  awk '/^\+\+\+ /{f=substr($0,7); next} /^\+/{print f "\t" substr($0,2)}'
+}
+
+case "${1:-}" in
+  staged)
+    tz_fix="export TZ=UTC in your shell (or alias git='TZ=UTC git'), then retry (when amending, add --reset-author)."
+    ident=$(git var GIT_AUTHOR_IDENT); name=${ident% <*}; email=${ident#*<}; email=${email%%>*}
+    check_ident author "$name" "$email"; check_tz author "${ident##* }"
+    ident=$(git var GIT_COMMITTER_IDENT); name=${ident% <*}; email=${ident#*<}; email=${email%%>*}
+    check_ident committer "$name" "$email"; check_tz committer "${ident##* }"
+    git diff --cached --name-only --diff-filter=ACMR | check_paths
+    git diff --cached -U0 --no-color --no-ext-diff --diff-filter=ACMR | added_lines | check_lines
+    ;;
+  message)
+    { grep -v '^#' "$2" || true; } | sed 's/^/commit message\t/' | check_lines
+    ;;
+  range)
+    shift
+    tz_fix="export TZ=UTC in your shell (or alias git='TZ=UTC git'), rewrite the flagged commits with git rebase --reset-author-date <base> (or --root), then retry."
+    # \x1f, not tab: tab is IFS whitespace, so an empty field would shift the rest.
+    git log --format='%h%x1f%an%x1f%ae%x1f%cn%x1f%ce%x1f%ad%x1f%cd' --date=raw "$@" > "$tmp/commits"
+    while IFS=$'\x1f' read -r h an ae cn ce ad cd; do
+      check_ident "commit $h author" "$an" "$ae"
+      check_ident "commit $h committer" "$cn" "$ce"
+      check_tz "commit $h author" "${ad##* }"
+      check_tz "commit $h committer" "${cd##* }"
+    done < "$tmp/commits"
+    git log --format= --name-only --diff-filter=ACMR "$@" | sort -u | check_paths
+    { git log -p -U0 --no-color --no-ext-diff --format= "$@" | added_lines
+      git log --format=%B "$@" | sed 's/^/commit message\t/'; } | check_lines
+    ;;
+  *)
+    echo "usage: publish-guard.sh staged | message <file> | range <rev-list args...>" >&2
+    exit 2
+    ;;
+esac
+
+[ ! -e "$tmp/tz" ] || echo "publish-guard: to commit in UTC: $tz_fix" >&2
+if [ -e "$tmp/failed" ]; then
+  echo "publish-guard: blocked. Fix the above (or bypass once with --no-verify if you are sure)." >&2
+  exit 1
+fi
