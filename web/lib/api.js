@@ -174,3 +174,94 @@ export function toCatalogModel(m) {
     parameters: m.supported_parameters || [],
   };
 }
+
+export function toReceiptRow(g, tokens = []) {
+  const pw = g.paid_with || null;
+  const tok = pw && tokens.find((t) => t.symbol === pw.token);
+  const units = pw?.raw_units ? Number(pw.raw_units) / 10 ** (tok?.decimals ?? 18) : 0;
+  return {
+    id: g.id,
+    time: g.created_at,
+    model: g.model,
+    modelId: g.model,
+    provider: g.provider_name,
+    tokens: (g.tokens_prompt || 0) + (g.tokens_completion || 0),
+    input: g.tokens_prompt || 0,
+    output: g.tokens_completion || 0,
+    inference: g.upstream_inference_cost || 0,
+    royalty: g.royalty || 0,
+    margin: g.margin || 0,
+    cost: g.total_cost || 0,
+    latency: g.latency,
+    private: !!g.private,
+    quant: g.quantization,
+    paidWith: pw?.token || (g.mode === "per_call" ? "USDG · per call" : "USDG"),
+    units,
+    decimals: tok?.decimals ?? 18,
+    keyId: g.key_hash,
+    mode: g.mode,
+    status: g.anchored ? "Signed · anchored" : "Signed · anchor pending",
+    signature: g.receipt_key_id,
+    anchor: g.anchored,
+    live: true,
+  };
+}
+
+export function toProvider(p) {
+  return {
+    name: p.name,
+    slug: p.slug,
+    quant: (p.quantizations || []).join(", ") || "undeclared",
+    uptime: p.uptime_30d,
+    latency: p.latency_p50_ms,
+    bond: Number(p.bond_usdg || 0) / 1e6,
+    private: !!p.attestation_fresh,
+    tee: p.tee,
+    attestation: p.attestation_hash,
+    attestedAt: p.attested_at,
+    status: p.status,
+    models: p.models,
+    policy: p.data_policy || {},
+    outage: p.outage,
+  };
+}
+
+/** Everything the dashboard shows for a signed-in key. */
+export async function loadWorkspace(key) {
+  const [me, credits, gens, tokens] = await Promise.all([
+    api("/api/v1/key", { key }),
+    api("/api/v1/credits", { key }),
+    api("/api/v1/generations?limit=100", { key }),
+    api("/api/v1/paywith/tokens").catch(() => ({ data: { tokens: [] } })),
+  ]);
+  let keys = [];
+  let keysError = "";
+  try {
+    keys = (await api("/api/v1/keys", { key })).data;
+  } catch (e) {
+    keysError = e.message;
+    keys = [me.data];
+  }
+  const session = await api("/api/v1/paywith/session", { key }).catch(() => ({ data: null }));
+  const payTokens = tokens.data?.tokens || [];
+  return {
+    me: me.data,
+    credits: credits.data,
+    keys,
+    keysError,
+    receipts: gens.data.map((g) => toReceiptRow(g, payTokens)),
+    next: gens.next,
+    tokens: payTokens,
+    paywith: tokens.data || {},
+    session: session.data,
+  };
+}
+
+export function downloadJSON(data, name) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
