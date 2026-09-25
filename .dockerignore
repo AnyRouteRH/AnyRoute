@@ -1,0 +1,20 @@
+**/node_modules
+**/.DS_Store
+.git
+.github
+.githooks
+.data
+.env
+.env.*
+docs
+test
+contracts
+# Website: only the sources the image build needs
+web/*
+!web/app
+!web/components
+!web/lib
+!web/public
+!web/package.json
+!web/pnpm-lock.yaml
+!web/next.config.mjs
