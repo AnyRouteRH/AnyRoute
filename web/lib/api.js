@@ -51,3 +51,126 @@ export class ApiError extends Error {
     this.metadata = metadata;
   }
 }
+
+export async function api(path, { key, method = "GET", body, signal, headers = {} } = {}) {
+  let res;
+  try {
+    res = await fetch(API_BASE + path, {
+      method,
+      signal,
+      headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(key ? { authorization: "Bearer " + key } : {}), ...headers },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
+    throw new ApiError(0, "The Anyroute API could not be reached. Check your connection and try again.", "unreachable");
+  }
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    /* not JSON */
+  }
+  if (!res.ok) {
+    const e = json?.error;
+    throw new ApiError(res.status, e?.message || `Request failed (${res.status}).`, e?.type || "error", e?.metadata);
+  }
+  return json;
+}
+
+/** Streaming chat completion. Calls onDelta(text) as tokens arrive; resolves with the final summary. */
+export async function streamChat({ key, body, headers = {}, signal, onDelta }) {
+  let res;
+  try {
+    res = await fetch(API_BASE + "/api/v1/chat/completions", {
+      method: "POST",
+      signal,
+      headers: { "content-type": "application/json", authorization: "Bearer " + key, ...headers },
+      body: JSON.stringify({ ...body, stream: true }),
+    });
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
+    throw new ApiError(0, "The Anyroute API could not be reached. Check your connection and try again.", "unreachable");
+  }
+  if (!res.ok) {
+    let e = null;
+    try {
+      e = (await res.json())?.error;
+    } catch {
+      /* not JSON */
+    }
+    throw new ApiError(res.status, e?.message || `Request failed (${res.status}).`, e?.type || "error", e?.metadata);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const out = { id: res.headers.get("x-generation-id"), text: "", usage: null, receipt: null, provider: null, model: null, error: null };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    let end;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const data = block
+        .split("\n")
+        .filter((l) => l.startsWith("data:"))
+        .map((l) => l.slice(5).trim())
+        .join("");
+      if (!data || data === "[DONE]") continue;
+      let ev;
+      try {
+        ev = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      if (ev.error && !ev.choices) {
+        out.error = new ApiError(ev.error.code || 502, ev.error.message || "The route failed.", ev.error.type || "error", ev.error.metadata);
+        continue;
+      }
+      if (ev.error) out.error = new ApiError(502, ev.error.message || "The provider failed mid-stream.", ev.error.type || "provider_error");
+      out.id = ev.id || out.id;
+      out.provider = ev.provider || out.provider;
+      out.model = ev.model || out.model;
+      for (const ch of ev.choices || []) {
+        const piece = ch?.delta?.content;
+        if (typeof piece === "string" && piece) {
+          out.text += piece;
+          onDelta?.(out.text);
+        }
+      }
+      if (ev.usage) out.usage = ev.usage;
+      if (ev.receipt) out.receipt = ev.receipt;
+    }
+  }
+  if (out.error && !out.receipt) throw out.error;
+  return out;
+}
+
+// ---- shape mapping: API records -> the shapes the existing components render ----
+
+const compact = (n) => (n >= 1024 ? Math.round(n / 1024) + "K" : String(n));
+
+export function toCatalogModel(m) {
+  const author = m.id.split("/")[0];
+  return {
+    id: m.id,
+    name: m.name && m.name !== m.id ? m.name : m.id.split("/").slice(1).join("/") || m.id,
+    author: author.charAt(0).toUpperCase() + author.slice(1),
+    context: compact(m.context_length || 0),
+    contextLength: m.context_length,
+    type: (m.supported_parameters || []).includes("reasoning") ? "Reasoning" : (m.architecture?.output_modalities || []).includes("embeddings") ? "Embeddings" : "General",
+    private: !!m.attested_available,
+    price: Number(m.pricing?.prompt || 0) * 1e6,
+    output: Number(m.pricing?.completion || 0) * 1e6,
+    description: m.description || `${m.data_policy?.providers ?? 0} provider${m.data_policy?.providers === 1 ? "" : "s"} · ${(m.quantization || []).join(", ") || "quantization not declared"}.`,
+    providers: m.data_policy?.providers ?? 0,
+    quantization: m.quantization || [],
+    zdr: !!m.data_policy?.zdr_available,
+    creator: m.creator,
+    royaltyBps: m.royalty_bps || 0,
+    parameters: m.supported_parameters || [],
+  };
+}
