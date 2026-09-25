@@ -1,0 +1,25 @@
+# Production-shaped stack: router, Postgres + TimescaleDB, Redis (BullMQ jobs).
+# To run several router replicas, put them behind a load balancer; BullMQ runs each job once.
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment: { POSTGRES_USER: anyroute, POSTGRES_PASSWORD: anyroute, POSTGRES_DB: anyroute }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U anyroute"], interval: 5s, retries: 20 }
+  redis:
+    image: redis:8
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+  router:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://anyroute:anyroute@postgres:5432/anyroute
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    ports: ["8787:8787"]
+volumes:
+  pgdata: {}
+  redisdata: {}
