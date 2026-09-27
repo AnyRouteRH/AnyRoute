@@ -113,3 +113,50 @@ All routes are under `/api/v1` (also `/v1/*` for the three OpenAI-style endpoint
 Response additions: `provider`, `usage.cost`, `usage.cost_details {upstream_inference_cost, royalty, margin}`,
 `usage.prompt_tokens_details.cached_tokens`, `usage.completion_tokens_details.reasoning_tokens`, and
 `receipt {id, sig, key_id, payload, leaf, anchor_hint, paid_with?}`.
+
+### Paying
+
+- **Prepaid (0%)** — `bun scripts/key.ts new`, approve USDG to `Credits`, `deposit(key_hash, amount)`. The key works on
+  first use; there is no account step. Withdraw any time: `requestWithdrawal` (signed by the key) → next spent root →
+  `finalizeWithdrawal` with the proof from `/credits/withdrawal-proof`.
+- **Per call (≤1%)** — no key: the router answers `402` with `price_usdg`, `pay_to`, `nonce`, `expiry`, `chain`, calldata,
+  and ready-to-sign EIP-712 data. Pay either on-chain (`CallPay.pay`, gas sponsored by `AnyrPaymaster`) and retry with
+  `X-Payment: <txHash>`, or sign the USDG `ReceiveWithAuthorization` and retry with
+  `X-Payment: base64({"scheme":"eip3009",…})` — the router relays it, no gas needed. Change stays on the payer's
+  wallet account (`X-Wallet-Auth` or `/auth/wallet`).
+- **Pay with Stock Tokens** — `POST /paywith/open {token: "NVDA", cap_raw_per_day, wallet}` returns the approve +
+  `openSession` txs. Calls with `X-Pay-With: NVDA` accrue; at $1 (or 24h) the router swaps exactly the USDG owed at
+  Chainlink fair value (slippage-bounded, V3/V4) from the capped session. Receipts show the share fraction; if the
+  oracle is stale/paused the call falls back to prepaid USDG, else 402.
+
+---
+
+## Tests
+
+```bash
+bun test                    # backend suite (in-process Postgres)
+bun run test:pg             # same suite on real Postgres 16 + Redis (bun run services:up first)
+bun run test:contracts      # Foundry: unit, fuzz, invariant
+bun run test:fork           # contracts against live Robinhood Chain state
+bun run test:e2e            # anvil + every contract deployed + router
+bun run typecheck
+```
+
+## Contributing: publish guard
+
+`bun install` points git at `.githooks/`, which blocks commits and pushes that carry the wrong author
+identity, a non-UTC timestamp, secrets (provider/GitHub/AWS tokens, PEM keys, unlisted 32-byte hex),
+local-only files (`.env*`, `.data/`, key files, and any path pattern in your local `.git/info/publish-denypaths`)
+or any string in your local `.git/info/publish-denylist`. Both lists live under `.git/info/`, which is never pushed.
+
+- **Identity.** Set it once per clone: `git config anyroute.allowedEmail <email>`, or accept a set of addresses
+  with `git config anyroute.allowedEmailPattern '<extended regex>'` (matched against the whole email; the
+  `ANYROUTE_ALLOWED_EMAIL_RE` environment variable overrides it). Empty names and machine-derived emails
+  (`(none)`, `*.local`, `*.lan`, `localhost`) are always refused.
+- **UTC only.** A commit's author and committer dates carry your UTC offset, so both must be `+0000`. Run
+  `export TZ=UTC` in your shell (or `alias git='TZ=UTC git'`) before committing. To fix commits already made:
+  `git commit --amend --reset-author --no-edit` (last one) or `git rebase --reset-author-date <base>`.
+- **CI.** Local hooks can be skipped with `--no-verify`, so `.github/workflows/publish-guard.yml` runs the same
+  checks on every push and pull request. It accepts `contributor@anyroute.invalid` and GitHub noreply addresses
+  (`<id>+<user>@users.noreply.github.com`, `noreply@github.com`); commits with any other identity or a non-UTC
+  date fail the check.
