@@ -1,0 +1,36 @@
+# Server-side copy of the local publish guard (.githooks/), which can be skipped with --no-verify.
+name: publish-guard
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan new commits
+        env:
+          ANYROUTE_ALLOWED_EMAIL_RE: '^(contributor@anyroute\.invalid|[^@]+@users\.noreply\.github\.com|noreply@github\.com)$'
+          EVENT: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+            range="$PUSH_SHA"  # new branch/tag or force-push over unknown history: scan everything reachable
+          else
+            range="$PUSH_BEFORE..$PUSH_SHA"
+          fi
+          echo "publish-guard range: $range"
+          bash .githooks/publish-guard.sh range "$range"
