@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Scan every commit this push would publish that no remote has yet.
+set -euo pipefail
+guard="$(git rev-parse --show-toplevel)/.githooks/publish-guard.sh"
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue  # branch delete
+  "$guard" range "$local_sha" --not --remotes
+done
