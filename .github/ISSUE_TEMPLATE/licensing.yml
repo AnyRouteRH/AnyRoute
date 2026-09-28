@@ -1,0 +1,14 @@
+name: Commercial licensing inquiry
+description: Request a contact path for commercial licensing.
+title: "[Licensing] Commercial use inquiry"
+body:
+  - type: markdown
+    attributes:
+      value: "This is a public inquiry, not a license grant. Keep confidential business information out of this issue."
+  - type: textarea
+    id: use
+    attributes:
+      label: Proposed use
+      description: A brief, non-confidential description is enough to begin.
+    validations:
+      required: true

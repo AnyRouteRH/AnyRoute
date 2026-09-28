@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible product or developer experience problem.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "For security vulnerabilities, use the private reporting link on the Security tab."
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include a minimal example using test data and no secrets.
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Commit and environment
+      placeholder: Commit SHA, OS, Bun or Node version

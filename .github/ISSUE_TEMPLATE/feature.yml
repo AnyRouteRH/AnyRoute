@@ -1,0 +1,16 @@
+name: Feature idea
+description: Propose an improvement to routing, payments or developer experience.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the outcome and alternatives you considered.
+    validations:
+      required: true
