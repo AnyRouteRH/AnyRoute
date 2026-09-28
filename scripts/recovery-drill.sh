@@ -33,6 +33,16 @@ shasum -a 256 -c "$work/snapshot.dump.age.sha256"
 # Both overwrite protection and restore target protection must hold.
 if bash "$root/scripts/backup-db.sh" "$work/snapshot.dump.age" >/dev/null 2>&1; then echo 'Backup overwrite was accepted' >&2; exit 1; fi
 export PGDATABASE="$restore_db" RESTORE_ACK=isolated-empty-database
+# Corrupt the last authentication chunk: no archive bytes may reach the database.
+bun --no-env-file -e 'const p=process.argv[1]; const data=new Uint8Array(await Bun.file(p).arrayBuffer()); data[data.length-1]^=1; await Bun.write(process.argv[2],data)' "$work/snapshot.dump.age" "$work/corrupt.dump.age"
+if bash "$root/scripts/restore-db.sh" "$work/corrupt.dump.age" >/dev/null 2>&1; then echo 'Corrupt encrypted restore was accepted' >&2; exit 1; fi
+[ "$(psql -X -At -v ON_ERROR_STOP=1 -c "select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')")" = 0 ] || { echo 'Corrupt restore changed the target' >&2; exit 1; }
+# A database with no tables can still contain application objects and is not empty.
+psql -X -v ON_ERROR_STOP=1 -c 'CREATE FUNCTION public.recovery_existing_object() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$' >/dev/null
+if bash "$root/scripts/restore-db.sh" "$work/snapshot.dump.age" >/dev/null 2>&1; then echo 'Function-only nonempty restore was accepted' >&2; exit 1; fi
+psql -X -v ON_ERROR_STOP=1 -c 'DROP FUNCTION public.recovery_existing_object(); CREATE SCHEMA recovery_existing_schema' >/dev/null
+if bash "$root/scripts/restore-db.sh" "$work/snapshot.dump.age" >/dev/null 2>&1; then echo 'Existing-schema restore was accepted' >&2; exit 1; fi
+psql -X -v ON_ERROR_STOP=1 -c 'DROP SCHEMA recovery_existing_schema' >/dev/null
 start=$(date +%s)
 bash "$root/scripts/restore-db.sh" "$work/snapshot.dump.age"
 bun --no-env-file "$root/scripts/recovery-drill.ts" verify
