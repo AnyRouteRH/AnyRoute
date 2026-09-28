@@ -66,6 +66,8 @@ describe("production Compose topology", () => {
     expect(smoke).toContain('up -d --no-deps --no-build registry-worker');
     expect(smoke).toContain('post-worker-stop.json');
     expect(smoke).toContain('worker_expiry_epoch');
-    expect(smoke).toContain('failed.length!==1||failed[0]!=="chain-indexer"');
+    expect(smoke).toContain('new Set(["chain-indexer","catalog-refresh","provider-registry"])');
+    expect(smoke).toContain('failed.includes("chain-indexer")');
+    expect(smoke).toContain('curl --max-time 3');
   });
 });

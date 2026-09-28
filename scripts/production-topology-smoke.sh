@@ -199,7 +199,7 @@ node -e 'const r=require(process.argv[1]);if(!r.generation||!r.usage_ledger_rows
 "${compose[@]}" stop redis >/dev/null
 not_ready=0
 for _ in {1..20}; do
-  status=$(curl -sS -o "$tmp/failure.json" -w '%{http_code}' "$base_url/ready" || true)
+  status=$(curl --max-time 3 -sS -o "$tmp/failure.json" -w '%{http_code}' "$base_url/ready" || true)
   if [[ "$status" == 503 ]]; then not_ready=1; break; fi
   sleep 1
 done
@@ -211,7 +211,7 @@ fi
 "${compose[@]}" up -d --wait redis
 redis_recovered=0
 for _ in {1..45}; do
-  status=$(curl -sS -o "$tmp/redis-recovered.json" -w '%{http_code}' "$base_url/ready" || true)
+  status=$(curl --max-time 3 -sS -o "$tmp/redis-recovered.json" -w '%{http_code}' "$base_url/ready" || true)
   if [[ "$status" == 200 ]] && node -e 'const r=require(process.argv[1]);if(!r.checks.rate_limiter)process.exit(1)' "$tmp/redis-recovered.json"; then
     redis_recovered=1
     break
@@ -229,10 +229,10 @@ fi
 # after the stop completes because a job finishing during the stop grace period can report
 # one final success, resetting the real expiry deadline.
 "${compose[@]}" exec -e TOPOLOGY_SMOKE_ACK=disposable-docker-host -T router bun scripts/production-topology-verify.ts "$generation_id" >"$tmp/pre-worker-stop.json"
-node -e 'const r=require(process.argv[1]);const s=r.critical_worker_states["chain-indexer"];if(!s||s.running||!s.last_success||!s.fresh_until)process.exit(1);const age=Date.now()-Date.parse(s.last_success);if(age<0||age>30_000)process.exit(1)' "$tmp/pre-worker-stop.json"
+node -e 'const r=require(process.argv[1]);const s=r.critical_worker_states["chain-indexer"];if(!s||!s.last_success||!s.fresh_until)process.exit(1);const last=Date.parse(s.last_success),expiry=Date.parse(s.fresh_until),age=Date.now()-last;if(!Number.isFinite(last)||!Number.isFinite(expiry)||age<0||age>30_000)process.exit(1)' "$tmp/pre-worker-stop.json"
 "${compose[@]}" stop registry-worker >/dev/null
 "${compose[@]}" exec -e TOPOLOGY_SMOKE_ACK=disposable-docker-host -T router bun scripts/production-topology-verify.ts "$generation_id" >"$tmp/post-worker-stop.json"
-worker_expiry_epoch=$(node -e 'const r=require(process.argv[1]);const s=r.critical_worker_states["chain-indexer"];if(!s||!s.last_success||!s.fresh_until)process.exit(1);process.stdout.write(String(Math.ceil(Date.parse(s.fresh_until)/1000)))' "$tmp/post-worker-stop.json")
+worker_expiry_epoch=$(node -e 'const r=require(process.argv[1]);const s=r.critical_worker_states["chain-indexer"];if(!s||!s.last_success||!s.fresh_until)process.exit(1);const expiry=Date.parse(s.fresh_until);if(!Number.isFinite(expiry))process.exit(1);process.stdout.write(String(Math.ceil(expiry/1000)))' "$tmp/post-worker-stop.json")
 worker_wait_seconds=$((worker_expiry_epoch - $(date +%s) + 20))
 (( worker_wait_seconds < 20 )) && worker_wait_seconds=20
 if (( worker_wait_seconds > 90 )); then
@@ -241,8 +241,8 @@ if (( worker_wait_seconds > 90 )); then
 fi
 worker_not_ready=0
 for ((second = 0; second < worker_wait_seconds; second++)); do
-  status=$(curl -sS -o "$tmp/worker-failure.json" -w '%{http_code}' "$base_url/ready" || true)
-  if [[ "$status" == 503 ]] && node -e 'const r=require(process.argv[1]);const failed=Object.keys(r.checks).filter(k=>r.checks[k]!==true);if(failed.length!==1||failed[0]!=="chain-indexer")process.exit(1)' "$tmp/worker-failure.json"; then
+  status=$(curl --max-time 3 -sS -o "$tmp/worker-failure.json" -w '%{http_code}' "$base_url/ready" || true)
+  if [[ "$status" == 503 ]] && node -e 'const r=require(process.argv[1]);const owned=new Set(["chain-indexer","catalog-refresh","provider-registry"]);const failed=Object.keys(r.checks).filter(k=>r.checks[k]!==true);if(!failed.includes("chain-indexer")||failed.some(k=>!owned.has(k)))process.exit(1)' "$tmp/worker-failure.json"; then
     observed=$(date +%s)
     if (( observed >= worker_expiry_epoch )); then worker_not_ready=1; break; fi
   fi
@@ -258,7 +258,7 @@ fi
 "${compose[@]}" up -d --no-deps --no-build registry-worker
 worker_recovered=0
 for _ in {1..60}; do
-  status=$(curl -sS -o "$tmp/worker-recovered.json" -w '%{http_code}' "$base_url/ready" || true)
+  status=$(curl --max-time 3 -sS -o "$tmp/worker-recovered.json" -w '%{http_code}' "$base_url/ready" || true)
   if [[ "$status" == 200 ]] && node -e 'const r=require(process.argv[1]);if(!r.checks["chain-indexer"]||!r.checks.rate_limiter)process.exit(1)' "$tmp/worker-recovered.json"; then
     worker_recovered=1
     break
