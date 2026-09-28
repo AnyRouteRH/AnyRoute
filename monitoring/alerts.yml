@@ -1,0 +1,27 @@
+groups:
+  - name: anyroute-readiness
+    rules:
+      - alert: AnyRouteUnavailable
+        expr: up{job="anyroute"} == 0 or absent(up{job="anyroute"})
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: AnyRoute readiness metrics cannot be reached
+      - alert: AnyRouteNotReady
+        expr: anyroute_ready{job="anyroute"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: AnyRoute cannot safely accept traffic
+      - alert: AnyRouteDependencyFailed
+        expr: anyroute_readiness_check{job="anyroute"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: AnyRoute dependency or worker readiness failed
+      - alert: AnyRouteReadinessMetricsMissing
+        expr: up{job="anyroute"} == 1 unless on(job, instance) anyroute_ready{job="anyroute"}
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: AnyRoute scrape succeeded without readiness evidence

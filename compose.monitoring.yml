@@ -1,0 +1,17 @@
+# Optional production overlay. Alertmanager must be reachable on egress under that
+# hostname and configured by the operator with a real on-call destination.
+services:
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:?Set a reviewed Prometheus image pinned by sha256 digest}
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/anyroute-alerts.yml:ro
+      - prometheusdata:/prometheus
+    networks: [egress]
+    ports: ["127.0.0.1:9090:9090"]
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
+volumes:
+  prometheusdata: {}

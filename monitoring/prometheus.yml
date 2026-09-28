@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+rule_files: [/etc/prometheus/anyroute-alerts.yml]
+scrape_configs:
+  - job_name: anyroute
+    metrics_path: /ready/metrics
+    scrape_timeout: 5s
+    static_configs:
+      - targets: [router:8787]
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: [alertmanager:9093]

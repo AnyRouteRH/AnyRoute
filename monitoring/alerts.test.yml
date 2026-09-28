@@ -1,0 +1,222 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 30s
+tests:
+  - name: healthy
+    interval: 30s
+    input_series:
+      - series: up{job="anyroute",instance="router:8787"}
+        values: 1x8
+      - series: anyroute_ready{job="anyroute",instance="router:8787"}
+        values: 1x8
+      - series: anyroute_readiness_check{job="anyroute",instance="router:8787",check="settlement"}
+        values: 1x8
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+  - name: failed scrape
+    interval: 30s
+    input_series:
+      - series: up{job="anyroute",instance="router:8787"}
+        values: "0x8"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: anyroute
+              instance: router:8787
+              severity: critical
+            exp_annotations:
+              summary: AnyRoute readiness metrics cannot be reached
+      - eval_time: 1m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+  - name: missing target
+    interval: 30s
+    input_series: []
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: anyroute
+              severity: critical
+            exp_annotations:
+              summary: AnyRoute readiness metrics cannot be reached
+      - eval_time: 1m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+  - name: not ready
+    interval: 30s
+    input_series:
+      - series: up{job="anyroute",instance="router:8787"}
+        values: 1x8
+      - series: anyroute_ready{job="anyroute",instance="router:8787"}
+        values: "0x8"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteNotReady
+        exp_alerts:
+          - exp_labels:
+              job: anyroute
+              instance: router:8787
+              severity: critical
+            exp_annotations:
+              summary: AnyRoute cannot safely accept traffic
+      - eval_time: 1m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+  - name: missing readiness payload
+    interval: 30s
+    input_series:
+      - series: up{job="anyroute",instance="router:8787"}
+        values: 1x8
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              job: anyroute
+              instance: router:8787
+              severity: critical
+            exp_annotations:
+              summary: AnyRoute scrape succeeded without readiness evidence
+  - name: failed worker
+    interval: 30s
+    input_series:
+      - series: up{job="anyroute",instance="router:8787"}
+        values: 1x8
+      - series: anyroute_ready{job="anyroute",instance="router:8787"}
+        values: 1x8
+      - series: anyroute_readiness_check{job="anyroute",instance="router:8787",check="settlement"}
+        values: "0x8"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts:
+          - exp_labels:
+              job: anyroute
+              instance: router:8787
+              check: settlement
+              severity: critical
+            exp_annotations:
+              summary: AnyRoute dependency or worker readiness failed
+      - eval_time: 1m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteReadinessMetricsMissing
+        exp_alerts: []

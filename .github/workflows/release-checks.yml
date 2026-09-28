@@ -46,3 +46,7 @@ jobs:
         working-directory: web
       - run: docker build -t anyroute:ci .
       - run: bash scripts/container-smoke.sh
+      - name: Verify operational alert rules
+        run: |
+          docker run --rm --entrypoint /bin/promtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/prometheus:v3.5.0 check rules alerts.yml
+          docker run --rm --entrypoint /bin/promtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/prometheus:v3.5.0 test rules alerts.test.yml
