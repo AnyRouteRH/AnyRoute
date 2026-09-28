@@ -1,163 +1,110 @@
+<p align="center">
+  <img src=".github/assets/github-header.gif" alt="Anyroute — Any model. One key. Paid per call. Animated routing paths." width="100%" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/AnyRouteRH/AnyRoute/actions/workflows/release-checks.yml"><img src="https://github.com/AnyRouteRH/AnyRoute/actions/workflows/release-checks.yml/badge.svg?branch=main" alt="Release checks" /></a>
+  <a href="https://github.com/AnyRouteRH/AnyRoute/actions/workflows/publish-guard.yml"><img src="https://github.com/AnyRouteRH/AnyRoute/actions/workflows/publish-guard.yml/badge.svg?branch=main" alt="Publication guard" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm_Noncommercial-1fe15a?labelColor=0b0c0b" alt="PolyForm Noncommercial license" /></a>
+  <img src="https://img.shields.io/badge/status-pre--launch-f5f5f0?labelColor=0b0c0b" alt="Pre-launch" />
+</p>
+
+<p align="center">
+  <a href="#run-it-locally">Run locally</a> ·
+  <a href="docs/DEVELOPMENT.md">API & development</a> ·
+  <a href="docs/OPERATIONS.md">Operations</a> ·
+  <a href="CONTRIBUTING.md">Contribute</a> ·
+  <a href="https://x.com/TryAnyroute">Follow @TryAnyroute</a>
+</p>
+
 # Anyroute
 
-**Any model. One key. Paid per call.** An OpenRouter-compatible inference router on Robinhood Chain (4663):
-one USDG balance, 0% on prepaid, ≤1% per call, signed receipts anchored on-chain, bonded providers,
-an attested private route, creator royalties, and pay-with-any-Stock-Token.
+**One interface for inference, payments and receipts.** Anyroute routes OpenRouter-compatible requests across providers, with USDG settlement on Robinhood Chain and a signed receipt for each generation.
 
-Existing OpenRouter/OpenAI clients change two lines: the base URL and the key.
+Choose a model. Set your routing policy. Inspect what happened.
+
+> **Pre-launch:** local demos use test funds and mock providers. Production readiness is still under review; see the [remaining launch gates](docs/OPERATIONS.md).
+
+## What you can build with it
+
+| Capability | What it gives you |
+| :--- | :--- |
+| **One API, multiple providers** | Chat, streaming, completions and embeddings with provider selection and fallback. |
+| **Spend controls** | Virtual keys, budgets, rate limits, model restrictions and key-enforced guardrails. |
+| **Flexible payments** | Prepaid USDG, per-call HTTP 402 payments and Stock Token payment sessions. |
+| **Verifiable usage** | Signed generation receipts, public verification and on-chain receipt anchors. |
+| **Provider accountability** | Operator-reviewed onboarding, health probes, canaries and attestation checks. |
+| **A complete workspace** | Model catalog, API docs, playground and wallet-aware dashboard. |
+
+## Run it locally
+
+Use **Bun 1.3+**, **Node 22+**, **pnpm** and **Foundry** (`anvil`, `forge`).
+
+```bash
+git clone https://github.com/AnyRouteRH/AnyRoute.git
+cd AnyRoute
+bun install
+bun run launch
+```
+
+The launcher starts the local chain, contracts, mock providers, API and website. Open the printed URL, create a key, add test USDG and try the Playground. Ctrl-C stops the demo; its state stays in the ignored `.data/` directory.
+
+[Setup options and individual services →](docs/DEVELOPMENT.md#quick-start-local-no-setup)
+
+## Bring your existing client
+
+Point an OpenAI-compatible client at your router and use an Anyroute key:
 
 ```ts
-const client = new OpenAI({ baseURL: "https://<router>/api/v1", apiKey: "sk-ar-v1-…" });
-await client.chat.completions.create({ model: "meta-llama/llama-3.3-70b-instruct", messages, provider: { sort: "price" } });
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: process.env.ANYROUTE_BASE_URL, // e.g. http://127.0.0.1:8787/api/v1
+  apiKey: process.env.ANYROUTE_API_KEY,
+});
+
+const result = await client.chat.completions.create({
+  model: "meta-llama/llama-3.3-70b-instruct",
+  messages: [{ role: "user", content: "Hello, Anyroute." }],
+});
 ```
 
----
+[API reference →](docs/DEVELOPMENT.md#api) · [OpenAPI specification →](web/public/openapi.json)
 
-## Quick start (local, no setup)
+## Inside the router
 
-Everything at once — local chain + contracts, mock providers, router, website:
-
-```bash
-bun install && bun run launch      # prints the address (http://127.0.0.1:8787, or the next free port)
+```mermaid
+flowchart LR
+  Client[Your app] --> API[Compatible API]
+  API --> Policy[Key policies + budget]
+  Policy --> Router[Provider routing + fallback]
+  Router --> Providers[Inference providers]
+  Providers --> Receipt[Signed usage receipt]
+  Receipt --> Ledger[Ledger + settlement]
+  Receipt --> Anchor[On-chain anchor]
 ```
 
-Open the dashboard, create a key, press Deposit → "Add 10 test USDG", and run a call in the Playground.
-Flags: `--open` opens the browser, `--fresh` wipes the local chain and database, `--port N` serves on another port.
-Ctrl-C stops everything; chain, database, keys and balances are kept in `.data/`. Needs Bun 1.3+, Foundry
-(`anvil`, `forge`) and pnpm (the website is rebuilt when its sources change). The test-USDG faucet and the
-mock TEE's dev attestation are local-only.
+| Area | Source |
+| :--- | :--- |
+| API and routing | [`src/api`](src/api) · [`src/router`](src/router) |
+| Ledger and payments | [`src/ledger`](src/ledger) · [`src/pay`](src/pay) |
+| Receipts and workers | [`src/receipts`](src/receipts) · [`src/services`](src/services) |
+| Smart contracts | [`contracts/src`](contracts/src) |
+| Website and dashboard | [`web`](web) |
 
-Piece by piece:
+## Build with us
 
-```bash
-bun install
-bun test                                   # 115 backend tests on in-process Postgres (12 opt-in: E2E/Redis/live chain)
-bun run services:up && bun run test:pg     # same suite on real Postgres 16 + Redis
-cd contracts && forge test && cd ..        # Solidity suite (Foundry)
-bun scripts/mock-providers.ts &            # 3 local mock providers (ports 9101-9103)
-bun scripts/seed.ts config/providers.local.yaml
-bun run dev                                # router on http://127.0.0.1:8787
-```
+[Report a bug](https://github.com/AnyRouteRH/AnyRoute/issues/new?template=bug.yml), [suggest an improvement](https://github.com/AnyRouteRH/AnyRoute/issues/new?template=feature.yml), or read the [contribution guide](CONTRIBUTING.md). Security findings belong in [private vulnerability reports](SECURITY.md).
 
-Full local chain (anvil + every contract deployed + router wired to it):
+## License
 
-```bash
-bun scripts/deploy-local.ts --keep         # starts anvil :8546, deploys, writes .env.local
-bun --env-file=.env.local run dev
-```
+Anyroute is **source-available under [PolyForm Noncommercial 1.0.0](LICENSE)**, except for files with their own license notices. Commercial use outside the license's permitted purposes requires separate written permission. [Request commercial licensing →](https://github.com/AnyRouteRH/AnyRoute/issues/new?template=licensing.yml)
 
-Production deployment uses the explicit configuration and isolated workers in `docker-compose.yml`.
-Read [the operations runbook](docs/OPERATIONS.md) first. The development `.env.example` is not a production template.
-Production requires authenticated PostgreSQL/Redis, a completed migration job, approved live providers,
-separate API/worker signing roles, verified contract addresses and a green `/ready` response.
-Live funds remain blocked pending final contract-governance decisions, deployed-state verification,
-credential rotation where needed, a successful recovery drill and reviewed commercial/privacy terms.
+Existing MIT-licensed contracts and third-party licenses remain in effect; see [NOTICE](NOTICE). This is a non-commercial software license, not an OSI-approved open-source license.
 
-### Website
+<details>
+<summary>Prefer a still header?</summary>
 
-The website (landing page, live model catalog, docs, dashboard) lives in `web/` and is served by the router
-itself at `/` once built — same origin as the API, so no CORS or extra hosting:
+![Anyroute static header](.github/assets/github-header.png)
 
-```bash
-cd web && pnpm install --frozen-lockfile && pnpm build && cd ..   # writes web/out/
-bun run dev                                                        # site at /, API at /api/v1
-```
-
-The dashboard talks to the live API: create or paste a key, deposit USDG and withdraw with your wallet, open
-Stock Token sessions, stream calls in the playground, and verify each receipt against the chain. A clearly
-labelled sample workspace (`?demo=1`) keeps the original browser-only preview for demos. `WEB_DIR` points at
-another build; `PUBLIC_RPC_URL` / `EXPLORER_URL` are what the site tells wallets to use.
-
----
-
-## What's in the box
-
-| Layer | Where | What |
-|---|---|---|
-| Edge router | `src/api/chat.ts`, `src/router/*` | OpenRouter API parity, provider selection (1/price² × uptime × quality), fallback, empty-200 detection, SSE |
-| Ledger | `src/ledger/ledger.ts`, `drizzle/0001_invariants.sql` | Append-only pico-USD ledger, reserve → settle/release holds, DB-enforced invariants |
-| Payments | `src/pay/*` | Prepaid (0%), HTTP 402 per-call (tx hash or gasless EIP-3009), Pay-with-Stock-Token |
-| Receipts | `src/receipts/*`, `src/services/anchor.ts` | Ed25519 per generation, weekly key rotation (pubkeys on-chain), hourly merkle anchors |
-| Providers | `src/services/registry.ts`, `health.ts`, `probes.ts` | Provider spec import, onboarding (apply → bond → 7-day shadow → live), 30s outage window |
-| Accountability | `src/services/canaries.ts`, `slasher.ts` | Quant fingerprints + quality score, bond slashing with a 72h dispute window and refunds |
-| Privacy | `src/services/attestor.ts` | TEE attestation (TDX quote + NVIDIA NRAS, nonce-bound), fail-closed private route |
-| Settlement | `src/services/settlement.ts` | Hourly provider invoices (2% fee), royalties, spent roots for self-custodial withdrawals, margin → staking |
-| Gateway floor | `src/gateway/*`, `src/api/keys.ts` | Virtual keys/budgets/RPM/TPM, teams/RBAC, BYOK, cache, guardrails, OTel, LiteLLM import |
-| Admin | `src/admin/trpc.ts` | tRPC v11 at `/trpc` |
-| Website | `web/` (Next.js static export), `src/app.ts` | Landing, live catalog, docs, dashboard; served at `/` by the router |
-| Contracts | `contracts/src/*` | Credits, CallPay, PayWithStock (+ Chainlink oracle, Uniswap V3/V4 adapters), ProviderBond, ReceiptAnchor, Royalty, AnyrToken, AnyrStaking, AnyrPaymaster |
-
----
-
-## API
-
-All routes are under `/api/v1` (also `/v1/*` for the three OpenAI-style endpoints).
-
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/chat/completions` | OpenAI body + `model` (`author/model[:nitro\|:floor\|:free\|:private]`), `models[]`, `provider{…}`, `route`, `transforms`, `usage`, `reasoning`, `tools`, `response_format`, `stream`. Headers: `X-Pay-With`, `X-Payment`, `X-Wallet-Auth`, `HTTP-Referer`, `X-Title` |
-| POST | `/completions`, `/embeddings` | Legacy completions; embeddings (prepaid) |
-| GET | `/models`, `/models/:author/:slug/endpoints`, `/providers` | OpenRouter shapes + `data_policy`, `quantization`, `attested_available`, `creator`, `royalty_bps` |
-| GET | `/generation?id=` | Full generation record, `paid_with`, `anchor {root, index, proof[]}` |
-| POST/GET/PATCH/DELETE | `/keys`, `/keys/:hash` | No auth → new self-custodial root key. With a management key → virtual sub-keys (`limit`, `limit_reset`, `rpm`, `tpm`, `allowed_models`, `team`, `pay_with_default`, `guardrails`, `routing`) |
-| GET | `/key`, `/credits`, `/credits/withdrawal-proof` | Balance; merkle proof for `Credits.finalizeWithdrawal` |
-| POST/GET/DELETE | `/byok` | Bring-your-own provider keys (encrypted at rest) |
-| POST/GET/PUT | `/teams`, `/teams/:id/members/:hash` | Roles: owner, admin, member, viewer |
-| POST | `/auth/wallet` | Turn a per-call payer's change into a key (signed message) |
-| GET/POST | `/paywith/tokens`, `/paywith/open`, `/paywith/close`, `/paywith/session`, `/paywith/statement` | Stock-Token sessions (unsigned txs for the wallet) and monthly statements |
-| GET/POST | `/receipts/:id`, `/receipts/verify`, `/receipts/keys` | Public receipt proofs; JWKS of signing keys |
-| GET | `/rankings?period=day\|week\|month` | Tokens by model and app, paid to creators |
-| POST | `/providers/apply` | Provider onboarding (OpenRouter provider spec) |
-| POST | `/paymaster` | ERC-7677 paymaster service (sponsors Anyroute actions only) |
-| GET | `/status`, `/health` | Configuration and job status |
-
-Response additions: `provider`, `usage.cost`, `usage.cost_details {upstream_inference_cost, royalty, margin}`,
-`usage.prompt_tokens_details.cached_tokens`, `usage.completion_tokens_details.reasoning_tokens`, and
-`receipt {id, sig, key_id, payload, leaf, anchor_hint, paid_with?}`.
-
-### Paying
-
-- **Prepaid (0%)** — `bun scripts/key.ts new`, approve USDG to `Credits`, `deposit(key_hash, amount)`. The key works on
-  first use; there is no account step. Withdraw any time: `requestWithdrawal` (signed by the key) → next spent root →
-  `finalizeWithdrawal` with the proof from `/credits/withdrawal-proof`.
-- **Per call (≤1%)** — no key: the router answers `402` with `price_usdg`, `pay_to`, `nonce`, `expiry`, `chain`, calldata,
-  and ready-to-sign EIP-712 data. Pay either on-chain (`CallPay.pay`, gas sponsored by `AnyrPaymaster`) and retry with
-  `X-Payment: <txHash>`, or sign the USDG `ReceiveWithAuthorization` and retry with
-  `X-Payment: base64({"scheme":"eip3009",…})` — the router relays it, no gas needed. Change stays on the payer's
-  wallet account (`X-Wallet-Auth` or `/auth/wallet`).
-- **Pay with Stock Tokens** — `POST /paywith/open {token: "NVDA", cap_raw_per_day, wallet}` returns the approve +
-  `openSession` txs. Calls with `X-Pay-With: NVDA` accrue; at $1 (or 24h) the router swaps exactly the USDG owed at
-  Chainlink fair value (slippage-bounded, V3/V4) from the capped session. Receipts show the share fraction; if the
-  oracle is stale/paused the call falls back to prepaid USDG, else 402.
-
----
-
-## Tests
-
-```bash
-bun test                    # backend suite (in-process Postgres)
-bun run test:pg             # same suite on real Postgres 16 + Redis (bun run services:up first)
-bun run test:contracts      # Foundry: unit, fuzz, invariant
-bun run test:fork           # contracts against live Robinhood Chain state
-bun run test:e2e            # anvil + every contract deployed + router
-bun run typecheck
-```
-
-## Contributing: publish guard
-
-`bun install` points git at `.githooks/`, which blocks commits and pushes that carry the wrong author
-identity, a non-UTC timestamp, secrets (provider/GitHub/AWS tokens, PEM keys, unlisted 32-byte hex),
-local-only files (`.env*`, `.data/`, key files, and any path pattern in your local `.git/info/publish-denypaths`)
-or any string in your local `.git/info/publish-denylist`. Both lists live under `.git/info/`, which is never pushed.
-
-- **Identity.** Set it once per clone: `git config anyroute.allowedEmail <email>`, or accept a set of addresses
-  with `git config anyroute.allowedEmailPattern '<extended regex>'` (matched against the whole email; the
-  `ANYROUTE_ALLOWED_EMAIL_RE` environment variable overrides it). Empty names and machine-derived emails
-  (`(none)`, `*.local`, `*.lan`, `localhost`) are always refused.
-- **UTC only.** A commit's author and committer dates carry your UTC offset, so both must be `+0000`. Run
-  `export TZ=UTC` in your shell (or `alias git='TZ=UTC git'`) before committing. To fix commits already made:
-  `git commit --amend --reset-author --no-edit` (last one) or `git rebase --reset-author-date <base>`.
-- **CI.** Local hooks can be skipped with `--no-verify`, so `.github/workflows/publish-guard.yml` runs the same
-  checks on every push and pull request. It accepts `contributor@anyroute.invalid` and GitHub noreply addresses
-  (`<id>+<user>@users.noreply.github.com`, `noreply@github.com`); commits with any other identity or a non-UTC
-  date fail the check.
+</details>
