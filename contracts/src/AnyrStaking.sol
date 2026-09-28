@@ -8,6 +8,7 @@ import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IAnyrStaking} from "./interfaces/IAnyrStaking.sol";
+import {IBuybackPriceOracle} from "./interfaces/IBuybackPriceOracle.sol";
 import {IBuybackAdapter} from "./interfaces/IBuybackAdapter.sol";
 
 /// @title AnyrStaking
@@ -41,6 +42,11 @@ contract AnyrStaking is IAnyrStaking, Ownable2Step, ReentrancyGuardTransient {
     IBuybackAdapter public adapter;
     /// @notice Max USDG swapped per UTC day.
     uint256 public maxDailyBuyback = 10_000e6;
+    /// @notice No oracle is configured by default: buybacks are disabled until governance provisions one.
+    IBuybackPriceOracle public buybackPriceOracle;
+    uint256 public constant MAX_PRICE_AGE = 15 minutes;
+    event BuybackPriceOracleSet(address indexed oracle);
+    error UnsafeBuybackPrice();
 
     /// @inheritdoc IAnyrStaking
     uint256 public buybackBalance;
@@ -206,6 +212,11 @@ contract AnyrStaking is IAnyrStaking, Ownable2Step, ReentrancyGuardTransient {
         uint256 day = block.timestamp / 1 days;
         uint256 used = (day == buybackDay ? boughtOnDay : 0) + usdgIn;
         if (used > maxDailyBuyback) revert BuybackTooLarge();
+        IBuybackPriceOracle oracle = buybackPriceOracle;
+        if (address(oracle) == address(0)) revert UnsafeBuybackPrice();
+        (uint256 floor, uint256 updatedAt) = oracle.minimumOutput(address(usdg), address(anyr), usdgIn);
+        if (floor == 0 || updatedAt == 0 || updatedAt > block.timestamp
+            || block.timestamp - updatedAt > MAX_PRICE_AGE || minAnyrOut < floor) revert UnsafeBuybackPrice();
         buybackDay = day;
         boughtOnDay = used;
         buybackBalance -= usdgIn;
@@ -224,6 +235,13 @@ contract AnyrStaking is IAnyrStaking, Ownable2Step, ReentrancyGuardTransient {
     // ---------------------------------------------------------------------------------------------
     // Admin
     // ---------------------------------------------------------------------------------------------
+
+    /// @notice Governance selects an independently reviewed price source. Zero disables buybacks.
+    function setBuybackPriceOracle(IBuybackPriceOracle oracle) external onlyOwner {
+        if (address(oracle) != address(0) && address(oracle).code.length == 0) revert UnsafeBuybackPrice();
+        buybackPriceOracle = oracle;
+        emit BuybackPriceOracleSet(address(oracle));
+    }
 
     /// @notice Set the buyback keeper.
     function setKeeper(address keeper_) external onlyOwner {

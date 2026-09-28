@@ -12,9 +12,23 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {AnyrStaking} from "../src/AnyrStaking.sol";
 import {AnyrToken} from "../src/AnyrToken.sol";
 import {IAnyrStaking} from "../src/interfaces/IAnyrStaking.sol";
+import {IBuybackPriceOracle} from "../src/interfaces/IBuybackPriceOracle.sol";
 import {IBuybackAdapter} from "../src/interfaces/IBuybackAdapter.sol";
 import {MockUSDG} from "../src/mocks/MockUSDG.sol";
 import {MockBuybackAdapter} from "../src/mocks/MockBuybackAdapter.sol";
+
+/// Test fixture only. A production source must independently enforce its own pricing methodology.
+contract TestBuybackPriceOracle is IBuybackPriceOracle {
+    uint256 public floor = 1;
+    uint256 public timestamp;
+    bool public fixedTimestamp;
+    function set(uint256 floor_, uint256 timestamp_) external {
+        floor = floor_; timestamp = timestamp_; fixedTimestamp = true;
+    }
+    function minimumOutput(address, address, uint256) external view returns (uint256, uint256) {
+        return (floor, fixedTimestamp ? timestamp : block.timestamp);
+    }
+}
 
 /// Adapter that tries to re-enter the staking contract during the swap.
 contract ReentrantAdapter is IBuybackAdapter {
@@ -43,6 +57,7 @@ abstract contract StakingBase is Test {
     MockUSDG internal usdg;
     MockBuybackAdapter internal adapter;
     AnyrStaking internal staking;
+    TestBuybackPriceOracle internal priceOracle;
 
     address internal owner = makeAddr("owner");
     address internal keeper = makeAddr("keeper");
@@ -59,6 +74,9 @@ abstract contract StakingBase is Test {
         usdg = new MockUSDG();
         adapter = new MockBuybackAdapter(RATE_NUM, RATE_DEN);
         staking = new AnyrStaking(IERC20(address(anyr)), IERC20(address(usdg)), owner, keeper, ops, adapter);
+        priceOracle = new TestBuybackPriceOracle();
+        vm.prank(owner);
+        staking.setBuybackPriceOracle(priceOracle);
 
         vm.startPrank(treasury);
         assertTrue(anyr.transfer(address(adapter), 100_000_000e18));
