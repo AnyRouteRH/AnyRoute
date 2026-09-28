@@ -2,10 +2,12 @@ import { openProviderHeaders } from "../providers/headers.ts";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
+import type { Db, Tx } from "../db/client.ts";
 import { canaries, models, offers, providers } from "../db/schema.ts";
 import { usdToPico } from "../lib/money.ts";
 import { boundedJson, providerFetch } from "../providers/network.ts";
 import { decrypt, log } from "../lib/util.ts";
+import { normalizePerMillionCatalogue } from "../providers/per-million.ts";
 
 // provider-registry: pulls each provider's /models (OpenRouter provider-spec shape), validates it,
 // diffs it into `offers`, creates unknown models, drives onboarding
@@ -81,17 +83,21 @@ export function parseProviderModels(json: unknown) {
   return { ok, errors };
 }
 
-export async function fetchProviderModels(ctx: Ctx, p: typeof providers.$inferSelect) {
+type RegistryConfig = { cfg: Pick<Ctx["cfg"], "appSecret" | "production"> };
+type DiscoveryProvider = Pick<typeof providers.$inferSelect, "status" | "staticModels" | "headers" | "apiKeyEnc" | "baseUrl">;
+
+export async function fetchProviderModels(ctx: RegistryConfig, p: DiscoveryProvider) {
   if (!["shadow", "live"].includes(p.status)) throw new Error("Provider requires operator approval before discovery.");
   if (p.staticModels) return parseProviderModels({ data: p.staticModels });
   const headers: Record<string, string> = { accept: "application/json", ...openProviderHeaders(ctx.cfg.appSecret, p.headers) };
   if (p.apiKeyEnc) headers.authorization = `Bearer ${decrypt(ctx.cfg.appSecret, p.apiKeyEnc)}`;
   const res = await providerFetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, redirect: "error", signal: AbortSignal.timeout(20_000) }, { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production });
   if (!res.ok) throw new Error(`GET /models returned ${res.status}`);
-  return parseProviderModels(await boundedJson(res));
+  const json = await boundedJson(res);
+  return parseProviderModels(new URL(p.baseUrl).origin === "https://upstream.example" ? normalizePerMillionCatalogue(json) : json);
 }
 
-export async function syncProvider(ctx: Ctx, p: typeof providers.$inferSelect) {
+export async function syncProvider(ctx: RegistryConfig & { db: Db | Tx }, p: typeof providers.$inferSelect) {
   const { ok, errors } = await fetchProviderModels(ctx, p);
   const now = new Date();
   const seen: string[] = [];
