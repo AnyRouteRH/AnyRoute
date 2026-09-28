@@ -339,6 +339,23 @@ describe("routing behaviour (fallback, empty-200, failures, budgets)", () => {
     expect(c.headers.get("x-anyroute-cache")).toBeNull();
   });
 
+  test("cache TTL accepts shorter values and rejects malformed or over-limit values", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    const body = { cache: { mode: "exact", ttl: 60 }, temperature: 0, messages: [{ role: "user", content: "short cache ttl" }] };
+    expect(h.ctx.cfg.gateway.cacheTtlS).toBeGreaterThan(60);
+    expect((await chat(h, k.auth, body)).status).toBe(200);
+    const hit = await chat(h, k.auth, body);
+    expect(hit.status).toBe(200);
+    expect(hit.headers.get("x-anyroute-cache")).toBe("hit");
+
+    for (const ttl of [null, -1, 0, 1.5, "60", "NaN", h.ctx.cfg.gateway.cacheTtlS + 1]) {
+      const rejected = await chat(h, k.auth, { cache: { mode: "exact", ttl }, messages: [{ role: "user", content: `invalid ttl ${String(ttl)}` }] });
+      expect(rejected.status).toBe(400);
+      expect((await rejected.json()).error.type).toBe("invalid_request");
+    }
+  });
+
   test("guardrails (per key): redaction reaches the provider redacted", async () => {
     await reset();
     const k = await h.fundedKey(1n);

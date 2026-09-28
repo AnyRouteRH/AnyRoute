@@ -129,7 +129,7 @@ const schema = z.object({
   // Gateway features
   OTEL_EXPORTER_OTLP_ENDPOINT: opt,
   OTEL_SERVICE_NAME: z.string().default("anyroute"),
-  CACHE_TTL_S: int(3600),
+  CACHE_TTL_S: z.coerce.number().int().min(1).default(3600),
   SEMANTIC_CACHE_THRESHOLD: num(0.97),
   SEMANTIC_CACHE_EMBEDDING_MODEL: opt,
 

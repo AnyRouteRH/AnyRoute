@@ -46,6 +46,17 @@ function validate(kind: Kind, body: Record<string, unknown>) {
   for (const k of ["n", "best_of"]) if (body[k] != null && (!Number.isInteger(body[k]) || (body[k] as number) < 1 || (body[k] as number) > 16)) fail(400, `\`${k}\` must be an integer from 1 to 16.`, "invalid_request");
 }
 
+function validateCacheTtl(body: Record<string, unknown>, maxTtlS: number) {
+  if (body.cache == null) return;
+  if (typeof body.cache !== "object" || Array.isArray(body.cache)) fail(400, "`cache` must be an object.", "invalid_request");
+  const cache = body.cache as Record<string, unknown>;
+  if (!Object.hasOwn(cache, "ttl")) return;
+  const ttl = cache.ttl;
+  if (typeof ttl !== "number" || !Number.isFinite(ttl) || !Number.isInteger(ttl) || ttl < 1)
+    fail(400, "`cache.ttl` must be a positive integer number of seconds.", "invalid_request");
+  if (ttl > maxTtlS) fail(400, `\`cache.ttl\` cannot exceed the configured maximum of ${maxTtlS} seconds.`, "invalid_request");
+}
+
 function requestParams(body: Record<string, unknown>) {
   return SEMANTIC_PARAMS.filter((p) => body[p] !== undefined && body[p] !== null && !(Array.isArray(body[p]) && (body[p] as unknown[]).length === 0));
 }
@@ -92,6 +103,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const t0 = Date.now();
   const body = await readJson(c);
   validate(kind, body);
+  validateCacheTtl(body, ctx.cfg.gateway.cacheTtlS);
   const stream = body.stream === true;
   const bodySha = requestHash(body);
 
