@@ -11,6 +11,7 @@ x-runtime: &runtime
   APP_SECRET: ${APP_SECRET:?Inject the application encryption secret}
   ADMIN_TOKEN: ${ADMIN_TOKEN:?Inject the operator token}
   RHC_RPC_URL: ${RHC_RPC_URL:?Set the verified chain RPC}
+  USDG_ADDRESS: ${USDG_ADDRESS:-0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168}
   CREDITS_ADDRESS: ${CREDITS_ADDRESS:?Set verified Credits address}
   CALLPAY_ADDRESS: ${CALLPAY_ADDRESS:?Set verified CallPay address}
   PROVIDER_BOND_ADDRESS: ${PROVIDER_BOND_ADDRESS:?Set verified ProviderBond address}
@@ -40,15 +41,15 @@ services:
     cpus: 1
     healthcheck: { test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG'], interval: 5s, retries: 20 }
   migrate:
-    build: .
-    environment: { DATABASE_URL: "${DATABASE_URL:?Inject a PostgreSQL URL}" }
+    image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
+    environment: { DATABASE_URL: "${MIGRATION_DATABASE_URL:?Inject the separate PostgreSQL migration-role URL}" }
     command: ["bun", "scripts/migrate.ts"]
     networks: [storage]
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
   provider-init:
-    build: .
+    image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
     environment:
       <<: *runtime
       RUNTIME_ROLE: worker
@@ -65,7 +66,7 @@ services:
       redis: { condition: service_healthy }
     restart: "no"
   router:
-    build: .
+    image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
     environment:
       <<: *runtime
       WORKERS: "false"
@@ -79,7 +80,7 @@ services:
     cpus: 2
     stop_grace_period: 45s
   registry-worker:
-    build: .
+    image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
     environment:
       <<: *runtime
       RUNTIME_ROLE: worker
@@ -95,7 +96,7 @@ services:
     stop_grace_period: 45s
     healthcheck: { disable: true }
   settlement-worker:
-    build: .
+    image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
     environment:
       <<: *runtime
       RUNTIME_ROLE: worker
@@ -112,7 +113,7 @@ services:
     stop_grace_period: 45s
     healthcheck: { disable: true }
   anchor-worker:
-    build: .
+    image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
     environment:
       <<: *runtime
       RUNTIME_ROLE: worker

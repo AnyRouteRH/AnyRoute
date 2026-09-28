@@ -1,0 +1,93 @@
+# Disposable production-topology fixture used only by scripts/production-topology-smoke.sh.
+# This fixture temporarily routes the global-looking provider subnet through the Docker host.
+# The smoke requires a disposable CI host and tears the network down before returning.
+services:
+  anvil:
+    image: ${FOUNDRY_IMAGE:?Set a reviewed Foundry image pinned by sha256 digest}
+    entrypoint: ["anvil"]
+    command: ["--host", "0.0.0.0", "--port", "8545", "--chain-id", "4663", "--silent"]
+    networks: [egress]
+    ports:
+      - "127.0.0.1:${TOPOLOGY_ANVIL_PORT:-18545}:8545"
+    healthcheck:
+      test: ["CMD", "cast", "rpc", "eth_chainId", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    restart: "no"
+
+  mock-provider:
+    image: ${ANYROUTE_IMAGE:?Use the built CI application image}
+    command: ["bun", "scripts/production-topology-provider.ts"]
+    user: "0:0" # Read the fixture TLS key, which is host-generated with mode 0600.
+    environment:
+      TOPOLOGY_TLS_CERT: /run/topology/tls.crt
+      TOPOLOGY_TLS_KEY: /run/topology/tls.key
+      NODE_EXTRA_CA_CERTS: /run/topology/tls.crt
+    volumes:
+      - ${FIXTURE_OUTPUT_DIR:?Fixture script supplies a temporary directory}:/run/topology:ro
+    networks:
+      egress:
+        ipv4_address: ${TOPOLOGY_PROVIDER_IP:-45.67.88.10}
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r=await fetch('https://mock-provider:9443/health'); if (!r.ok) process.exit(1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: "no"
+
+  runtime-role-grants:
+    image: ${POSTGRES_IMAGE:?Set a reviewed PostgreSQL image pinned by sha256 digest}
+    entrypoint: ["sh", "-ec"]
+    command: ["psql \"$$MIGRATION_DATABASE_URL\" -f /run/topology/production-db-runtime-role.sql"]
+    environment:
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?Fixture script supplies the migration role URL}
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?Fixture script supplies the runtime DB password}
+    volumes:
+      - ./scripts/production-db-runtime-role.sql:/run/topology/production-db-runtime-role.sql:ro
+    networks: [storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+
+  provider-init:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/topology/tls.crt
+    volumes:
+      - ${FIXTURE_OUTPUT_DIR:?Fixture script supplies a temporary directory}:/run/topology:ro
+    depends_on:
+      runtime-role-grants: { condition: service_completed_successfully }
+      mock-provider: { condition: service_healthy }
+
+  router:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/topology/tls.crt
+    volumes:
+      - ${FIXTURE_OUTPUT_DIR:?Fixture script supplies a temporary directory}:/run/topology:ro
+    ports:
+      - "127.0.0.1:${TOPOLOGY_HTTP_PORT:-18787}:8787"
+    depends_on:
+      runtime-role-grants: { condition: service_completed_successfully }
+
+  registry-worker:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/topology/tls.crt
+    volumes:
+      - ${FIXTURE_OUTPUT_DIR:?Fixture script supplies a temporary directory}:/run/topology:ro
+    depends_on:
+      runtime-role-grants: { condition: service_completed_successfully }
+
+  settlement-worker:
+    depends_on:
+      runtime-role-grants: { condition: service_completed_successfully }
+
+  anchor-worker:
+    depends_on:
+      runtime-role-grants: { condition: service_completed_successfully }
+
+networks:
+  egress:
+    internal: true
+    ipam:
+      config:
+        - subnet: 45.67.88.0/24
