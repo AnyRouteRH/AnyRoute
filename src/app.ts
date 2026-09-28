@@ -1,3 +1,4 @@
+import { siteCsp } from "./lib/csp.ts";
 import { kv } from "./db/schema.ts";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
@@ -69,12 +70,15 @@ export async function createApp(opts: AppOptions = {}) {
 
   const webDir = resolve(cfg.webDir ?? resolve(import.meta.dir, "../web/out"));
   const webBuilt = existsSync(resolve(webDir, "index.html"));
+  const csp = webBuilt ? siteCsp(webDir) : "frame-ancestors 'none'; object-src 'none'; base-uri 'none'";
   const app = new Hono();
   app.use("/api/*", cors({ origin: "*", allowHeaders: ["authorization", "content-type", "x-pay-with", "x-payment", "x-wallet-auth", "x-anyroute-cache", "http-referer", "x-title", "traceparent"], exposeHeaders: ["x-generation-id", "x-payment-required", "retry-after"] }));
   app.use("*", async (c, next) => {
     await next();
     c.header("x-content-type-options", "nosniff");
     c.header("referrer-policy", "no-referrer");
+    c.header("x-frame-options", "DENY");
+    if (c.res.headers.get("content-type")?.includes("text/html")) c.header("content-security-policy", csp);
     if (cfg.production) c.header("strict-transport-security", "max-age=31536000; includeSubDomains");
   });
 

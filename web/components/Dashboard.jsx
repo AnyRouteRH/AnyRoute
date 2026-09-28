@@ -527,7 +527,7 @@ function WithdrawDialog({ onClose, apiKey, credits, status, onDone }) {
 
 function SignIn({ onKey, onDemo, onSecret }) {
   const [value, setValue] = useState("");
-  const [remember, setRemember] = useState(false);
+  const remember = false;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   async function run(label, fn) {
@@ -568,9 +568,6 @@ function SignIn({ onKey, onDemo, onSecret }) {
           <Field label="API key" id="signin-key">
             <input id="signin-key" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} placeholder="sk-ar-v1-…" />
           </Field>
-          <label className="check-label">
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember on this device
-          </label>
           <div className="button-row">
             <Button type="submit" disabled={!!busy}>
               {busy === "key" ? "Connecting…" : "Connect key"}
@@ -610,7 +607,7 @@ function SignIn({ onKey, onDemo, onSecret }) {
             )}
           </div>
         </form>
-        <p className="help-text">Keys stay in this browser (this session only, unless you choose to remember them). Prompts are never stored.</p>
+        <p className="help-text">Keys stay in this browser (this tab session only). Prompts are never stored.</p>
       </div>
     </section>
   );
@@ -1597,7 +1594,7 @@ export default function Dashboard() {
                   <h3>{live ? "This browser" : "Browser-local data"}</h3>
                   <p>
                     {live
-                      ? `Signed in with ${ws?.me?.label ?? "—"}. The key is kept in this browser (this session, unless you chose to remember it). The router stores key hashes, balances and receipt metadata — never prompts or responses. The export contains your keys (no secrets), balance and receipts.`
+                      ? `Signed in with ${ws?.me?.label ?? "—"}. The key is kept in this browser (this tab session only). The router stores key hashes, balances and receipt metadata — never prompts or responses. The export contains your keys (no secrets), balance and receipts.`
                       : "Changes persist only in this browser. No account has been created. The workspace export contains demo keys, receipt metadata, sessions and sample balances; it contains no prompt text."}
                   </p>
                   <div className="button-row">

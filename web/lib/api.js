@@ -1,7 +1,7 @@
 // Live data adapter: the Anyroute API behind the existing interface.
 // The site is normally served by the router itself (same origin). Set NEXT_PUBLIC_ANYROUTE_API_URL at
 // build time to call a router hosted elsewhere. No secret is ever bundled: the API key is supplied by
-// the user and kept in this browser only (session storage unless "remember" is chosen).
+// the user and kept in this browser only (session storage only).
 
 export const API_BASE = (process.env.NEXT_PUBLIC_ANYROUTE_API_URL || "").replace(/\/$/, "");
 export const keyStore = "anyroute-key-v1";
@@ -26,13 +26,13 @@ export function setMode(mode) {
 }
 
 export function loadKey() {
-  return safe(() => sessionStorage.getItem(keyStore) || localStorage.getItem(keyStore), null) || "";
+  safe(() => localStorage.removeItem(keyStore));
+  return safe(() => sessionStorage.getItem(keyStore), null) || "";
 }
-export function saveKey(secret, remember) {
+export function saveKey(secret) {
   safe(() => {
     sessionStorage.setItem(keyStore, secret);
-    if (remember) localStorage.setItem(keyStore, secret);
-    else localStorage.removeItem(keyStore);
+    localStorage.removeItem(keyStore);
   });
 }
 export function clearKey() {
