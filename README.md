@@ -46,11 +46,12 @@ bun scripts/deploy-local.ts --keep         # starts anvil :8546, deploys, writes
 bun --env-file=.env.local run dev
 ```
 
-Production stack: `docker compose up` (router + Postgres/TimescaleDB + Redis). Copy `.env.example` to `.env` first.
-Going live also needs real provider API keys (`config/providers.example.yaml`), a mainnet deployment of the contracts
-through the owner Safe + 24h timelock (`contracts/script/Deploy.s.sol`), and a DCAP verifier (`TDX_VERIFIER_URL`)
-for the private route. With `ANYROUTE_ENV=production` the router refuses to start without an https base URL and
-strong secrets, or with an in-memory database, dev attestation or the test faucet.
+Production deployment uses the explicit configuration and isolated workers in `docker-compose.yml`.
+Read [the operations runbook](docs/OPERATIONS.md) first. The development `.env.example` is not a production template.
+Production requires authenticated PostgreSQL/Redis, a completed migration job, approved live providers,
+separate API/worker signing roles, verified contract addresses and a green `/ready` response.
+Live funds remain blocked pending final contract-governance decisions, deployed-state verification,
+credential rotation where needed, a successful recovery drill and reviewed commercial/privacy terms.
 
 ### Website
 

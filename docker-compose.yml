@@ -1,25 +1,135 @@
-# Production-shaped stack: router, Postgres + TimescaleDB, Redis (BullMQ jobs).
-# To run several router replicas, put them behind a load balancer; BullMQ runs each job once.
+# Explicit production inputs. No .env file is imported into a service.
+# Read docs/OPERATIONS.md before use. Worker signing keys belong in separate workloads.
+x-runtime: &runtime
+  ANYROUTE_ENV: production
+  RUNTIME_ROLE: api
+  AUTO_MIGRATE: "false"
+  HOST: 0.0.0.0
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set the HTTPS public origin}
+  DATABASE_URL: ${DATABASE_URL:?Inject a nondefault PostgreSQL URL}
+  REDIS_URL: ${REDIS_URL:?Inject an authenticated Redis URL}
+  APP_SECRET: ${APP_SECRET:?Inject the application encryption secret}
+  ADMIN_TOKEN: ${ADMIN_TOKEN:?Inject the operator token}
+  RHC_RPC_URL: ${RHC_RPC_URL:?Set the verified chain RPC}
+  CREDITS_ADDRESS: ${CREDITS_ADDRESS:?Set verified Credits address}
+  CALLPAY_ADDRESS: ${CALLPAY_ADDRESS:?Set verified CallPay address}
+  RECEIPT_ANCHOR_ADDRESS: ${RECEIPT_ANCHOR_ADDRESS:?Set verified ReceiptAnchor address}
 services:
   postgres:
-    image: timescale/timescaledb:latest-pg16
-    environment: { POSTGRES_USER: anyroute, POSTGRES_PASSWORD: anyroute, POSTGRES_DB: anyroute }
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -U anyroute"], interval: 5s, retries: 20 }
-  redis:
-    image: redis:8
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes: [redisdata:/data]
-  router:
-    build: .
-    env_file: .env
+    image: ${POSTGRES_IMAGE:?Set a reviewed PostgreSQL 16 image pinned by sha256 digest}
     environment:
-      DATABASE_URL: postgres://anyroute:anyroute@postgres:5432/anyroute
-      REDIS_URL: redis://redis:6379
+      POSTGRES_USER: anyroute
+      POSTGRES_DB: anyroute
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Inject a unique database password}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [storage]
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 2
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U anyroute -d anyroute"], interval: 5s, retries: 20 }
+  redis:
+    image: ${REDIS_IMAGE:?Set a reviewed Redis image pinned by sha256 digest}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Inject a unique Redis password}
+    command: ["sh", "-ec", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes: [redisdata:/data]
+    networks: [storage]
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
+    healthcheck: { test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG'], interval: 5s, retries: 20 }
+  migrate:
+    build: .
+    environment: { DATABASE_URL: "${DATABASE_URL:?Inject a PostgreSQL URL}" }
+    command: ["bun", "scripts/migrate.ts"]
+    networks: [storage]
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_started }
-    ports: ["8787:8787"]
+    restart: "no"
+  provider-init:
+    build: .
+    environment:
+      <<: *runtime
+      RUNTIME_ROLE: worker
+      WORKER_JOBS: provider-registry
+      WORKERS: "false"
+      PROVIDERS_FILE: /run/providers.yaml
+      # Configure provider credential variables through the deployment secret system.
+    env_file: ["${PROVIDER_SECRETS_FILE:?Provide a file containing only provider credential variables}"]
+    volumes: ["${PROVIDERS_MANIFEST:?Provide a reviewed local provider manifest}:/run/providers.yaml:ro"]
+    command: ["bun", "scripts/seed.ts"]
+    networks: [storage, egress]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: "no"
+  router:
+    build: .
+    environment:
+      <<: *runtime
+      WORKERS: "false"
+      ROUTER_PRIVATE_KEY: ${ROUTER_PRIVATE_KEY:?Inject only the restricted router role into the API}
+    depends_on:
+      provider-init: { condition: service_completed_successfully }
+    ports: ["127.0.0.1:8787:8787"]
+    networks: [storage, egress]
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 2
+    stop_grace_period: 45s
+  registry-worker:
+    build: .
+    environment:
+      <<: *runtime
+      RUNTIME_ROLE: worker
+      WORKERS: "true"
+      WORKER_JOBS: health-flush,holds-expire,catalog-refresh,provider-registry,health-probes,canaries,attestor,chain-indexer
+    command: ["bun", "src/worker.ts"]
+    networks: [storage, egress]
+    depends_on:
+      provider-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1
+    stop_grace_period: 45s
+    healthcheck: { disable: true }
+  settlement-worker:
+    build: .
+    environment:
+      <<: *runtime
+      RUNTIME_ROLE: worker
+      WORKERS: "true"
+      WORKER_JOBS: settlement
+      SETTLEMENT_PRIVATE_KEY: ${SETTLEMENT_PRIVATE_KEY:?Inject only into the isolated settlement worker}
+    command: ["bun", "src/worker.ts"]
+    networks: [storage, egress]
+    depends_on:
+      provider-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1
+    stop_grace_period: 45s
+    healthcheck: { disable: true }
+  anchor-worker:
+    build: .
+    environment:
+      <<: *runtime
+      RUNTIME_ROLE: worker
+      WORKERS: "true"
+      WORKER_JOBS: receipts-anchor,receipt-key-rotation
+      ANCHORER_PRIVATE_KEY: ${ANCHORER_PRIVATE_KEY:?Inject only into the isolated anchor worker}
+    command: ["bun", "src/worker.ts"]
+    networks: [storage, egress]
+    depends_on:
+      provider-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1
+    stop_grace_period: 45s
+    healthcheck: { disable: true }
+networks:
+  storage: { internal: true }
+  egress: {}
 volumes:
   pgdata: {}
   redisdata: {}
