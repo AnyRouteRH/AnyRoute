@@ -141,9 +141,28 @@ contract DeployLocalTest is Test {
         assertEq(IERC20(d.usdg).balanceOf(d.credits), 5e6);
     }
 
+    function test_productionRejectsUnfundedPaymaster() public {
+        Deploy fresh = new Deploy();
+        Deploy.Params memory p = fresh.localParams();
+        Deploy.Roles memory roles = fresh.localRoles();
+        p.paymasterDeposit = 0;
+        vm.expectRevert("Deploy: paymaster deposit must cover two daily caps");
+        fresh.deployProduction(p, roles);
+    }
+
+    function test_productionRejectsUnstakedPaymaster() public {
+        Deploy fresh = new Deploy();
+        Deploy.Params memory p = fresh.localParams();
+        Deploy.Roles memory roles = fresh.localRoles();
+        p.paymasterStake = 0;
+        vm.expectRevert("Deploy: paymaster needs stake >= 0.01 ETH and delay >= 1 day");
+        fresh.deployProduction(p, roles);
+    }
+
     function test_localArtifact() public {
         Deploy s2 = new Deploy();
         Deploy.Params memory p = s2.localParams();
+        vm.createDir("deployments", true);
         p.outPath = "deployments/test-local-artifact.json";
         s2.deployLocal(p, s2.localRoles());
         Deploy.Deployed memory d2 = s2.deployed();

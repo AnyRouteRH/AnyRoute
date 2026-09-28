@@ -8,6 +8,7 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IStakeManager} from "account-abstraction/interfaces/IStakeManager.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 
@@ -201,6 +202,10 @@ contract Deploy is Script {
     // =============================================================================================
 
     function deployProduction(Params memory p, Roles memory r) public {
+        require(p.paymasterDailyCap > 0 && p.paymasterDeposit / 2 >= p.paymasterDailyCap,
+            "Deploy: paymaster deposit must cover two daily caps");
+        require(p.paymasterStake >= 0.01 ether && p.paymasterUnstakeDelay >= 1 days,
+            "Deploy: paymaster needs stake >= 0.01 ETH and delay >= 1 day");
         _p = p;
         _r = r;
         string memory cfg = vm.readFile(p.configPath);
@@ -247,6 +252,10 @@ contract Deploy is Script {
         if (p.paymasterStake != 0) {
             AnyrPaymaster(payable(_d.paymaster)).addStake{value: p.paymasterStake}(p.paymasterUnstakeDelay);
         }
+
+        IStakeManager.DepositInfo memory funding = IEntryPoint(_d.entryPoint).getDepositInfo(_d.paymaster);
+        require(funding.deposit >= p.paymasterDeposit && funding.staked && funding.stake >= p.paymasterStake
+            && funding.unstakeDelaySec >= p.paymasterUnstakeDelay, "Deploy: paymaster funding verification failed");
 
         address[] memory owned = _ownedContracts();
         for (uint256 i; i < owned.length; ++i) {
