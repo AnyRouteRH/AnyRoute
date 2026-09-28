@@ -29,6 +29,16 @@ jobs:
       - run: bun run typecheck
       - run: bun test --timeout 20000
         env: { TZ: UTC, TEST_PG_URL: 'postgres://postgres:fixture-only-ci-password@127.0.0.1:55432/postgres', TEST_REDIS_URL: 'redis://127.0.0.1:56379' }
+      - name: Install encrypted recovery test tools
+        run: sudo apt-get update -qq && sudo apt-get install -y age postgresql-client-16
+      - name: Exercise encrypted backup, empty restore and reconciliation
+        run: bash scripts/recovery-drill.sh
+        env:
+          RECOVERY_DRILL_ACK: disposable-cluster
+          PGHOST: 127.0.0.1
+          PGPORT: '55432'
+          PGUSER: postgres
+          PGPASSWORD: fixture-only-ci-password
       - run: bun run test:e2e
       - run: bun run test:contracts --no-match-path 'test/fork/*'
       - run: npm install --global pnpm@11.19.0
