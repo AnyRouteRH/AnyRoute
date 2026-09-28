@@ -1,5 +1,5 @@
 # Website: static Next.js export, served by the router at /.
-FROM node:22-slim AS web
+FROM node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS web
 WORKDIR /web
 RUN npm install -g pnpm@11.19.0
 COPY web/package.json web/pnpm-lock.yaml ./
@@ -11,12 +11,12 @@ COPY web/lib ./lib
 COPY web/public ./public
 RUN pnpm build
 
-FROM oven/bun:1.3 AS deps
+FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production --ignore-scripts
 
-FROM oven/bun:1.3
+FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4
 WORKDIR /app
 ENV ANYROUTE_ENV=production HOST=0.0.0.0 PORT=8787
 COPY --from=deps /app/node_modules ./node_modules
