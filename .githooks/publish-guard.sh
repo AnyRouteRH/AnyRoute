@@ -118,8 +118,10 @@ case "${1:-}" in
       check_tz "commit $h author" "${ad##* }"
       check_tz "commit $h committer" "${cd##* }"
     done < "$tmp/commits"
-    git log --format= --name-only --diff-filter=ACMR "$@" | sort -u | check_paths
-    { git log -p -U0 --no-color --no-ext-diff --format= "$@" | added_lines
+    # Merge resolutions can introduce content absent from every parent. Git's
+    # default log diff omits merges; inspect each parent comparison explicitly.
+    git log -m --format= --name-only --diff-filter=ACMR "$@" | sort -u | check_paths
+    { git log -m -p -U0 --no-color --no-ext-diff --format= "$@" | added_lines
       git log --format=%B "$@" | sed 's/^/commit message\t/'; } | check_lines
     ;;
   *)

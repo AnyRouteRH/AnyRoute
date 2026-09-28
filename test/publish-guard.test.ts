@@ -27,3 +27,32 @@ test("publication guard pins both identities and rejects co-author attribution a
     expect(run(["bash", guard, "range", "HEAD"], { ANYROUTE_ALLOWED_EMAIL_RE: ".*" })).not.toBe(0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+for (const kind of ["private-path", "private-content"]) {
+  test(`publication guard rejects ${kind} introduced only by a merge resolution`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "anyroute-merge-guard-"));
+    const env = { PATH: process.env.PATH!, HOME: process.env.HOME!, TZ: "UTC", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "Anyroute Contributor", GIT_AUTHOR_EMAIL: "contributor@anyroute.invalid", GIT_COMMITTER_NAME: "Anyroute Contributor", GIT_COMMITTER_EMAIL: "contributor@anyroute.invalid" };
+    const run = (cmd: string[]) => Bun.spawnSync(cmd, { cwd: dir, env, stdout: "pipe", stderr: "pipe" }).exitCode;
+    try {
+      expect(run(["git", "init", "-q", "-b", "main"])).toBe(0);
+      mkdirSync(join(dir, ".githooks")); writeFileSync(join(dir, ".githooks/public-hex-allowlist.txt"), "");
+      writeFileSync(join(dir, ".git/info/publish-denylist"), "fixture-private-marker\n");
+      writeFileSync(join(dir, "base.txt"), "safe\n");
+      expect(run(["git", "add", "."])).toBe(0);
+      expect(run(["git", "commit", "-qm", "Base"])).toBe(0);
+      expect(run(["git", "switch", "-qc", "feature"])).toBe(0);
+      writeFileSync(join(dir, "feature.txt"), "safe feature\n");
+      expect(run(["git", "add", "."])).toBe(0);
+      expect(run(["git", "commit", "-qm", "Feature"])).toBe(0);
+      expect(run(["git", "switch", "-q", "main"])).toBe(0);
+      writeFileSync(join(dir, "main.txt"), "safe main\n");
+      expect(run(["git", "add", "."])).toBe(0);
+      expect(run(["git", "commit", "-qm", "Main"])).toBe(0);
+      expect(run(["git", "merge", "--no-commit", "--no-ff", "feature"])).toBe(0);
+      writeFileSync(join(dir, kind === "private-path" ? ".env" : "base.txt"), kind === "private-path" ? "fixture only\n" : "fixture-private-marker\n");
+      expect(run(["git", "add", "."])).toBe(0);
+      expect(run(["git", "commit", "-qm", "Resolve merge"])).toBe(0);
+      expect(run(["bash", guard, "range", "HEAD^..HEAD"])).not.toBe(0);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}
