@@ -6,7 +6,7 @@ services:
     image: ${FOUNDRY_IMAGE:?Set a reviewed Foundry image pinned by sha256 digest}
     entrypoint: ["anvil"]
     command: ["--host", "0.0.0.0", "--port", "8545", "--chain-id", "4663", "--silent"]
-    networks: [egress]
+    networks: [egress, control]
     ports:
       - "127.0.0.1:${TOPOLOGY_ANVIL_PORT:-18545}:8545"
     healthcheck:
@@ -66,6 +66,7 @@ services:
       - ${FIXTURE_OUTPUT_DIR:?Fixture script supplies a temporary directory}:/run/topology:ro
     ports:
       - "127.0.0.1:${TOPOLOGY_HTTP_PORT:-18787}:8787"
+    networks: [storage, egress, control]
     depends_on:
       runtime-role-grants: { condition: service_completed_successfully }
 
@@ -86,6 +87,9 @@ services:
       runtime-role-grants: { condition: service_completed_successfully }
 
 networks:
+  # Docker Desktop/Linux CI publishes host ports from this ordinary bridge. Only the
+  # API and Anvil attach; mock provider traffic remains on the internal fixture network.
+  control: {}
   egress:
     internal: true
     ipam:

@@ -133,9 +133,22 @@ write_env
 "${compose[@]}" config --quiet
 compose_started=1
 "${compose[@]}" up -d --wait anvil
+anvil_host_ready=0
+for _ in {1..30}; do
+  if bash scripts/foundry.sh cast rpc eth_chainId --rpc-url "$rpc" >/dev/null 2>&1; then
+    anvil_host_ready=1
+    break
+  fi
+  sleep 1
+done
+if (( ! anvil_host_ready )); then
+  echo "Anvil became healthy in Compose but its loopback host port $anvil_port did not accept RPC connections." >&2
+  exit 1
+fi
 
 # Work in a temporary copy so Foundry cannot mutate ignored build/deployment evidence in the repo.
 cp -R "$root/contracts" "$tmp/contracts"
+mkdir -p "$tmp/contracts/deployments"
 ln -s "$root/node_modules" "$tmp/node_modules"
 deployment_rel="deployments/.topology-${project}.json"
 (cd "$tmp/contracts" && DEPLOYMENTS_PATH="$deployment_rel" MOCK=1 DEPLOYER_PRIVATE_KEY="$fixture_deployer_key" \

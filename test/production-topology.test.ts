@@ -47,6 +47,10 @@ describe("production Compose topology", () => {
     expect(fixture.services.router.environment.NODE_EXTRA_CA_CERTS).toBe("/run/topology/tls.crt");
     expect(fixture.services.anvil.command).toEqual(expect.arrayContaining(["--chain-id", "4663"]));
     expect(fixture.services.anvil.ports[0]).toContain("18545");
+    expect(fixture.services.anvil.networks).toContain("control");
+    expect(fixture.services.router.networks).toEqual(expect.arrayContaining(["storage", "egress", "control"]));
+    expect(fixture.services["mock-provider"].networks).not.toHaveProperty("control");
+    expect(fixture.networks.control.internal).not.toBe(true);
     expect(compose.services.router.environment.USDG_ADDRESS).toContain("USDG_ADDRESS");
     expect(fixture.services.router.environment.ANYROUTE_ENV).toBeUndefined();
     const verifier = readFileSync(resolve(root, "scripts/production-topology-verify.ts"), "utf8");
