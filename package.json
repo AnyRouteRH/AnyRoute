@@ -49,5 +49,6 @@
     "drizzle-kit": "0.31.11",
     "openai": "7.23.0",
     "typescript": "7.0.2"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }

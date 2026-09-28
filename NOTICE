@@ -1,0 +1,17 @@
+Required Notice: Copyright 2026 Anyroute contributors
+
+AnyRoute-authored material without a separate license notice is offered under
+the PolyForm Noncommercial License 1.0.0 in LICENSE. Commercial use outside
+that license's permitted purposes requires separate written permission from
+the relevant rights holders. Licensing inquiries may be opened at:
+https://github.com/AnyRouteRH/AnyRoute/issues/new?template=licensing.yml
+
+Files carrying their own SPDX or license notices retain those terms. In
+particular, Solidity files marked MIT remain MIT, and contracts/lib/forge-std
+retains its upstream MIT/Apache-2.0 licensing. Package dependencies and their
+assets remain subject to their respective licenses. This notice does not
+revoke rights already granted in earlier versions or relicense third-party
+material.
+
+No trademark license to the Anyroute name or logo is granted by the software
+license. Attribution and accurate, non-endorsing references are welcome.
