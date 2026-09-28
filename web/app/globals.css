@@ -629,3 +629,7 @@ progress::-moz-progress-bar{background:var(--signal-deep)}
   .ticker-track{animation:none}
   .mark-signal{display:none}
 }
+
+/* Permanent hash destinations also work before the dashboard hydrates. */
+.dashboard-anchor{display:block;height:0;scroll-margin-top:calc(var(--header) + 90px)}
+.dashboard-section{min-width:0}

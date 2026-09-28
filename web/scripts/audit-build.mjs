@@ -15,8 +15,9 @@ for(const route of routes){
  }
  for(const match of html.matchAll(/href="(\/(?:[^"#]*))#([^"\s]+)"/g)){
   const [_,routePath,id]=match;const file=path.join(root,routePath,'index.html');
-  if(fs.existsSync(file)&&routePath!='/dashboard/'&&routePath!='/dashboard')assert(fs.readFileSync(file,'utf8').includes(`id="${id}"`),`Missing anchor ${routePath}#${id}`);
+  if(fs.existsSync(file))assert(fs.readFileSync(file,'utf8').includes(`id="${id}"`),`Missing anchor ${routePath}#${id}`);
  }
+ for(const match of html.matchAll(/href="#([^"\s]+)"/g))assert(html.includes(`id="${match[1]}"`),`Missing local anchor ${route}#${match[1]}`);
 }
 for(const name of fs.readdirSync(root))assert(!/\.(md|py|pdf|zip|map)$/i.test(name),`Unexpected file in the build: ${name}`);
 console.log(`PASS: ${routes.length} routes; ${count} local asset/link references; no stray files.`);

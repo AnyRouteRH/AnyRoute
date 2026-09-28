@@ -649,6 +649,7 @@ export default function Dashboard() {
   const timer = useRef(null);
   const abort = useRef(null);
   const navRef = useRef(null);
+  const sectionRef = useRef(null);
   const stateRef = useRef(state);
   stateRef.current = state;
   const live = mode === "live";
@@ -750,6 +751,15 @@ export default function Dashboard() {
     const left = current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2;
     nav.scrollTo({ left: Math.max(0, left), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [tab]);
+
+  // Hash links select a workspace section and move assistive-technology focus
+  // once its content is ready, including on direct links and browser Back/Forward.
+  useEffect(() => {
+    if (loaded && window.location.hash === "#" + tabId(tab)) {
+      const frame = requestAnimationFrame(() => sectionRef.current?.focus({ preventScroll: true }));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [tab, loaded]);
 
   function switchMode(next) {
     setMode(next);
@@ -1046,11 +1056,17 @@ export default function Dashboard() {
       </div>
       <nav className="dashboard-nav" aria-label="Workspace sections" ref={navRef}>
         {tabs.map((t) => (
-          <a key={t} href={"#" + tabId(t)} aria-current={tab === t ? "page" : undefined} onClick={() => navigate(t)}>
+          <a key={t} href={"#" + tabId(t)} aria-current={tab === t ? "page" : undefined} onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            navigate(t);
+          }}>
             {t}
           </a>
         ))}
       </nav>
+      <section ref={sectionRef} className="dashboard-section" tabIndex={-1} aria-label={`${tab} workspace section`}>
+      {tabs.map((t) => <span key={t} id={tabId(t)} className="dashboard-anchor" aria-hidden="true" />)}
       {storageError && (
         <div className="error" role="alert">
           {storageError}
@@ -1639,6 +1655,7 @@ export default function Dashboard() {
           )}
         </div>
       )}
+      </section>
       {modal?.type === "receipt" && <ReceiptDetails receipt={modal.data} apiKey={apiKey} status={status} onClose={() => setModal(null)} />}
       {modal?.type === "key" && <KeyDialog live={live} existing={modal.data} onClose={() => setModal(null)} onSave={saveKeyValues} />}
       {modal?.type === "session" && <SessionDialog live={live} tokens={ws?.tokens || []} paywith={ws?.paywith || {}} existing={modal.data} onClose={() => setModal(null)} onSave={saveSession} />}
