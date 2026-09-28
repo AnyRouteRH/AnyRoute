@@ -37,6 +37,12 @@ interface IUniswapV3FactoryLike {
     function getPool(address a, address b, uint24 fee) external view returns (address);
 }
 
+interface IDeploymentSafeLike {
+    function getOwners() external view returns (address[] memory);
+    function getThreshold() external view returns (uint256);
+    function masterCopy() external view returns (address);
+}
+
 /// @title Deploy
 /// @notice Deploys and wires every Anyroute contract.
 ///
@@ -211,6 +217,7 @@ contract Deploy is Script {
         string memory cfg = vm.readFile(p.configPath);
         require(vm.parseJsonUint(cfg, ".chainId") == block.chainid, "Deploy: config chainId != block.chainid");
         _requireRoles(r, true);
+        _requireOwnerSafe(cfg, r);
 
         address deployer = vm.addr(p.deployerKey);
         _d.deployer = deployer;
@@ -538,6 +545,23 @@ contract Deploy is Script {
             require(r.ownerSafe != address(0), "Deploy: OWNER_SAFE required");
             require(r.ownerSafe != r.settlement && r.ownerSafe != r.slasher,
                 "Deploy: independent approval Safe required");
+        }
+    }
+
+    /// @dev Require the configured OWNER_SAFE to be a configured Safe proxy with a real threshold
+    /// multisig and no settlement/slasher worker among its direct owners.
+    function _requireOwnerSafe(string memory cfg, Roles memory r) internal view {
+        require(r.ownerSafe.code.length != 0, "Deploy: OWNER_SAFE must be a deployed Safe");
+        address singleton = vm.parseJsonAddress(cfg, ".safe141.singleton");
+        IDeploymentSafeLike safe = IDeploymentSafeLike(r.ownerSafe);
+        require(safe.masterCopy() == singleton, "Deploy: OWNER_SAFE is not configured Safe 1.4.1");
+        address[] memory signers = safe.getOwners();
+        uint256 threshold = safe.getThreshold();
+        require(signers.length >= 2 && threshold >= 2 && threshold <= signers.length,
+            "Deploy: OWNER_SAFE must have a valid threshold multisig");
+        for (uint256 i; i < signers.length; ++i) {
+            require(signers[i] != r.settlement && signers[i] != r.slasher,
+                "Deploy: OWNER_SAFE signer overlaps worker");
         }
     }
 

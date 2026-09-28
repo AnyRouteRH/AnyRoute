@@ -52,6 +52,18 @@ contract DeployLocalTest is Test {
         assertEq(d.uniswapV3Adapter, address(0));
     }
 
+    function test_productionRejectsEoaOwnerSafe() public {
+        Deploy.Params memory p = script.localParams();
+        p.mock = false;
+        p.paymasterDeposit = 0.02 ether;
+        p.paymasterStake = 0.01 ether;
+        Deploy.Roles memory prodRoles = script.localRoles();
+        prodRoles.ownerSafe = makeAddr("owner-safe-eoa");
+        vm.chainId(4663);
+        vm.expectRevert(bytes("Deploy: OWNER_SAFE must be a deployed Safe"));
+        script.deployProduction(p, prodRoles);
+    }
+
     function test_rolesAreAnvilAccounts() public view {
         Deploy.Roles memory def = script.localRoles();
         assertEq(r.router, def.router);
