@@ -13,6 +13,7 @@ x-runtime: &runtime
   RHC_RPC_URL: ${RHC_RPC_URL:?Set the verified chain RPC}
   CREDITS_ADDRESS: ${CREDITS_ADDRESS:?Set verified Credits address}
   CALLPAY_ADDRESS: ${CALLPAY_ADDRESS:?Set verified CallPay address}
+  PROVIDER_BOND_ADDRESS: ${PROVIDER_BOND_ADDRESS:?Set verified ProviderBond address}
   RECEIPT_ANCHOR_ADDRESS: ${RECEIPT_ANCHOR_ADDRESS:?Set verified ReceiptAnchor address}
 services:
   postgres:
