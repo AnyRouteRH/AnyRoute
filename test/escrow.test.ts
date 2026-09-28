@@ -186,7 +186,12 @@ describe("escrow configuration", () => {
   test("escrow mode refuses to run beside live contracts", () => {
     expect(() => loadConfig({ ...escrowEnv, CREDITS_ADDRESS: "0x0000000000000000000000000000000000000001" })).toThrow(/must not configure contracts/);
   });
-  test("a worker may run the escrow watcher", () => {
-    expect(() => loadConfig({ ...prod, ...escrowEnv, ESCROW_START_BLOCK: "1", RUNTIME_ROLE: "worker", WORKER_JOBS: "escrow-indexer,catalog-refresh" })).not.toThrow();
+  test("an escrow worker runs the watcher and local receipt batching without any signing key", () => {
+    const worker = { ...prod, ...escrowEnv, ESCROW_START_BLOCK: "1", RUNTIME_ROLE: "worker", WORKER_JOBS: "health-flush,holds-expire,catalog-refresh,provider-registry,health-probes,attestor,receipts-anchor,receipt-key-rotation,escrow-indexer" };
+    expect(() => loadConfig(worker)).not.toThrow();
+    expect(() => loadConfig({ ...worker, ANCHORER_PRIVATE_KEY: "0x" + "4".repeat(64) })).toThrow(/must not receive/);
+    expect(() => loadConfig({ ...prod, ...escrowEnv, ESCROW_START_BLOCK: "1", SETTLEMENT_PRIVATE_KEY: "0x" + "4".repeat(64), RUNTIME_ROLE: "worker", WORKER_JOBS: "settlement" })).toThrow(/must not receive/);
+    // Contract mode keeps requiring the anchoring key for its job.
+    expect(() => loadConfig({ ...prod, CREDITS_ADDRESS: "0x0000000000000000000000000000000000000001", CALLPAY_ADDRESS: "0x0000000000000000000000000000000000000001", PROVIDER_BOND_ADDRESS: "0x0000000000000000000000000000000000000001", RECEIPT_ANCHOR_ADDRESS: "0x0000000000000000000000000000000000000001", RUNTIME_ROLE: "worker", WORKER_JOBS: "receipts-anchor" })).toThrow(/anchoring job and signing-key/);
   });
 });

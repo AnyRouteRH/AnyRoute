@@ -199,16 +199,20 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.PAYMASTER_ADDRESS && e.RUNTIME_ROLE === "api" && !e.PAYMASTER_SIGNER_KEY) throw new Error("Configured paymaster requires its signing role.");
     const roleKeys = { settlement: e.SETTLEMENT_PRIVATE_KEY, anchoring: e.ANCHORER_PRIVATE_KEY, slashing: e.SLASHER_PRIVATE_KEY, buyback: e.KEEPER_PRIVATE_KEY };
     if (e.RUNTIME_ROLE === "api" && Object.values(roleKeys).some(Boolean)) throw new Error("Public API must not receive settlement, anchoring, slashing or keeper signing keys.");
+    // Escrow mode has no contracts, so no job signs anything: receipts stay signed locally ("local"
+    // anchors) and settlement, slashing and buybacks are inert. No signing key belongs anywhere.
+    if (escrowMode && Object.values(roleKeys).some(Boolean)) throw new Error("PAYMENTS_MODE=escrow must not receive settlement, anchoring, slashing or keeper signing keys.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
-      for (const [role, key] of Object.entries(roleKeys)) {
-        const enabled = names.includes(keyJobs[role as keyof typeof keyJobs]);
-        if (enabled !== !!key) throw new Error(`Worker ${role} job and signing-key configuration must match.`);
-      }
+      if (!escrowMode)
+        for (const [role, key] of Object.entries(roleKeys)) {
+          const enabled = names.includes(keyJobs[role as keyof typeof keyJobs]);
+          if (enabled !== !!key) throw new Error(`Worker ${role} job and signing-key configuration must match.`);
+        }
     }
   }
   if (e.DEV_FAUCET) {
