@@ -15,7 +15,7 @@ jobs:
       redis:
         image: redis:8.0.2
         ports: ["56379:6379"]
-        options: --health-cmd 'redis-cli ping' --health-interval 5s --health-retries 20
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with: { persist-credentials: false }
