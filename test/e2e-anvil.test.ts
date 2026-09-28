@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { createPublicClient, createWalletClient, decodeFunctionData, http, parseUnits, type Hex, keccak256, toBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { resolve } from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { createApp } from "../src/app.ts";
 import { runRegistry } from "../src/services/registry.ts";
 import { pollChain } from "../src/chain/indexer.ts";
@@ -59,8 +59,9 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
   };
 
   beforeAll(async () => {
-    const forge = `${process.env.HOME}/.foundry/bin`;
-    anvil = Bun.spawn([`${forge}/anvil`, "--port", "8547", "--chain-id", "4663", "--silent"], { stdout: "ignore", stderr: "ignore" });
+    const forge = process.env.FOUNDRY_BIN ? `${process.env.FOUNDRY_BIN}/forge` : Bun.which("forge") ?? `${process.env.HOME}/.foundry/bin/forge`;
+    const anvilBin = process.env.FOUNDRY_BIN ? `${process.env.FOUNDRY_BIN}/anvil` : Bun.which("anvil") ?? `${process.env.HOME}/.foundry/bin/anvil`;
+    anvil = Bun.spawn([anvilBin, "--port", "8547", "--chain-id", "4663", "--silent"], { stdout: "ignore", stderr: "ignore" });
     for (let i = 0; i < 50; i++) {
       try {
         await pub.getBlockNumber();
@@ -69,7 +70,8 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
         await Bun.sleep(100);
       }
     }
-    await $`${forge}/forge script script/Deploy.s.sol --rpc-url ${RPC} --broadcast --slow --private-key ${PK.deployer}`.cwd(resolve(ROOT, "contracts")).env({ ...process.env, MOCK: "1", DEPLOYER_PRIVATE_KEY: PK.deployer, DEPLOYMENTS_PATH: "deployments/4663-e2e.json" }).quiet();
+    mkdirSync(resolve(ROOT, "contracts/deployments"), { recursive: true });
+    await $`${forge} script script/Deploy.s.sol --rpc-url ${RPC} --broadcast --slow --private-key ${PK.deployer}`.cwd(resolve(ROOT, "contracts")).env({ ...process.env, MOCK: "1", DEPLOYER_PRIVATE_KEY: PK.deployer, DEPLOYMENTS_PATH: "deployments/4663-e2e.json" }).quiet();
     const outFile = resolve(ROOT, "contracts/deployments/4663-e2e.json");
     dep = JSON.parse(readFileSync(outFile, "utf8"));
     const C = dep.contracts;
