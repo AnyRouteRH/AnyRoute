@@ -37,7 +37,7 @@ const spec = z.object({
 });
 const doc = spec.parse(parse(readFileSync(file, "utf8")));
 const cfg = loadConfig();
-const { db, close } = await openDatabase(cfg.databaseUrl);
+const { db, close } = await openDatabase(cfg.databaseUrl, { migrate: cfg.autoMigrate });
 for (const p of doc.providers) {
   validateProviderUrl(p.base_url, cfg.production);
   if (p.tee) validateProviderUrl(p.tee.attestation_url, cfg.production);
