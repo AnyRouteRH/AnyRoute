@@ -221,7 +221,7 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         paywith: { tokens: ctx.cfg.paywith.tokens.map((t) => t.symbol), configured: !!ctx.cfg.chain.payWithStock },
         per_call: { configured: !!ctx.cfg.chain.callPay, max_usd: ctx.cfg.fees.perCallMaxUsd },
         telemetry: ctx.telemetry.enabled,
-        jobs: ctx.jobs.status(),
+        jobs: ctx.jobs.status().map((job) => ({ ...job, last_error: job.last_error ? "Job failed" : null })),
         catalog: { models: ctx.catalog.models.size, providers: ctx.catalog.providers.size },
       },
     }),

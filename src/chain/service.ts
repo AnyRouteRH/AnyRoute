@@ -95,7 +95,6 @@ export class ChainService {
     const contracts = Object.fromEntries((Object.keys(CONTRACT_ABIS) as ContractName[]).map((n) => [n, this.address(n) ?? null]));
     return {
       chain_id: this.cfg.chain.id,
-      rpc: this.cfg.chain.rpcUrl.replace(/\/\/([^/@]+)@/, "//***@"),
       public_rpc: this.cfg.chain.publicRpcUrl,
       explorer: this.cfg.chain.explorerUrl,
       usdg: this.cfg.chain.usdg,
