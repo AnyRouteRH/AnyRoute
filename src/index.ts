@@ -3,6 +3,7 @@ import { log } from "./lib/util.ts";
 
 const { app, ctx, close } = await createApp();
 
+if (ctx.cfg.runtimeRole === "worker") throw new Error("Use src/worker.ts for worker-only workloads.");
 const server = Bun.serve({
   hostname: ctx.cfg.host,
   port: ctx.cfg.port,

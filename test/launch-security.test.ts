@@ -6,6 +6,7 @@ import { runRegistry } from "../src/services/registry.ts";
 import { runAttestor } from "../src/services/attestor.ts";
 import { sealProviderHeaders } from "../src/providers/headers.ts";
 import { boundedJson } from "../src/providers/network.ts";
+import { CRITICAL_JOBS, jobReady } from "../src/services/readiness.ts";
 import { Jobs } from "../src/services/jobs.ts";
 
 const application = (id: string, url: string) => ({ id, name: "Audit provider", base_url: url, data_policy: { training: false, retains_prompts: false }, contact: "private@example.test", headers: { "x-private": "AUDIT_PLACEHOLDER" }, tee: { kind: "dev", attestation_url: url + "/attestation" } });
@@ -76,9 +77,45 @@ describe("launch security regressions", () => {
     try { for (const path of ["/api/v1/providers/apply", "/trpc/providers.onboard"]) expect((await h.request(path, { method: "POST", json: application("rate-limited", "https://provider.example") })).status).toBe(429); }
     finally { h.ctx.limiter = old; }
   });
+  test("readiness succeeds for healthy dependencies and rejects failed shared worker state", async () => {
+    const oldCredits = h.ctx.cfg.chain.credits, oldAnchor = h.ctx.cfg.chain.receiptAnchor;
+    const oldChainId = h.ctx.chain.client.getChainId;
+    h.ctx.cfg.chain.credits = "0x0000000000000000000000000000000000000001";
+    h.ctx.cfg.chain.receiptAnchor = "0x0000000000000000000000000000000000000002";
+    h.ctx.chain.client.getChainId = async () => h.ctx.cfg.chain.id;
+    try {
+      await h.ctx.db.insert(chainCursor).values({ id: "main", block: 100n }).onConflictDoUpdate({ target: chainCursor.id, set: { block: 100n } });
+      for (const name of CRITICAL_JOBS) {
+        const value = { name, every_ms: 5000, last_error: null, last_success: new Date().toISOString() };
+        await h.ctx.db.insert(kv).values({ key: `job-health:${name}`, value }).onConflictDoUpdate({ target: kv.key, set: { value } });
+      }
+      expect((await h.request("/ready")).status).toBe(200);
+      await h.ctx.db.update(kv).set({ value: { name: "settlement", every_ms: 5000, last_error: "fixture failure", last_success: new Date().toISOString() } }).where(eq(kv.key, "job-health:settlement"));
+      expect((await h.request("/ready")).status).toBe(503);
+    } finally { h.ctx.cfg.chain.credits = oldCredits; h.ctx.cfg.chain.receiptAnchor = oldAnchor; h.ctx.chain.client.getChainId = oldChainId; }
+  });
+  test("liveness remains available while readiness fails closed on absent dependencies", async () => {
+    expect((await h.request("/health")).status).toBe(200);
+    const r = await h.request("/ready");
+    expect(r.status).toBe(503);
+    expect((await r.json()).ok).toBe(false);
+  });
 });
 
 test("untrusted JSON is bounded even without Content-Length", async () => {
   await expect(boundedJson(new Response('"' + "x".repeat(100) + '"'), 16)).rejects.toThrow("size limit");
   expect(await boundedJson(Response.json({ ok: true }))).toEqual({ ok: true });
+});
+test("worker failures propagate, persist failure state and recover on the next run", async () => {
+  let failing = true;
+  const recorded: any[] = [];
+  const jobs = new Jobs(undefined, async (s) => { recorded.push(s); });
+  jobs.register("fixture", 1000, async () => { if (failing) throw new Error("fixture failure"); return true; });
+  await expect(jobs.run("fixture")).rejects.toThrow("fixture failure");
+  expect(recorded.at(-1).last_error).toBe("fixture failure");
+  expect(jobReady(recorded.at(-1))).toBe(false);
+  failing = false; await jobs.run("fixture");
+  expect(jobReady(recorded.at(-1))).toBe(true);
+  expect(jobReady(recorded.at(-1), Date.now() + 120_000)).toBe(false);
+  await jobs.stop();
 });

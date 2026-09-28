@@ -1,4 +1,6 @@
 import { mkdirSync } from "node:fs";
+import { sql } from "drizzle-orm";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { dirname, resolve } from "node:path";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema.ts";
@@ -43,6 +45,14 @@ export async function openDatabase(url: string, opts: { migrate?: boolean } = {}
       const { migrate } = await import("drizzle-orm/postgres-js/migrator");
       await migrate(db as never, { migrationsFolder: MIGRATIONS });
     }
+  }
+  if (opts.migrate === false) {
+    try {
+      const expected = readMigrationFiles({ migrationsFolder: MIGRATIONS }).at(-1)?.hash;
+      const result = await handle.db.execute(sql`select hash from drizzle.__drizzle_migrations order by created_at desc limit 1`);
+      const rows = ((result as { rows?: unknown[] }).rows ?? result) as { hash: string }[];
+      if (!expected || rows[0]?.hash !== expected) throw new Error("Database schema does not match this release; run the migration job.");
+    } catch (error) { await handle.close(); throw error; }
   }
   return handle;
 }

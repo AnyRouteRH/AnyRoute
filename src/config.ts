@@ -24,6 +24,9 @@ const opt = z
   .transform((v) => (v ? v : undefined));
 
 const schema = z.object({
+  RUNTIME_ROLE: z.enum(["all", "api", "worker"]).default("all"),
+  WORKER_JOBS: z.string().default(""),
+  AUTO_MIGRATE: bool.default(true),
   ANYROUTE_ENV: z.enum(["development", "test", "production"]).default("development"),
   HOST: z.string().default("127.0.0.1"),
   PORT: int(8787),
@@ -152,7 +155,30 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (!e.ADMIN_TOKEN || e.ADMIN_TOKEN.length < 24) throw new Error("ADMIN_TOKEN (>= 24 chars) is required in production.");
     if (e.ALLOW_DEV_ATTESTATION) throw new Error("ALLOW_DEV_ATTESTATION must be false in production.");
     if (!e.PUBLIC_BASE_URL.startsWith("https://")) throw new Error("PUBLIC_BASE_URL must be https in production.");
-    if (e.DATABASE_URL.startsWith("pglite://memory")) throw new Error("In-memory database is not allowed in production.");
+    if (!/^postgres(?:ql)?:/.test(e.DATABASE_URL)) throw new Error("PostgreSQL is required in production.");
+    const database = new URL(e.DATABASE_URL);
+    if (!database.password || ["anyroute", "postgres", "password"].includes(decodeURIComponent(database.password))) throw new Error("Nondefault database credential is required in production.");
+    if (!e.REDIS_URL || !/^rediss?:/.test(e.REDIS_URL) || !new URL(e.REDIS_URL).password) throw new Error("Production requires authenticated Redis.");
+    if (e.RUNTIME_ROLE === "all") throw new Error("Production requires separate api and worker roles.");
+    if (e.AUTO_MIGRATE) throw new Error("Production requires AUTO_MIGRATE=false and a completed migration job.");
+    if (e.HOST === "127.0.0.1" || e.HOST === "localhost" || e.HOST === "::1") throw new Error("Production HOST must be externally reachable.");
+    for (const [name, value] of Object.entries({ CREDITS_ADDRESS: e.CREDITS_ADDRESS, CALLPAY_ADDRESS: e.CALLPAY_ADDRESS, RECEIPT_ANCHOR_ADDRESS: e.RECEIPT_ANCHOR_ADDRESS }))
+      if (!value || /^0x0{40}$/.test(value)) throw new Error(`${name} is required in production.`);
+    if (e.RUNTIME_ROLE === "api" && !e.ROUTER_PRIVATE_KEY) throw new Error("Public API requires the restricted router signing role for enabled per-call payments.");
+    if (e.PAYMASTER_ADDRESS && e.RUNTIME_ROLE === "api" && !e.PAYMASTER_SIGNER_KEY) throw new Error("Configured paymaster requires its signing role.");
+    const roleKeys = { settlement: e.SETTLEMENT_PRIVATE_KEY, anchoring: e.ANCHORER_PRIVATE_KEY, slashing: e.SLASHER_PRIVATE_KEY, buyback: e.KEEPER_PRIVATE_KEY };
+    if (e.RUNTIME_ROLE === "api" && Object.values(roleKeys).some(Boolean)) throw new Error("Public API must not receive settlement, anchoring, slashing or keeper signing keys.");
+    if (e.RUNTIME_ROLE === "worker") {
+      const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator"];
+      if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
+      const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
+      if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
+      for (const [role, key] of Object.entries(roleKeys)) {
+        const enabled = names.includes(keyJobs[role as keyof typeof keyJobs]);
+        if (enabled !== !!key) throw new Error(`Worker ${role} job and signing-key configuration must match.`);
+      }
+    }
   }
   if (e.DEV_FAUCET) {
     if (production) throw new Error("DEV_FAUCET must be false in production.");
@@ -187,6 +213,9 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   return {
     env: e.ANYROUTE_ENV,
     production,
+    runtimeRole: e.RUNTIME_ROLE,
+    autoMigrate: e.AUTO_MIGRATE,
+    workerJobs: e.WORKER_JOBS.split(",").map((n) => n.trim()).filter(Boolean),
     test: e.ANYROUTE_ENV === "test",
     host: e.HOST,
     port: e.PORT,
@@ -274,7 +303,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       tdxVerifierKey: e.TDX_VERIFIER_KEY,
     },
     workers: {
-      enabled: e.WORKERS,
+      enabled: e.WORKERS && e.RUNTIME_ROLE !== "api",
       settlementIntervalMs: e.SETTLEMENT_INTERVAL_MS,
       registryIntervalMs: e.PROVIDER_REGISTRY_INTERVAL_MS,
       providersFile: e.PROVIDERS_FILE,

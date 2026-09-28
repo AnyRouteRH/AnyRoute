@@ -7,6 +7,7 @@ import { apps, generations, kv, models, offers, paywithSessions, providers } fro
 import { ApiError, fail } from "../lib/errors.ts";
 import { picoToUsd, usdToPico } from "../lib/money.ts";
 import { providerApplication, submitProviderApplication } from "../providers/application.ts";
+import { readiness } from "../services/readiness.ts";
 import { readJson } from "./common.ts";
 import { requireKey } from "./auth.ts";
 import { verifyReceipt, anchorProof } from "./generation.ts";
@@ -224,6 +225,10 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
       },
     }),
   );
+  app.get("/ready", async (c) => {
+    const result = await readiness(ctx);
+    return c.json(result, result.ok ? 200 : 503);
+  });
   app.get("/health", (c) => c.json({ ok: true }));
 }
 
