@@ -1,0 +1,11 @@
+import PageFrame from '../../components/PageFrame';
+import { Code } from '../../components/UI';
+import styles from './docs.module.css';
+export const metadata = { title: 'API documentation — Anyroute' };
+const request = [
+  'curl "$ANYROUTE_ORIGIN/api/v1/chat/completions"',
+  '  -H "Authorization: Bearer $ANYROUTE_API_KEY"',
+  "  -H 'Content-Type: application/json'",
+  `  -d '${JSON.stringify({ model: 'MODEL_ID', messages: [{ role: 'user', content: 'Hello.' }], max_tokens: 120 })}'`,
+].join(` ${String.fromCharCode(92)}\n`);
+export default function DocsPage() { return <PageFrame><main className="page-main" id="content"><div className="page-title" data-reveal><span className="eyebrow">DEVELOPER GUIDE / API V1</span><h1>One key. One API.</h1><p>Use the OpenAI-compatible chat route, read the live model catalog, and inspect signed generation receipts.</p></div><div className="page-body"><article className={styles.docs}><h2>Start with the live catalog</h2><p>Fetch <code>GET /api/v1/models</code> and choose a public model ID. Supported parameters and providers vary with the catalog.</p><h2>Send a chat request</h2><Code>{request}</Code><p>Set <code>ANYROUTE_ORIGIN</code> to the router origin and keep the key in <code>ANYROUTE_API_KEY</code>. Requests may return JSON or SSE when <code>stream</code> is true. Inference can be billable; the response includes usage and receipt details.</p><h2>Keys and balance</h2><p><code>POST /api/v1/keys</code> without Authorization creates an independent root key with an empty balance. An authenticated management key can create a virtual sub-key. The secret appears in the creation response only; store it securely and never put it in a URL.</p><h2>Receipts and status</h2><p>Use <code>GET /api/v1/generations</code> for authenticated account summaries and <code>POST /api/v1/receipts/verify</code> to verify a signed receipt. <code>GET /api/v1/status</code> reports published configuration, not an uptime guarantee.</p><div className={styles.actions}><a className="ar-button" href="/openapi.json" download><i aria-hidden="true"/><span>Download OpenAPI</span><b aria-hidden="true">↓</b></a><a className="ar-button secondary" href="/models/">Browse models</a><a className="ar-button secondary" href="/dashboard/">Open dashboard</a></div></article></div></main></PageFrame>; }

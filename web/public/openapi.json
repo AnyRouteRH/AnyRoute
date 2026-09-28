@@ -1,0 +1,131 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Anyroute API",
+    "version": "1.0.0",
+    "description": "A documented subset of Anyroute's implemented public API. Endpoint availability and model capabilities are deployment-specific."
+  },
+  "servers": [{ "url": "/", "description": "Current router origin" }],
+  "security": [{}],
+  "tags": [
+    { "name": "Models", "description": "Public model catalog and capabilities." },
+    { "name": "Chat", "description": "Chat completion requests and streaming responses." },
+    { "name": "Embeddings", "description": "Authenticated prepaid embedding requests." },
+    { "name": "Keys", "description": "API key creation and account key metadata." },
+    { "name": "Generations", "description": "Authenticated generation summaries and details." },
+    { "name": "Status", "description": "Public process and router configuration status." },
+    { "name": "Receipts", "description": "Public signed receipt retrieval and verification." }
+  ],
+  "paths": {
+    "/api/v1/models": {
+      "get": {
+        "tags": ["Models"], "operationId": "listModels", "summary": "List public live models",
+        "parameters": [{ "name": "supported_parameters", "in": "query", "required": false, "description": "Comma-separated capabilities to require.", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Models matching the requested capabilities.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Model" } } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+      }
+    },
+    "/api/v1/chat/completions": {
+      "post": {
+        "tags": ["Chat"], "operationId": "createChatCompletion", "summary": "Create a chat completion",
+        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request.",
+        "security": [{ "BearerAuth": [] }, { "WalletAuth": [] }, {}],
+        "parameters": [{ "$ref": "#/components/parameters/Referer" }, { "$ref": "#/components/parameters/Title" }, { "$ref": "#/components/parameters/Payment" }, { "$ref": "#/components/parameters/PayWith" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatRequest" } } } },
+        "responses": {
+          "200": { "description": "Completion JSON, or SSE events followed by data: [DONE] when stream is true.", "content": { "application/json": { "schema": { "type": "object" } }, "text/event-stream": { "schema": { "type": "string", "description": "SSE data events; event data carries JSON chunks." } } } },
+          "402": { "$ref": "#/components/responses/ApiError" }, "429": { "$ref": "#/components/responses/ApiError" }, "default": { "$ref": "#/components/responses/ApiError" }
+        }
+      }
+    },
+    "/api/v1/embeddings": {
+      "post": {
+        "tags": ["Embeddings"], "operationId": "createEmbeddings", "summary": "Create embeddings",
+        "description": "Requires an authenticated prepaid API key. Input may be a string or a non-empty array with at most 2048 items.",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmbeddingRequest" } } } },
+        "responses": { "200": { "description": "Embedding response with usage and signed receipt.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "receipt"], "properties": { "data": { "type": "array", "items": { "type": "object" } }, "receipt": { "$ref": "#/components/schemas/Receipt" } } } } } }, "402": { "$ref": "#/components/responses/ApiError" }, "default": { "$ref": "#/components/responses/ApiError" } }
+      }
+    },
+    "/api/v1/keys": {
+      "post": {
+        "tags": ["Keys"], "operationId": "createKey", "summary": "Create a root key or authenticated sub-key",
+        "description": "Without Authorization, creates an independent root key with an empty balance. With an authorized management or admin key, creates a virtual sub-key under that account. The response includes the new secret once; store it securely. Root-key creation does not fund the key. Never send a secret in a query string.",
+        "security": [{ "BearerAuth": [] }, {}],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyCreateRequest" } } } },
+        "responses": { "201": { "description": "New key metadata and one-time key secret.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "key", "deposit"], "properties": { "data": { "$ref": "#/components/schemas/Key" }, "key": { "type": "string", "readOnly": true, "description": "Secret returned only on creation." }, "deposit": { "type": "object" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+      },
+      "get": {
+        "tags": ["Keys"], "operationId": "listKeys", "summary": "List keys for the authenticated account",
+        "security": [{ "BearerAuth": [] }],
+        "responses": { "200": { "description": "Key metadata for the authenticated account.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Key" } } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+      }
+    },
+    "/api/v1/generations": {
+      "get": {
+        "tags": ["Generations"], "operationId": "listGenerations", "summary": "List generation summaries",
+        "description": "Returns summaries for the authenticated account. The response's next value can be passed as before to request an older page.",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 } },
+          { "name": "before", "in": "query", "required": false, "description": "Opaque cursor returned in next. Pass it through without parsing; current versions may return a legacy ISO-8601 timestamp.", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Generation summaries and the next page cursor, if any.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "next"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/GenerationSummary" } }, "next": { "type": ["string", "null"] } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+      }
+    },
+    "/api/v1/generation": {
+      "get": {
+        "tags": ["Generations"], "operationId": "getGeneration", "summary": "Read one generation record",
+        "description": "Returns a full record only to the account owner or the authenticated paying wallet. The id is supplied as a query parameter because that is the implemented route; do not put API keys or other credentials in URLs.",
+        "security": [{ "BearerAuth": [] }, { "WalletAuth": [] }],
+        "parameters": [{ "name": "id", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Generation record and receipt details.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object", "properties": { "receipt": { "$ref": "#/components/schemas/Receipt" } } } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+      }
+    },
+    "/api/v1/status": {
+      "get": { "tags": ["Status"], "operationId": "getStatus", "summary": "Read public router configuration", "description": "Returns published runtime configuration, chain public fields, job state and catalog counts. It is not an uptime guarantee.", "responses": { "200": { "description": "Current public status snapshot.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } } }
+    },
+    "/health": {
+      "get": { "tags": ["Status"], "operationId": "getHealth", "summary": "Check process response", "description": "Returns { ok: true } when this process responds. It does not establish dependency health or uptime.", "responses": { "200": { "description": "Process responded.", "content": { "application/json": { "schema": { "type": "object", "required": ["ok"], "properties": { "ok": { "const": true } } } } } } } }
+    },
+    "/api/v1/receipts/verify": {
+      "post": {
+        "tags": ["Receipts"], "operationId": "verifyReceipt", "summary": "Verify a signed receipt",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReceiptVerificationRequest" } } } },
+        "responses": { "200": { "description": "Receipt verification result.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+      }
+    },
+    "/api/v1/receipts/{id}": {
+      "get": {
+        "tags": ["Receipts"], "operationId": "getReceipt", "summary": "Read a public receipt proof",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Signed receipt and optional anchor proof.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "$ref": "#/components/schemas/Receipt" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "Anyroute API key", "description": "Send the key in Authorization. Never put it in a URL." },
+      "WalletAuth": { "type": "apiKey", "in": "header", "name": "X-Wallet-Auth", "description": "Wallet authentication header for supported per-call flows." }
+    },
+    "parameters": {
+      "Referer": { "name": "HTTP-Referer", "in": "header", "required": false, "schema": { "type": "string" } },
+      "Title": { "name": "X-Title", "in": "header", "required": false, "schema": { "type": "string" } },
+      "Payment": { "name": "X-Payment", "in": "header", "required": false, "schema": { "type": "string" }, "description": "Payment data returned by a router quote; do not replay blindly." },
+      "PayWith": { "name": "X-Pay-With", "in": "header", "required": false, "schema": { "type": "string" }, "description": "Configured Stock Token symbol for a key with an active session." }
+    },
+    "responses": {
+      "ApiError": { "description": "OpenRouter-shaped API error. A 402 payment response may include payment metadata and is not a signal to repeat payment automatically.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+    },
+    "schemas": {
+      "ApiError": { "type": "object", "required": ["error"], "properties": { "error": { "type": "object", "required": ["code", "message", "type"], "properties": { "code": { "type": "integer" }, "message": { "type": "string" }, "type": { "type": "string" }, "metadata": { "type": "object", "additionalProperties": true } } } } },
+      "Model": { "type": "object", "required": ["id", "name", "created", "description", "context_length", "architecture", "pricing", "supported_parameters"], "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "created": { "type": "integer" }, "description": { "type": "string" }, "context_length": { "type": "integer" }, "architecture": { "type": "object" }, "pricing": { "type": "object", "description": "Prices are returned as decimal strings per token; consult the live response." }, "supported_parameters": { "type": "array", "items": { "type": "string" } }, "data_policy": { "type": "object" }, "attested_available": { "type": "boolean" } } },
+      "ChatRequest": { "type": "object", "required": ["messages"], "anyOf": [{ "required": ["model"] }, { "required": ["models"] }], "properties": { "model": { "type": "string", "description": "Public model ID, optionally with a supported routing modifier." }, "models": { "type": "array", "items": { "type": "string" }, "description": "Ordered candidate model IDs." }, "messages": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["role"], "properties": { "role": { "type": "string", "enum": ["system", "developer", "user", "assistant", "tool", "function"] }, "content": { "oneOf": [{ "type": "string" }, { "type": "array" }, { "type": "null" }] } } } }, "stream": { "type": "boolean", "default": false }, "max_tokens": { "type": "integer", "minimum": 1 }, "max_completion_tokens": { "type": "integer", "minimum": 1 }, "tools": { "type": "array", "items": { "type": "object" }, "description": "Requires a model/provider that supports tools." }, "tool_choice": { "oneOf": [{ "type": "string" }, { "type": "object" }] }, "response_format": { "type": "object", "description": "Requires a model/provider that supports the requested response format." }, "provider": { "type": "object", "description": "Provider routing preferences." } }, "additionalProperties": true },
+      "EmbeddingRequest": { "type": "object", "required": ["model", "input"], "properties": { "model": { "type": "string" }, "input": { "oneOf": [{ "type": "string" }, { "type": "array", "minItems": 1, "maxItems": 2048, "items": { "type": "string" } }] }, "provider": { "type": "object" } } },
+      "KeyCreateRequest": { "type": "object", "properties": { "name": { "type": "string", "maxLength": 100 }, "limit": { "type": ["number", "null"], "minimum": 0, "description": "USD budget; alias of budget_usd." }, "budget_usd": { "type": ["number", "null"], "minimum": 0 }, "limit_reset": { "type": ["string", "null"], "enum": ["daily", "weekly", "monthly", null] }, "rpm": { "type": ["integer", "null"], "minimum": 1 }, "tpm": { "type": ["integer", "null"], "minimum": 1 }, "allowed_models": { "type": ["array", "null"], "items": { "type": "string" } }, "team": { "type": ["string", "null"], "description": "Applies to authenticated management-key creation." }, "pay_with_default": { "type": ["string", "null"], "maxLength": 16 }, "disabled": { "type": "boolean" }, "expires_at": { "type": ["string", "null"], "format": "date-time" }, "guardrails": { "type": ["object", "null"], "properties": { "pii": { "type": "string", "enum": ["redact", "block"] }, "deny_patterns": { "type": "array", "maxItems": 50, "items": { "type": "string" } }, "max_input_chars": { "type": "integer", "minimum": 1 }, "redact_output": { "type": "boolean" } } }, "routing": { "type": ["object", "null"], "additionalProperties": true }, "management": { "type": "boolean", "description": "Only honored for authorized authenticated sub-key creation; root-key management is never granted by this field." } }, "additionalProperties": false },
+      "Key": { "type": "object", "required": ["hash", "name", "disabled", "created_at"], "properties": { "hash": { "type": "string" }, "name": { "type": "string" }, "disabled": { "type": "boolean" }, "limit": { "type": ["number", "null"] }, "usage": { "type": "number" }, "allowed_models": { "type": ["array", "null"], "items": { "type": "string" } }, "created_at": { "type": "string", "format": "date-time" }, "last_used": { "type": ["string", "null"], "format": "date-time" } } },
+      "GenerationSummary": { "type": "object", "required": ["id", "created_at", "model", "total_cost"], "properties": { "id": { "type": "string" }, "created_at": { "type": "string", "format": "date-time" }, "model": { "type": "string" }, "provider_name": { "type": "string" }, "tokens_prompt": { "type": "integer" }, "tokens_completion": { "type": "integer" }, "total_cost": { "type": "number" }, "streamed": { "type": "boolean" }, "cancelled": { "type": "boolean" } } },
+      "Receipt": { "type": "object", "properties": { "id": { "type": "string" }, "payload": { "type": "object", "additionalProperties": true }, "sig": { "type": "string" }, "key_id": { "type": "string" }, "leaf": { "type": ["string", "null"] }, "anchor": { "type": ["object", "null"] } } },
+      "ReceiptVerificationRequest": { "type": "object", "required": ["payload", "sig", "key_id"], "properties": { "payload": { "type": "object", "additionalProperties": true }, "sig": { "type": "string" }, "key_id": { "type": "string" }, "anchor": { "type": "object", "required": ["root", "proof"], "properties": { "root": { "type": "string" }, "proof": { "type": "array", "items": { "type": "string" } }, "index": { "type": "integer" } } } } }
+    }
+  }
+}
