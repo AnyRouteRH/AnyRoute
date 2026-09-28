@@ -1,7 +1,7 @@
 import { createPublicClient, decodeFunctionResult, encodeFunctionData, http, keccak256, parseAbi, stringToHex, type Abi, type Address, type Hex } from "viem";
 import {
   AnyrPaymasterAbi, AnyrStakingAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi,
-  ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi,
+  ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi, UniswapV3AdapterAbi, UniswapV4AdapterAbi,
 } from "../src/chain/abis";
 
 export type DeploymentManifest = {
@@ -10,7 +10,7 @@ export type DeploymentManifest = {
   contracts: Record<string, Address>;
   roles: Record<string, Address | Address[]>;
   params: Record<string, string | number>;
-  stockTokens?: Array<{ address: Address; feed: Address }>;
+  stockTokens?: Array<{ address: Address; feed: Address; primaryAdapter: Address; fallbackAdapter: Address }>;
 };
 
 export type ChainReader = {
@@ -39,8 +39,8 @@ const owned = ["credits", "callPay", "receiptAnchor", "royalty", "providerBond",
 const requiredContracts = ["usdg", "anyrToken", "credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "uniswapV4Adapter", "uniswapV3Adapter", "paymaster", "entryPoint", "poolManager", "swapRouter02", "timelock", "buybackAdapter"] as const;
 const zero = "0x0000000000000000000000000000000000000000" as Address;
 const role = (name: string) => keccak256(stringToHex(name)) as Hex;
-const appAbis = [AnyrPaymasterAbi, AnyrStakingAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi, ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi] as unknown as Abi[];
-const governanceAbi = parseAbi([
+const appAbis = [AnyrPaymasterAbi, AnyrStakingAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi, ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi, UniswapV3AdapterAbi, UniswapV4AdapterAbi] as unknown as Abi[];
+export const governanceAbi = parseAbi([
   "function getOwners() view returns (address[] owners)",
   "function getThreshold() view returns (uint256 threshold)",
   "function masterCopy() view returns (address singleton)",
@@ -93,7 +93,7 @@ export function makeRpcReader(rpcUrl: string): ChainReader {
   };
 }
 
-export async function verifyDeployment(manifest: DeploymentManifest, reader: ChainReader, verifierRevision: string): Promise<{ ok: boolean; verifierRevision: string; manifest: { schema: string; mode: string; chainId: number; blockNumber: number }; observed: { chainId: number; blockNumber: string; blockHash: Hex }; checks: Check[] }> {
+export async function verifyDeployment(manifest: DeploymentManifest, reader: ChainReader, verifierRevision: string, expectedSafeSingleton: Address): Promise<{ ok: boolean; verifierRevision: string; manifest: { schema: string; mode: string; chainId: number; blockNumber: number }; observed: { chainId: number; blockNumber: string; blockHash: Hex }; checks: Check[] }> {
   const checks: Check[] = [];
   const add = (id: string, pass: boolean, evidence: unknown, detail?: string) => checks.push({ id, status: pass ? "pass" : "fail", evidence, ...(detail ? { detail } : {}) });
   const info = (id: string, evidence: unknown, detail: string) => checks.push({ id, status: "info", evidence, detail });
@@ -153,6 +153,8 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
   for (const [name, sig, expected] of [["router", "router()", manifest.roles.router], ["oracle", "oracle()", manifest.contracts.stockOracle]] as const) {
     equalAddress(`roles.payWithStock.${name}`, await get(`roles.payWithStock.${name}.read`, manifest.contracts.payWithStock, sig), expected);
   }
+  equalAddress("adapters.uniswapV3.router", await get("adapters.uniswapV3.router.read", manifest.contracts.uniswapV3Adapter, "router()"), manifest.contracts.swapRouter02);
+  equalAddress("adapters.uniswapV4.poolManager", await get("adapters.uniswapV4.poolManager.read", manifest.contracts.uniswapV4Adapter, "poolManager()"), manifest.contracts.poolManager);
   equalAddress("roles.paymaster.verifyingSigner", await get("roles.paymaster.verifyingSigner.read", manifest.contracts.paymaster, "verifyingSigner()"), manifest.roles.paymasterSigner);
   equalAddress("roles.paymaster.entryPoint", await get("roles.paymaster.entryPoint.read", manifest.contracts.paymaster, "entryPoint()"), manifest.contracts.entryPoint);
   const dailyCap = await get("roles.paymaster.dailyCap.read", manifest.contracts.paymaster, "dailyCap()");
@@ -180,7 +182,8 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
   const inspectSafe = async (label: string, address: Address | undefined) => {
     const code = address ? await reader.code(address, snapshot.number) : undefined;
     add(`governance.${label}.contract`, !!code && code !== "0x", { address, bytecodeBytes: code ? (code.length - 2) / 2 : 0 });
-    const [owners, threshold] = await Promise.all([call(`governance.${label}.owners.read`, address, "getOwners()"), call(`governance.${label}.threshold.read`, address, "getThreshold()")]);
+    const [owners, threshold, singleton] = await Promise.all([call(`governance.${label}.owners.read`, address, "getOwners()"), call(`governance.${label}.threshold.read`, address, "getThreshold()"), call(`governance.${label}.singleton.read`, address, "masterCopy()")]);
+    equalAddress(`governance.${label}.singleton`, singleton, expectedSafeSingleton);
     if (!Array.isArray(owners) || threshold === undefined) return undefined;
     const signers = owners.map(String); const t = Number(threshold);
     add(`governance.${label}.threshold_valid`, signers.length > 1 && t >= 2 && t <= signers.length, { owners: signers, threshold: t });
@@ -192,6 +195,12 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
   for (const [id, worker] of [["settlement", manifest.roles.settlement], ["slasher", manifest.roles.slasher]] as const) {
     add(`roles.${id}.separate_from_owner_safe`, typeof worker === "string" && !!safe && worker.toLowerCase() !== safe.toLowerCase(), { worker, ownerSafe: safe });
   }
+
+  const adminRole = `0x${"00".repeat(32)}` as Hex;
+  const selfAdmin = await call("timelock.self_admin.read", lock, "hasRole(bytes32,address)", [adminRole, lock]);
+  if (selfAdmin !== undefined) add("timelock.self_admin", selfAdmin === true, { role: adminRole, account: lock, authorized: selfAdmin });
+  const ownerSafeAdmin = await call("timelock.ownerSafe_admin.read", lock, "hasRole(bytes32,address)", [adminRole, safe]);
+  if (ownerSafeAdmin !== undefined) add("timelock.ownerSafe_not_admin", ownerSafeAdmin === false, { role: adminRole, account: safe, authorized: ownerSafeAdmin });
 
   const funding = await call("paymaster.funding.read", manifest.contracts.entryPoint, "getDepositInfo(address)", [manifest.contracts.paymaster]);
   const fundingFields = tupleFields(funding, ["deposit", "staked", "stake", "unstakeDelaySec", "withdrawTime"]);
@@ -206,9 +215,47 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
     add("paymaster.unstake_delay", BigInt(String(unstakeDelaySec)) >= 86400n, { actual: String(unstakeDelaySec), requiredMinimum: 86400 });
   }
   const priceOracle = await call("buybacks.oracle.read", manifest.contracts.anyrStaking, "buybackPriceOracle()");
-  if (typeof priceOracle === "string") info("buybacks.oracle", priceOracle, priceOracle.toLowerCase() === zero ? "Buybacks are fail-closed until a price oracle is selected and configured." : "Oracle address present; its policy and price quality require separate review.");
+  const buybacksEnabled = typeof priceOracle === "string" && priceOracle.toLowerCase() !== zero.toLowerCase();
+  if (typeof priceOracle === "string") {
+    info("buybacks.oracle", priceOracle, buybacksEnabled ? "Oracle address present; its policy and price quality require separate review." : "Buybacks are disabled until a price oracle is selected and configured.");
+    if (buybacksEnabled) {
+      const oracleCode = await reader.code(priceOracle as Address, snapshot.number);
+      add("buybacks.oracle_code_present", !!oracleCode && oracleCode !== "0x", { address: priceOracle, present: !!oracleCode && oracleCode !== "0x" });
+    }
+  }
 
-  for (const stock of manifest.stockTokens ?? []) {
+  const stockTokens = manifest.stockTokens ?? [];
+  info("stockPay.feature", stockTokens.length ? `${stockTokens.length} manifest tokens` : "disabled/not certified", stockTokens.length ? "Every manifest-listed route is checked below; tokens omitted from the manifest cannot be enumerated from the on-chain mapping." : "No stock tokens are listed, so stock-pay readiness is not certified and does not block unrelated features.");
+  const requiredAdapterCallers = new Map<string, { adapter: Address; caller: Address }>();
+  for (const stock of stockTokens) {
+    for (const adapter of [stock.primaryAdapter, stock.fallbackAdapter]) {
+      if ([manifest.contracts.uniswapV3Adapter, manifest.contracts.uniswapV4Adapter].some((configured) => adapter.toLowerCase() === configured.toLowerCase())) {
+        requiredAdapterCallers.set(`${adapter.toLowerCase()}:${manifest.contracts.payWithStock.toLowerCase()}`, { adapter, caller: manifest.contracts.payWithStock });
+      }
+    }
+  }
+  if (buybacksEnabled && [manifest.contracts.uniswapV3Adapter, manifest.contracts.uniswapV4Adapter].some((configured) => manifest.contracts.buybackAdapter.toLowerCase() === configured.toLowerCase())) {
+    requiredAdapterCallers.set(`${manifest.contracts.buybackAdapter.toLowerCase()}:${manifest.contracts.anyrStaking.toLowerCase()}`, { adapter: manifest.contracts.buybackAdapter, caller: manifest.contracts.anyrStaking });
+  }
+  for (const { adapter, caller } of requiredAdapterCallers.values()) {
+    const isCaller = await call(`adapters.${adapter}.${caller}.read`, adapter, "isCaller(address)", [caller]);
+    if (isCaller !== undefined) add(`adapters.${adapter}.${caller}.enabled`, isCaller === true, { adapter, caller, isCaller });
+  }
+  for (const stock of stockTokens) {
+    const tokenConfig = await call(`stocks.${stock.address}.config.read`, manifest.contracts.payWithStock, "tokens(address)", [stock.address]);
+    const tokenFields = tupleFields(tokenConfig, ["enabled", "primaryAdapter", "fallbackAdapter"]);
+    if (!tokenFields || typeof tokenFields.enabled !== "boolean" || !isAddress(tokenFields.primaryAdapter) || !isAddress(tokenFields.fallbackAdapter)) add(`stocks.${stock.address}.config_shape`, false, "malformed", "PayWithStock.tokens must return its enabled flag and both adapter addresses.");
+    else {
+      add(`stocks.${stock.address}.enabled`, tokenFields.enabled === true, tokenFields.enabled);
+      equalAddress(`stocks.${stock.address}.primaryAdapter`, tokenFields.primaryAdapter, stock.primaryAdapter);
+      equalAddress(`stocks.${stock.address}.fallbackAdapter`, tokenFields.fallbackAdapter, stock.fallbackAdapter);
+      const primaryCode = await reader.code(tokenFields.primaryAdapter as Address, snapshot.number);
+      add(`stocks.${stock.address}.primaryAdapter_code`, tokenFields.primaryAdapter !== zero && !!primaryCode && primaryCode !== "0x", { address: tokenFields.primaryAdapter, present: !!primaryCode && primaryCode !== "0x" });
+      if (tokenFields.fallbackAdapter !== zero) {
+        const fallbackCode = await reader.code(tokenFields.fallbackAdapter as Address, snapshot.number);
+        add(`stocks.${stock.address}.fallbackAdapter_code`, !!fallbackCode && fallbackCode !== "0x", { address: tokenFields.fallbackAdapter, present: !!fallbackCode && fallbackCode !== "0x" });
+      }
+    }
     const config = await call(`feeds.${stock.address}.config.read`, manifest.contracts.stockOracle, "configOf(address)", [stock.address]);
     const feedFields = tupleFields(config, ["feed", "feedDecimals", "maxStaleness", "paused", "applyMultiplier"]);
     if (!feedFields || !isAddress(feedFields.feed) || !isUnsigned(feedFields.feedDecimals) || !isUnsigned(feedFields.maxStaleness) || typeof feedFields.paused !== "boolean" || typeof feedFields.applyMultiplier !== "boolean") add(`feeds.${stock.address}.config_shape`, false, "malformed", "Stock oracle configOf must return the five-field FeedConfig tuple.");
