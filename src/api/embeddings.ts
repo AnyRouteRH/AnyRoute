@@ -54,6 +54,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     try {
       for (const cand of sel.ordered.slice(0, ctx.cfg.routing.maxAttempts)) {
         const res = await callUpstream({
+    appSecret: ctx.cfg.appSecret,
           candidate: cand,
           path: "/embeddings",
           body: upstreamBody(cand, body, false).body,

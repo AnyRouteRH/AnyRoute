@@ -2,6 +2,8 @@
 //   bun scripts/seed.ts config/providers.yaml
 // Provider API keys are read from the environment variable named by `api_key_env`; they are
 // encrypted at rest with APP_SECRET and never printed.
+import { sealProviderHeaders } from "../src/providers/headers.ts";
+import { validateProviderUrl } from "../src/providers/application.ts";
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { z } from "zod";
@@ -37,8 +39,10 @@ const doc = spec.parse(parse(readFileSync(file, "utf8")));
 const cfg = loadConfig();
 const { db, close } = await openDatabase(cfg.databaseUrl);
 for (const p of doc.providers) {
+  validateProviderUrl(p.base_url, cfg.production);
+  if (p.tee) validateProviderUrl(p.tee.attestation_url, cfg.production);
   const key = p.api_key_env ? process.env[p.api_key_env] : undefined;
-  if (p.api_key_env && !key) console.warn(`! ${p.id}: ${p.api_key_env} is not set; calls to it will fail until it is.`);
+  if (p.api_key_env && !key) throw new Error("Required provider credential is missing.");
   const row = {
     id: p.id,
     name: p.name,
@@ -52,7 +56,7 @@ for (const p of doc.providers) {
     payoutAddress: p.payout_address?.toLowerCase() ?? null,
     payoutMode: p.payout_address ? "usdg" : "invoice",
     timeoutMs: p.timeout_ms ?? null,
-    headers: p.headers ?? null,
+    headers: sealProviderHeaders(cfg.appSecret, p.headers),
     staticModels: p.models ? p.models.map((m) => ({ ...m, anyroute: m.slug ? { slug: m.slug } : undefined })) : null,
     shadowUntil: p.status === "shadow" ? new Date(Date.now() + cfg.canaries.shadowDays * 86_400_000) : null,
   };
@@ -63,7 +67,10 @@ await close();
 // Import catalogs through a short-lived app instance (runs provider-registry once).
 const { createApp } = await import("../src/app.ts");
 const app = await createApp({ startJobs: false });
-const r = await app.ctx.jobs.run("provider-registry");
+const { runRegistry } = await import("../src/services/registry.ts");
+const r = await runRegistry(app.ctx);
 for (const [id, res] of Object.entries(r as Record<string, { models?: number; errors?: string[]; error?: string }>))
   console.log(`  ${id}: ${res.error ? "ERROR " + res.error : `${res.models} models${res.errors?.length ? `, ${res.errors.length} invalid` : ""}`}`);
+const ready = [...app.ctx.catalog.offersByModel.values()].some((rows) => rows.some((o) => o.status === "live" && o.provider.status === "live"));
 await app.close();
+if (!ready) throw new Error("Provider initialization produced no live routable catalog.");

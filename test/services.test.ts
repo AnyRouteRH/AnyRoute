@@ -238,14 +238,17 @@ describe("provider onboarding + admin (tRPC) + LiteLLM import", () => {
   });
   afterAll(async () => h.close());
 
-  test("apply -> schema check -> bond -> shadow (canaries) -> live", async () => {
+  test("apply -> operator approval -> shadow (canaries) -> live", async () => {
     const [p0] = await h.ctx.db.select().from(providers).where(eq(providers.id, "newbie"));
     expect(p0.status).toBe("applied");
-    expect(h.ctx.catalog.offers(LLAMA).find((o) => o.providerId === "newbie")?.status).toBe("shadow");
+    expect(h.ctx.catalog.offers(LLAMA).find((o) => o.providerId === "newbie")).toBeUndefined();
     // Bond arrives on-chain.
     await recordEvents(h.ctx, [{ contract: "providerBond", event: "Bonded", args: { providerId: providerIdHash("newbie"), operator: "0x0000000000000000000000000000000000000e0e", amount: 10_000_000_000n, total: 10_000_000_000n }, txHash: fakeTx(), logIndex: 0, blockNumber: 80n }]);
     await processEvents(h.ctx);
     await runRegistry(h.ctx);
+    expect((await h.ctx.db.select().from(providers).where(eq(providers.id, "newbie")))[0].status).toBe("applied");
+    const approved = await h.request("/trpc/providers.approve", { method: "POST", headers: { "x-admin-token": ADMIN }, json: { id: "newbie" } });
+    expect(approved.status).toBe(200);
     const [p1] = await h.ctx.db.select().from(providers).where(eq(providers.id, "newbie"));
     expect(p1.status).toBe("shadow");
     expect(p1.bondUsdg).toBe(10_000_000_000n);
@@ -266,7 +269,7 @@ describe("provider onboarding + admin (tRPC) + LiteLLM import", () => {
     expect(bad.status).toBe(400);
     const ok = await h.request("/api/v1/providers/apply", { method: "POST", json: { id: "fresh", name: "Fresh", base_url: h.mocks.alpha.url, data_policy: { training: false, retains_prompts: false } } });
     expect(ok.status).toBe(201);
-    expect((await ok.json()).data.models_found).toBe(2);
+    expect((await ok.json()).data.models_found).toBe(0);
   });
 
   test("tRPC: operator procedures need the admin token; account procedures accept a key", async () => {

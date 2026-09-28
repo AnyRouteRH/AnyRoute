@@ -6,25 +6,14 @@ import type { Ctx } from "../context.ts";
 import { apps, generations, kv, models, offers, paywithSessions, providers } from "../db/schema.ts";
 import { ApiError, fail } from "../lib/errors.ts";
 import { picoToUsd, usdToPico } from "../lib/money.ts";
-import { encrypt, randomHex, safeEqual, sha256 } from "../lib/util.ts";
+import { providerApplication, submitProviderApplication } from "../providers/application.ts";
 import { readJson } from "./common.ts";
 import { requireKey } from "./auth.ts";
 import { verifyReceipt, anchorProof } from "./generation.ts";
 import { openDebt, statement } from "../pay/paywith.ts";
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 
-export const providerApplication = z.object({
-  id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,40}$/),
-  name: z.string().min(1).max(80),
-  base_url: z.string().url(),
-  api_key: z.string().min(1).max(500).optional(),
-  contact: z.string().max(200).optional(),
-  datacenters: z.array(z.string().max(40)).max(20).optional(),
-  data_policy: z.object({ training: z.boolean(), retains_prompts: z.boolean(), retention_days: z.number().int().min(0).optional(), zdr: z.boolean().optional() }),
-  tee: z.object({ kind: z.enum(["tdx", "snp", "nvidia-cc", "tinfoil", "dev"]), attestation_url: z.string().url() }).optional(),
-  payout_address: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-});
+export { providerApplication } from "../providers/application.ts";
 
 export function publicRoutes(app: Hono, ctx: Ctx) {
   const launchMetrics = async () => {
@@ -181,50 +170,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
 
   // ---- Provider onboarding: apply -> schema check -> bond -> 7-day shadow (canaries) -> live ----
   app.post("/api/v1/providers/apply", async (c) => {
-    const v = providerApplication.parse(await readJson(c));
-    if (ctx.cfg.production && !v.base_url.startsWith("https://")) fail(400, "Providers must use https.", "invalid_request");
-    const [existing] = await ctx.db.select().from(providers).where(eq(providers.id, v.id));
-    if (existing && existing.status !== "applied") fail(409, "That provider id is already registered.", "conflict");
-    // Updating a pending application requires the token returned when it was first submitted.
-    const [tokenRow] = await ctx.db.select().from(kv).where(eq(kv.key, `apply-token:${v.id}`));
-    if (existing && (!tokenRow || !safeEqual(String(tokenRow.value), sha256(c.req.header("x-application-token") ?? ""))))
-      fail(409, "An application with this id exists. Resubmit with its X-Application-Token.", "conflict");
-    const applicationToken = existing ? null : randomHex(24);
-    if (applicationToken) await ctx.db.insert(kv).values({ key: `apply-token:${v.id}`, value: sha256(applicationToken) }).onConflictDoNothing();
-    const row = {
-      id: v.id,
-      name: v.name,
-      baseUrl: v.base_url,
-      apiKeyEnc: v.api_key ? encrypt(ctx.cfg.appSecret, v.api_key) : null,
-      contact: v.contact ?? null,
-      datacenter: v.datacenters ?? [],
-      dataPolicy: v.data_policy,
-      teeKind: v.tee?.kind ?? null,
-      attestationUrl: v.tee?.attestation_url ?? null,
-      payoutAddress: v.payout_address?.toLowerCase() ?? null,
-      payoutMode: v.payout_address ? "usdg" : "invoice",
-      headers: v.headers ?? null,
-      status: "applied",
-    };
-    await ctx.db.insert(providers).values(row).onConflictDoUpdate({ target: providers.id, set: { ...row, updatedAt: new Date() } });
-    await ctx.jobs.run("provider-registry").catch(() => undefined);
-    const [p] = await ctx.db.select().from(providers).where(eq(providers.id, v.id));
-    const offerCount = await ctx.db.select({ n: sql<number>`count(*)::int` }).from(offers).where(eq(offers.providerId, v.id));
-    return c.json(
-      {
-        data: {
-          id: p.id,
-          status: p.status,
-          models_found: offerCount[0]?.n ?? 0,
-          ...(applicationToken ? { application_token: applicationToken, note: "Keep this token to update the application." } : {}),
-          next: [
-            `Bond at least 10,000 USDG: ProviderBond.bond(keccak256("${p.id}"), amount) at ${ctx.cfg.chain.providerBond ?? "(not configured)"}.`,
-            `Then ${ctx.cfg.canaries.shadowDays} days of shadow canaries before live traffic.`,
-          ],
-        },
-      },
-      201,
-    );
+    const data = await submitProviderApplication(ctx, providerApplication.parse(await readJson(c)), c.req.header("x-application-token"));
+    return c.json({ data }, 201);
   });
 
   // Creator royalties: prove you control the model's Hugging Face repo by committing

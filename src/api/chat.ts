@@ -249,11 +249,11 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const meta = { guard, middle, paywithNote, cacheMode, excluded };
   const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens };
 
-  if (stream) return streamResponse({ ...common, run: () => route({ targets, path, body, stream: true, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, caller: sha256(billing.accountId).slice(0, 16) }), abort });
+  if (stream) return streamResponse({ ...common, run: () => route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: true, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, caller: sha256(billing.accountId).slice(0, 16) }), abort });
 
   let result: Awaited<ReturnType<typeof route>>;
   try {
-    result = await route({ targets, path, body, stream: false, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, caller: sha256(billing.accountId).slice(0, 16) });
+    result = await route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: false, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, caller: sha256(billing.accountId).slice(0, 16) });
   } catch (e) {
     await release(ctx.db, holdId);
     throw e;

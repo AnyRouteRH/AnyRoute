@@ -62,6 +62,7 @@ export async function route(opts: {
   path: "/chat/completions" | "/completions";
   body: Record<string, unknown>;
   stream: boolean;
+  appSecret?: string;
   keyFor: (c: Candidate) => string | undefined;
   signal: AbortSignal;
   health: HealthTracker;
@@ -90,6 +91,7 @@ export async function route(opts: {
         body,
         stream: opts.stream,
         apiKey: opts.keyFor(c),
+        appSecret: opts.appSecret,
         signal: opts.signal,
         timeoutMs: opts.timeoutMs,
         firstTokenTimeoutMs: opts.firstTokenTimeoutMs,

@@ -1,13 +1,15 @@
+import { openProviderHeaders } from "../providers/headers.ts";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
 import { canaries, models, offers, providers } from "../db/schema.ts";
 import { usdToPico } from "../lib/money.ts";
+import { boundedJson } from "../providers/network.ts";
 import { decrypt, log } from "../lib/util.ts";
 
 // provider-registry: pulls each provider's /models (OpenRouter provider-spec shape), validates it,
 // diffs it into `offers`, creates unknown models, drives onboarding
-// (applied -> schema ok + bond -> shadow (7 days of canaries) -> live) and republishes the catalog.
+// (applied -> operator approval -> shadow (7 days of canaries) -> live) and republishes the catalog.
 
 const price = z.union([z.string(), z.number()]).transform((v) => String(v));
 export const providerModelSpec = z.object({
@@ -80,15 +82,14 @@ export function parseProviderModels(json: unknown) {
 }
 
 export async function fetchProviderModels(ctx: Ctx, p: typeof providers.$inferSelect) {
+  if (!["shadow", "live"].includes(p.status)) throw new Error("Provider requires operator approval before discovery.");
   if (p.staticModels) return parseProviderModels({ data: p.staticModels });
-  const headers: Record<string, string> = { accept: "application/json", ...((p.headers as Record<string, string> | null) ?? {}) };
+  const headers: Record<string, string> = { accept: "application/json", ...openProviderHeaders(ctx.cfg.appSecret, p.headers) };
   if (p.apiKeyEnc) headers.authorization = `Bearer ${decrypt(ctx.cfg.appSecret, p.apiKeyEnc)}`;
-  const res = await fetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, signal: AbortSignal.timeout(20_000) });
+  const res = await fetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, redirect: "error", signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`GET /models returned ${res.status}`);
-  return parseProviderModels(await res.json());
+  return parseProviderModels(await boundedJson(res));
 }
-
-const MIN_BOND_USDG = 10_000n * 1_000_000n;
 
 export async function syncProvider(ctx: Ctx, p: typeof providers.$inferSelect) {
   const { ok, errors } = await fetchProviderModels(ctx, p);
@@ -146,12 +147,7 @@ export async function syncProvider(ctx: Ctx, p: typeof providers.$inferSelect) {
   return { models: ok.length, errors };
 }
 
-async function advanceOnboarding(ctx: Ctx, p: typeof providers.$inferSelect, schemaOk: boolean) {
-  if (p.status === "applied" && schemaOk && p.bondUsdg >= MIN_BOND_USDG) {
-    const until = new Date(Date.now() + ctx.cfg.canaries.shadowDays * 86_400_000);
-    await ctx.db.update(providers).set({ status: "shadow", shadowUntil: until, updatedAt: new Date() }).where(eq(providers.id, p.id));
-    log.info("provider entered shadow", { provider: p.id, until });
-  }
+async function advanceOnboarding(ctx: Ctx, p: typeof providers.$inferSelect, _schemaOk: boolean) {
   if (p.status === "shadow" && p.shadowUntil && p.shadowUntil.getTime() <= Date.now()) {
     // Promote only with canary data and no quantization mismatch in the shadow window.
     const rows = await ctx.db.select().from(canaries).where(eq(canaries.providerId, p.id));
@@ -166,7 +162,7 @@ async function advanceOnboarding(ctx: Ctx, p: typeof providers.$inferSelect, sch
 }
 
 export async function runRegistry(ctx: Ctx) {
-  const rows = await ctx.db.select().from(providers).where(inArray(providers.status, ["applied", "shadow", "live"]));
+  const rows = await ctx.db.select().from(providers).where(inArray(providers.status, ["shadow", "live"]));
   const results: Record<string, unknown> = {};
   for (const p of rows) {
     try {

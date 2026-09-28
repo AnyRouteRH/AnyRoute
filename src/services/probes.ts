@@ -1,3 +1,4 @@
+import { openProviderHeaders } from "../providers/headers.ts";
 import type { Ctx } from "../context.ts";
 import { decrypt } from "../lib/util.ts";
 
@@ -14,9 +15,9 @@ export async function runProbes(ctx: Ctx) {
       let ok = false;
       let status: number | null = null;
       try {
-        const headers: Record<string, string> = { ...((p.headers as Record<string, string> | null) ?? {}) };
+        const headers: Record<string, string> = { ...openProviderHeaders(ctx.cfg.appSecret, p.headers) };
         if (p.apiKeyEnc) headers.authorization = `Bearer ${decrypt(ctx.cfg.appSecret, p.apiKeyEnc)}`;
-        const res = await fetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, signal: AbortSignal.timeout(5_000) });
+        const res = await fetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, redirect: "error", signal: AbortSignal.timeout(5_000) });
         status = res.status;
         ok = res.ok;
         await res.body?.cancel();

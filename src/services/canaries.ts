@@ -80,6 +80,7 @@ function readFingerprint(json: any): Fingerprint {
 
 async function ask(ctx: Ctx, c: Candidate, body: Record<string, unknown>) {
   const r = await callUpstream({
+    appSecret: ctx.cfg.appSecret,
     candidate: c,
     path: "/chat/completions",
     body: upstreamBody(c, { ...body, model: c.modelId }, false).body,

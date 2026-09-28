@@ -1,4 +1,5 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, inArray } from "drizzle-orm";
+import { boundedJson } from "../providers/network.ts";
 import { randomBytes } from "node:crypto";
 import type { Ctx } from "../context.ts";
 import { attestations, kv, providers } from "../db/schema.ts";
@@ -73,6 +74,7 @@ async function verifyNvidia(ctx: Ctx, payload: string) {
 }
 
 export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect) {
+  if (!["shadow", "live"].includes(p.status)) throw new Error("Provider requires operator approval before attestation.");
   const nonce = randomBytes(32).toString("hex");
   const url = new URL(p.attestationUrl!);
   url.searchParams.set("nonce", nonce);
@@ -83,9 +85,9 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
     return { provider: p.id, ok: false, reason };
   };
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(20_000) });
     if (!res.ok) return fail(`attestation endpoint HTTP ${res.status}`);
-    report = (await res.json()) as Record<string, any>;
+    report = (await boundedJson(res)) as Record<string, any>;
   } catch (e) {
     return fail(`attestation endpoint unreachable: ${(e as Error).message}`);
   }
@@ -132,7 +134,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
 }
 
 export async function runAttestor(ctx: Ctx) {
-  const rows = await ctx.db.select().from(providers).where(and(isNotNull(providers.attestationUrl), isNotNull(providers.teeKind)));
+  const rows = await ctx.db.select().from(providers).where(and(inArray(providers.status, ["shadow", "live"]), isNotNull(providers.attestationUrl), isNotNull(providers.teeKind)));
   const results = [];
   for (const p of rows) {
     try {

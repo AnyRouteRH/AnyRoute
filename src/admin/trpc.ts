@@ -9,7 +9,7 @@ import { bearer, resolveKey, type KeyRow } from "../api/auth.ts";
 import { keyJson } from "../api/keys.ts";
 import { modelJson } from "../api/models.ts";
 import { verifyReceipt, anchorProof } from "../api/generation.ts";
-import { providerApplication } from "../api/public.ts";
+import { providerApplication, submitProviderApplication, publicProvider, validateProviderUrl } from "../providers/application.ts";
 import { statement } from "../pay/paywith.ts";
 import { importLiteLLM } from "../gateway/litellm.ts";
 import { verifyInvariants } from "../ledger/ledger.ts";
@@ -36,29 +36,17 @@ export const adminRouter = t.router({
   providers: t.router({
     // "apply" is a reserved word in tRPC routers; REST keeps POST /api/v1/providers/apply.
     onboard: t.procedure.input(providerApplication).mutation(async ({ ctx, input }) => {
-      const row = {
-        id: input.id,
-        name: input.name,
-        baseUrl: input.base_url,
-        apiKeyEnc: input.api_key ? encrypt(ctx.app.cfg.appSecret, input.api_key) : null,
-        dataPolicy: input.data_policy,
-        datacenter: input.datacenters ?? [],
-        teeKind: input.tee?.kind ?? null,
-        attestationUrl: input.tee?.attestation_url ?? null,
-        payoutAddress: input.payout_address?.toLowerCase() ?? null,
-        payoutMode: input.payout_address ? "usdg" : "invoice",
-        headers: input.headers ?? null,
-        status: "applied",
-      };
-      await ctx.app.db.insert(providers).values(row).onConflictDoNothing();
-      const res = await ctx.app.jobs.run("provider-registry").catch((e) => ({ error: (e as Error).message }));
-      return ser({ id: input.id, status: "applied", registry: res });
+      try {
+        return ser(await submitProviderApplication(ctx.app, input));
+      } catch (e) {
+        const status = (e as { status?: number }).status;
+        throw new TRPCError({ code: status === 409 ? "CONFLICT" : status === 429 ? "TOO_MANY_REQUESTS" : "BAD_REQUEST", message: "Provider application rejected; check the input or use REST with your application token." });
+      }
     }),
     get: t.procedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
       const [p] = await ctx.app.db.select().from(providers).where(eq(providers.id, input.id));
       if (!p) throw new TRPCError({ code: "NOT_FOUND" });
-      const { apiKeyEnc: _secret, ...pub } = p;
-      return ser(pub);
+      return ser(publicProvider(p));
     }),
     list: operator.query(async ({ ctx }) => ser((await ctx.app.db.select().from(providers)).map(({ apiKeyEnc: _s, ...p }) => p))),
     slashes: t.procedure.input(z.object({ id: z.string().optional() })).query(async ({ ctx, input }) =>
@@ -66,6 +54,10 @@ export const adminRouter = t.router({
     ),
     /** Operator onboarding for public inference APIs (router is a usage-reconciled customer): skip bond. */
     approve: operator.input(z.object({ id: z.string(), live: z.boolean().default(false), api_key: z.string().optional() })).mutation(async ({ ctx, input }) => {
+      const [provider] = await ctx.app.db.select().from(providers).where(eq(providers.id, input.id));
+      if (!provider) throw new TRPCError({ code: "NOT_FOUND" });
+      validateProviderUrl(provider.baseUrl, ctx.app.cfg.production);
+      if (provider.attestationUrl) validateProviderUrl(provider.attestationUrl, ctx.app.cfg.production);
       const status = input.live ? "live" : "shadow";
       await ctx.app.db
         .update(providers)
