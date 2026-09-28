@@ -597,9 +597,9 @@ function SignIn({ onKey, onDemo, onSecret }) {
                 onClick={() =>
                   run("wallet", async () => {
                     const address = await connect();
-                    const timestamp = Math.floor(Date.now() / 1000);
-                    const signature = await personalSign(address, `anyroute:wallet-key:${timestamp}`);
-                    const r = await api("/api/v1/auth/wallet", { method: "POST", body: { address, timestamp, signature, name: "Wallet key" } });
+                    const { data: challenge } = await api("/api/v1/auth/wallet/challenge", { method: "POST", body: { address } });
+                    const signature = await personalSign(address, challenge.message);
+                    const r = await api("/api/v1/auth/wallet", { method: "POST", body: { address, nonce: challenge.nonce, signature, name: "Wallet key" } });
                     onSecret(r.key, null, "Your wallet’s API key");
                     await onKey(r.key, remember);
                   })

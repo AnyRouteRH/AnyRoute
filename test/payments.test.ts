@@ -91,8 +91,8 @@ describe("HTTP 402 per-call payments", () => {
     expect((await r.json()).receipt.payload.payer).toBe(wallet.address.toLowerCase());
     expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: auth, json: body })).status).toBe(401); // replay
     // Wallet sign-in turns the change into a normal key.
-    const t2 = Math.floor(Date.now() / 1000);
-    const k = await (await h.request("/api/v1/auth/wallet", { method: "POST", json: { address: wallet.address, timestamp: t2, signature: await wallet.signMessage({ message: `anyroute:wallet-key:${t2}` }) } })).json();
+    const challenge = (await (await h.request("/api/v1/auth/wallet/challenge", { method: "POST", json: { address: wallet.address } })).json()).data;
+    const k = await (await h.request("/api/v1/auth/wallet", { method: "POST", json: { address: wallet.address, nonce: challenge.nonce, signature: await wallet.signMessage({ message: challenge.message }) } })).json();
     const credits = await (await h.request("/api/v1/credits", { headers: { authorization: `Bearer ${k.key}` } })).json();
     expect(credits.data.available).toBeGreaterThan(0);
   });

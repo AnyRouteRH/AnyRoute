@@ -5,12 +5,12 @@ import { CreditsAbi, erc20Abi } from "../chain/abis.ts";
 import { withdrawableFor } from "../services/settlement.ts";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
-import { byokKeys, generations, keys, ledger, spentRoots, teamMembers, teams } from "../db/schema.ts";
+import { byokKeys, generations, keys, kv, ledger, spentRoots, teamMembers, teams } from "../db/schema.ts";
 import { deriveKey, generateApiKey } from "../chain/keys.ts";
 import { fail } from "../lib/errors.ts";
 import { picoToUsd, usdToPico } from "../lib/money.ts";
 import { balanceOf, ensureAccount } from "../ledger/ledger.ts";
-import { encrypt, uid } from "../lib/util.ts";
+import { encrypt, uid, randomHex } from "../lib/util.ts";
 import { MerkleTree, spentLeaf } from "../receipts/merkle.ts";
 import { clientIp, readJson } from "./common.ts";
 import { bearer, registerRootKey, requireKey, requireRole, walletAccountId, type KeyRow } from "./auth.ts";
@@ -424,19 +424,38 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     return c.json({ data: { team: teamId, key_hash: target.keyHash, role: v.role } });
   });
 
-  // Wallet sign-in: turn a per-call payer's change balance into a regular API key.
-  // Sign: "anyroute:wallet-key:<unixSeconds>" with the payer address.
+  // Server-issued, single-use wallet login challenges. Origin, action and chain are signed.
+  app.post("/api/v1/auth/wallet/challenge", async (c) => {
+    const v = z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/) }).parse(await readJson(c));
+    const limit = await ctx.limiter.take(`wallet-login:${clientIp(c, ctx.cfg.trustProxy)}`, 1, 30, 60_000);
+    if (!limit.ok) fail(429, "Too many wallet challenges.", "rate_limit");
+    const nonce = randomHex(24);
+    const expires = Date.now() + 300_000;
+    const address = v.address.toLowerCase();
+    const origin = new URL(ctx.cfg.publicUrl).origin;
+    const message = `Anyroute wallet sign-in\nAction: create management API key\nOrigin: ${origin}\nChain ID: ${ctx.cfg.chain.id}\nWallet: ${address}\nNonce: ${nonce}\nExpires: ${new Date(expires).toISOString()}`;
+    await ctx.db.delete(kv).where(sql`${kv.key} LIKE 'wallet-login:%' AND ${kv.updatedAt} < now() - interval '10 minutes'`);
+    await ctx.db.insert(kv).values({ key: `wallet-login:${nonce}`, value: { address, origin, chainId: ctx.cfg.chain.id, expires, message } });
+    return c.json({ data: { nonce, message, expires_at: new Date(expires).toISOString() } });
+  });
   app.post("/api/v1/auth/wallet", async (c) => {
-    const v = z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/), timestamp: z.number().int(), signature: z.string().regex(/^0x[0-9a-fA-F]+$/), name: z.string().max(100).optional() }).parse(await readJson(c));
-    if (Math.abs(Date.now() / 1000 - v.timestamp) > 300) fail(401, "Signature timestamp is outside the 5-minute window.", "invalid_wallet_auth");
-    const who = await recoverMessageAddress({ message: `anyroute:wallet-key:${v.timestamp}`, signature: v.signature as Hex }).catch(() => null);
-    if (!who || who.toLowerCase() !== v.address.toLowerCase()) fail(401, "Signature does not match the address.", "invalid_wallet_auth");
-    const accountId = walletAccountId(v.address);
-    await ensureAccount(ctx.db, accountId, "wallet", v.address.toLowerCase());
+    const v = z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/), nonce: z.string().regex(/^[0-9a-f]{48}$/), signature: z.string().regex(/^0x[0-9a-fA-F]+$/), name: z.string().max(100).optional() }).parse(await readJson(c));
+    const [challenge] = await ctx.db.select().from(kv).where(eq(kv.key, `wallet-login:${v.nonce}`));
+    const value = challenge?.value as { address: string; origin: string; chainId: number; expires: number; message: string } | undefined;
+    if (!value || value.expires < Date.now() || value.address !== v.address.toLowerCase() || value.origin !== new URL(ctx.cfg.publicUrl).origin || value.chainId !== ctx.cfg.chain.id)
+      fail(401, "Wallet challenge is invalid, expired, or already consumed.", "invalid_wallet_auth");
+    const who = await recoverMessageAddress({ message: value.message, signature: v.signature as Hex }).catch(() => null);
+    if (!who || who.toLowerCase() !== value.address) fail(401, "Signature does not match the challenge.", "invalid_wallet_auth");
     const secret = generateApiKey();
     const d = deriveKey(secret);
-    await ctx.db.insert(keys).values({ keyHash: d.keyHash, chainKeyHash: d.chainKeyHash, keyAddress: d.keyAddress, accountId, label: d.label, name: v.name ?? "wallet", management: true, rpm: ctx.cfg.limits.defaultRpm || null });
-    const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, d.keyHash));
+    const accountId = walletAccountId(value.address);
+    const row = await ctx.db.transaction(async (tx) => {
+      const used = await tx.delete(kv).where(eq(kv.key, challenge.key)).returning({ key: kv.key });
+      if (!used.length || value.expires < Date.now()) fail(401, "Wallet challenge is expired or already consumed.", "invalid_wallet_auth");
+      await ensureAccount(tx, accountId, "wallet", value.address);
+      const [key] = await tx.insert(keys).values({ keyHash: d.keyHash, chainKeyHash: d.chainKeyHash, keyAddress: d.keyAddress, accountId, label: d.label, name: v.name ?? "wallet", management: true, rpm: ctx.cfg.limits.defaultRpm || null }).returning();
+      return key;
+    });
     return c.json({ data: keyJson(row), key: secret }, 201);
   });
 }

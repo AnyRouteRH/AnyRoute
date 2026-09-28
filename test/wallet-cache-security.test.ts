@@ -8,6 +8,25 @@ describe("wallet login and cache policy isolation", () => {
   let h: Harness;
   beforeAll(async () => { h = await startRouter(); });
   afterAll(async () => { await h.close(); });
+  const wallet = privateKeyToAccount(generatePrivateKey());
+  async function challenge() { return (await (await h.request("/api/v1/auth/wallet/challenge", { method: "POST", json: { address: wallet.address } })).json()).data; }
+  test("one challenge creates exactly one key across concurrent requests; replay stays rejected", async () => {
+    const c = await challenge();
+    expect(c.message).toContain(`Chain ID: ${h.ctx.cfg.chain.id}`);
+    expect(c.message).toContain(`Origin: ${new URL(h.ctx.cfg.publicUrl).origin}`);
+    const json = { address: wallet.address, nonce: c.nonce, signature: await wallet.signMessage({ message: c.message }) };
+    const responses = await Promise.all(Array.from({ length: 4 }, () => h.request("/api/v1/auth/wallet", { method: "POST", json })));
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 401, 401, 401]);
+    expect((await h.request("/api/v1/auth/wallet", { method: "POST", json })).status).toBe(401);
+  });
+  test("wrong signatures and expired challenges fail without issuing a key", async () => {
+    const c = await challenge();
+    const wrong = await wallet.signMessage({ message: c.message + " different action" });
+    expect((await h.request("/api/v1/auth/wallet", { method: "POST", json: { address: wallet.address, nonce: c.nonce, signature: wrong } })).status).toBe(401);
+    const [row] = await h.ctx.db.select().from(kv).where(eq(kv.key, `wallet-login:${c.nonce}`));
+    await h.ctx.db.update(kv).set({ value: { ...row.value as object, expires: Date.now() - 1 } }).where(eq(kv.key, row.key));
+    expect((await h.request("/api/v1/auth/wallet", { method: "POST", json: { address: wallet.address, nonce: c.nonce, signature: await wallet.signMessage({ message: c.message }) } })).status).toBe(401);
+  });
   test("output redaction cannot be bypassed through streaming or legacy completions", async () => {
     const key = await h.fundedKey();
     await h.request(`/api/v1/keys/${key.hash}`, { method: "PATCH", headers: key.auth, json: { guardrails: { redact_output: true } } });
