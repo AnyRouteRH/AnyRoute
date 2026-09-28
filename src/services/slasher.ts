@@ -153,19 +153,22 @@ async function refund(ctx: Ctx, s: typeof slashes.$inferSelect, pool: bigint, ta
 }
 
 async function executeReady(ctx: Ctx, now: number) {
-  const ready = await ctx.db.select().from(slashes).where(and(eq(slashes.status, "proposed"), lte(slashes.executableAt, new Date(now))));
+  const ready = await ctx.db.select().from(slashes).where(and(inArray(slashes.status, ["proposed", "disputed", "auto_refunded"]), lte(slashes.executableAt, new Date(now))));
   const out: unknown[] = [];
   for (const s of ready) {
     let chain: unknown = null;
-    if (s.onchainId && ctx.chain.address("providerBond")) {
+    if (ctx.chain.address("providerBond")) {
+      // No confirmed proposal/execution means no seized funds to refund or final delisting.
+      if (!s.onchainId) continue;
       try {
         chain = await ctx.chain.executeSlash(BigInt(s.onchainId));
+        if (!(chain as { submitted: boolean }).submitted) continue;
       } catch (e) {
         log.error("slash execution failed", { id: s.id, error: (e as Error).message });
         continue;
       }
     }
-    const refunded = await refund(ctx, s, usdgToPico(s.amountUsdg), "slashrefund");
+    const refunded = s.refunded > 0n ? s.refunded : await refund(ctx, s, usdgToPico(s.amountUsdg), "slashrefund");
     await ctx.db.update(slashes).set({ status: "executed", executedAt: new Date(now), refunded }).where(eq(slashes.id, s.id));
     if (s.delist) {
       await ctx.db.update(providers).set({ status: "delisted", updatedAt: new Date() }).where(eq(providers.id, s.providerId));

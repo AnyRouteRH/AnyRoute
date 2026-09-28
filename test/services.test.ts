@@ -175,7 +175,14 @@ describe("canaries -> slash -> refunds", () => {
     const early = await runSlasher(h.ctx, now + 3_600_000);
     expect(early.executed).toEqual([]);
     expect((early.proposed as any[]).filter((x) => x.provider === "cheater").length).toBe(0);
-    // After the dispute window: executed, refunds credited, provider delisted.
+    // An unsigned proposal must never cause a refund or final delisting.
+    h.chain.executeSlashSubmitted = false;
+    const awaitingApproval = await runSlasher(h.ctx, now + 73 * 3_600_000);
+    expect(awaitingApproval.executed).toEqual([]);
+    expect((await balanceOf(h.ctx.db, key.accountId)).balance).toBe(balBefore.balance);
+    expect((await h.ctx.db.select().from(slashes).where(eq(slashes.providerId, "cheater")))[0].status).toBe("proposed");
+    h.chain.executeSlashSubmitted = true;
+    // After independent approval and the dispute window: executed, refunds credited, provider delisted.
     const late = await runSlasher(h.ctx, now + 73 * 3_600_000);
     expect((late.executed as any[]).length).toBe(1);
     const balAfter = await balanceOf(h.ctx.db, key.accountId);

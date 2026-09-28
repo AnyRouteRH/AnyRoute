@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {VmSafe} from "forge-std/Vm.sol";
 import {Test} from "forge-std/Test.sol";
 import {CommonBase} from "forge-std/Base.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
@@ -24,14 +25,18 @@ contract MockERC1271Wallet is IERC1271 {
 
     function isValidSignature(bytes32 hash, bytes memory sig) external view returns (bytes4) {
         (address rec, ECDSA.RecoverError err,) = ECDSA.tryRecover(hash, sig);
-        return (err == ECDSA.RecoverError.NoError && rec == signer) ? IERC1271.isValidSignature.selector : bytes4(0);
+        return
+            (err == ECDSA.RecoverError.NoError && rec == signer)
+                ? IERC1271.isValidSignature.selector
+                : bytes4(0);
     }
 }
 
 abstract contract CreditsBase is Test {
     uint256 internal constant CHAIN_ID = 4663;
-    bytes32 internal constant TYPEHASH =
-        keccak256("WithdrawRequest(bytes32 keyHash,uint256 amount,address to,uint256 nonce,uint256 deadline)");
+    bytes32 internal constant TYPEHASH = keccak256(
+        "WithdrawRequest(bytes32 keyHash,uint256 amount,address to,uint256 nonce,uint256 deadline)"
+    );
     bytes32 internal constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
@@ -74,7 +79,9 @@ abstract contract CreditsBase is Test {
     function _domainSeparator(uint256 chainId, address verifying) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
-                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
                 keccak256("Anyroute Credits"),
                 keccak256("1"),
                 chainId,
@@ -89,7 +96,9 @@ abstract contract CreditsBase is Test {
         returns (bytes32)
     {
         bytes32 structHash = keccak256(abi.encode(TYPEHASH, kh, amount, to, nonce, deadline));
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(block.chainid, address(credits)), structHash));
+        return keccak256(
+            abi.encodePacked("\x19\x01", _domainSeparator(block.chainid, address(credits)), structHash)
+        );
     }
 
     function _sign(uint256 pk, bytes32 digest) internal pure returns (bytes memory) {
@@ -97,7 +106,11 @@ abstract contract CreditsBase is Test {
         return abi.encodePacked(r, s, v);
     }
 
-    function _signRequest(uint256 pk, uint256 amount, address to, uint256 deadline) internal view returns (bytes memory) {
+    function _signRequest(uint256 pk, uint256 amount, address to, uint256 deadline)
+        internal
+        view
+        returns (bytes memory)
+    {
         address ka = vm.addr(pk);
         bytes32 kh = keccak256(abi.encodePacked(ka));
         return _sign(pk, _digest(kh, amount, to, credits.nonces(kh), deadline));
@@ -113,9 +126,31 @@ abstract contract CreditsBase is Test {
         credits.deposit(kh, amount);
     }
 
+    // Existing accounting tests explicitly model the independent reviewer as well as settlement.
+    function _approveRoot(bytes32 root, uint64 asOf, uint256 total) internal {
+        (VmSafe.CallerMode mode, address sender, address origin) = vm.readCallers();
+        vm.stopPrank();
+        uint256 epoch = credits.latestEpoch() + 1;
+        vm.prank(credits.owner());
+        credits.approveSpentRoot(epoch, root, asOf, total);
+        if (mode == VmSafe.CallerMode.RecurrentPrank) vm.startPrank(sender, origin);
+        else if (mode == VmSafe.CallerMode.Prank) vm.prank(sender, origin);
+    }
+
+    function _approveSweep(address to, uint256 amount) internal {
+        (VmSafe.CallerMode mode, address sender, address origin) = vm.readCallers();
+        vm.stopPrank();
+        uint256 swept = credits.totalSwept();
+        vm.prank(credits.owner());
+        credits.approveSweep(swept, to, amount);
+        if (mode == VmSafe.CallerMode.RecurrentPrank) vm.startPrank(sender, origin);
+        else if (mode == VmSafe.CallerMode.Prank) vm.prank(sender, origin);
+    }
+
     /// Posts a single-leaf root for (kh, spent); proof is empty.
     function _postSingle(bytes32 kh, uint256 spent, uint256 totalSpent) internal {
         vm.prank(settlement);
+        _approveRoot(Merkle.creditsLeaf(kh, spent), uint64(block.timestamp), totalSpent);
         credits.postSpentRoot(Merkle.creditsLeaf(kh, spent), uint64(block.timestamp), totalSpent);
     }
 
@@ -128,8 +163,9 @@ abstract contract CreditsBase is Test {
         view
         returns (uint8 v, bytes32 r, bytes32 s)
     {
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, ownerAddr, spender, value, usdg.nonces(ownerAddr), deadline));
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, ownerAddr, spender, value, usdg.nonces(ownerAddr), deadline)
+        );
         (v, r, s) = vm.sign(pk, keccak256(abi.encodePacked("\x19\x01", usdg.DOMAIN_SEPARATOR(), structHash)));
     }
 }
@@ -172,17 +208,21 @@ contract CreditsTest is CreditsBase {
 
     function test_domainSeparator_matchesManual() public view {
         assertEq(credits.DOMAIN_SEPARATOR(), _domainSeparator(CHAIN_ID, address(credits)));
-        (, string memory name, string memory version, uint256 chainId, address verifying,,) = credits.eip712Domain();
+        (, string memory name, string memory version, uint256 chainId, address verifying,,) =
+            credits.eip712Domain();
         assertEq(name, "Anyroute Credits");
         assertEq(version, "1");
         assertEq(chainId, CHAIN_ID);
         assertEq(verifying, address(credits));
     }
 
-    function testFuzz_withdrawDigest_matchesManual(bytes32 kh, uint256 amount, address to, uint256 nonce, uint256 dl)
-        public
-        view
-    {
+    function testFuzz_withdrawDigest_matchesManual(
+        bytes32 kh,
+        uint256 amount,
+        address to,
+        uint256 nonce,
+        uint256 dl
+    ) public view {
         assertEq(credits.withdrawDigest(kh, amount, to, nonce, dl), _digest(kh, amount, to, nonce, dl));
     }
 
@@ -229,7 +269,9 @@ contract CreditsTest is CreditsBase {
         usdg.mint(bob, 10e6);
         vm.prank(bob);
         vm.expectRevert(
-            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(credits), 0, 10e6)
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientAllowance.selector, address(credits), 0, 10e6
+            )
         );
         credits.deposit(keyHash, 10e6);
     }
@@ -345,6 +387,7 @@ contract CreditsTest is CreditsBase {
 
     function test_postSpentRoot_firstIsEpochOne() public {
         bytes32 root = keccak256("r1");
+        _approveRoot(root, uint64(block.timestamp), 5e6);
         vm.expectEmit(true, true, true, true, address(credits));
         emit ICredits.SpentRootPosted(1, root, uint64(block.timestamp), 5e6);
         vm.prank(settlement);
@@ -358,8 +401,11 @@ contract CreditsTest is CreditsBase {
 
     function test_postSpentRoot_sequentialEpochs() public {
         vm.startPrank(settlement);
+        _approveRoot(keccak256("a"), uint64(block.timestamp - 100), 1);
         credits.postSpentRoot(keccak256("a"), uint64(block.timestamp - 100), 1);
+        _approveRoot(keccak256("b"), uint64(block.timestamp - 50), 1);
         credits.postSpentRoot(keccak256("b"), uint64(block.timestamp - 50), 1);
+        _approveRoot(keccak256("c"), uint64(block.timestamp), 9);
         credits.postSpentRoot(keccak256("c"), uint64(block.timestamp), 9);
         vm.stopPrank();
         assertEq(credits.latestEpoch(), 3);
@@ -381,6 +427,7 @@ contract CreditsTest is CreditsBase {
 
     function test_postSpentRoot_revertsStaleEqual() public {
         vm.startPrank(settlement);
+        _approveRoot(keccak256("r"), uint64(block.timestamp), 0);
         credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
         vm.expectRevert(ICredits.StaleRoot.selector);
         credits.postSpentRoot(keccak256("r2"), uint64(block.timestamp), 0);
@@ -389,6 +436,7 @@ contract CreditsTest is CreditsBase {
 
     function test_postSpentRoot_revertsStaleLower() public {
         vm.startPrank(settlement);
+        _approveRoot(keccak256("r"), uint64(block.timestamp), 0);
         credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
         vm.expectRevert(ICredits.StaleRoot.selector);
         credits.postSpentRoot(keccak256("r2"), uint64(block.timestamp - 1), 0);
@@ -403,10 +451,12 @@ contract CreditsTest is CreditsBase {
 
     function test_postSpentRoot_revertsSpentDecreased() public {
         vm.startPrank(settlement);
+        _approveRoot(keccak256("r"), uint64(block.timestamp - 1), 10);
         credits.postSpentRoot(keccak256("r"), uint64(block.timestamp - 1), 10);
         vm.expectRevert(Credits.SpentDecreased.selector);
         credits.postSpentRoot(keccak256("r2"), uint64(block.timestamp), 9);
         // equal is fine
+        _approveRoot(keccak256("r2"), uint64(block.timestamp), 10);
         credits.postSpentRoot(keccak256("r2"), uint64(block.timestamp), 10);
         vm.stopPrank();
     }
@@ -419,6 +469,7 @@ contract CreditsTest is CreditsBase {
             total += adds[i];
             vm.warp(t);
             vm.prank(settlement);
+            _approveRoot(bytes32(i + 1), t, total);
             credits.postSpentRoot(bytes32(i + 1), t, total);
         }
         assertEq(credits.latestEpoch(), 5);
@@ -516,7 +567,8 @@ contract CreditsTest is CreditsBase {
 
     function test_request_revertsWrongChain() public {
         bytes32 structHash = keccak256(abi.encode(TYPEHASH, keyHash, 1e6, recipient, 0, block.timestamp));
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(1, address(credits)), structHash));
+        bytes32 digest =
+            keccak256(abi.encodePacked("\x19\x01", _domainSeparator(1, address(credits)), structHash));
         bytes memory sig = _sign(keyPk, digest);
         vm.expectRevert(ICredits.BadSignature.selector);
         credits.requestWithdrawal(keyAddr, 1e6, recipient, block.timestamp, sig);
@@ -649,7 +701,11 @@ contract CreditsTest is CreditsBase {
         MockERC1271Wallet wallet = new MockERC1271Wallet(vm.addr(ownerPk));
         bytes32 kh = keccak256(abi.encodePacked(address(wallet)));
         credits.requestWithdrawal(
-            address(wallet), 3e6, recipient, block.timestamp, _sign(ownerPk, _digest(kh, 3e6, recipient, 0, block.timestamp))
+            address(wallet),
+            3e6,
+            recipient,
+            block.timestamp,
+            _sign(ownerPk, _digest(kh, 3e6, recipient, 0, block.timestamp))
         );
         credits.cancelWithdrawal(
             address(wallet), block.timestamp, _sign(ownerPk, _digest(kh, 0, address(0), 1, block.timestamp))
@@ -787,6 +843,7 @@ contract CreditsTest is CreditsBase {
         }
         vm.warp(block.timestamp + 1 hours);
         vm.prank(settlement);
+        _approveRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 84e6);
         credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 84e6);
         uint256 expected;
         for (uint256 i; i < n; ++i) {
@@ -813,6 +870,7 @@ contract CreditsTest is CreditsBase {
         leaves[0] = Merkle.creditsLeaf(keyHash, 90e6);
         leaves[1] = Merkle.creditsLeaf(other, 0);
         vm.prank(settlement);
+        _approveRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 90e6);
         credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 90e6);
         // try using other key's leaf/proof for our key
         vm.expectRevert(ICredits.InvalidProof.selector);
@@ -830,6 +888,7 @@ contract CreditsTest is CreditsBase {
         _deposit(keyHash, 100e6);
         _request(10e6);
         vm.prank(settlement);
+        _approveRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 6);
         credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 6);
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = Merkle.hashPair(leaves[2], leaves[3]);
@@ -921,12 +980,14 @@ contract CreditsTest is CreditsBase {
     function test_sweep_boundedByTotalSpent() public {
         _deposit(keyHash, 100e6);
         _postSingle(keyHash, 40e6, 40e6);
+        _approveSweep(recipient, 25e6);
         vm.startPrank(settlement);
         vm.expectEmit(true, true, true, true, address(credits));
         emit ICredits.Swept(recipient, 25e6);
         credits.sweep(recipient, 25e6);
         vm.expectRevert(ICredits.SweepExceedsSpent.selector);
         credits.sweep(recipient, 15e6 + 1);
+        _approveSweep(recipient, 15e6);
         credits.sweep(recipient, 15e6);
         vm.expectRevert(ICredits.SweepExceedsSpent.selector);
         credits.sweep(recipient, 1);
@@ -938,6 +999,7 @@ contract CreditsTest is CreditsBase {
         vm.warp(block.timestamp + 1);
         _postSingle(keyHash, 50e6, 50e6);
         vm.prank(settlement);
+        _approveSweep(recipient, 10e6);
         credits.sweep(recipient, 10e6);
         assertEq(credits.totalSwept(), 50e6);
     }
@@ -953,6 +1015,7 @@ contract CreditsTest is CreditsBase {
             vm.expectRevert(ICredits.SweepExceedsSpent.selector);
             credits.sweep(recipient, amt);
         } else {
+            _approveSweep(recipient, amt);
             credits.sweep(recipient, amt);
             assertEq(usdg.balanceOf(recipient), amt);
             assertEq(credits.totalSwept(), amt);
@@ -974,6 +1037,7 @@ contract CreditsTest is CreditsBase {
         vm.expectRevert(ICredits.NotSettlement.selector);
         credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
         vm.prank(s2);
+        _approveRoot(keccak256("r"), uint64(block.timestamp), 0);
         credits.postSpentRoot(keccak256("r"), uint64(block.timestamp), 0);
     }
 
@@ -1050,6 +1114,27 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
         usdg.approve(address(credits), type(uint256).max);
     }
 
+    // Existing accounting tests explicitly model the independent reviewer as well as settlement.
+    function _approveRoot(bytes32 root, uint64 asOf, uint256 total) internal {
+        (VmSafe.CallerMode mode, address sender, address origin) = vm.readCallers();
+        vm.stopPrank();
+        uint256 epoch = credits.latestEpoch() + 1;
+        vm.prank(credits.owner());
+        credits.approveSpentRoot(epoch, root, asOf, total);
+        if (mode == VmSafe.CallerMode.RecurrentPrank) vm.startPrank(sender, origin);
+        else if (mode == VmSafe.CallerMode.Prank) vm.prank(sender, origin);
+    }
+
+    function _approveSweep(address to, uint256 amount) internal {
+        (VmSafe.CallerMode mode, address sender, address origin) = vm.readCallers();
+        vm.stopPrank();
+        uint256 swept = credits.totalSwept();
+        vm.prank(credits.owner());
+        credits.approveSweep(swept, to, amount);
+        if (mode == VmSafe.CallerMode.RecurrentPrank) vm.startPrank(sender, origin);
+        else if (mode == VmSafe.CallerMode.Prank) vm.prank(sender, origin);
+    }
+
     function _pending(uint256 i) internal view returns (uint256 amt, uint64 at) {
         (amt,, at) = credits.pendingWithdrawal(keyHashes[i]);
     }
@@ -1099,6 +1184,7 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
             latestLeaves.push(Merkle.creditsLeaf(keyHashes[i], s));
         }
         vm.prank(settlement);
+        _approveRoot(Merkle.getRoot(latestLeaves), uint64(block.timestamp), total);
         credits.postSpentRoot(Merkle.getRoot(latestLeaves), uint64(block.timestamp), total);
         ++calls;
     }
@@ -1145,6 +1231,7 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
         if (room == 0) return;
         amount = bound(amount, 1, room);
         vm.prank(settlement);
+        _approveSweep(sink, amount);
         credits.sweep(sink, amount);
         ++calls;
     }

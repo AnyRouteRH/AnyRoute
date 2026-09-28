@@ -534,7 +534,11 @@ contract Deploy is Script {
                 && r.callPayTreasury != address(0) && r.guardian != address(0),
             "Deploy: missing role address"
         );
-        if (prod) require(r.ownerSafe != address(0), "Deploy: OWNER_SAFE required");
+        if (prod) {
+            require(r.ownerSafe != address(0), "Deploy: OWNER_SAFE required");
+            require(r.ownerSafe != r.settlement && r.ownerSafe != r.slasher,
+                "Deploy: independent approval Safe required");
+        }
     }
 
     // =============================================================================================

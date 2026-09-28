@@ -182,49 +182,59 @@ export async function withdrawableFor(ctx: Ctx, accountId: string, chainKeyHash:
   return w > 0n ? w : 0n;
 }
 
+/** Retain the exact candidate while governance reviews it; retries never silently replace its leaves. */
+async function submitSpentRoot(ctx: Ctx, row: typeof spentRoots.$inferSelect) {
+  const asOf = Math.floor(row.asOf.getTime() / 1000);
+  const approval = ctx.chain.spentRootApproval(row.epoch, row.root as Hex, asOf, row.totalSpentUsdg);
+  if (!await ctx.chain.isSpentRootApproved(row.root as Hex, asOf, row.totalSpentUsdg)) {
+    await ctx.db.update(spentRoots).set({ status: "awaiting_approval" }).where(eq(spentRoots.epoch, row.epoch));
+    return { posted: false, reason: "awaiting independent approval", epoch: row.epoch, root: row.root, approval };
+  }
+  await ctx.db.update(spentRoots).set({ status: "pending" }).where(eq(spentRoots.epoch, row.epoch));
+  try {
+    const r = await ctx.chain.postSpentRoot(row.root as Hex, asOf, row.totalSpentUsdg);
+    await ctx.db.update(spentRoots).set({ status: "confirmed", txHash: r.hash }).where(eq(spentRoots.epoch, row.epoch));
+    return { posted: true, epoch: row.epoch, root: row.root, total_spent_usdg: row.totalSpentUsdg.toString(), tx: r.hash };
+  } catch (e) {
+    log.error("postSpentRoot failed", { epoch: row.epoch, error: (e as Error).message });
+    return { posted: false, reason: "submission failed; candidate retained", epoch: row.epoch, root: row.root, tx: null };
+  }
+}
+
 export async function postSpentRoot(ctx: Ctx) {
+  const onChain = !!(ctx.chain.address("credits") && ctx.chain.roleAddress("settlement"));
+  let [last] = await ctx.db.select().from(spentRoots).orderBy(desc(spentRoots.epoch)).limit(1);
+  if (onChain) {
+    // An RPC failure must never delete a candidate or masquerade as an unposted root.
+    const landed = await ctx.chain.latestSpentRoot();
+    if (last && ["pending", "awaiting_approval"].includes(last.status)) {
+      if (landed.epoch === BigInt(last.epoch) && landed.root === last.root && landed.totalSpent === last.totalSpentUsdg && landed.asOf === Math.floor(last.asOf.getTime() / 1000)) {
+        await ctx.db.update(spentRoots).set({ status: "confirmed" }).where(eq(spentRoots.epoch, last.epoch));
+        last = { ...last, status: "confirmed" };
+      } else if (landed.epoch === BigInt(last.epoch - 1)) return submitSpentRoot(ctx, last);
+      else throw new Error("Spent-root chain/database mismatch; reconcile before proposing another root");
+    }
+    if (landed.epoch !== BigInt(last?.epoch ?? 0) || (last && (landed.root !== last.root || landed.totalSpent !== last.totalSpentUsdg || landed.asOf !== Math.floor(last.asOf.getTime() / 1000))))
+      throw new Error("Spent-root chain/database mismatch; reconcile before proposing another root");
+  }
   const { leaves, ratchet, settledTotal } = await computeSpentLeaves(ctx);
   if (!leaves.length) return { posted: false, reason: "no funded keys" };
   const tree = new MerkleTree(leaves.map(([h, s]) => spentLeaf(h as Hex, s)));
-  const onChain = !!(ctx.chain.address("credits") && ctx.chain.roleAddress("settlement"));
-  let [last] = await ctx.db.select().from(spentRoots).orderBy(desc(spentRoots.epoch)).limit(1);
-  // A root whose post failed (or never confirmed) must not block later roots: keep it if it did land,
-  // otherwise drop it and rebuild that epoch.
-  if (last?.status === "pending" && onChain) {
-    const landed = await ctx.chain.latestSpentRoot().catch(() => null);
-    if (landed && landed.root === last.root) await ctx.db.update(spentRoots).set({ status: "confirmed" }).where(eq(spentRoots.epoch, last.epoch));
-    else {
-      await ctx.db.delete(spentRoots).where(eq(spentRoots.epoch, last.epoch));
-      [last] = await ctx.db.select().from(spentRoots).orderBy(desc(spentRoots.epoch)).limit(1);
-    }
-  }
   const lastTotal = last ? last.totalSpentUsdg : 0n;
   const total = leaves.reduce((a, [, s]) => a + s, 0n);
-  const totalSpent = total > lastTotal ? total : lastTotal; // Credits requires non-decreasing totals
+  const totalSpent = total > lastTotal ? total : lastTotal;
   if (last && last.root === tree.root) return { posted: false, reason: "unchanged", epoch: last.epoch };
   const epoch = (last?.epoch ?? 0) + 1;
-  // Credits rejects roots dated after the latest block, so never date one past the chain's own clock
-  // (a chain can trail wall time: a restored local node, or a slow block). The ledger snapshot above is
-  // taken now, so it covers every spend up to asOf.
   let asOfSec = Math.floor(Date.now() / 1000);
   if (onChain) asOfSec = Math.min(asOfSec, await ctx.chain.latestBlockTime());
   if (last && asOfSec <= Math.floor(last.asOf.getTime() / 1000)) return { posted: false, reason: "chain time has not advanced past the last root", epoch: last.epoch };
-  const asOf = new Date(asOfSec * 1000);
-  await ctx.db.insert(spentRoots).values({ epoch, root: tree.root, asOf, totalSpentUsdg: totalSpent, leaves: leaves.map(([h, s]) => [h, s.toString()]), status: "pending" });
+  const [row] = await ctx.db.insert(spentRoots).values({ epoch, root: tree.root, asOf: new Date(asOfSec * 1000), totalSpentUsdg: totalSpent, leaves: leaves.map(([h, s]) => [h, s.toString()]), status: "pending" }).returning();
   await setKv(ctx, "spent_ratchet", ratchet);
-  // totalSpent (monotonic, includes holds) bounds Credits.sweep on-chain; sweep at most this settled figure.
+  // Holds can be included in the root. Approvers must cap transfers at independently verified settled usage.
   await setKv(ctx, `spent_settled:${epoch}`, settledTotal.toString());
-  let tx: string | null = null;
-  if (onChain) {
-    try {
-      const r = await ctx.chain.postSpentRoot(tree.root, Math.floor(asOf.getTime() / 1000), totalSpent);
-      tx = r.hash;
-      await ctx.db.update(spentRoots).set({ status: "confirmed", txHash: tx }).where(eq(spentRoots.epoch, epoch));
-    } catch (e) {
-      log.error("postSpentRoot failed", { epoch, error: (e as Error).message });
-    }
-  } else await ctx.db.update(spentRoots).set({ status: "local" }).where(eq(spentRoots.epoch, epoch));
-  return { posted: true, epoch, root: tree.root, keys: leaves.length, total_spent_usdg: totalSpent.toString(), tx };
+  if (onChain) return submitSpentRoot(ctx, row);
+  await ctx.db.update(spentRoots).set({ status: "local" }).where(eq(spentRoots.epoch, epoch));
+  return { posted: true, epoch, root: tree.root, keys: leaves.length, total_spent_usdg: totalSpent.toString(), tx: null };
 }
 
 /** 2: weekly payouts for providers paid in USDG on-chain. Invoice providers are just marked. */

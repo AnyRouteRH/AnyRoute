@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test, describe } from "bun:test";
 import { eq } from "drizzle-orm";
 import { startRouter, ADMIN, type Harness } from "./helpers.ts";
-import { providers, kv, chainCursor } from "../src/db/schema.ts";
+import { providers, kv, chainCursor, spentRoots } from "../src/db/schema.ts";
 import { runRegistry } from "../src/services/registry.ts";
 import { runAttestor } from "../src/services/attestor.ts";
 import { sealProviderHeaders } from "../src/providers/headers.ts";
@@ -90,6 +90,14 @@ describe("launch security regressions", () => {
         await h.ctx.db.insert(kv).values({ key: `job-health:${name}`, value }).onConflictDoUpdate({ target: kv.key, set: { value } });
       }
       expect((await h.request("/ready")).status).toBe(200);
+      h.chain.controlsReady = false;
+      expect((await h.request("/ready")).status).toBe(503);
+      h.chain.controlsReady = true;
+      await h.ctx.db.insert(spentRoots).values({ epoch: 1, root: "0x" + "11".repeat(32), asOf: new Date(), totalSpentUsdg: 0n, leaves: [], status: "awaiting_approval", createdAt: new Date(Date.now() - 25 * 3_600_000) });
+      expect((await h.request("/ready")).status).toBe(200); // normal timelock review isn't a failed submission
+      await h.ctx.db.update(spentRoots).set({ createdAt: new Date(Date.now() - 49 * 3_600_000) });
+      expect((await h.request("/ready")).status).toBe(503);
+      await h.ctx.db.delete(spentRoots);
       await h.ctx.db.update(kv).set({ value: { name: "settlement", every_ms: 5000, last_error: "fixture failure", last_success: new Date().toISOString() } }).where(eq(kv.key, "job-health:settlement"));
       expect((await h.request("/ready")).status).toBe(503);
     } finally { h.ctx.cfg.chain.credits = oldCredits; h.ctx.cfg.chain.receiptAnchor = oldAnchor; h.ctx.chain.client.getChainId = oldChainId; }

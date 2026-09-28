@@ -8,7 +8,7 @@ const root = resolve(import.meta.dir, "..");
 const out = resolve(root, ".data/abi-out");
 const cache = resolve(root, ".data/abi-cache");
 mkdirSync(out, { recursive: true });
-const forge = `${process.env.HOME}/.foundry/bin/forge`;
+const forge = process.env.FOUNDRY_BIN ? `${process.env.FOUNDRY_BIN}/forge` : Bun.which("forge") ?? `${process.env.HOME}/.foundry/bin/forge`;
 await $`${forge} build --out ${out} --cache-path ${cache} --root ${resolve(root, "contracts")}`.quiet();
 
 // Implementation ABIs (supersets of the interfaces): name -> [artifact file, contract]

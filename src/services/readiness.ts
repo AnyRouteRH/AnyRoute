@@ -3,6 +3,8 @@ import type { Ctx } from "../context.ts";
 import { anchors, spentRoots, chainCursor, kv } from "../db/schema.ts";
 import type { JobSnapshot } from "./jobs.ts";
 
+// One-day production timelock plus one day for review/execution. Submission failures retain the 2-minute bound.
+export const ROOT_REVIEW_SLA_MS = 48 * 3_600_000;
 export const CRITICAL_JOBS = ["chain-indexer", "catalog-refresh", "provider-registry", "receipts-anchor", "settlement"];
 export function jobReady(state: JobSnapshot | undefined, now = Date.now()) {
   if (!state || state.last_error || !state.last_success || !(state.every_ms > 0)) return false;
@@ -28,10 +30,12 @@ export async function readiness(ctx: Ctx) {
           await ctx.catalog.refresh();
           checks.providers = [...ctx.catalog.offersByModel.values()].some((rows) => rows.some((o) => o.status === "live" && o.provider.status === "live"));
           const staleBefore = new Date(Date.now() - 120_000);
-          const [anchorBacklog, rootBacklog] = await Promise.all([
+          const [anchorBacklog, rootBacklog, approvalBacklog] = await Promise.all([
             ctx.db.select({ id: anchors.index }).from(anchors).where(and(inArray(anchors.status, ["pending", "local"]), lt(anchors.createdAt, staleBefore))).limit(1),
             ctx.db.select({ id: spentRoots.epoch }).from(spentRoots).where(and(eq(spentRoots.status, "pending"), lt(spentRoots.createdAt, staleBefore))).limit(1),
+            ctx.db.select({ id: spentRoots.epoch }).from(spentRoots).where(and(eq(spentRoots.status, "awaiting_approval"), lt(spentRoots.createdAt, new Date(Date.now() - ROOT_REVIEW_SLA_MS)))).limit(1),
           ]);
+          checks.settlement_review = !approvalBacklog.length;
           checks.chain_submissions = !anchorBacklog.length && !rootBacklog.length;
           const states = await ctx.db.select().from(kv).where(inArray(kv.key, CRITICAL_JOBS.map((n) => `job-health:${n}`)));
           for (const name of CRITICAL_JOBS) checks[name] = jobReady(states.find((r) => r.key === `job-health:${name}`)?.value as JobSnapshot | undefined);
@@ -48,6 +52,9 @@ export async function readiness(ctx: Ctx) {
           checks.chain = !!cursor && head - cursor.block <= BigInt(Math.max(ctx.cfg.chain.confirmations + 20, 30)) && cursor.block <= head;
         });
       } catch { checks.chain = false; }
+    })(),
+    (async () => {
+      try { checks.custody_controls = await bounded(() => ctx.chain.custodyControlsReady()); } catch { checks.custody_controls = false; }
     })(),
     (async () => {
       try { await bounded(() => ctx.limiter.take("readiness", 0, 1, 60_000)); checks.rate_limiter = true; } catch { checks.rate_limiter = false; }

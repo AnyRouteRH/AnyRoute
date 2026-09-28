@@ -240,19 +240,50 @@ describe("self-custodial withdrawals: spent roots", () => {
     const proofBefore = await (await h.request("/api/v1/credits/withdrawal-proof", { headers: a.auth })).json();
     expect(proofBefore.data?.root ?? null).not.toBe(failed.root); // never a proof against a root that did not land
     // Next run: the chain's clock now trails wall time (like a restored local node), sitting just one
-    // second after the last landed root. The failed epoch is rebuilt and dated by the chain, not the server.
+    // second after the last landed root. The reviewed candidate must be retained, even if it is now ahead of chain time.
     await Bun.sleep(2100);
     const landedBefore = h.chain.spentRoots.at(-1)!.asOf;
     h.chain.clockOffsetSec = landedBefore + 1 - Math.floor(Date.now() / 1000);
     expect(h.chain.clockOffsetSec).toBeLessThan(0);
-    const retried = await postSpentRoot(h.ctx);
+    const waiting = await postSpentRoot(h.ctx);
+    const candidateTime = Math.floor(pending.asOf.getTime() / 1000);
+    if (candidateTime > landedBefore + 1) expect(waiting.posted).toBe(false);
+    h.chain.clockOffsetSec = 0;
+    const retried = waiting.posted ? waiting : await postSpentRoot(h.ctx);
+    expect(retried.root).toBe(failed.root);
     expect(retried.posted).toBe(true);
     expect(retried.epoch).toBe(failed.epoch);
     expect(retried.tx).not.toBeNull();
-    expect(h.chain.spentRoots.at(-1)!.asOf).toBe(landedBefore + 1);
+    expect(h.chain.spentRoots.at(-1)!.asOf).toBe(candidateTime);
     const proof = await (await h.request("/api/v1/credits/withdrawal-proof", { headers: a.auth })).json();
     expect(proof.data.root).toBe(h.chain.spentRoots.at(-1)!.root);
     h.chain.clockOffsetSec = 0;
+  });
+
+  test("independent approval retains the exact snapshot while more usage arrives", async () => {
+    const a = await h.fundedKey(2n);
+    await Bun.sleep(1100);
+    h.chain.approveSpentRoots = false;
+    try {
+      const candidate = await postSpentRoot(h.ctx);
+      expect(candidate.posted).toBe(false);
+      expect(candidate.reason).toBe("awaiting independent approval");
+      expect(candidate.approval?.to).toBe(h.chain.address("credits")!);
+      const [before] = await h.ctx.db.select().from(spentRoots).where(eq(spentRoots.epoch, candidate.epoch!));
+      await h.request("/api/v1/chat/completions", { method: "POST", headers: a.auth, json: { model: LLAMA, messages: [{ role: "user", content: "during review" }] } });
+      const waiting = await postSpentRoot(h.ctx);
+      const [after] = await h.ctx.db.select().from(spentRoots).where(eq(spentRoots.epoch, candidate.epoch!));
+      expect(waiting).toEqual(candidate);
+      expect(after.leaves).toEqual(before.leaves);
+      expect(after.asOf).toEqual(before.asOf);
+      const proof = await (await h.request("/api/v1/credits/withdrawal-proof", { headers: a.auth })).json();
+      expect(proof.data?.root).not.toBe(candidate.root);
+      h.chain.approveSpentRoots = true;
+      const posted = await postSpentRoot(h.ctx);
+      expect(posted.posted).toBe(true);
+      expect(posted.root).toBe(candidate.root);
+      expect(posted.epoch).toBe(candidate.epoch);
+    } finally { h.chain.approveSpentRoots = true; }
   });
 
   test("withdrawal requests lock the balance off-chain; completion reconciles; cancellation releases", async () => {

@@ -15,7 +15,7 @@ import {ICredits} from "./interfaces/ICredits.sol";
 /// @title Credits
 /// @notice Prepaid USDG balances keyed by an API key's hash (0% fee). The router debits usage
 /// off-chain; settlement posts merkle roots of every key's cumulative spend so withdrawals are
-/// provably bounded and sweeps can never exceed what was actually spent.
+/// bounded by the independently approved ledger snapshot (not an on-chain proof of usage).
 /// @dev Trust model / operational requirements for settlement:
 ///  - Every root MUST contain a leaf for every key with a non-zero deposit (cumulativeSpent may be 0),
 ///    otherwise that key cannot finalize a withdrawal against that root.
@@ -38,8 +38,9 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
     }
 
     /// @notice EIP-712 typehash of the withdrawal / cancellation request signed by the key address.
-    bytes32 public constant WITHDRAW_REQUEST_TYPEHASH =
-        keccak256("WithdrawRequest(bytes32 keyHash,uint256 amount,address to,uint256 nonce,uint256 deadline)");
+    bytes32 public constant WITHDRAW_REQUEST_TYPEHASH = keccak256(
+        "WithdrawRequest(bytes32 keyHash,uint256 amount,address to,uint256 nonce,uint256 deadline)"
+    );
 
     /// @notice After this delay a pending withdrawal may finalize against the latest root even if that
     /// root predates the request (liveness escape if settlement stops posting).
@@ -67,6 +68,18 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
     /// @inheritdoc ICredits
     uint256 public totalSwept;
 
+    /// @notice Version 2 requires independent owner authorization of roots and transfers.
+    uint256 public constant CONTROL_VERSION = 2;
+    bytes32 public rootApproval;
+    bytes32 public sweepApproval;
+
+    error IndependentOwnerRequired();
+    error ApprovalRequired();
+    error StaleApproval();
+    event RootApproved(uint256 indexed epoch, bytes32 root, uint64 asOf, uint256 totalSpent);
+    event SweepApproved(uint256 indexed alreadySwept, address indexed to, uint256 amount);
+    event ApprovalsRevoked();
+
     error ZeroAddress();
     error RootInFuture();
     error SpentDecreased();
@@ -84,6 +97,7 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         EIP712("Anyroute Credits", "1")
     {
         if (address(usdg_) == address(0) || settlement_ == address(0)) revert ZeroAddress();
+        if (owner_ == settlement_) revert IndependentOwnerRequired();
         _usdg = usdg_;
         settlement = settlement_;
         emit SettlementSet(settlement_);
@@ -106,11 +120,16 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
     /// @inheritdoc ICredits
     /// @dev The permit is wrapped in try/catch so a front-run permit cannot brick the deposit; if the
     /// permit fails and no allowance exists, the transferFrom reverts instead.
-    function depositWithPermit(bytes32 keyHash, uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
-        external
-        nonReentrant
-    {
-        try IERC20Permit(address(_usdg)).permit(msg.sender, address(this), amount, deadline, v, r, s) {} catch {}
+    function depositWithPermit(
+        bytes32 keyHash,
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external nonReentrant {
+        try IERC20Permit(address(_usdg)).permit(msg.sender, address(this), amount, deadline, v, r, s) {}
+            catch {}
         _deposit(keyHash, amount);
     }
 
@@ -134,6 +153,8 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         if (asOf <= prev.asOf) revert StaleRoot();
         if (asOf > block.timestamp) revert RootInFuture();
         if (totalSpent < prev.totalSpent) revert SpentDecreased();
+        if (!isRootApproved(root, asOf, totalSpent)) revert ApprovalRequired();
+        delete rootApproval;
         unchecked {
             ++epoch;
         }
@@ -148,6 +169,8 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         if (to == address(0)) revert ZeroAddress();
         uint256 swept = totalSwept + amount;
         if (swept > spentRoot[latestEpoch].totalSpent) revert SweepExceedsSpent();
+        if (sweepApproval != keccak256(abi.encode(totalSwept, to, amount))) revert ApprovalRequired();
+        delete sweepApproval;
         totalSwept = swept;
         emit Swept(to, amount);
         _usdg.safeTransfer(to, amount);
@@ -160,9 +183,13 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
     /// @inheritdoc ICredits
     /// @dev Anyone may relay the signed request. The signature is checked with SignatureChecker so
     /// ERC-1271 smart accounts are supported as key addresses.
-    function requestWithdrawal(address keyAddress, uint256 amount, address to, uint256 deadline, bytes calldata sig)
-        external
-    {
+    function requestWithdrawal(
+        address keyAddress,
+        uint256 amount,
+        address to,
+        uint256 deadline,
+        bytes calldata sig
+    ) external {
         if (amount == 0) revert InvalidAmount();
         if (to == address(0)) revert ZeroAddress();
         if (block.timestamp > deadline) revert Expired();
@@ -202,7 +229,9 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         if (r.asOf < p.requestedAt && block.timestamp < uint256(p.requestedAt) + ESCAPE_DELAY) {
             revert RootTooOld();
         }
-        if (!MerkleProof.verifyCalldata(proof, r.root, spentLeaf(keyHash, cumulativeSpent))) revert InvalidProof();
+        if (!MerkleProof.verifyCalldata(proof, r.root, spentLeaf(keyHash, cumulativeSpent))) {
+            revert InvalidProof();
+        }
 
         uint256 pay = _available(keyHash, cumulativeSpent);
         if (p.amount < pay) pay = p.amount;
@@ -217,10 +246,54 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
     // Admin
     // ---------------------------------------------------------------------------------------------
 
-    /// @notice Set the settlement address.
+    /// @notice Authorize exactly the next snapshot after independently checking its complete ledger.
+    /// The owner must be separately controlled (production: timelock governed by an independent Safe).
+    function approveSpentRoot(uint256 epoch, bytes32 root, uint64 asOf, uint256 totalSpent)
+        external
+        onlyOwner
+    {
+        if (epoch != latestEpoch + 1) revert StaleApproval();
+        rootApproval = keccak256(abi.encode(epoch, root, asOf, totalSpent));
+        emit RootApproved(epoch, root, asOf, totalSpent);
+    }
+
+    function isRootApproved(bytes32 root, uint64 asOf, uint256 totalSpent) public view returns (bool) {
+        return rootApproval == keccak256(abi.encode(latestEpoch + 1, root, asOf, totalSpent));
+    }
+
+    /// @notice One transfer, exact destination and amount, bound to the current sweep counter.
+    /// Approval does not waive the cumulative spent limit. Re-approval replaces any unspent approval.
+    function approveSweep(uint256 alreadySwept, address to, uint256 amount) external onlyOwner {
+        if (alreadySwept != totalSwept) revert StaleApproval();
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert InvalidAmount();
+        sweepApproval = keccak256(abi.encode(alreadySwept, to, amount));
+        emit SweepApproved(alreadySwept, to, amount);
+    }
+
+    function revokeApprovals() external onlyOwner {
+        _clearApprovals();
+    }
+
+    function _clearApprovals() private {
+        delete rootApproval;
+        delete sweepApproval;
+        emit ApprovalsRevoked();
+    }
+
+    function _transferOwnership(address newOwner) internal override {
+        if (newOwner == address(0) || newOwner == settlement) revert IndependentOwnerRequired();
+        super._transferOwnership(newOwner);
+        // Constructor dispatch runs before settlement is assigned; there are no approvals yet.
+        if (settlement != address(0)) _clearApprovals();
+    }
+
+    /// @notice Set the settlement address and invalidate outstanding approvals.
     function setSettlement(address settlement_) external onlyOwner {
         if (settlement_ == address(0)) revert ZeroAddress();
+        if (settlement_ == owner() || settlement_ == pendingOwner()) revert IndependentOwnerRequired();
         settlement = settlement_;
+        _clearApprovals();
         emit SettlementSet(settlement_);
     }
 
@@ -262,7 +335,9 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         view
         returns (bytes32)
     {
-        return _hashTypedDataV4(keccak256(abi.encode(WITHDRAW_REQUEST_TYPEHASH, keyHash, amount, to, nonce, deadline)));
+        return _hashTypedDataV4(
+            keccak256(abi.encode(WITHDRAW_REQUEST_TYPEHASH, keyHash, amount, to, nonce, deadline))
+        );
     }
 
     // ---------------------------------------------------------------------------------------------

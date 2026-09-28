@@ -102,8 +102,12 @@ export class FakeChain extends ChainService {
   }
   override async latestSpentRoot() {
     const r = this.spentRoots.at(-1);
-    return { epoch: BigInt(this.spentRoots.length), root: (r?.root ?? "0x" + "00".repeat(32)) as Hex, asOf: r?.asOf ?? 0 };
+    return { epoch: BigInt(this.spentRoots.length), root: (r?.root ?? "0x" + "00".repeat(32)) as Hex, asOf: r?.asOf ?? 0, totalSpent: r?.total ?? 0n };
   }
+  controlsReady = true;
+  override async custodyControlsReady() { return this.controlsReady; }
+  approveSpentRoots = true;
+  override async isSpentRootApproved() { return this.approveSpentRoots; }
   override async postSpentRoot(root: Hex, asOf: number, total: bigint) {
     // Same checks as Credits.postSpentRoot.
     if (this.failNextSpentRoot) {
@@ -122,7 +126,9 @@ export class FakeChain extends ChainService {
     this.slashProposals.push(args);
     return { submitted: true as const, hash: fakeTx(), slashId: BigInt(this.slashProposals.length) };
   }
+  executeSlashSubmitted = true;
   override async executeSlash() {
+    if (!this.executeSlashSubmitted) return { submitted: false as const, safeTx: { to: this.address("providerBond")!, value: "0", data: "0x" as Hex } };
     return { submitted: true as const, hash: fakeTx() };
   }
 
