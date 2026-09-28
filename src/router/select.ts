@@ -58,9 +58,10 @@ export function blendedPrice(c: Candidate): number {
 
 export function attestationFresh(c: Candidate, maxAgeMs: number, production: boolean) {
   const p = c.provider;
-  if (!p.attested || !p.attestationHash || !p.attestedAt) return false;
+  if (!p.attested || !p.attestationHash || !p.attestedAt || !p.teeKind) return false;
   if (production && p.teeKind === "dev") return false;
-  return Date.now() - p.attestedAt.getTime() <= maxAgeMs;
+  const age = Date.now() - p.attestedAt.getTime();
+  return Number.isFinite(age) && age >= 0 && age <= maxAgeMs;
 }
 
 function metric(p: Percentiles | undefined, key: keyof Percentiles) {

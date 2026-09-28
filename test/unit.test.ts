@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { allocate, mulBps, picoToUsd, picoToUsdString, picoToUsdg, usdToPico } from "../src/lib/money.ts";
 import { MerkleTree, spentLeaf } from "../src/receipts/merkle.ts";
-import { selectProviders, weightedShuffle, type HealthView } from "../src/router/select.ts";
+import { attestationFresh, selectProviders, weightedShuffle, type HealthView } from "../src/router/select.ts";
 import type { Candidate } from "../src/catalog/catalog.ts";
 import { applyGuardrails, findPii } from "../src/gateway/guardrails.ts";
 import { middleOut } from "../src/gateway/transforms.ts";
@@ -145,9 +145,13 @@ describe("provider selection", () => {
     const att = offer("tee", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date(), teeKind: "tdx" } as never);
     const stale = offer("old", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date(Date.now() - 86_400_000), teeKind: "tdx" } as never);
     const dev = offer("dev", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date(), teeKind: "dev" } as never);
+    const future = offer("future", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date(Date.now() + 60_000), teeKind: "tdx" } as never);
+    const noTeeKind = offer("no-kind", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date(), teeKind: null } as never);
+    const invalidDate = offer("invalid-date", 500n, 500n, {}, { attested: true, attestationHash: "0xabc", attestedAt: new Date("invalid"), teeKind: "tdx" } as never);
     expect(sel([a, att, stale, dev], { private: true }).ordered.map((x) => x.providerId).sort()).toEqual(["dev", "tee"]);
     expect(sel([a, att, stale, dev], { private: true }, { production: true }).ordered.map((x) => x.providerId)).toEqual(["tee"]);
     expect(sel([a, att], {}, { modifiers: new Set(["private"]) }).ordered.map((x) => x.providerId)).toEqual(["tee"]);
+    for (const invalid of [future, noTeeKind, invalidDate]) expect(attestationFresh(invalid, 3_600_000, false)).toBe(false);
   });
   test("ANYR stake breaks ties", () => {
     const x = offer("x", 100n, 100n, {}, { anyrStake: 10n } as never);

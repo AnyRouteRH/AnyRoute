@@ -37,7 +37,7 @@ export async function readiness(ctx: Ctx) {
           const livePrivateProviders = ctx.cfg.production
             ? await ctx.db.select({ teeKind: providers.teeKind }).from(providers).where(and(eq(providers.status, "live"), isNotNull(providers.teeKind)))
             : [];
-          const privateRoutingEnabled = livePrivateProviders.some((p) => p.teeKind !== "dev");
+          const privateRoutingEnabled = livePrivateProviders.some((p) => !!p.teeKind && p.teeKind !== "dev");
           // Every non-dev report passes through the DCAP verifier; NVIDIA confidential-computing
           // reports also require the separate NRAS verification endpoint.
           checks.private_attestation_verifiers = !privateRoutingEnabled || (
@@ -46,7 +46,7 @@ export async function readiness(ctx: Ctx) {
           );
           if (privateRoutingEnabled) {
             const liveAttested = [...ctx.catalog.offersByModel.values()].flat().some((o) =>
-              o.status === "live" && o.provider.status === "live" && o.provider.teeKind !== "dev" &&
+              o.status === "live" && o.provider.status === "live" && !!o.provider.teeKind && o.provider.teeKind !== "dev" &&
               attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, true));
             checks.private_attestation = liveAttested;
           }

@@ -71,6 +71,10 @@ test("missing verifier configuration and stale or failed attestation workers fai
   const failed = { name: "attestor", every_ms: teeHarness.ctx.cfg.attestation.intervalMs, last_error: "fixture failure", last_success: new Date().toISOString() };
   await teeHarness.ctx.db.update(kv).set({ value: failed }).where(eq(kv.key, "job-health:attestor"));
   expect((await readiness(teeHarness.ctx)).checks.attestor).toBe(false);
+
+  const stale = { name: "attestor", every_ms: teeHarness.ctx.cfg.attestation.intervalMs, last_error: null, last_success: new Date(Date.now() - teeHarness.ctx.cfg.attestation.intervalMs * 3).toISOString() };
+  await teeHarness.ctx.db.update(kv).set({ value: stale }).where(eq(kv.key, "job-health:attestor"));
+  expect((await readiness(teeHarness.ctx)).checks.attestor).toBe(false);
 });
 
 test("live NVIDIA confidential computing provider also requires the NRAS verifier path", async () => {
