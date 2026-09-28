@@ -57,5 +57,15 @@ describe("production Compose topology", () => {
     expect(verifier).toContain("unsafe_runtime_database_privileges");
     expect(verifier).toContain("has_table_privilege(current_user, 'public.ledger', 'TRUNCATE')");
     expect(verifier).toContain("has_table_privilege(current_user, 'drizzle.__drizzle_migrations', 'UPDATE')");
+    expect(verifier).toContain("critical_worker_states: workerStates");
+    expect(verifier).toContain("fresh_until:");
+    const smoke = readFileSync(resolve(root, "scripts/production-topology-smoke.sh"), "utf8");
+    expect(smoke).toContain('stop redis');
+    expect(smoke).toContain('up -d --wait redis');
+    expect(smoke).toContain('stop registry-worker');
+    expect(smoke).toContain('up -d --no-deps --no-build registry-worker');
+    expect(smoke).toContain('post-worker-stop.json');
+    expect(smoke).toContain('worker_expiry_epoch');
+    expect(smoke).toContain('failed.length!==1||failed[0]!=="chain-indexer"');
   });
 });

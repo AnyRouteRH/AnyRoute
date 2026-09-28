@@ -194,7 +194,8 @@ generation_id=$(node -e 'const r=require(process.argv[1]);if(!r.id)process.exit(
 "${compose[@]}" exec -e TOPOLOGY_SMOKE_ACK=disposable-docker-host -T router bun scripts/production-topology-verify.ts "$generation_id" >"$tmp/evidence.json"
 node -e 'const r=require(process.argv[1]);if(!r.generation||!r.usage_ledger_rows||!r.usage_ledger_matches_generation||Object.values(r.critical_worker_heartbeats).some(v=>!v)||r.unsafe_runtime_database_privileges?.length)process.exit(1)' "$tmp/evidence.json"
 
-# Redis is required by the readiness rate limiter. Stopping it must remove traffic readiness.
+# Redis is required by the readiness rate limiter. Stopping it must remove traffic readiness,
+# then restarting it must restore readiness without restarting the API.
 "${compose[@]}" stop redis >/dev/null
 not_ready=0
 for _ in {1..20}; do
@@ -207,5 +208,68 @@ if (( ! not_ready )); then
   exit 1
 fi
 
-echo 'PASS: production topology reached ready=200, served metrics and a real mock-provider chat call, recorded matching usage ledger data and core worker heartbeats, then returned ready=503 after Redis stopped.'
+"${compose[@]}" up -d --wait redis
+redis_recovered=0
+for _ in {1..45}; do
+  status=$(curl -sS -o "$tmp/redis-recovered.json" -w '%{http_code}' "$base_url/ready" || true)
+  if [[ "$status" == 200 ]] && node -e 'const r=require(process.argv[1]);if(!r.checks.rate_limiter)process.exit(1)' "$tmp/redis-recovered.json"; then
+    redis_recovered=1
+    break
+  fi
+  sleep 1
+done
+if (( ! redis_recovered )); then
+  echo 'Readiness did not recover after the authenticated Redis dependency restarted.' >&2
+  cat "$tmp/redis-recovered.json" >&2 || true
+  exit 1
+fi
+
+# registry-worker owns chain-indexer, a critical readiness heartbeat with a 5s cadence.
+# Confirm its persisted heartbeat is fresh before stopping it. Read the heartbeat again
+# after the stop completes because a job finishing during the stop grace period can report
+# one final success, resetting the real expiry deadline.
+"${compose[@]}" exec -e TOPOLOGY_SMOKE_ACK=disposable-docker-host -T router bun scripts/production-topology-verify.ts "$generation_id" >"$tmp/pre-worker-stop.json"
+node -e 'const r=require(process.argv[1]);const s=r.critical_worker_states["chain-indexer"];if(!s||s.running||!s.last_success||!s.fresh_until)process.exit(1);const age=Date.now()-Date.parse(s.last_success);if(age<0||age>30_000)process.exit(1)' "$tmp/pre-worker-stop.json"
+"${compose[@]}" stop registry-worker >/dev/null
+"${compose[@]}" exec -e TOPOLOGY_SMOKE_ACK=disposable-docker-host -T router bun scripts/production-topology-verify.ts "$generation_id" >"$tmp/post-worker-stop.json"
+worker_expiry_epoch=$(node -e 'const r=require(process.argv[1]);const s=r.critical_worker_states["chain-indexer"];if(!s||!s.last_success||!s.fresh_until)process.exit(1);process.stdout.write(String(Math.ceil(Date.parse(s.fresh_until)/1000)))' "$tmp/post-worker-stop.json")
+worker_wait_seconds=$((worker_expiry_epoch - $(date +%s) + 20))
+(( worker_wait_seconds < 20 )) && worker_wait_seconds=20
+if (( worker_wait_seconds > 90 )); then
+  echo "Persisted chain-indexer heartbeat expiry exceeds the bounded 90-second drill window ($worker_wait_seconds seconds)." >&2
+  exit 1
+fi
+worker_not_ready=0
+for ((second = 0; second < worker_wait_seconds; second++)); do
+  status=$(curl -sS -o "$tmp/worker-failure.json" -w '%{http_code}' "$base_url/ready" || true)
+  if [[ "$status" == 503 ]] && node -e 'const r=require(process.argv[1]);const failed=Object.keys(r.checks).filter(k=>r.checks[k]!==true);if(failed.length!==1||failed[0]!=="chain-indexer")process.exit(1)' "$tmp/worker-failure.json"; then
+    observed=$(date +%s)
+    if (( observed >= worker_expiry_epoch )); then worker_not_ready=1; break; fi
+  fi
+  sleep 1
+done
+if (( ! worker_not_ready )); then
+  echo 'Readiness did not fail for the expired persisted chain-indexer heartbeat after its worker stopped.' >&2
+  cat "$tmp/worker-failure.json" >&2 || true
+  exit 1
+fi
+
+# Restart only the stopped worker. Its startup heartbeat should make readiness recover.
+"${compose[@]}" up -d --no-deps --no-build registry-worker
+worker_recovered=0
+for _ in {1..60}; do
+  status=$(curl -sS -o "$tmp/worker-recovered.json" -w '%{http_code}' "$base_url/ready" || true)
+  if [[ "$status" == 200 ]] && node -e 'const r=require(process.argv[1]);if(!r.checks["chain-indexer"]||!r.checks.rate_limiter)process.exit(1)' "$tmp/worker-recovered.json"; then
+    worker_recovered=1
+    break
+  fi
+  sleep 1
+done
+if (( ! worker_recovered )); then
+  echo 'Readiness did not recover after the critical chain-indexer worker restarted.' >&2
+  cat "$tmp/worker-recovered.json" >&2 || true
+  exit 1
+fi
+
+echo 'PASS: production topology served a real mock-provider request with matching usage and core worker heartbeats; Redis loss caused ready=503 and Redis restart restored ready=200; stopping registry-worker caused ready=503 after the persisted chain-indexer heartbeat expired, and restarting it restored ready=200.'
 echo 'LIMIT: the fixed global-looking provider address is routed only inside the isolated Docker network; this does not prove public provider reachability.'

@@ -15,6 +15,20 @@ try {
   const [generation] = await handle.db.select({ id: generations.id, cost: generations.cost }).from(generations).where(eq(generations.id, generationId));
   const usage = await handle.db.select({ id: ledger.id, amount: ledger.amount }).from(ledger).where(eq(ledger.generationId, generationId));
   const rows = await handle.db.select().from(kv).where(inArray(kv.key, CRITICAL_JOBS.map((name) => `job-health:${name}`)));
+  const workerStates = Object.fromEntries(CRITICAL_JOBS.map((name) => {
+    const state = rows.find((row) => row.key === `job-health:${name}`)?.value as Parameters<typeof jobReady>[0];
+    const lastSuccessMs = state?.last_success ? Date.parse(state.last_success) : Number.NaN;
+    const freshUntilMs = state && Number.isFinite(lastSuccessMs) && state.every_ms > 0
+      ? lastSuccessMs + Math.max(state.every_ms * 2, 60_000)
+      : Number.NaN;
+    return [name, state ? {
+      every_ms: state.every_ms,
+      last_success: state.last_success,
+      last_error: state.last_error,
+      running: state.running,
+      fresh_until: Number.isFinite(freshUntilMs) ? new Date(freshUntilMs).toISOString() : null,
+    } : null];
+  }));
   const roleResult = await handle.db.execute(sql`
     SELECT current_user AS role,
       r.rolsuper AS superuser, r.rolcreatedb AS createdb, r.rolcreaterole AS createrole,
@@ -45,6 +59,7 @@ try {
     usage_ledger_rows: usage.length,
     usage_ledger_matches_generation: !!generation && usage.some((row) => row.amount < 0n && -row.amount === generation.cost),
     critical_worker_heartbeats: workers,
+    critical_worker_states: workerStates,
     runtime_database_role: dbRole,
     unsafe_runtime_database_privileges: unsafeRolePrivileges,
   };
