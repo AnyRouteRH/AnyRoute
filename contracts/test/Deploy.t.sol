@@ -19,6 +19,27 @@ import {ChainlinkStockOracle} from "../src/oracle/ChainlinkStockOracle.sol";
 import {UniswapV4Adapter} from "../src/adapters/UniswapV4Adapter.sol";
 import {UniswapV3Adapter} from "../src/adapters/UniswapV3Adapter.sol";
 
+contract DeploymentSafeFixture {
+    address public immutable masterCopy;
+    address[] private _owners;
+    uint256 private _threshold;
+
+    constructor(address singleton_, address[] memory owners_, uint256 threshold_) {
+        masterCopy = singleton_;
+        _owners = owners_;
+        _threshold = threshold_;
+    }
+
+    function getOwners() external view returns (address[] memory) { return _owners; }
+    function getThreshold() external view returns (uint256) { return _threshold; }
+}
+
+contract DeploymentPreflightHarness is Deploy {
+    function checkOwnerSafe(string memory cfg, Roles memory roles_) external view {
+        _requireOwnerSafe(cfg, roles_);
+    }
+}
+
 /// @notice Runs the MOCK=1 (local) deployment in-process and checks every piece of wiring.
 contract DeployLocalTest is Test {
     Deploy script;
@@ -62,6 +83,33 @@ contract DeployLocalTest is Test {
         vm.chainId(4663);
         vm.expectRevert(bytes("Deploy: OWNER_SAFE must be a deployed Safe"));
         script.deployProduction(p, prodRoles);
+    }
+
+    function test_ownerSafePreflightChecksSingletonThresholdAndWorkerSeparation() public {
+        DeploymentPreflightHarness harness = new DeploymentPreflightHarness();
+        string memory cfg = vm.readFile("../config/rhc-mainnet.json");
+        address singleton = vm.parseJsonAddress(cfg, ".safe141.singleton");
+        Deploy.Roles memory roles_ = script.localRoles();
+        address[] memory signers = new address[](2);
+        signers[0] = makeAddr("owner-signer-a");
+        signers[1] = makeAddr("owner-signer-b");
+
+        roles_.ownerSafe = address(new DeploymentSafeFixture(makeAddr("wrong-singleton"), signers, 2));
+        vm.expectRevert(bytes("Deploy: OWNER_SAFE is not configured Safe 1.4.1"));
+        harness.checkOwnerSafe(cfg, roles_);
+
+        roles_.ownerSafe = address(new DeploymentSafeFixture(singleton, signers, 1));
+        vm.expectRevert(bytes("Deploy: OWNER_SAFE must have a valid threshold multisig"));
+        harness.checkOwnerSafe(cfg, roles_);
+
+        signers[1] = roles_.settlement;
+        roles_.ownerSafe = address(new DeploymentSafeFixture(singleton, signers, 2));
+        vm.expectRevert(bytes("Deploy: OWNER_SAFE signer overlaps worker"));
+        harness.checkOwnerSafe(cfg, roles_);
+
+        signers[1] = makeAddr("owner-signer-b");
+        roles_.ownerSafe = address(new DeploymentSafeFixture(singleton, signers, 2));
+        harness.checkOwnerSafe(cfg, roles_);
     }
 
     function test_rolesAreAnvilAccounts() public view {
@@ -235,7 +283,12 @@ contract DeployProductionForkTest is Test {
         vm.deal(deployer, 1 ether);
 
         Deploy.Roles memory roles;
-        roles.ownerSafe = makeAddr("ownerSafe");
+        string memory config = vm.readFile("../config/rhc-mainnet.json");
+        address singleton = vm.parseJsonAddress(config, ".safe141.singleton");
+        address[] memory safeOwners = new address[](2);
+        safeOwners[0] = makeAddr("ownerSafeSigner0");
+        safeOwners[1] = makeAddr("ownerSafeSigner1");
+        roles.ownerSafe = address(new DeploymentSafeFixture(singleton, safeOwners, 2));
         roles.slasher = makeAddr("slasherSafe");
         roles.router = makeAddr("router");
         roles.settlement = makeAddr("settlement");

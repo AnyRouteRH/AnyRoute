@@ -1,4 +1,8 @@
 import { createPublicClient, decodeFunctionResult, encodeFunctionData, http, keccak256, parseAbi, stringToHex, type Abi, type Address, type Hex } from "viem";
+import {
+  AnyrPaymasterAbi, AnyrStakingAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi,
+  ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi,
+} from "../src/chain/abis";
 
 export type DeploymentManifest = {
   schema: string; chainId: number | string; mode: string; blockNumber: number | string;
@@ -18,10 +22,55 @@ export type ChainReader = {
 
 export type Check = { id: string; status: "pass" | "fail" | "info"; evidence: unknown; detail?: string };
 
+function tupleFields(value: unknown, names: string[]): Record<string, unknown> | undefined {
+  let tuple = value;
+  if (Array.isArray(tuple) && tuple.length === 1 && (Array.isArray(tuple[0]) || (tuple[0] && typeof tuple[0] === "object"))) tuple = tuple[0];
+  if (Array.isArray(tuple) && tuple.length >= names.length) return Object.fromEntries(names.map((name, i) => [name, tuple[i]]));
+  if (tuple && typeof tuple === "object") {
+    const record = tuple as Record<string, unknown>;
+    if (names.every((name) => name in record)) return Object.fromEntries(names.map((name) => [name, record[name]]));
+  }
+  return undefined;
+}
+const isUnsigned = (value: unknown) => typeof value === "bigint" || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) || (typeof value === "string" && /^\d+$/.test(value));
+const isAddress = (value: unknown) => typeof value === "string" && /^0x[0-9a-fA-F]{40}$/.test(value);
+
 const owned = ["credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "paymaster", "uniswapV4Adapter", "uniswapV3Adapter"] as const;
 const requiredContracts = ["usdg", "anyrToken", "credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "uniswapV4Adapter", "uniswapV3Adapter", "paymaster", "entryPoint", "poolManager", "swapRouter02", "timelock", "buybackAdapter"] as const;
 const zero = "0x0000000000000000000000000000000000000000" as Address;
 const role = (name: string) => keccak256(stringToHex(name)) as Hex;
+const appAbis = [AnyrPaymasterAbi, AnyrStakingAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi, ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi] as unknown as Abi[];
+const governanceAbi = parseAbi([
+  "function getOwners() view returns (address[] owners)",
+  "function getThreshold() view returns (uint256 threshold)",
+  "function masterCopy() view returns (address singleton)",
+  "function getMinDelay() view returns (uint256 delay)",
+  "function hasRole(bytes32 role,address account) view returns (bool authorized)",
+]);
+export const entryPointAbi = parseAbi([
+  "function getDepositInfo(address account) view returns ((uint256 deposit,bool staked,uint112 stake,uint32 unstakeDelaySec,uint48 withdrawTime) info)",
+]);
+
+export function rpcAbiFor(signature: string): Abi {
+  const name = signature.slice(0, signature.indexOf("("));
+  const inputs = signature.slice(signature.indexOf("(") + 1, -1).split(",").filter(Boolean);
+  for (const abi of appAbis) {
+    const found = abi.find((item) => item.type === "function" && item.name === name && item.inputs.map((input) => input.type).join(",") === inputs.join(","));
+    if (found) return [found];
+  }
+  if (signature === "getDepositInfo(address)") return entryPointAbi as Abi;
+  const gov = governanceAbi.find((item) => item.type === "function" && item.name === name && item.inputs.map((input) => input.type).join(",") === inputs.join(","));
+  if (gov) return [gov];
+  throw new Error("unsupported contract read");
+}
+
+function rpcErrorCategory(error: unknown): string {
+  if (!(error instanceof Error)) return "rpc_error";
+  if (/timeout/i.test(error.name)) return "rpc_timeout";
+  if (error.name === "RpcRequestError") return "rpc_rejected";
+  if (/http|fetch|transport/i.test(error.name)) return "rpc_transport";
+  return "rpc_error";
+}
 
 export function makeRpcReader(rpcUrl: string): ChainReader {
   const client = createPublicClient({ transport: http(rpcUrl) });
@@ -34,34 +83,17 @@ export function makeRpcReader(rpcUrl: string): ChainReader {
     },
     code: (address, blockNumber) => client.getCode({ address, blockNumber }),
     async read(address, signature, args = [], blockNumber) {
-      const abi = parseAbi([`function ${signature} view returns (${returnShape(signature)})` as never]) as Abi;
       const fn = signature.slice(0, signature.indexOf("("));
+      const abi = rpcAbiFor(signature);
       const data = encodeFunctionData({ abi, functionName: fn as never, args: args as never } as never);
       const result = await client.call({ to: address, data, blockNumber });
-      if (!result.data) throw new Error(`${fn} returned no data`);
+      if (!result.data) throw new Error("Malformed RPC result");
       return decodeFunctionResult({ abi, functionName: fn as never, data: result.data } as never);
     },
   };
 }
 
-// Kept explicit so signatures stay reviewable at the read boundary.
-function returnShape(signature: string): string {
-  const shapes: Record<string, string> = {
-    "owner()": "address", "pendingOwner()": "address", "CONTROL_VERSION()": "uint256", "settlement()": "address",
-    "isCreditor(address)": "bool", "usdg()": "address", "treasury()": "address", "anchorer()": "address",
-    "registrar()": "address", "slasher()": "address", "refundPool()": "address", "keeper()": "address",
-    "opsWallet()": "address", "adapter()": "address", "buybackPriceOracle()": "address", "router()": "address",
-    "oracle()": "address", "verifyingSigner()": "address", "guardian()": "address", "getMinDelay()": "uint256",
-    "hasRole(bytes32,address)": "bool", "getOwners()": "address[]", "getThreshold()": "uint256",
-    "getDepositInfo(address)": "uint112 deposit, bool staked, uint112 stake, uint32 unstakeDelaySec", "dailyCap()": "uint256", "entryPoint()": "address",
-    "configOf(address)": "(address feed, uint8 feedDecimals, uint32 maxStaleness, bool paused, bool applyMultiplier)",
-  };
-  const shape = shapes[signature];
-  if (!shape) throw new Error(`unsupported getter: ${signature}`);
-  return shape;
-}
-
-export async function verifyDeployment(manifest: DeploymentManifest, reader: ChainReader, sourceRevision: string): Promise<{ ok: boolean; sourceRevision: string; manifest: { schema: string; mode: string; chainId: number; blockNumber: number }; observed: { chainId: number; blockNumber: string; blockHash: Hex }; checks: Check[] }> {
+export async function verifyDeployment(manifest: DeploymentManifest, reader: ChainReader, verifierRevision: string): Promise<{ ok: boolean; verifierRevision: string; manifest: { schema: string; mode: string; chainId: number; blockNumber: number }; observed: { chainId: number; blockNumber: string; blockHash: Hex }; checks: Check[] }> {
   const checks: Check[] = [];
   const add = (id: string, pass: boolean, evidence: unknown, detail?: string) => checks.push({ id, status: pass ? "pass" : "fail", evidence, ...(detail ? { detail } : {}) });
   const info = (id: string, evidence: unknown, detail: string) => checks.push({ id, status: "info", evidence, detail });
@@ -82,7 +114,7 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
   const call = async (id: string, address: Address | undefined, sig: string, args: readonly unknown[] = []): Promise<unknown> => {
     if (!address || address === zero) { add(id, false, address ?? null, "Manifest address missing or zero."); return undefined; }
     try { return await reader.read(address, sig, args, snapshot.number); }
-    catch (e) { add(id, false, String(e)); return undefined; }
+    catch (e) { add(id, false, { category: rpcErrorCategory(e) }); return undefined; }
   };
   const equalAddress = (id: string, actual: unknown, expected: unknown) => add(id, typeof actual === "string" && typeof expected === "string" && actual.toLowerCase() === expected.toLowerCase(), { actual, expected });
 
@@ -134,6 +166,15 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
     const authorized = await call(`timelock.${id}.ownerSafe.read`, lock, "hasRole(bytes32,address)", [r, manifest.roles.ownerSafe]);
     if (authorized !== undefined) add(`timelock.${id}.ownerSafe`, authorized === true, { role: r, account: manifest.roles.ownerSafe, authorized });
   }
+  for (const [id, roleHash, account] of [
+    ["deployer_admin", `0x${"00".repeat(32)}` as Hex, manifest.deployer],
+    ["deployer_proposer", proposerRole, manifest.deployer],
+    ["deployer_executor", executorRole, manifest.deployer],
+    ["open_executor", executorRole, zero],
+  ] as const) {
+    const authorized = await call(`timelock.${id}.read`, lock, "hasRole(bytes32,address)", [roleHash, account]);
+    if (authorized !== undefined) add(`timelock.${id}_disabled`, authorized === false, { role: roleHash, account, authorized });
+  }
   const safe = manifest.roles.ownerSafe as Address | undefined;
   const slasherSafe = manifest.roles.slasher as Address | undefined;
   const inspectSafe = async (label: string, address: Address | undefined) => {
@@ -153,8 +194,10 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
   }
 
   const funding = await call("paymaster.funding.read", manifest.contracts.entryPoint, "getDepositInfo(address)", [manifest.contracts.paymaster]);
-  if (Array.isArray(funding)) {
-    const [deposit, staked, stake, unstakeDelaySec] = funding;
+  const fundingFields = tupleFields(funding, ["deposit", "staked", "stake", "unstakeDelaySec", "withdrawTime"]);
+  if (!fundingFields || !isUnsigned(fundingFields.deposit) || typeof fundingFields.staked !== "boolean" || !isUnsigned(fundingFields.stake) || !isUnsigned(fundingFields.unstakeDelaySec) || !isUnsigned(fundingFields.withdrawTime)) add("paymaster.funding.shape", false, "malformed", "EntryPoint v0.7 getDepositInfo must return its five-field DepositInfo tuple.");
+  else {
+    const { deposit, staked, stake, unstakeDelaySec } = fundingFields;
     const p = manifest.params;
     const minimumDeposit = BigInt(String(p.paymasterDeposit ?? 0));
     const twoDailyCaps = BigInt(String(p.paymasterDailyCap ?? 0)) * 2n;
@@ -167,8 +210,10 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
 
   for (const stock of manifest.stockTokens ?? []) {
     const config = await call(`feeds.${stock.address}.config.read`, manifest.contracts.stockOracle, "configOf(address)", [stock.address]);
-    if (Array.isArray(config)) {
-      const [feed, decimals, staleness, paused] = config;
+    const feedFields = tupleFields(config, ["feed", "feedDecimals", "maxStaleness", "paused", "applyMultiplier"]);
+    if (!feedFields || !isAddress(feedFields.feed) || !isUnsigned(feedFields.feedDecimals) || !isUnsigned(feedFields.maxStaleness) || typeof feedFields.paused !== "boolean" || typeof feedFields.applyMultiplier !== "boolean") add(`feeds.${stock.address}.config_shape`, false, "malformed", "Stock oracle configOf must return the five-field FeedConfig tuple.");
+    else {
+      const { feed, feedDecimals: decimals, maxStaleness: staleness, paused } = feedFields;
       equalAddress(`feeds.${stock.address}.matches_manifest`, feed, stock.feed);
       add(`feeds.${stock.address}.active`, feed !== zero && Number(decimals) <= 36 && Number(staleness) > 0 && paused === false, { feed, decimals, maxStaleness: staleness, paused });
       const feedCode = await reader.code(feed as Address, snapshot.number);
@@ -177,5 +222,5 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
   }
 
   const ok = checks.every((c) => c.status !== "fail");
-  return { ok, sourceRevision, manifest: { schema: manifest.schema, mode: manifest.mode, chainId: expectedChain, blockNumber: Number(manifest.blockNumber) }, observed: { chainId, blockNumber: snapshot.number.toString(), blockHash: snapshot.hash }, checks };
+  return { ok, verifierRevision, manifest: { schema: manifest.schema, mode: manifest.mode, chainId: expectedChain, blockNumber: Number(manifest.blockNumber) }, observed: { chainId, blockNumber: snapshot.number.toString(), blockHash: snapshot.hash }, checks };
 }
