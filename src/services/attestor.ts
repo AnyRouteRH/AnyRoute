@@ -43,23 +43,24 @@ export function nonceBound(reportData: string, nonce: string, signingAddress?: s
 
 async function verifyQuote(ctx: Ctx, quoteHex: string) {
   if (!ctx.cfg.attestation.tdxVerifierUrl) return { ok: false, reason: "no DCAP verifier configured (TDX_VERIFIER_URL)" };
-  const res = await providerFetch(ctx.cfg.attestation.tdxVerifierUrl, {
+  const res = await fetch(ctx.cfg.attestation.tdxVerifierUrl, {
     method: "POST",
+    redirect: "error",
     headers: { "content-type": "application/json", ...(ctx.cfg.attestation.tdxVerifierKey ? { authorization: `Bearer ${ctx.cfg.attestation.tdxVerifierKey}` } : {}) },
     body: JSON.stringify({ quote: quoteHex.replace(/^0x/, "") }),
     signal: AbortSignal.timeout(20_000),
-  }, { production: ctx.cfg.production });
+  });
   if (!res.ok) return { ok: false, reason: `verifier HTTP ${res.status}` };
-  const j = (await res.json()) as { verified?: boolean; status?: string; tcb_status?: string };
+  const j = (await boundedJson(res)) as { verified?: boolean; status?: string; tcb_status?: string };
   const status = j.tcb_status ?? j.status;
   const ok = j.verified === true || status === "UpToDate" || status === "SWHardeningNeeded";
   return { ok, reason: ok ? undefined : `quote not verified (${status ?? "unknown"})`, status };
 }
 
 async function verifyNvidia(ctx: Ctx, payload: string) {
-  const res = await providerFetch(ctx.cfg.attestation.nrasUrl, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: payload, signal: AbortSignal.timeout(30_000) }, { production: ctx.cfg.production });
+  const res = await fetch(ctx.cfg.attestation.nrasUrl, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: payload, redirect: "error", signal: AbortSignal.timeout(30_000) });
   if (!res.ok) return { ok: false, reason: `NRAS HTTP ${res.status}` };
-  const j = (await res.json()) as unknown;
+  const j = (await boundedJson(res)) as unknown;
   // NRAS returns [["JWT", "<overall token>"], {...per-GPU tokens}]; read the overall claim.
   const tokens = JSON.stringify(j).match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g) ?? [];
   for (const t of tokens) {

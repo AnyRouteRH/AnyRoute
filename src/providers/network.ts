@@ -30,7 +30,7 @@ export async function boundedJson(response: Response, maxBytes = 2 * 1024 * 1024
 }
 
 type Address = { address: string; family: number };
-type NetworkPolicy = { production: boolean; allowDevelopmentMockLoopback?: boolean; resolve?: (hostname: string) => Promise<Address[]> };
+type NetworkPolicy = { production: boolean; allowDevelopmentMockLoopback?: boolean; allowDevelopmentLoopbackHostnames?: string[]; resolve?: (hostname: string) => Promise<Address[]> };
 
 function ipv4Number(address: string): number | null {
   if (isIP(address) !== 4) return null;
@@ -102,6 +102,20 @@ export function isPublicAddress(address: string) {
   return isIP(address) === 4 ? isPublicIpv4(address) : isIP(address) === 6 ? isPublicIpv6(address) : false;
 }
 
+function resolveWithSignal(resolve: Promise<Address[]>, signal?: AbortSignal | null): Promise<Address[]> {
+  if (!signal) return resolve;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+  return new Promise((accept, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", abort);
+    const abort = () => {
+      cleanup();
+      reject(signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    resolve.then((value) => { cleanup(); accept(value); }, (error) => { cleanup(); reject(error); });
+  });
+}
+
 function isLoopbackAddress(address: string) {
   return ipv4Number(address) !== null ? v4In(ipv4Number(address)!, ipv4Number("127.0.0.0")!, 8) : address.toLowerCase() === "::1";
 }
@@ -118,11 +132,15 @@ export async function providerFetch(input: string | URL, init: RequestInit = {},
     throw new Error("Provider URL must use HTTPS in production and cannot contain credentials or a fragment.");
   if (init.redirect && init.redirect !== "error") throw new Error("Provider redirects are disabled.");
 
+  if (init.signal?.aborted) throw init.signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
   const literalFamily = isIP(host);
-  const resolved = literalFamily ? [{ address: host, family: literalFamily }] : await (policy.resolve ?? ((h) => lookup(h, { all: true, verbatim: true })))(host);
+  const resolved = literalFamily
+    ? [{ address: host, family: literalFamily }]
+    : await resolveWithSignal((policy.resolve ?? ((h) => lookup(h, { all: true, verbatim: true })))(host), init.signal);
+  if (init.signal?.aborted) throw init.signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
   if (!resolved.length) throw new Error("Provider hostname did not resolve.");
   const devLoopback = !policy.production && policy.allowDevelopmentMockLoopback === true &&
-    (host === "localhost" || host === "localhost.localdomain" || (literalFamily > 0 && isLoopbackAddress(host)));
+    (host === "localhost" || host === "localhost.localdomain" || policy.allowDevelopmentLoopbackHostnames?.includes(host) || (literalFamily > 0 && isLoopbackAddress(host)));
   if (devLoopback ? !resolved.every((x) => isLoopbackAddress(x.address)) : !resolved.every((x) => isPublicAddress(x.address)))
     throw new Error("Provider destination resolves to a non-public address.");
   // Selecting one already-vetted answer and returning it from the request's lookup callback pins
@@ -133,6 +151,9 @@ export async function providerFetch(input: string | URL, init: RequestInit = {},
     else callback(null, pinned.address, pinned.family);
   };
   const headers = Object.fromEntries(new Headers(init.headers).entries());
+  // Node's HTTP client does not transparently decode compressed responses like fetch does.
+  // Request identity and fail closed if an upstream ignores it, so callers never parse raw bytes.
+  headers["accept-encoding"] = "identity";
   const requestOptions = {
     method: init.method ?? "GET",
     headers,
@@ -147,6 +168,17 @@ export async function providerFetch(input: string | URL, init: RequestInit = {},
 
   return await new Promise<Response>((resolve, reject) => {
     const req = request(url, requestOptions, (res) => {
+      // Readable.toWeb forwards cancellation to the IncomingMessage, which destroys its socket;
+      // errors discovered after headers must also tear down the request side immediately.
+      res.once("error", () => req.destroy());
+      const encoding = String(res.headers["content-encoding"] ?? "").toLowerCase();
+      if (encoding && encoding !== "identity") {
+        const error = new Error(`Provider sent ${encoding} despite Accept-Encoding: identity.`);
+        res.destroy(error);
+        req.destroy(error);
+        reject(error);
+        return;
+      }
       const status = res.statusCode ?? 502;
       const responseBody = status === 204 || status === 304 ? null : Readable.toWeb(res) as ReadableStream<Uint8Array>;
       resolve(new Response(responseBody, { status, statusText: res.statusMessage, headers: new Headers(res.headers as unknown as ConstructorParameters<typeof Headers>[0]) }));
