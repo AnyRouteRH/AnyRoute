@@ -89,6 +89,7 @@ async function ask(ctx: Ctx, c: Candidate, body: Record<string, unknown>) {
     signal: AbortSignal.timeout(60_000),
     timeoutMs: 60_000,
     firstTokenTimeoutMs: 30_000,
+    production: ctx.cfg.production,
   });
   ctx.health.record({ modelId: c.modelId, providerId: c.providerId, ok: r.ok, errorKind: r.ok ? null : r.errorKind, latencyMs: r.latencyMs, source: "canary" });
   return r.ok && r.kind === "json" ? r.json : null;

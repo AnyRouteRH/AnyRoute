@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Ctx } from "../context.ts";
 import { canaries, models, offers, providers } from "../db/schema.ts";
 import { usdToPico } from "../lib/money.ts";
-import { boundedJson } from "../providers/network.ts";
+import { boundedJson, providerFetch } from "../providers/network.ts";
 import { decrypt, log } from "../lib/util.ts";
 
 // provider-registry: pulls each provider's /models (OpenRouter provider-spec shape), validates it,
@@ -86,7 +86,7 @@ export async function fetchProviderModels(ctx: Ctx, p: typeof providers.$inferSe
   if (p.staticModels) return parseProviderModels({ data: p.staticModels });
   const headers: Record<string, string> = { accept: "application/json", ...openProviderHeaders(ctx.cfg.appSecret, p.headers) };
   if (p.apiKeyEnc) headers.authorization = `Bearer ${decrypt(ctx.cfg.appSecret, p.apiKeyEnc)}`;
-  const res = await fetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, redirect: "error", signal: AbortSignal.timeout(20_000) });
+  const res = await providerFetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, redirect: "error", signal: AbortSignal.timeout(20_000) }, { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production });
   if (!res.ok) throw new Error(`GET /models returned ${res.status}`);
   return parseProviderModels(await boundedJson(res));
 }
