@@ -5,10 +5,12 @@ export default function Privacy(){return <PageFrame><main className="page-main" 
   <div className="side-layout">
     <nav className="side-nav" aria-label="Legal pages" data-reveal="fade"><span className="side-nav-label">Legal</span><a href="/legal/privacy/" aria-current="page">Data notice</a><a href="/legal/terms/">Service notes</a></nav>
     <article className="page-body prose legal-body" data-reveal>
+      <h2>Preview and contact details</h2>
+      <p>AnyRoute’s public preview uses fictional workspace data. The support email, retention periods and process for requesting deletion are not finalized; they must be published before the live payment service launches.</p>
       <h2>What the router stores</h2>
-      <p>The router stores what it needs to route and account for calls: API key hashes (never the keys), balances and ledger entries, receipts with token counts, costs and SHA-256 hashes of each request and response, the wallet addresses you link or pay from, and encrypted bring-your-own provider keys. It never stores prompt or response text. The optional response cache is encrypted, scoped to your workspace and expires.</p>
+      <p>The router stores what it needs to route and account for calls: API key hashes (never the keys), balances and ledger entries, receipts with token counts, costs and SHA-256 hashes of each request and response, the wallet addresses you link or pay from, and encrypted bring-your-own provider keys. The accounting database does not store prompt or response text. If the optional response cache is enabled, it temporarily retains encrypted response content, separated by API key and policy, until expiry. Providers can have their own retention policies.</p>
       <h2>Where your prompts go</h2>
-      <p>Your prompts are sent to the provider that serves each call, under that provider’s data policy, shown per provider in the dashboard. Private requests go only to attested TEE providers. Deposits, payments and receipt anchors are public on Robinhood Chain. The dashboard keeps your API key in this browser’s storage.</p>
+      <p>Your prompts are sent to the provider that serves each call, under that provider’s data policy, shown per provider in the dashboard. Private requests go only to attested TEE providers. Deposits, payments and receipt anchors are public on Robinhood Chain. The dashboard keeps your API key in session storage for the current browser tab. Signing out removes that stored key.</p>
       <h2>Your controls</h2>
       <p>Use “Sign out of this browser” in the dashboard settings to remove the key from this browser. Exports of your keys, balance and receipts are available from the same page. The sample workspace, if you open it, keeps its fictional data in this browser only.</p>
       <div className="note">The operator of this router must publish its legal entity, retention periods and a full privacy policy before offering the service publicly.</div>
