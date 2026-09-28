@@ -1,3 +1,4 @@
+\set ON_ERROR_STOP on
 -- Run as the migration/schema owner after migrations, with RUNTIME_DB_PASSWORD injected into psql.
 -- API and workers get application DML only; they cannot create/alter schema objects or roles.
 \getenv runtime_password RUNTIME_DB_PASSWORD
