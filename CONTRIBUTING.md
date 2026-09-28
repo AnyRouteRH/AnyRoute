@@ -2,7 +2,7 @@
 
 Start with an issue describing the behavior you want to improve and a small
 reproduction where relevant. Keep changes focused and include a test for a
-behavioral fix. Read [the development guide](docs/DEVELOPMENT.md) for local setup.
+behavioral fix. See [Run it locally](README.md#run-it-locally) for local setup.
 
 ## Project attribution
 

@@ -11,4 +11,4 @@ pre-launch development. No production security certification or response-time
 guarantee is implied by this policy.
 
 Real-funds launch requires completion of the contract governance, deployment,
-credential rotation and recovery gates in [the operations guide](docs/OPERATIONS.md).
+credential rotation and recovery gates.

@@ -1,5 +1,5 @@
 # Explicit production inputs. No .env file is imported into a service.
-# Read docs/OPERATIONS.md before use. Worker signing keys belong in separate workloads.
+# Worker signing keys belong in separate workloads.
 x-runtime: &runtime
   ANYROUTE_ENV: production
   RUNTIME_ROLE: api

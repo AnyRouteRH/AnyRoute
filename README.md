@@ -11,8 +11,7 @@
 
 <p align="center">
   <a href="#run-it-locally">Run locally</a> ·
-  <a href="docs/DEVELOPMENT.md">API & development</a> ·
-  <a href="docs/OPERATIONS.md">Operations</a> ·
+  <a href="web/public/openapi.json">API specification</a> ·
   <a href="CONTRIBUTING.md">Contribute</a> ·
   <a href="https://x.com/TryAnyroute">Follow @TryAnyroute</a>
 </p>
@@ -23,7 +22,7 @@
 
 Choose a model. Set your routing policy. Inspect what happened.
 
-> **Pre-launch:** local demos use test funds and mock providers. Production readiness is still under review; see the [remaining launch gates](docs/OPERATIONS.md).
+> **Pre-launch:** local demos use test funds and mock providers. Production readiness is still under review.
 
 ## What you can build with it
 
@@ -49,8 +48,6 @@ bun run launch
 
 The launcher starts the local chain, contracts, mock providers, API and website. Open the printed URL, create a key, add test USDG and try the Playground. Ctrl-C stops the demo; its state stays in the ignored `.data/` directory.
 
-[Setup options and individual services →](docs/DEVELOPMENT.md#quick-start-local-no-setup)
-
 ## Bring your existing client
 
 Point an OpenAI-compatible client at your router and use an Anyroute key:
@@ -69,7 +66,7 @@ const result = await client.chat.completions.create({
 });
 ```
 
-[API reference →](docs/DEVELOPMENT.md#api) · [OpenAPI specification →](web/public/openapi.json)
+[OpenAPI specification →](web/public/openapi.json)
 
 ## Inside the router
 
