@@ -1,7 +1,8 @@
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
-import { anchors, spentRoots, chainCursor, kv } from "../db/schema.ts";
+import { anchors, spentRoots, chainCursor, kv, providers } from "../db/schema.ts";
 import type { JobSnapshot } from "./jobs.ts";
+import { attestationFresh } from "../router/select.ts";
 
 // One-day production timelock plus one day for review/execution. Submission failures retain the 2-minute bound.
 export const ROOT_REVIEW_SLA_MS = 48 * 3_600_000;
@@ -10,6 +11,10 @@ export function jobReady(state: JobSnapshot | undefined, now = Date.now()) {
   if (!state || state.last_error || !state.last_success || !(state.every_ms > 0)) return false;
   const age = now - Date.parse(state.last_success);
   return Number.isFinite(age) && age >= 0 && age <= Math.max(state.every_ms * 2, 60_000);
+}
+function configuredEndpoint(value: string | undefined) {
+  if (!value) return false;
+  try { return ["http:", "https:"].includes(new URL(value).protocol); } catch { return false; }
 }
 async function bounded<T>(fn: () => Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -29,6 +34,22 @@ export async function readiness(ctx: Ctx) {
         await bounded(async () => {
           await ctx.catalog.refresh();
           checks.providers = [...ctx.catalog.offersByModel.values()].some((rows) => rows.some((o) => o.status === "live" && o.provider.status === "live"));
+          const livePrivateProviders = ctx.cfg.production
+            ? await ctx.db.select({ teeKind: providers.teeKind }).from(providers).where(and(eq(providers.status, "live"), isNotNull(providers.teeKind)))
+            : [];
+          const privateRoutingEnabled = livePrivateProviders.some((p) => p.teeKind !== "dev");
+          // Every non-dev report passes through the DCAP verifier; NVIDIA confidential-computing
+          // reports also require the separate NRAS verification endpoint.
+          checks.private_attestation_verifiers = !privateRoutingEnabled || (
+            configuredEndpoint(ctx.cfg.attestation.tdxVerifierUrl) &&
+            (!livePrivateProviders.some((p) => p.teeKind === "nvidia-cc") || configuredEndpoint(ctx.cfg.attestation.nrasUrl))
+          );
+          if (privateRoutingEnabled) {
+            const liveAttested = [...ctx.catalog.offersByModel.values()].flat().some((o) =>
+              o.status === "live" && o.provider.status === "live" && o.provider.teeKind !== "dev" &&
+              attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, true));
+            checks.private_attestation = liveAttested;
+          }
           const staleBefore = new Date(Date.now() - 120_000);
           const [anchorBacklog, rootBacklog, approvalBacklog] = await Promise.all([
             ctx.db.select({ id: anchors.index }).from(anchors).where(and(inArray(anchors.status, ["pending", "local"]), lt(anchors.createdAt, staleBefore))).limit(1),
@@ -37,8 +58,9 @@ export async function readiness(ctx: Ctx) {
           ]);
           checks.settlement_review = !approvalBacklog.length;
           checks.chain_submissions = !anchorBacklog.length && !rootBacklog.length;
-          const states = await ctx.db.select().from(kv).where(inArray(kv.key, CRITICAL_JOBS.map((n) => `job-health:${n}`)));
-          for (const name of CRITICAL_JOBS) checks[name] = jobReady(states.find((r) => r.key === `job-health:${name}`)?.value as JobSnapshot | undefined);
+          const requiredJobs = [...CRITICAL_JOBS, ...(privateRoutingEnabled ? ["attestor"] : [])];
+          const states = await ctx.db.select().from(kv).where(inArray(kv.key, requiredJobs.map((n) => `job-health:${n}`)));
+          for (const name of requiredJobs) checks[name] = jobReady(states.find((r) => r.key === `job-health:${name}`)?.value as JobSnapshot | undefined);
         });
       } catch { checks.workers = false; checks.providers = false; }
     })(),
