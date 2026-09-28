@@ -25,6 +25,7 @@ describe("receipts: hourly anchors + on-chain keys", () => {
     const ids: string[] = [];
     for (let i = 0; i < 5; i++) ids.push((await (await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: `r${i}` }] } })).json()).id);
     await runKeyRotation(h.ctx); // publishes the signing key on-chain
+    await Bun.sleep(1100); // the exclusive batch endpoint closes a whole second
     const a = await runAnchor(h.ctx);
     expect(a.anchored).toBe(5);
     expect(h.chain.anchors.at(-1)!.root).toBe(a.root as `0x${string}`);
@@ -37,7 +38,28 @@ describe("receipts: hourly anchors + on-chain keys", () => {
     // Nothing new -> nothing anchored; next receipts go into the next anchor.
     expect((await runAnchor(h.ctx)).anchored).toBe(0);
     await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: "later" }] } });
+    await Bun.sleep(1100);
     expect((await runAnchor(h.ctx)).index).toBe(1);
+  });
+
+  test("a stalled chain delays the batch; late receipts are included once by identity", async () => {
+    const previous = h.chain.anchors.at(-1)!;
+    const k = await h.fundedKey(1n);
+    const response = await (await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: "late completion" }] } })).json();
+    await h.ctx.db.update(generations).set({ ts: new Date((previous.toTs - 1) * 1000) }).where(eq(generations.id, response.id));
+    const clock = h.chain.blockTimestamp;
+    h.chain.blockTimestamp = async () => previous.toTs;
+    try { expect((await runAnchor(h.ctx)).anchored).toBe(0); }
+    finally { h.chain.blockTimestamp = clock; }
+    await Bun.sleep(1100);
+    expect((await runAnchor(h.ctx)).anchored).toBe(1);
+    const next = h.chain.anchors.at(-1)!;
+    expect(next.fromTs).toBe(previous.toTs);
+    expect(next.toTs).toBeGreaterThan(next.fromTs);
+    expect(next.toTs).toBeLessThanOrEqual(await h.chain.blockTimestamp());
+    expect((await runAnchor(h.ctx)).anchored).toBe(0);
+    const g = (await (await h.request(`/api/v1/generation?id=${response.id}`, { headers: k.auth })).json()).data;
+    expect(MerkleTree.verify(g.receipt_leaf, g.anchor.proof, g.anchor.root)).toBe(true);
   });
 
   test("key rotation keeps old receipts verifiable", async () => {

@@ -47,6 +47,9 @@ export class FakeChain extends ChainService {
   override async blockNumber() {
     return 100n;
   }
+  override async blockTimestamp() {
+    return Math.floor(Date.now() / 1000);
+  }
   override async readCallPayments(txHash: Hex) {
     const p = this.payments.get(txHash);
     if (!p) throw Object.assign(new Error("not found"), {});

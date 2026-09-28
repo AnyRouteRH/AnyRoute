@@ -51,11 +51,12 @@ contract ReceiptAnchor is IReceiptAnchor, Ownable2Step {
     }
 
     /// @inheritdoc IReceiptAnchor
-    /// @dev Windows are [fromTs, toTs]; a window may start exactly where the previous one ended.
+    /// @dev Batch windows are half-open [fromTs, toTs). Adjacent boundaries are disjoint.
+    /// The window and count are metadata: inclusion verifies a leaf, not its timestamp or uniqueness.
     function anchor(bytes32 root, uint64 fromTs, uint64 toTs, uint32 count) external returns (uint256 index) {
         if (msg.sender != anchorer) revert NotAnchorer();
         if (root == bytes32(0)) revert EmptyRoot();
-        if (fromTs > toTs || toTs > block.timestamp) revert InvalidWindow();
+        if (fromTs >= toTs || toTs > block.timestamp) revert InvalidWindow();
         index = _anchors.length;
         if (index != 0 && fromTs < _anchors[index - 1].toTs) revert OutOfOrder();
         _anchors.push(Anchor({root: root, fromTs: fromTs, toTs: toTs, count: count}));

@@ -87,12 +87,23 @@ contract ReceiptAnchorTest is Test {
         assertEq(ra.anchorCount(), 2);
     }
 
-    function test_anchor_pointWindowOk() public {
+    function test_anchor_revertsEmptyHalfOpenWindow() public {
         vm.prank(anchorer);
+        vm.expectRevert(ReceiptAnchor.InvalidWindow.selector);
         ra.anchor(keccak256("r0"), T0, T0, 0);
-        vm.prank(anchorer);
-        ra.anchor(keccak256("r1"), T0, T0, 0); // starts exactly where the previous ended
-        assertEq(ra.anchorCount(), 2);
+        assertEq(ra.anchorCount(), 0);
+    }
+
+    function test_anchor_sharedBoundaryBelongsOnlyToLaterWindow() public {
+        vm.startPrank(anchorer);
+        ra.anchor(keccak256("r0"), T0 - 20, T0 - 10, 1);
+        ra.anchor(keccak256("r1"), T0 - 10, T0, 1);
+        vm.stopPrank();
+        (, uint64 firstFrom, uint64 firstTo,) = ra.anchors(0);
+        (, uint64 secondFrom, uint64 secondTo,) = ra.anchors(1);
+        uint64 boundary = T0 - 10;
+        assertFalse(boundary >= firstFrom && boundary < firstTo);
+        assertTrue(boundary >= secondFrom && boundary < secondTo);
     }
 
     function test_anchor_revertsNotAnchorer() public {
@@ -145,7 +156,7 @@ contract ReceiptAnchorTest is Test {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint64 fromTs = t + uint64(bound(gaps[i], 0, 1 days));
             // forge-lint: disable-next-line(unsafe-typecast)
-            uint64 toTs = fromTs + uint64(bound(lens[i], 0, 1 days));
+            uint64 toTs = fromTs + uint64(bound(lens[i], 1, 1 days));
             vm.prank(anchorer);
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 idx = ra.anchor(bytes32(i + 1), fromTs, toTs, uint32(i));
@@ -153,6 +164,13 @@ contract ReceiptAnchorTest is Test {
             t = toTs;
         }
         assertEq(ra.anchorCount(), 6);
+    }
+
+    function testFuzz_anchor_rejectsZeroDuration(uint64 timestamp) public {
+        timestamp = uint64(bound(timestamp, 0, T0));
+        vm.prank(anchorer);
+        vm.expectRevert(ReceiptAnchor.InvalidWindow.selector);
+        ra.anchor(keccak256("empty interval"), timestamp, timestamp, 1);
     }
 
     // --- verify --------------------------------------------------------------------------------

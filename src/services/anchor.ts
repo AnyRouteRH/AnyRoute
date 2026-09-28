@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lt, lte, sql } from "drizzle-orm";
 import type { Hex } from "viem";
 import type { Ctx } from "../context.ts";
 import { anchors, generations, receiptKeys } from "../db/schema.ts";
@@ -10,18 +10,23 @@ import { log } from "../lib/util.ts";
 // is configured, so proofs still work and can be anchored later).
 
 export async function runAnchor(ctx: Ctx, upTo?: Date) {
+  // Close only whole seconds, so the exclusive endpoint is never in the future.
+  // Late-completing receipts join the next batch by identity, not by timestamp membership.
+  const chainConfigured = ctx.chain.address("receiptAnchor") && ctx.chain.roleAddress("anchorer");
+  const closedSecond = Math.floor(Date.now() / 1000);
+  const toTs = new Date((chainConfigured ? Math.min(closedSecond, await ctx.chain.blockTimestamp()) : closedSecond) * 1000);
+  const [last] = await ctx.db.select().from(anchors).orderBy(desc(anchors.index)).limit(1);
+  if (last && last.toTs >= toTs) return { anchored: 0 };
   const pending = await ctx.db
     .select({ id: generations.id, leaf: generations.receiptLeaf, ts: generations.ts })
     .from(generations)
-    .where(and(isNull(generations.anchorIndex), ...(upTo ? [lte(generations.ts, upTo)] : []), sql`${generations.receiptLeaf} IS NOT NULL`))
+    .where(and(isNull(generations.anchorIndex), lt(generations.ts, toTs), ...(upTo ? [lte(generations.ts, upTo)] : []), sql`${generations.receiptLeaf} IS NOT NULL`))
     .orderBy(asc(generations.ts), asc(generations.id))
     .limit(200_000);
   if (!pending.length) return { anchored: 0 };
-  const [last] = await ctx.db.select().from(anchors).orderBy(desc(anchors.index)).limit(1);
   const index = last ? last.index + 1 : 0;
   const tree = new MerkleTree(pending.map((p) => p.leaf as Hex));
-  const fromTs = last ? new Date(Math.max(last.toTs.getTime(), pending[0].ts.getTime())) : pending[0].ts;
-  const toTs = new Date(Math.max(pending[pending.length - 1].ts.getTime(), fromTs.getTime()));
+  const fromTs = last ? last.toTs : new Date(Math.floor(pending[0].ts.getTime() / 1000) * 1000);
   await ctx.db.transaction(async (tx) => {
     await tx.insert(anchors).values({ index, root: tree.root, fromTs, toTs, count: pending.length, status: "pending" });
     for (let i = 0; i < pending.length; i++) await tx.update(generations).set({ anchorIndex: index, leafIndex: i }).where(eq(generations.id, pending[i].id));

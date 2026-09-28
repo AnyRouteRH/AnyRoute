@@ -152,6 +152,8 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
     const j = await (await req("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: "anchor me" }] } })).json();
     const rot = await runKeyRotation(app.ctx);
     expect(rot.published).toBeGreaterThan(0);
+    await Bun.sleep(1100); // allow the receipt's second to close before anchoring
+    await pub.request({ method: "evm_mine" as never, params: [] as never });
     const a = await runAnchor(app.ctx);
     expect(a.status).toBe("confirmed");
     const g = (await (await req(`/api/v1/generation?id=${j.id}`, { headers: k.auth })).json()).data;

@@ -241,6 +241,10 @@ export class ChainService {
 
   // ---- Receipts -------------------------------------------------------------------------
 
+  async blockTimestamp(): Promise<number> {
+    return Number((await this.client.getBlock({ blockTag: "latest" })).timestamp);
+  }
+
   async anchor(root: Hex, fromTs: number, toTs: number, count: number) {
     const a = this.require("receiptAnchor");
     const { hash, receipt } = await this.send("anchorer", a, ReceiptAnchorAbi as unknown as Abi, "anchor", [root, BigInt(fromTs), BigInt(toTs), count]);

@@ -17,6 +17,8 @@ interface IReceiptAnchor {
     error EmptyRoot();
     error UnknownKey();
 
+    /// @notice Publish a root with a nonempty, half-open batch interval [fromTs, toTs).
+    /// @dev Count and time bounds are informational. Consumers must deduplicate receipt IDs/leaves.
     function anchor(bytes32 root, uint64 fromTs, uint64 toTs, uint32 count) external returns (uint256 index);
     function verify(bytes32 leaf, bytes32[] calldata proof, uint256 index) external view returns (bool);
     function registerSigningKey(bytes8 keyId, bytes32 ed25519PublicKey, uint64 validFrom) external;
