@@ -5,15 +5,15 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     services:
       postgres:
-        image: postgres:16.6
+        image: postgres:16.6@sha256:557fea37a744d5f4c8faab304b0a90858b53ab119735a88c131fd19dab802f36
         env: { POSTGRES_PASSWORD: fixture-only-ci-password }
         ports: ["55432:5432"]
         options: --health-cmd pg_isready --health-interval 5s --health-retries 20
       redis:
-        image: redis:8.0.2
+        image: redis:8.0.2@sha256:b43d2dcbbdb1f9e1582e3a0f37e53bf79038522ccffb56a25858969d7a9b6c11
         ports: ["56379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
     steps:
@@ -48,5 +48,14 @@ jobs:
       - run: bash scripts/container-smoke.sh
       - name: Verify operational alert rules
         run: |
-          docker run --rm --entrypoint /bin/promtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/prometheus:v3.5.0 check rules alerts.yml
-          docker run --rm --entrypoint /bin/promtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/prometheus:v3.5.0 test rules alerts.test.yml
+          docker run --rm --entrypoint /bin/promtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996 check rules alerts.yml
+          docker run --rm --entrypoint /bin/promtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996 test rules alerts.test.yml
+
+      - name: Exercise production service topology and dependency failure
+        run: bash scripts/production-topology-smoke.sh
+        env:
+          TOPOLOGY_SMOKE_ACK: disposable-docker-host
+          ANYROUTE_IMAGE: anyroute:ci
+          POSTGRES_IMAGE: postgres:16.6@sha256:557fea37a744d5f4c8faab304b0a90858b53ab119735a88c131fd19dab802f36
+          REDIS_IMAGE: redis:8.0.2@sha256:b43d2dcbbdb1f9e1582e3a0f37e53bf79038522ccffb56a25858969d7a9b6c11
+          FOUNDRY_IMAGE: ghcr.io/foundry-rs/foundry:v1.7.1@sha256:8347b728d5d393dac1c018691b36f506d23b9dcd78341d40ea0fcb11c3a19cdd
