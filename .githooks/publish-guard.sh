@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Publish guard for a public repo. Blocks commits and pushes that carry:
-#   - an author/committer email other than `git config anyroute.allowedEmail`, or not matching the
-#     extended regex in $ANYROUTE_ALLOWED_EMAIL_RE / `git config anyroute.allowedEmailPattern` (CI, other contributors)
-#   - an empty name/email or one derived from the machine ((none), *.local, *.lan, localhost)
+#   - any author, committer or co-author other than the pinned Anyroute Contributor identity
 #   - an author/committer date that is not UTC (+0000): the offset reveals where you are
 #   - files that must stay local (.env*, keys, .data/, and any regex in .git/info/publish-denypaths)
 #   - secrets (provider/GitHub/AWS tokens, PEM keys, 32-byte hex not in public-hex-allowlist.txt)
@@ -25,27 +23,13 @@ err() { printf 'publish-guard: %s\n' "$*" >&2; : > "$tmp/failed"; }
 # Denylist without comments/blank lines, as fixed strings.
 grep -vE '^\s*(#|$)' "$denylist" 2>/dev/null > "$tmp/deny" || true
 
-allowed_re=${ANYROUTE_ALLOWED_EMAIL_RE:-$(git config --get anyroute.allowedEmailPattern || true)}
-allowed=$(git config --get anyroute.allowedEmail || true)
-if [ -n "$allowed_re" ]; then
-  rc=0; grep -qE -- "$allowed_re" < /dev/null 2>/dev/null || rc=$?
-  [ "$rc" -ne 2 ] || { echo "publish-guard: invalid allowed email pattern: $allowed_re" >&2; exit 1; }
-elif [ -z "$allowed" ]; then
-  echo "publish-guard: no publishing identity set. Run: git config anyroute.allowedEmail <email>" >&2
-  exit 1
-fi
-
+# This repository publishes one project identity. Local configuration or CI environment
+# must not broaden the allowlist to an account-linked noreply address.
+allowed='contributor@anyroute.invalid'
+allowed_name='Anyroute Contributor'
 check_ident() { # <label> <name> <email>
-  if [ -n "$allowed_re" ]; then
-    printf '%s\n' "$3" | grep -qxE -- "$allowed_re" || err "$1 email '$3' does not match the allowed pattern ($allowed_re)"
-  else
-    [ "$3" = "$allowed" ] || err "$1 email '$3' is not the publishing identity ($allowed)"
-  fi
-  [ -n "$2" ] || err "$1 name is empty"
-  case $(printf '%s' "$3" | tr '[:upper:]' '[:lower:]') in
-    '') err "$1 email is empty" ;;
-    *'(none)'*|*.local|*.lan|*.localdomain|*localhost*) err "$1 email '$3' is derived from this machine; set user.email explicitly" ;;
-  esac
+  [ "$2" = "$allowed_name" ] || err "$1 name is not the project publishing identity"
+  [ "$3" = "$allowed" ] || err "$1 email is not the project publishing identity"
   if [ -s "$tmp/deny" ] && printf '%s\n%s\n' "$2" "$3" | grep -qiF -f "$tmp/deny"; then
     err "$1 identity matches the local denylist"
   fi
@@ -75,6 +59,11 @@ check_paths() { # stdin: one path per line
 # stdin: "<path>\t<added line>" (path may be "commit message")
 check_lines() {
   cat > "$tmp/lines"
+  # GitHub also credits Co-authored-by trailers; reject any alternate identity.
+  grep -iE $'^commit message\t[[:space:]]*Co-authored-by[[:space:]]*:' "$tmp/lines" | while IFS= read -r line; do
+    trailer=${line#*$'\t'}
+    [ "$trailer" = "Co-authored-by: $allowed_name <$allowed>" ] || err "alternate or malformed co-author trailer"
+  done || true
   grep -nE -- "$token_re" "$tmp/lines" | cut -f1 | sort -u | while IFS= read -r hit; do
     echo "publish-guard: secret-like token in ${hit#*:}" >&2
   done || true
@@ -141,6 +130,6 @@ esac
 
 [ ! -e "$tmp/tz" ] || echo "publish-guard: to commit in UTC: $tz_fix" >&2
 if [ -e "$tmp/failed" ]; then
-  echo "publish-guard: blocked. Fix the above (or bypass once with --no-verify if you are sure)." >&2
+  echo "publish-guard: blocked. Fix the above before publication." >&2
   exit 1
 fi

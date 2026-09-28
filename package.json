@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Any model. One key. Paid per call. OpenRouter-compatible inference router settled in USDG on Robinhood Chain.",
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "prepare": "bash scripts/install-hooks.sh",
     "launch": "bun scripts/launch.ts",
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",

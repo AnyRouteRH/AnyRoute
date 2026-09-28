@@ -18,7 +18,6 @@ jobs:
           persist-credentials: false
       - name: Scan new commits
         env:
-          ANYROUTE_ALLOWED_EMAIL_RE: '^(contributor@anyroute\.invalid|[^@]+@users\.noreply\.github\.com|noreply@github\.com)$'
           EVENT: ${{ github.event_name }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_SHA: ${{ github.sha }}
