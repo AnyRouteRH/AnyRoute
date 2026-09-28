@@ -348,6 +348,40 @@ describe("routing behaviour (fallback, empty-200, failures, budgets)", () => {
     expect(stats.lastBody.messages[0].content).toBe("email me: [REDACTED_EMAIL]");
   });
 
+  test("request guardrails can tighten but cannot clear key guardrails", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    await h.request(`/api/v1/keys/${k.hash}`, { method: "PATCH", headers: k.auth, json: { guardrails: { pii: "block", deny_patterns: ["key-restricted"], max_input_chars: 100 } } });
+    const denied = await chat(h, k.auth, { guardrails: {}, messages: [{ role: "user", content: "contains key-restricted phrase" }] });
+    expect(denied.status).toBe(400);
+    expect((await denied.json()).error.metadata.guardrail).toBe("deny_patterns");
+    const pii = await chat(h, k.auth, { guardrails: { pii: "redact" }, messages: [{ role: "user", content: "contact person@example.test" }] });
+    expect(pii.status).toBe(400);
+    expect((await pii.json()).error.metadata.guardrail).toBe("pii");
+    const stricter = await chat(h, k.auth, { guardrails: { max_input_chars: 4 }, messages: [{ role: "user", content: "12345" }] });
+    expect(stricter.status).toBe(400);
+    expect((await stricter.json()).error.metadata.guardrail).toBe("max_input_chars");
+  });
+
+  test("key output redaction remains enabled when request guardrails are empty", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    await h.request(`/api/v1/keys/${k.hash}`, { method: "PATCH", headers: k.auth, json: { guardrails: { redact_output: true } } });
+    const r = await chat(h, k.auth, { guardrails: {}, provider: { only: ["alpha"] }, messages: [{ role: "user", content: "include person@example.test" }] });
+    expect(r.status).toBe(200);
+    expect((await r.json()).choices[0].message.content).toContain("[REDACTED_EMAIL]");
+  });
+
+  test("combined deny pattern overflow is rejected instead of ignoring request rules", async () => {
+    await reset();
+    const k = await h.fundedKey(1n);
+    const keyPatterns = Array.from({ length: 50 }, (_, i) => `key-rule-${i}`);
+    await h.request(`/api/v1/keys/${k.hash}`, { method: "PATCH", headers: k.auth, json: { guardrails: { deny_patterns: keyPatterns } } });
+    const response = await chat(h, k.auth, { guardrails: { deny_patterns: ["request-only-rule"] }, messages: [{ role: "user", content: "ordinary prompt" }] });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.message).toMatch(/Combined key and request deny_patterns cannot exceed 50 unique entries/);
+  });
+
   test("OpenRouter provider/model fields never leak upstream", async () => {
     await reset();
     const k = await h.fundedKey(1n);

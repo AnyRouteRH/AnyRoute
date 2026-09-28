@@ -12,7 +12,7 @@ import { estimatePromptTokens, maxOutputTokens, priceUsage, readUsage, worstCase
 import { route, type Attempt, type RouteSuccess, type RouteTarget } from "../router/execute.ts";
 import { providerKey } from "../providers/upstream.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
-import { applyGuardrails, redactOutput, type GuardrailConfig } from "../gateway/guardrails.ts";
+import { applyGuardrails, mergeGuardrails, redactOutput, type GuardrailConfig } from "../gateway/guardrails.ts";
 import { middleOut } from "../gateway/transforms.ts";
 import type { CacheMode } from "../gateway/cache.ts";
 import { bearer, requireRole, resolveKey, walletAuth, type KeyRow } from "./auth.ts";
@@ -139,8 +139,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     );
 
   // Request-level guardrails only for authenticated keys; a key's own guardrails always apply.
-  const guardCfg = ((key ? (body.guardrails as GuardrailConfig | undefined) : undefined) ?? (key?.guardrails as GuardrailConfig | null)) ?? null;
+  const guardCfg = mergeGuardrails(key?.guardrails as GuardrailConfig | null, key ? body.guardrails as GuardrailConfig | undefined : undefined);
   const guard = applyGuardrails(body, guardCfg);
+  if (stream && guardCfg?.redact_output) fail(400, "Output redaction requires a non-streaming response.", "invalid_guardrails");
 
   const transforms = Array.isArray(body.transforms) ? (body.transforms as string[]) : [];
   const primary = resolved[0].model;
@@ -169,8 +170,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   // ---- 4. Cache (opt-in, never across accounts) ---------------------------------------------------
   const cacheSpec = (body.cache as { mode?: CacheMode; ttl?: number } | undefined) ?? (c.req.header("x-anyroute-cache") ? { mode: c.req.header("x-anyroute-cache") as CacheMode } : undefined);
   const cacheMode: CacheMode | null = cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic" ? cacheSpec.mode : null;
+  const cacheScope = billing ? `${billing.accountId}:policy-v2:${sha256(canonicalJson({ key: key?.keyHash ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })) }))}` : "";
   if (cacheMode && billing && !stream) {
-    const hit = await ctx.cache.get(cacheMode, billing.accountId, body, ctx.cfg.gateway.semanticThreshold);
+    const hit = await ctx.cache.get(cacheMode, cacheScope, body, ctx.cfg.gateway.semanticThreshold);
     if (hit) return cachedResponse(ctx, c, { body, hit, billing, model: primary, t0, bodySha });
   }
 
@@ -265,9 +267,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const r = result as Extract<RouteSuccess, { kind: "json" }>;
   const json = r.json;
   const usage = readUsage(json.usage, { prompt: promptTokens, completion: Math.ceil(JSON.stringify(json.choices ?? []).length / 4) });
+  const redactions = guardCfg?.redact_output ? redactOutput(json) : 0;
   const responseText = (json.choices ?? []).map((ch: any) => (typeof ch?.message?.content === "string" ? ch.message.content : ch?.text ?? "")).join("");
   const fin = await finalize({ ...common, r, usage, responseText, finishReason: json.choices?.[0]?.finish_reason ?? null, nativeFinish: json.choices?.[0]?.native_finish_reason ?? json.choices?.[0]?.finish_reason ?? null, generationMs: Date.now() - t0, cancelled: false });
-  const redactions = guardCfg?.redact_output ? redactOutput(json) : 0;
   const out = {
     ...json,
     id: fin.id,
@@ -278,7 +280,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     receipt: fin.receiptJson,
     ...(fin.extras(redactions) ?? {}),
   };
-  if (cacheMode && !stream) await ctx.cache.put(cacheMode, billing.accountId, body, out, fin.upstream, (body.cache as { ttl?: number } | undefined)?.ttl ?? ctx.cfg.gateway.cacheTtlS);
+  if (cacheMode && !stream) await ctx.cache.put(cacheMode, cacheScope, body, out, fin.upstream, (body.cache as { ttl?: number } | undefined)?.ttl ?? ctx.cfg.gateway.cacheTtlS);
   return c.json(out, 200, { "x-generation-id": fin.id });
 }
 
