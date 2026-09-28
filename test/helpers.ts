@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { encodePacked, keccak256, toBytes, type Hex } from "viem";
 import { createApp } from "../src/app.ts";
-import { ChainService, type DecodedLog } from "../src/chain/service.ts";
+import { ChainService, type DecodedLog, type EscrowTransfer, type FeedReading } from "../src/chain/service.ts";
 import { loadConfig } from "../src/config.ts";
 import { providers } from "../src/db/schema.ts";
 import { runRegistry } from "../src/services/registry.ts";
@@ -45,7 +45,7 @@ export class FakeChain extends ChainService {
     return "0x0000000000000000000000000000000000000001" as Hex;
   }
   override async blockNumber() {
-    return 100n;
+    return this.escrowHead;
   }
   override async blockTimestamp() {
     return Math.floor(Date.now() / 1000);
@@ -130,6 +130,24 @@ export class FakeChain extends ChainService {
   override async executeSlash() {
     if (!this.executeSlashSubmitted) return { submitted: false as const, safeTx: { to: this.address("providerBond")!, value: "0", data: "0x" as Hex } };
     return { submitted: true as const, hash: fakeTx() };
+  }
+
+  // Stock escrow: transfers already sent to the escrow address, one price feed for every token,
+  // and the on-chain decimals the watcher verifies before crediting.
+  escrowLogs: EscrowTransfer[] = [];
+  escrowHead = 100n;
+  feedReading: FeedReading | null = { answer: 180n * 10n ** 8n, decimals: 8, updatedAt: Math.floor(Date.now() / 1000) };
+  escrowDecimals = 18;
+  override async escrowTransfers(tokens: Hex[], _escrow: Hex, from: bigint, to: bigint) {
+    const allowed = tokens.map((t) => t.toLowerCase());
+    return this.escrowLogs.filter((l) => l.blockNumber >= from && l.blockNumber <= to && allowed.includes(l.token.toLowerCase()));
+  }
+  override async readFeed() {
+    if (!this.feedReading) throw new Error("feed unreadable");
+    return { ...this.feedReading };
+  }
+  override async tokenDecimals() {
+    return this.escrowDecimals;
   }
 
   /** Simulate a Credits.Deposited event for a chain key hash. */

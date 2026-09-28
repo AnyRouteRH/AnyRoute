@@ -23,6 +23,7 @@ import { chatRoutes } from "./api/chat.ts";
 import { modelsRoutes } from "./api/models.ts";
 import { generationRoutes } from "./api/generation.ts";
 import { keysRoutes } from "./api/keys.ts";
+import { escrowRoutes } from "./api/escrow.ts";
 import { publicRoutes } from "./api/public.ts";
 import { embeddingsRoutes } from "./api/embeddings.ts";
 import { adminRoutes } from "./admin/trpc.ts";
@@ -87,6 +88,7 @@ export async function createApp(opts: AppOptions = {}) {
   modelsRoutes(app, ctx);
   generationRoutes(app, ctx);
   keysRoutes(app, ctx);
+  escrowRoutes(app, ctx);
   publicRoutes(app, ctx);
   paymasterRoutes(app, ctx);
   adminRoutes(app, ctx);

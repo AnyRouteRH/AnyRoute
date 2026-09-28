@@ -12,6 +12,7 @@ import {
   index,
   uniqueIndex,
   serial,
+  numeric,
 } from "drizzle-orm/pg-core";
 
 // Money columns are pico-USD (1e-12 USD) bigints unless named *_usdg (USDG base units, 1e-6)
@@ -502,3 +503,29 @@ export const kv = pgTable("kv", {
   value: jsonb("value").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+// Stock Token transfers into the escrow wallet (PAYMENTS_MODE=escrow). One row per Transfer log;
+// the ledger credit uses ref `escrow:<tx>:<logIndex>`, so a deposit can never be credited twice.
+// raw_amount is numeric: 18-decimal token amounts overflow bigint above ~9.2 whole tokens.
+export const escrowDeposits = pgTable(
+  "escrow_deposits",
+  {
+    id: text("id").primaryKey(), // <tx>:<logIndex>
+    txHash: text("tx_hash").notNull(),
+    logIndex: integer("log_index").notNull(),
+    blockNumber: bigint("block_number", { mode: "bigint" }).notNull(),
+    token: text("token").notNull(),
+    symbol: text("symbol").notNull(),
+    fromAddress: text("from_address").notNull(),
+    rawAmount: numeric("raw_amount", { precision: 78, scale: 0 }).notNull(),
+    status: text("status").notNull().default("pending"), // pending | credited
+    accountId: text("account_id"),
+    price18: text("price18"), // USD per whole token, 18 decimals, as read from the feed
+    priceUpdatedAt: ts("price_updated_at"),
+    credited: money("credited"), // pico-USD after the haircut
+    error: text("error"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    creditedAt: ts("credited_at"),
+  },
+  (t) => [index("escrow_deposits_from_idx").on(t.fromAddress), index("escrow_deposits_status_idx").on(t.status)],
+);

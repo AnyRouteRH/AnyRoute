@@ -242,7 +242,12 @@ export async function loadWorkspace(key) {
     keysError = e.message;
     keys = [me.data];
   }
-  const session = await api("/api/v1/paywith/session", { key }).catch(() => ({ data: null }));
+  const [session, escrow, stock] = await Promise.all([
+    api("/api/v1/paywith/session", { key }).catch(() => ({ data: null })),
+    // Stock escrow (PAYMENTS_MODE=escrow): where to send Stock Tokens, live rates, this wallet's deposits.
+    api("/api/v1/escrow").then((r) => (r.data?.enabled ? r.data : null)).catch(() => null),
+    api("/api/v1/escrow/deposits", { key }).then((r) => r.data).catch(() => null),
+  ]);
   const payTokens = tokens.data?.tokens || [];
   return {
     me: me.data,
@@ -254,6 +259,8 @@ export async function loadWorkspace(key) {
     tokens: payTokens,
     paywith: tokens.data || {},
     session: session.data,
+    escrow,
+    stock,
   };
 }
 

@@ -24,6 +24,7 @@ import {
   ProviderBondAbi,
   ReceiptAnchorAbi,
   RoyaltyAbi,
+  aggregatorV3Abi,
   erc20Abi,
 } from "./abis.ts";
 
@@ -39,6 +40,9 @@ export const CONTRACT_ABIS: Record<ContractName, Abi> = {
 };
 
 export type DecodedLog = { contract: ContractName; event: string; args: Record<string, unknown>; txHash: Hex; logIndex: number; blockNumber: bigint };
+export type EscrowTransfer = { token: Hex; from: Hex; value: bigint; txHash: Hex; logIndex: number; blockNumber: bigint };
+export type FeedReading = { answer: bigint; decimals: number; updatedAt: number };
+const transferEvent = { type: "event", name: "Transfer", inputs: [{ name: "from", type: "address", indexed: true }, { name: "to", type: "address", indexed: true }, { name: "value", type: "uint256", indexed: false }] } as const;
 export type CallPayment = { nonce: Hex; payer: Hex; amount: bigint; blockNumber: bigint; confirmations: number; logIndex: number };
 
 type Role = "router" | "settlement" | "anchorer" | "slasher" | "keeper" | "faucet";
@@ -146,6 +150,31 @@ export class ChainService {
       if (d) out.push(d);
     }
     return out;
+  }
+
+  // ---- stock escrow ----------------------------------------------------------------------
+
+  /** ERC-20 Transfer logs in [from, to] emitted by exactly these token contracts and sent to `escrow`. */
+  async escrowTransfers(tokens: Hex[], escrow: Hex, from: bigint, to: bigint): Promise<EscrowTransfer[]> {
+    if (!tokens.length) return [];
+    const raw = await this.client.getLogs({ address: tokens, event: transferEvent, args: { to: escrow }, fromBlock: from, toBlock: to, strict: true });
+    const allowed = new Set(tokens.map((t) => t.toLowerCase()));
+    return raw
+      .filter((l) => allowed.has(l.address.toLowerCase()) && l.args.to.toLowerCase() === escrow.toLowerCase() && l.args.value > 0n)
+      .map((l) => ({ token: l.address, from: l.args.from, value: l.args.value, txHash: l.transactionHash!, logIndex: l.logIndex!, blockNumber: l.blockNumber! }));
+  }
+
+  async tokenDecimals(token: Hex): Promise<number> {
+    return Number(await this.client.readContract({ address: token, abi: erc20Abi, functionName: "decimals" }));
+  }
+
+  /** Latest Chainlink-style (AggregatorV3) answer. */
+  async readFeed(feed: Hex): Promise<FeedReading> {
+    const [round, decimals] = await Promise.all([
+      this.client.readContract({ address: feed, abi: aggregatorV3Abi, functionName: "latestRoundData" }),
+      this.client.readContract({ address: feed, abi: aggregatorV3Abi, functionName: "decimals" }),
+    ]);
+    return { answer: round[1], decimals: Number(decimals), updatedAt: Number(round[3]) };
   }
 
   // ---- 402 per-call payments -------------------------------------------------------------

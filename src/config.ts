@@ -98,6 +98,16 @@ const schema = z.object({
   PAYWITH_CAP_HAIRCUT_BPS: int(1000),
   PAYWITH_TOKENS: opt, // JSON: [{symbol,address,decimals,feed?}]
 
+  // Stock escrow payments: a customer transfers an allowlisted Stock Token from their own wallet to
+  // ESCROW_ADDRESS; after confirmations the sending wallet's account is credited at the Chainlink
+  // price minus ESCROW_HAIRCUT_BPS. PAYMENTS_MODE=escrow runs without the Anyroute contracts.
+  PAYMENTS_MODE: z.enum(["contracts", "escrow"]).default("contracts"),
+  ESCROW_ADDRESS: addr,
+  ESCROW_TOKENS: opt, // JSON: [{symbol,address,decimals,feed}]; default: PAYWITH_TOKENS entries that have a feed
+  ESCROW_HAIRCUT_BPS: int(300),
+  ESCROW_MAX_PRICE_AGE_S: int(302_400), // equity feeds pause outside market hours; 3.5 days covers long weekends
+  ESCROW_START_BLOCK: z.coerce.bigint().optional(),
+
   // Routing / health
   OUTAGE_WINDOW_MS: int(30_000),
   HEALTH_PROBE_INTERVAL_MS: int(15_000),
@@ -150,7 +160,27 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   }
   const e = parsed.data;
   const production = e.ANYROUTE_ENV === "production";
+  const escrowMode = e.PAYMENTS_MODE === "escrow";
+  const contractAddresses = {
+    CREDITS_ADDRESS: e.CREDITS_ADDRESS,
+    CALLPAY_ADDRESS: e.CALLPAY_ADDRESS,
+    PAYWITHSTOCK_ADDRESS: e.PAYWITHSTOCK_ADDRESS,
+    PROVIDER_BOND_ADDRESS: e.PROVIDER_BOND_ADDRESS,
+    RECEIPT_ANCHOR_ADDRESS: e.RECEIPT_ANCHOR_ADDRESS,
+    ROYALTY_ADDRESS: e.ROYALTY_ADDRESS,
+    ANYR_STAKING_ADDRESS: e.ANYR_STAKING_ADDRESS,
+    PAYMASTER_ADDRESS: e.PAYMASTER_ADDRESS,
+  };
+  if (escrowMode) {
+    if (!e.ESCROW_ADDRESS || /^0x0{40}$/.test(e.ESCROW_ADDRESS)) throw new Error("PAYMENTS_MODE=escrow requires ESCROW_ADDRESS.");
+    // Escrow mode skips the contract custody checks, so it must not run beside live contracts.
+    const set = Object.entries(contractAddresses).filter(([, v]) => v).map(([k]) => k);
+    if (set.length) throw new Error(`PAYMENTS_MODE=escrow must not configure contracts (${set.join(", ")}).`);
+  }
+  if (e.ESCROW_HAIRCUT_BPS < 0 || e.ESCROW_HAIRCUT_BPS >= 10_000) throw new Error("ESCROW_HAIRCUT_BPS must be between 0 and 9999.");
+  if (e.ESCROW_MAX_PRICE_AGE_S <= 0) throw new Error("ESCROW_MAX_PRICE_AGE_S must be positive.");
   if (production) {
+    if (escrowMode && e.ESCROW_START_BLOCK == null && e.CHAIN_START_BLOCK == null) throw new Error("PAYMENTS_MODE=escrow requires ESCROW_START_BLOCK in production, so no transfer before the watcher starts is missed.");
     if (!e.APP_SECRET || e.APP_SECRET.length < 32) throw new Error("APP_SECRET (>= 32 chars) is required in production.");
     if (!e.ADMIN_TOKEN || e.ADMIN_TOKEN.length < 24) throw new Error("ADMIN_TOKEN (>= 24 chars) is required in production.");
     if (e.ALLOW_DEV_ATTESTATION) throw new Error("ALLOW_DEV_ATTESTATION must be false in production.");
@@ -162,15 +192,16 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.RUNTIME_ROLE === "all") throw new Error("Production requires separate api and worker roles.");
     if (e.AUTO_MIGRATE) throw new Error("Production requires AUTO_MIGRATE=false and a completed migration job.");
     if (e.HOST === "127.0.0.1" || e.HOST === "localhost" || e.HOST === "::1") throw new Error("Production HOST must be externally reachable.");
-    for (const [name, value] of Object.entries({ CREDITS_ADDRESS: e.CREDITS_ADDRESS, CALLPAY_ADDRESS: e.CALLPAY_ADDRESS, RECEIPT_ANCHOR_ADDRESS: e.RECEIPT_ANCHOR_ADDRESS, PROVIDER_BOND_ADDRESS: e.PROVIDER_BOND_ADDRESS }))
-      if (!value || /^0x0{40}$/.test(value)) throw new Error(`${name} is required in production.`);
-    if (e.RUNTIME_ROLE === "api" && !e.ROUTER_PRIVATE_KEY) throw new Error("Public API requires the restricted router signing role for enabled per-call payments.");
+    if (!escrowMode)
+      for (const [name, value] of Object.entries({ CREDITS_ADDRESS: e.CREDITS_ADDRESS, CALLPAY_ADDRESS: e.CALLPAY_ADDRESS, RECEIPT_ANCHOR_ADDRESS: e.RECEIPT_ANCHOR_ADDRESS, PROVIDER_BOND_ADDRESS: e.PROVIDER_BOND_ADDRESS }))
+        if (!value || /^0x0{40}$/.test(value)) throw new Error(`${name} is required in production.`);
+    if (e.RUNTIME_ROLE === "api" && !escrowMode && !e.ROUTER_PRIVATE_KEY) throw new Error("Public API requires the restricted router signing role for enabled per-call payments.");
     if (e.PAYMASTER_ADDRESS && e.RUNTIME_ROLE === "api" && !e.PAYMASTER_SIGNER_KEY) throw new Error("Configured paymaster requires its signing role.");
     const roleKeys = { settlement: e.SETTLEMENT_PRIVATE_KEY, anchoring: e.ANCHORER_PRIVATE_KEY, slashing: e.SLASHER_PRIVATE_KEY, buyback: e.KEEPER_PRIVATE_KEY };
     if (e.RUNTIME_ROLE === "api" && Object.values(roleKeys).some(Boolean)) throw new Error("Public API must not receive settlement, anchoring, slashing or keeper signing keys.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -192,24 +223,34 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (!e.DEV_FAUCET_PRIVATE_KEY) throw new Error("DEV_FAUCET needs DEV_FAUCET_PRIVATE_KEY (a funded local development account).");
   }
   if (e.PER_CALL_MARGIN_BPS > 100) throw new Error("PER_CALL_MARGIN_BPS must be <= 100 (1%).");
+  const tokenList = z.array(
+    z.object({
+      symbol: z.string().min(1).max(16),
+      address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+      decimals: z.number().int().min(0).max(36),
+      feed: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+      name: z.string().optional(),
+    }),
+  );
   let paywithTokens: PaywithToken[] = [];
   if (e.PAYWITH_TOKENS) {
     try {
-      paywithTokens = z
-        .array(
-          z.object({
-            symbol: z.string().min(1).max(16),
-            address: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
-            decimals: z.number().int().min(0).max(36),
-            feed: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
-            name: z.string().optional(),
-          }),
-        )
-        .parse(JSON.parse(e.PAYWITH_TOKENS));
+      paywithTokens = tokenList.parse(JSON.parse(e.PAYWITH_TOKENS));
     } catch (err) {
       throw new Error(`PAYWITH_TOKENS must be a JSON array of {symbol,address,decimals,feed?}: ${(err as Error).message}`);
     }
   }
+  let escrowTokens: EscrowToken[] = [];
+  try {
+    const listed = e.ESCROW_TOKENS ? tokenList.parse(JSON.parse(e.ESCROW_TOKENS)) : paywithTokens;
+    if (e.ESCROW_TOKENS && listed.some((t) => !t.feed)) throw new Error("every token needs a feed");
+    escrowTokens = listed.filter((t): t is EscrowToken => !!t.feed);
+  } catch (err) {
+    throw new Error(`ESCROW_TOKENS must be a JSON array of {symbol,address,decimals,feed}: ${(err as Error).message}`);
+  }
+  const lower = escrowTokens.map((t) => t.address.toLowerCase());
+  if (new Set(lower).size !== lower.length) throw new Error("ESCROW_TOKENS lists a token address twice.");
+  if (escrowMode && !escrowTokens.length) throw new Error("PAYMENTS_MODE=escrow requires ESCROW_TOKENS (or PAYWITH_TOKENS) with price feeds.");
   return {
     env: e.ANYROUTE_ENV,
     production,
@@ -275,6 +316,14 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       capHaircutBps: e.PAYWITH_CAP_HAIRCUT_BPS,
       tokens: paywithTokens,
     },
+    escrow: {
+      mode: e.PAYMENTS_MODE,
+      address: e.ESCROW_ADDRESS?.toLowerCase() as `0x${string}` | undefined,
+      tokens: escrowTokens,
+      haircutBps: e.ESCROW_HAIRCUT_BPS,
+      maxPriceAgeS: e.ESCROW_MAX_PRICE_AGE_S,
+      startBlock: e.ESCROW_START_BLOCK ?? e.CHAIN_START_BLOCK,
+    },
     routing: {
       outageWindowMs: e.OUTAGE_WINDOW_MS,
       probeIntervalMs: e.HEALTH_PROBE_INTERVAL_MS,
@@ -320,3 +369,4 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
 }
 
 export type PaywithToken = { symbol: string; address: string; decimals: number; feed?: string; name?: string };
+export type EscrowToken = PaywithToken & { feed: string };

@@ -1,0 +1,26 @@
+import type { Hono } from "hono";
+import type { Ctx } from "../context.ts";
+import { escrowDepositsFor, escrowEnabled, escrowInfo } from "../pay/escrow.ts";
+import { requireKey } from "./auth.ts";
+
+export function escrowRoutes(app: Hono, ctx: Ctx) {
+  // Where to send Stock Tokens, which ones count, and what one token is credited at right now.
+  app.get("/api/v1/escrow", async (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: await escrowInfo(ctx) });
+  });
+
+  // Deposits credited (or waiting) for the wallet behind this key. Only wallet sign-in keys have one.
+  app.get("/api/v1/escrow/deposits", async (c) => {
+    const key = await requireKey(ctx, c.req.header("authorization"));
+    const wallet = key.accountId.startsWith("w_") ? `0x${key.accountId.slice(2)}` : null;
+    return c.json({
+      data: {
+        enabled: escrowEnabled(ctx),
+        wallet,
+        deposits: wallet ? await escrowDepositsFor(ctx, key.accountId) : [],
+        ...(wallet ? {} : { hint: "Stock deposits are credited to the sending wallet. Sign in with that wallet to use them." }),
+      },
+    });
+  });
+}

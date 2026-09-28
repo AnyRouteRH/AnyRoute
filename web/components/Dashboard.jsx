@@ -396,6 +396,147 @@ function DepositDialog({ onClose, apiKey, credits, status, onDone }) {
   );
 }
 
+/** ERC-20 transfer(to, raw) calldata, built without a library. */
+const transferData = (to, raw) => "0xa9059cbb" + to.slice(2).toLowerCase().padStart(64, "0") + BigInt(raw).toString(16).padStart(64, "0");
+
+function StockDepositDialog({ onClose, escrow, stock, status, onDone }) {
+  const tokens = escrow?.tokens || [];
+  const [symbol, setSymbol] = useState(tokens.find((t) => t.credit_usd_per_token)?.symbol || tokens[0]?.symbol || "");
+  const [amount, setAmount] = useState("1");
+  const [step, setStep] = useState("");
+  const [error, setError] = useState("");
+  const token = tokens.find((t) => t.symbol === symbol);
+  const wallet = stock?.wallet || "";
+  const estimate = token?.credit_usd_per_token && Number(amount) > 0 ? Number(amount) * token.credit_usd_per_token : null;
+  const discount = (escrow?.haircut_bps ?? 0) / 100;
+  return (
+    <Modal title="Pay with stock" onClose={onClose}>
+      <p>
+        Send a listed Stock Token on {chainOf(status).name} to the escrow wallet. After {escrow?.confirmations ?? 2} confirmations your balance is credited at the live
+        Chainlink price{discount ? ` minus ${discount}%` : ""}. Credits are spent on API calls and are not withdrawable.
+      </p>
+      {error && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
+      {step && (
+        <div className="success" role="status">
+          {step}
+        </div>
+      )}
+      {!wallet ? (
+        <div className="note">Deposits are credited to the wallet that sends them. Sign out, then choose “Sign in with wallet” using the wallet you will send from.</div>
+      ) : (
+        <>
+          <div className="two-fields">
+            <Field label="Stock Token" id="stock-token">
+              <select id="stock-token" value={symbol} onChange={(e) => setSymbol(e.target.value)} disabled={!!step}>
+                {tokens.map((t) => (
+                  <option key={t.symbol} value={t.symbol}>
+                    {t.symbol}
+                    {t.price_usd ? ` · $${t.price_usd.toFixed(2)}` : " · price paused"}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={"Amount / " + (symbol || "tokens")} id="stock-amount">
+              <input id="stock-amount" type="number" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!!step} />
+            </Field>
+          </div>
+          <dl className="detail-list">
+            <div>
+              <dt>You receive</dt>
+              <dd>{estimate != null ? `≈ $${money(estimate, 2)} in credits` : "Credited when the price updates (markets closed or feed paused)"}</dd>
+            </div>
+            <div>
+              <dt>Send from</dt>
+              <dd className="mono">{wallet}</dd>
+            </div>
+            <div>
+              <dt>Escrow wallet</dt>
+              <dd className="mono">{escrow?.address}</dd>
+            </div>
+            {token && (
+              <div>
+                <dt>{token.symbol} contract</dt>
+                <dd className="mono">{token.address}</dd>
+              </div>
+            )}
+          </dl>
+          <div className="button-row modal-actions">
+            <Button
+              disabled={!!step || !token}
+              onClick={async () => {
+                setError("");
+                try {
+                  const raw = toRaw(amount, token.decimals);
+                  if (BigInt(raw) <= 0n) throw new Error("Enter an amount above zero.");
+                  const from = await connect();
+                  if (from.toLowerCase() !== wallet.toLowerCase()) throw new Error(`Switch your wallet to ${shortAddress(wallet)}, the wallet you signed in with. Tokens sent from another wallet are credited to that wallet.`);
+                  await ensureChain(chainOf(status));
+                  await sendTransactions(from, [{ to: token.address, data: transferData(escrow.address, raw), description: `Send ${amount} ${token.symbol} to escrow` }], setStep);
+                  setStep("Sent. Waiting for confirmations and the credit…");
+                  await onDone();
+                } catch (e) {
+                  setError(e?.message || String(e));
+                  setStep("");
+                }
+              }}
+            >
+              {hasWallet() ? `Send ${token?.symbol || ""} with wallet` : "Connect a wallet"}
+            </Button>
+            <CopyButton text={escrow?.address || ""} label="Copy escrow address" />
+          </div>
+          <p className="help-text">Any wallet app works: send a listed token from {shortAddress(wallet)} to the escrow address. Tokens sent from an exchange or another wallet are credited to that sender, not to you.</p>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function StockDeposits({ deposits }) {
+  return deposits?.length ? (
+    <div className="table-wrap">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Deposit</th>
+            <th className="num">Amount</th>
+            <th className="num">Credited</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {deposits.map((d, i) => (
+            <tr key={d.id} style={{ "--i": Math.min(i, 12) }}>
+              <td className="cell-primary">
+                <strong className="mono">{d.tx_hash.slice(0, 12)}…</strong>
+                <small>{new Date(d.at).toLocaleString("en-GB")}</small>
+              </td>
+              <td className="num" data-label="Amount">
+                {d.amount} {d.symbol}
+              </td>
+              <td className="num" data-label="Credited">
+                {d.credited_usd != null ? "$" + money(d.credited_usd, 2) : "—"}
+              </td>
+              <td data-label="Status">
+                <span className={"badge" + (d.status === "credited" ? " green" : "")}>{d.status === "credited" ? "Credited" : "Waiting"}</span>
+                {d.note && <small>{d.note}</small>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  ) : (
+    <div className="empty">
+      <h3>No stock deposits yet.</h3>
+      <p>Send a listed Stock Token to the escrow wallet and it appears here once confirmed.</p>
+    </div>
+  );
+}
+
 function WithdrawDialog({ onClose, apiKey, credits, status, onDone }) {
   const rootEvery = cadence(status?.settlement?.spent_root_interval_ms);
   const [amount, setAmount] = useState("");
@@ -525,7 +666,7 @@ function WithdrawDialog({ onClose, apiKey, credits, status, onDone }) {
   );
 }
 
-function SignIn({ onKey, onDemo, onSecret }) {
+function SignIn({ onKey, onDemo, onSecret, stockMode }) {
   const [value, setValue] = useState("");
   const remember = false;
   const [error, setError] = useState("");
@@ -546,7 +687,11 @@ function SignIn({ onKey, onDemo, onSecret }) {
       <div className="signin-copy">
         <span className="eyebrow">Live workspace</span>
         <h2 id="signin-title">Connect your workspace</h2>
-        <p>Anyroute keys are self-custodial: create a key, deposit USDG to it and start calling. No account, email or password.</p>
+        <p>
+          {stockMode
+            ? "Sign in with your wallet, send a listed Stock Token to the escrow wallet and start calling. No account, email or password."
+            : "Anyroute keys are self-custodial: create a key, deposit USDG to it and start calling. No account, email or password."}
+        </p>
         <button className="text-button" onClick={onDemo}>
           Explore the sample workspace instead →
         </button>
@@ -572,6 +717,7 @@ function SignIn({ onKey, onDemo, onSecret }) {
             <Button type="submit" disabled={!!busy}>
               {busy === "key" ? "Connecting…" : "Connect key"}
             </Button>
+            {!stockMode && (
             <Button
               type="button"
               secondary
@@ -586,7 +732,8 @@ function SignIn({ onKey, onDemo, onSecret }) {
             >
               {busy === "new" ? "Creating…" : "Create a new key"}
             </Button>
-            {hasWallet() && (
+            )}
+            {(stockMode || hasWallet()) && (
               <Button
                 type="button"
                 secondary
@@ -623,6 +770,7 @@ export default function Dashboard() {
   const [secrets, setSecrets] = useState({}); // key hash -> secret, for keys created in this session
   const [catalog, setCatalog] = useState([]);
   const [liveProviders, setLiveProviders] = useState(null);
+  const [stockMode, setStockMode] = useState(false); // the router takes Stock Token escrow payments
   const [reveal, setReveal] = useState(null);
   // ---- sample workspace (explicit demo mode) ----
   const [state, setState] = useState(initialWorkspace);
@@ -653,6 +801,7 @@ export default function Dashboard() {
   const stateRef = useRef(state);
   stateRef.current = state;
   const live = mode === "live";
+  const escrowOn = live && !!ws?.escrow; // PAYMENTS_MODE=escrow: Stock Tokens sent to an escrow wallet become credits
 
   async function refresh(key = apiKey) {
     const next = await loadWorkspace(key);
@@ -675,6 +824,7 @@ export default function Dashboard() {
       setStatus(s.data);
       setConnection("ok");
       api("/api/v1/models").then((r) => setCatalog(r.data.map(toCatalogModel))).catch(() => setCatalog([]));
+      api("/api/v1/escrow").then((r) => setStockMode(!!r.data?.enabled)).catch(() => setStockMode(false));
       const stored = loadKey();
       if (stored) {
         try {
@@ -1110,7 +1260,7 @@ export default function Dashboard() {
               {error}
             </div>
           )}
-          <SignIn onKey={signInWith} onDemo={() => switchMode("demo")} onSecret={(secret, deposit, title) => setReveal({ secret, deposit, title })} />
+          <SignIn stockMode={stockMode} onKey={signInWith} onDemo={() => switchMode("demo")} onSecret={(secret, deposit, title) => setReveal({ secret, deposit, title })} />
         </div>
       ) : (
         <div className="tab-panel" key={tab}>
@@ -1236,8 +1386,8 @@ export default function Dashboard() {
                       {live && errorKind === "insufficient_credits" && (
                         <>
                           {" "}
-                          <button type="button" className="text-button" onClick={() => setModal({ type: "credits" })}>
-                            Deposit USDG →
+                          <button type="button" className="text-button" onClick={() => setModal({ type: escrowOn ? "stock" : "credits" })}>
+                            {escrowOn ? "Pay with stock →" : "Deposit USDG →"}
                           </button>
                         </>
                       )}
@@ -1429,7 +1579,39 @@ export default function Dashboard() {
               )}
             </>
           )}
-          {tab === "Payments" && (
+          {tab === "Payments" && escrowOn && (
+            <>
+              <div className="panel-heading">
+                <h2>Pay with stock.</h2>
+                <span className="badge">{"Stock escrow on " + chainOf(status).name}</span>
+              </div>
+              <div className="payment-balance">
+                <div>
+                  <span className="eyebrow">AVAILABLE CREDITS / USD</span>
+                  <strong>{money(view.balance, 4)}</strong>
+                  <p>{`Held for calls in progress: $${money(ws?.credits?.held ?? 0, 6)} · Credited in total: $${money(ws?.credits?.total_credits ?? 0, 2)}.`}</p>
+                </div>
+                <div className="button-row">
+                  <Button onClick={() => setModal({ type: "stock" })}>Pay with stock</Button>
+                </div>
+              </div>
+              <div className="panel-heading">
+                <div>
+                  <h2>Stock deposits</h2>
+                  <p className="help-text">
+                    {ws?.stock?.wallet
+                      ? `Transfers from ${shortAddress(ws.stock.wallet)} to the escrow wallet, credited after ${ws.escrow.confirmations} confirmations.`
+                      : ws?.stock?.hint || "Sign in with a wallet to pay with stock."}
+                  </p>
+                </div>
+              </div>
+              <StockDeposits deposits={ws?.stock?.deposits} />
+              <div className="note">
+                {`Each deposit is valued with the token’s Chainlink feed on ${chainOf(status).name}${ws.escrow.haircut_bps ? `, minus ${ws.escrow.haircut_bps / 100}%` : ""}. Equity feeds pause while markets are closed; deposits made then are credited when the price updates. Tokens stay in escrow; credits are spent on API calls.`}
+              </div>
+            </>
+          )}
+          {tab === "Payments" && !escrowOn && (
             <>
               <div className="panel-heading">
                 <h2>One balance. Your choice.</h2>
@@ -1735,6 +1917,30 @@ export default function Dashboard() {
             </div>
           </Modal>
         ))}
+      {modal?.type === "stock" && (
+        <StockDepositDialog
+          escrow={ws?.escrow}
+          stock={ws?.stock}
+          status={status}
+          onClose={() => setModal(null)}
+          onDone={async () => {
+            const before = (ws?.stock?.deposits || []).filter((d) => d.status === "credited").length;
+            let next = ws;
+            for (let i = 0; i < 60; i++) {
+              next = await refresh();
+              if ((next.stock?.deposits || []).filter((d) => d.status === "credited").length > before) break;
+              await new Promise((r) => setTimeout(r, 2000));
+            }
+            const credited = (next.stock?.deposits || []).filter((d) => d.status === "credited").length > before;
+            setNotice(credited ? "Stock deposit credited." : "Stock deposit sent. It is credited once confirmed and priced; check Stock deposits.");
+            if (errorKind === "insufficient_credits") {
+              setError("");
+              setErrorKind("");
+            }
+            setModal(null);
+          }}
+        />
+      )}
       {modal?.type === "withdraw" && <WithdrawDialog apiKey={apiKey} credits={ws?.credits} status={status} onClose={() => setModal(null)} onDone={() => refresh()} />}
       {["reset", "revoke", "close-session"].includes(modal?.type) && (
         <Modal
