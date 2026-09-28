@@ -2,6 +2,11 @@
 # This fixture temporarily routes the global-looking provider subnet through the Docker host.
 # The smoke requires a disposable CI host and tears the network down before returning.
 services:
+  postgres:
+    environment:
+      POSTGRES_USER: topology_migrator
+      POSTGRES_DB: topology_database
+
   anvil:
     image: ${FOUNDRY_IMAGE:?Set a reviewed Foundry image pinned by sha256 digest}
     entrypoint: ["anvil"]
