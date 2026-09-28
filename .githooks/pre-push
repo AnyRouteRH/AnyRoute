@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Scan the entire outgoing history, including merge parents. Never exclude commits
-# merely because some local remote-tracking ref already points at them.
+# Scan the entire outgoing history, including merge parents, except commits the public
+# repo already has: those cannot be unpublished. The public tip is read live from GitHub,
+# never from a local remote-tracking ref, which may be stale or point anywhere.
 set -euo pipefail
 guard="$(cd "$(dirname "$0")" && pwd)/publish-guard.sh"
+public_url=https://github.com/AnyRouteRH/AnyRoute.git
+published=()
+if public_sha=$(git ls-remote "$public_url" refs/heads/main 2>/dev/null | cut -f1) \
+  && [ -n "$public_sha" ] && git cat-file -e "$public_sha^{commit}" 2>/dev/null; then
+  published=(--not "$public_sha")
+fi
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
-  "$guard" range "$local_sha"
+  "$guard" range "$local_sha" ${published[@]+"${published[@]}"}  # bash 3.2-safe when empty
 done
