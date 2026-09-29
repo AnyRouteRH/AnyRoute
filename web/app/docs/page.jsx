@@ -127,6 +127,49 @@ const xPayment = btoa(JSON.stringify({
 const paid = await fetch(url, { method: "POST", headers: { ...headers, "X-PAYMENT": xPayment }, body });
 const completion = await paid.json(); // usage + signed receipt; receipt.payload.payment_tx is the settlement
 const settlement = JSON.parse(atob(paid.headers.get("X-PAYMENT-RESPONSE"))); // { success, transaction, network, payer }`;
+const sdkReceipt = `import { AnyRoute } from "@anyroute/client";
+
+const client = new AnyRoute({ baseUrl: "https://<router>", apiKey: process.env.ANYROUTE_API_KEY });
+const res = await client.chat.completions.create(
+  { model: "meta-llama/llama-3.3-70b-instruct", messages: [{ role: "user", content: "Hello" }] },
+  { disclosure: "policy" }, // or lane: "attested"; the router refuses rather than downgrade
+);
+
+const check = res.anyroute.receiptVerification; // checked against /.well-known/anyroute-receipt-keys.json
+console.log(check.valid, check.anchor);          // anchor: "proof_valid" | "proof_invalid" | "no_proof"
+for (const c of check.checks) console.log(c.id, c.status, c.detail); // pass | fail | not_checked`;
+const sdkAttested = `import { AnyRoute, AttestationRefused } from "@anyroute/client";
+import { nodeAttestFetcher } from "@anyroute/client/node"; // Node and Bun: reads the provider's certificate too
+
+try {
+  const res = await client.chat.completions.create(request, {
+    attested: {
+      providerId: "<provider id>",
+      attestUrl: "https://<provider>/attest",
+      expected: { modelDigest: "sha256:<the digest you expect>" }, // optional, but this is what makes it your model
+      attestFetcher: nodeAttestFetcher(),
+    },
+  });
+  console.log(res.anyroute.provider.bound.modelDigest, res.anyroute.servedByVerifiedProvider);
+} catch (e) {
+  if (e instanceof AttestationRefused) console.error(e.verification.checks.filter((c) => c.status === "fail"));
+  else throw e;
+}`;
+const sdkPython = `from anyroute_client import AnyRoute, AttestedOptions, AttestationRefused, ExpectedDigests
+
+client = AnyRoute("https://<router>", "sk-ar-v1-…")
+try:
+    res = client.chat(
+        {"model": "meta-llama/llama-3.3-70b-instruct", "messages": [{"role": "user", "content": "Hello"}]},
+        attested=AttestedOptions(
+            provider_id="<provider id>",
+            attest_url="https://<provider>/attest",
+            expected=ExpectedDigests(model_digest="sha256:<the digest you expect>"),
+        ),
+    )
+    print(res["anyroute"]["receipt_verification"].valid)
+except AttestationRefused as e:
+    print([c for c in e.verification.checks if c.status == "fail"])`;
 const endpoints = [
   ["POST /api/v1/chat/completions", "Chat, tools and streaming (OpenAI/OpenRouter shape); X-Pay-With, X-Payment, X-Wallet-Auth headers"],
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
@@ -149,6 +192,8 @@ const endpoints = [
   ["POST /api/v1/blind/purchase", "Blind tokens, where enabled: buy tokens with credits by sending blinded messages; spend one with Authorization: PrivateToken on chat or embeddings"],
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt’s signature and anchor inclusion; signing keys (JWKS)"],
+  ["GET /.well-known/anyroute-receipt-keys.json", "The same signing keys at a fixed path, for clients that verify receipts themselves"],
+  ["GET /api/v1/attestation/:providerId", "What the router has verified about a provider’s hardware attestation: status, verifiers, measurements, transparency-log and on-chain state, and what was not checked"],
   ["POST /mcp", "AnyRoute MCP: list_models, chat, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; provider registry; router configuration"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
@@ -178,6 +223,7 @@ export default function Docs() {
             <a href="#receipts">Receipts</a>
             <a href="#council">Council</a>
             <a href="#mcp">MCP</a>
+            <a href="#sdk">SDKs</a>
             <a href="#endpoints">Endpoints</a>
             <a href="#limits">Limits</a>
           </nav>
@@ -350,6 +396,43 @@ export default function Docs() {
           <Code label="Cursor · ~/.cursor/mcp.json">{cursorConfig}</Code>
           <Code label="Claude Desktop · claude_desktop_config.json (through the mcp-remote bridge)">{desktopConfig}</Code>
           <Code label="Check it with curl">{mcpCurl}</Code>
+          <h2 id="sdk">Verify before you send.</h2>
+          <p>
+            Two client libraries wrap the OpenAI-shaped call and add the checks a plain HTTP client would skip. The TypeScript package, @anyroute/client, has no runtime dependencies and runs on Bun, Node 20 and later, and in browsers. The Python package, anyroute-client (Python
+            3.10 and later), depends only on cryptography and httpx. Their source is in packages/client and packages/client-py in the repository. Both report every check as pass, fail or not checked, and a check they did not make is never shown as passed.
+          </p>
+          <h3>Receipts</h3>
+          <p>
+            Each response carries its verification: the Ed25519 signature over the receipt’s canonical JSON against the key in the router’s published key list (fetched once, and read again if a receipt names a key it has not seen, as after a weekly rotation), that the key id is the
+            hash of the key, that the receipt is dated inside its key’s window, that its leaf recomputes from the signed bytes and, when the receipt came with an anchor proof, that the leaf is under the stated root. It does not check that the key is registered on chain or that the root was posted
+            there, and says so. Pass pinned keys to skip the fetch. A receipt a provider’s sidecar signed with its enclave key is checked against the receipt key its attestation binds, and must name the same attestation and model digest.
+          </p>
+          <Code label="TypeScript · receipts, disclosure and lane">{sdkReceipt}</Code>
+          <h3>Attested providers</h3>
+          <p>
+            Give a request an attested option and the client checks the provider first and sends nothing unless every check passes. It reads the router’s record (GET /api/v1/attestation/:providerId) and the provider’s own /attest document, then checks that the router reports the provider
+            attested with a quote it verified recently; that the quote is an Intel TDX quote whose report_data is SHA-256 of the canonical bindings followed by the nonce, so the TLS key, receipt key and the image, compose and model digests are committed in the quote; that a fresh quote for a random nonce
+            the client chose says the same; that the certificate name is derived from SHA-256 of the quote; that, where the runtime can read the connection’s certificate, it carries that name and the attested TLS key; and that the router’s recorded digests equal the provider’s. If you supply the model digest you
+            expect, it must match. Simulated (development) evidence is refused unless you opt in, and is then labelled simulated. On success the request is pinned to that provider (provider.only, no fallbacks, lane attested), and the receipt is checked for naming it.
+          </p>
+          <p>
+            What it does not check, and reports as not checked: Intel’s signature and certificate chain over the quote (the router does that; pass a quoteVerifier to run your own), what the provider does with your prompt, whether the running software matches its published source, and
+            the transport when the runtime cannot read the certificate, as in a browser. Passing nodeAttestFetcher on Node or Bun reads the certificate from the same connection that served /attest.
+          </p>
+          <Code label="TypeScript · verify before send">{sdkAttested}</Code>
+          <Code label="Python">{sdkPython}</Code>
+          <h3>Blind tokens and end-to-end encryption</h3>
+          <p>
+            Where the router has blind tokens enabled, client.buyTokens() blinds, buys and unblinds tokens with your key, and client.withPrivateToken(token) spends one; this needs the optional package @cloudflare/blindrsa-ts. For end-to-end encryption to an enclave, sealedPost() encrypts
+            a request with an HPKE implementation you supply, sends it as application/anyroute-hpke and opens the reply. It seals only to an HPKE key the provider’s verified quote commits to, and refuses if the provider did not verify or the quote commits to no such key. The SDK ships no HPKE cipher: the
+            implementation and wire format must match the provider’s sidecar. The Python package covers receipts, provider verification, and disclosure and lane options, and can spend a blind token you already hold; it cannot buy tokens and has no streaming or HPKE support.
+          </p>
+          <p>
+            <a href="/verify/" className="inline-link">
+              The verify page
+            </a>{" "}
+            shows what the router has recorded for a provider (/verify/?p=&lt;provider id&gt;) and checks a pasted receipt in your browser. It reads the router’s record only; use an SDK to check the provider itself.
+          </p>
           <h2 id="endpoints">Endpoint map</h2>
           <div className="table-wrap">
             <table className="docs-table endpoint-table">
