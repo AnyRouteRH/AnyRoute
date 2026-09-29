@@ -17,7 +17,7 @@ import { readJson, clientIp } from "./common.ts";
 // ERC-7677 paymaster web service for AnyrPaymaster (ERC-4337 v0.7 VerifyingPaymaster).
 // Sponsors gas only for user operations whose every call is an Anyroute action:
 //   CallPay.pay/payWithPermit, Credits.deposit/depositWithPermit/requestWithdrawal/finalizeWithdrawal/
-//   finalizeWithdrawalAbsent/cancelWithdrawal, PayWithStock.openSession/openSessionWithPermit/closeSession, and ERC20.approve
+//   finalizeWithdrawalAbsent/cancelWithdrawal, PayWithStock.openSession/openSessionWithPermit/closeSession/revokeAuthorizations, and ERC20.approve
 //   where the spender is one of those contracts. On-chain, AnyrPaymaster also caps each sender daily.
 
 const ENTRY_POINT_V07 = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
@@ -39,6 +39,7 @@ const targetAbi = parseAbi([
   "function cancelWithdrawal(address keyAddress, uint256 deadline, bytes sig)",
   "function openSession(bytes32 keyHash, address token, uint256 capRawPerDay)",
   "function closeSession(bytes32 keyHash)",
+  "function revokeAuthorizations(bytes32 keyHash)",
   "function approve(address spender, uint256 value)",
 ]);
 
@@ -124,7 +125,7 @@ export function sponsorable(ctx: Ctx, callData: Hex): { ok: boolean; reason?: st
     const allowed: Record<string, string[]> = {
       callPay: ["pay", "payWithPermit"],
       credits: ["deposit", "depositWithPermit", "requestWithdrawal", "finalizeWithdrawal", "finalizeWithdrawalAbsent", "cancelWithdrawal"],
-      payWithStock: ["openSession", "closeSession"],
+      payWithStock: ["openSession", "closeSession", "revokeAuthorizations"],
     };
     if (!target || !allowed[target].includes(fn)) return { ok: false, reason: `${fn} on ${c.to} is not sponsored` };
   }
