@@ -859,7 +859,7 @@ export default function Docs() {
           <h3>Keep a prompt with proven enclaves</h3>
           <p>
             Set the lane the same way as for chat: the X-Anyroute-Lane: attested header (the Agents SDK example above and the Codex config send it on every call) or {'provider: {"lane": "attested"}'} in the request body; when both are given the stricter applies. On the attested lane the prompt goes only to a provider whose TEE attestation the router
-            verified itself and that documents no retention. If none can answer, the call is refused with 409 lane_unavailable (503 while they are down), nothing is sent to any provider and nothing is charged; the router does not fall back to a public provider. Attestation shows what code is running, not what a provider does with a prompt; see
+            verified itself and that documents no retention. If none can answer, the call is refused with 503 no_attested_endpoint (error.metadata.reason none_attested, or attested_endpoints_down with Retry-After while they are down), nothing is sent to any provider and nothing is charged; the router does not fall back to a public provider. Attestation shows what code is running, not what a provider does with a prompt; see
             the verify page for what is and is not checked. The response carries the receipt and lane headers of a chat call (X-Receipt-Id, Inference-Id, X-Anyroute-Lane and, where the serving endpoint attested one, X-Anyroute-Policy-Hash), and its metadata has anyroute_receipt_id, anyroute_lane and anyroute_disclosure taken from the same signed receipt.
             The response id is resp_ followed by the receipt id. Models that can serve the attested lane are listed at GET /api/v1/models?lane=attested.
           </p>

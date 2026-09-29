@@ -637,15 +637,15 @@ describe("the attested lane", () => {
     const before = await balanceOfKey(fx.h, keyHash);
     const sent = fx.state.requests.length;
     const res = await post({ model: PLAIN.slug, input: "keep this private" }, ATTESTED);
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(503);
     const e = ((await res.json()) as any).error;
-    expect(e).toMatchObject({ code: 409, type: "lane_unavailable" });
+    expect(e).toMatchObject({ code: 503, type: "no_attested_endpoint", metadata: { reason: "none_attested" } });
     expect(e.message).toContain("Nothing was sent to any provider and nothing was charged");
     expect(await balanceOfKey(fx.h, keyHash)).toBe(before);
     expect(fx.state.requests.length).toBe(sent);
     // A stream request is refused the same way, before any event.
     const streamed = await post({ model: PLAIN.slug, input: "keep this private", stream: true }, ATTESTED);
-    expect(streamed.status).toBe(409);
+    expect(streamed.status).toBe(503);
     expect(streamed.headers.get("content-type")).toContain("application/json");
   });
 
@@ -654,8 +654,8 @@ describe("the attested lane", () => {
     await fx.makeStale();
     const before = await balanceOfKey(fx.h, keyHash);
     const res = await post({ model: GW_MODEL, input: "hi" }, ATTESTED);
-    expect(res.status).toBe(409);
-    expect(((await res.json()) as any).error.type).toBe("lane_unavailable");
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as any).error.type).toBe("no_attested_endpoint");
     expect(await balanceOfKey(fx.h, keyHash)).toBe(before);
   });
 
