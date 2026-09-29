@@ -1,0 +1,69 @@
+/* Holders tab. Built on the global tokens (app/globals.css): ink, paper and one signal green, as
+   colour fields and type rather than outlines. */
+
+.root > :global(.panel-heading) { margin-top: clamp(48px, 5vw, 64px); }
+.root > :global(.panel-heading:first-child) { margin-top: 0; }
+
+/* ---------- standing: balance (ink) + tier (signal tint) ---------- */
+.standing { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; }
+.balance, .tier { position: relative; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: clamp(24px, 3vw, 36px); animation: rise .6s var(--ease-out) backwards; }
+.balance { background: var(--ink); color: var(--paper); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%); }
+.balance :global(.eyebrow) { color: var(--muted-dark); }
+.tier { background: var(--paper-2); animation-delay: 80ms; }
+.tier[data-on] { background: var(--signal-tint); }
+
+.amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 22px 0 10px; font-size: clamp(48px, 7vw, 96px); font-weight: 640; letter-spacing: -.055em; line-height: .9; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.amount small { font: 500 clamp(12px, 1.2vw, 14px)/1 var(--mono); letter-spacing: .06em; color: var(--signal); }
+.wallet { font: 400 12px/1.4 var(--mono); color: var(--muted-dark); }
+.message { display: block; max-width: 520px; margin: 22px 0 12px; font-size: clamp(26px, 3vw, 36px); font-weight: 620; letter-spacing: -.04em; line-height: 1.05; }
+.sub { max-width: 460px; font-size: 14px; line-height: 1.5; color: var(--muted-dark); }
+.tier .sub { color: var(--muted); }
+.balance :global(.button-row) { margin-top: 18px; }
+.retry { margin-top: 16px; color: var(--paper); }
+
+.progress { align-self: stretch; display: grid; gap: 10px; margin-top: 28px; max-width: 520px; }
+.progress span { font: 500 11px/1.4 var(--mono); letter-spacing: .03em; color: var(--muted-dark); }
+.meter { position: relative; height: 8px; overflow: hidden; background: var(--ink-4); }
+.meter i { position: absolute; inset: 0; background: var(--signal); transform-origin: left; animation: fill 1.2s var(--ease-out) backwards; animation-delay: 200ms; }
+.top { margin-top: 20px; font: 500 11px/1.4 var(--mono); letter-spacing: .03em; color: var(--signal); }
+.token { margin-top: auto; padding-top: 32px; max-width: 100%; }
+.address { font: 400 12px/1.4 var(--mono); color: var(--muted-dark); overflow-wrap: anywhere; }
+
+.tierName { display: block; margin: 22px 0 18px; font-size: clamp(36px, 4.6vw, 64px); font-weight: 640; letter-spacing: -.05em; line-height: .95; }
+.tier:not([data-on]) .tierName { font-size: clamp(26px, 3vw, 36px); letter-spacing: -.04em; line-height: 1.05; }
+.perks { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.perks li { display: flex; align-items: center; gap: 12px; font-size: clamp(16px, 1.5vw, 19px); font-weight: 520; letter-spacing: -.01em; animation: rise .5s var(--ease-out) backwards; animation-delay: calc(160ms + var(--i, 0) * 70ms); }
+.perks li::before { content: ""; flex: none; width: 8px; height: 8px; background: var(--signal-deep); }
+
+/* ---------- tier ladder: stacked fields, the current tier in ink ---------- */
+.ladder { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.rung { position: relative; display: grid; grid-template-columns: minmax(120px, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 56px; align-items: baseline; gap: 8px 20px; padding: 18px 22px; background: var(--white); font-size: 14px; color: var(--muted); animation: rise .5s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 60ms); transition: background .25s var(--ease); }
+.rung:hover { background: var(--paper-2); }
+.rungName { font-size: 20px; font-weight: 620; letter-spacing: -.03em; color: var(--ink); }
+.rungMin { font: 500 12px/1.4 var(--mono); color: var(--ink); }
+.rung[data-current] { background: var(--ink); color: var(--muted-dark); }
+.rung[data-current] .rungName, .rung[data-current] .rungMin { color: var(--paper); }
+.rung[data-current] .rungName::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 12px; vertical-align: .12em; background: var(--signal); }
+.you { justify-self: end; font: 600 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--signal); }
+
+/* ---------- credits ---------- */
+.total { font-size: 20px; font-weight: 620; letter-spacing: -.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.quiet { margin: 0; padding: 22px 24px; background: var(--white); font-size: 14px; color: var(--muted); }
+
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes fill { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .balance, .tier, .perks li, .rung, .meter i { animation: none; }
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 960px) {
+  .standing { grid-template-columns: 1fr; }
+  .rung { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-right: 64px; }
+  .you { position: absolute; top: 22px; right: 22px; }
+}
+@media (max-width: 640px) {
+  .balance, .tier { padding: 22px 20px; }
+  .rung { grid-template-columns: 1fr; gap: 6px; padding: 16px 60px 16px 18px; }
+  .you { top: 20px; right: 18px; }
+}

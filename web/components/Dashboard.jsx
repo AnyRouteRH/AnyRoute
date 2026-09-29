@@ -10,10 +10,11 @@ import EvalLab from "./features/EvalLab";
 import BatchStudio from "./features/BatchStudio";
 import AgentSessions from "./features/AgentSessions";
 import SpendWatch from "./features/SpendWatch";
+import Holders from "./features/Holders";
 
-const tabs = ["Overview", "Playground", "Saved Routes", "Eval Lab", "Batch Studio", "Models", "API keys", "Agent Sessions", "Receipts", "Spend Watch", "Payments", "Providers", "Settings"];
+const tabs = ["Overview", "Playground", "Saved Routes", "Eval Lab", "Batch Studio", "Models", "API keys", "Agent Sessions", "Receipts", "Spend Watch", "Payments", "Holders", "Providers", "Settings"];
 const tabId = (t) => t.toLowerCase().replace(" ", "-");
-const publicTabs = ["Models", "Providers"];
+const publicTabs = ["Models", "Providers", "Holders"];
 
 function Field({ label, id, children }) {
   return (
@@ -1842,6 +1843,7 @@ export default function Dashboard() {
               if (tab === "Agent Sessions") return <AgentSessions {...featureProps} />;
               return <SpendWatch {...featureProps} />;
             })()}
+          {tab === "Holders" && <Holders live={live} apiKey={apiKey} status={status} signedIn={signedIn} navigate={navigate} />}
           {tab === "Providers" && (
             <>
               <div className="panel-heading">
