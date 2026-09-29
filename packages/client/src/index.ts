@@ -11,6 +11,8 @@ export type { ReceiptVerification, VerifyReceiptOptions } from "./receipts.js";
 export { COSE_ALG_EDDSA, checkChain, chunkChain, decodeReceiptV2, receiptLeafV2, sigStructure, verifyReceiptV2 } from "./receipts-v2.js";
 export type { ChainedEvent, DecodedReceiptV2, ReceiptClaimsV2, ReceiptV2Verification, VerifyReceiptV2Options } from "./receipts-v2.js";
 export { verifySidecarReceipt } from "./sidecar.js";
+export { HOST_ANCHOR_PROOF_PATH, fetchHostAnchorProof, providerIdHash, readAttestedAnchor, verifyHostAnchor } from "./host-anchor.js";
+export type { AttestedAnchor, AttestedAnchorReader, HostAnchorProof, HostAnchorVerification, VerifyHostAnchorOptions } from "./host-anchor.js";
 export { ATTEST_SAN_SUFFIX, attestSanFor, defaultAttestFetcher, digestHex, evaluateAttestation, fetchRouterAttestation, verifyProvider } from "./attestation.js";
 export type { AttestDocument, AttestFetcher, Bindings, BoundIdentity, EvaluateInput, EvaluateOptions, ExpectedDigests, ProviderVerification, QuoteVerifier, RouterAttestation, VerifyProviderOptions } from "./attestation.js";
 export { parseTdxQuote } from "./tdx.js";
