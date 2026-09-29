@@ -55,3 +55,53 @@ test('the blind-token endpoints, scheme and schemas are documented and consisten
  assert.match(spec.components.schemas.Receipt.properties.payload.description,/nullifier/);
  assert.ok(buy.responses['409'].content['application/json'].schema.$ref==='#/components/schemas/ApiError');
 });
+
+test('the lane variants, day-zero candidate endpoints and creator claim flow are documented and consistent',()=>{
+ const variants=['mainstream','native_low_refusal','abliterated'];
+ const list=spec.paths['/api/v1/models'].get;
+ const variant=list.parameters.find((p)=>p.name==='variant');
+ assert.ok(variant,'listModels takes ?variant=');
+ assert.match(variant.description,/attested provider/);
+ const model=spec.components.schemas.Model.properties;
+ assert.deepEqual(model.variant.enum,variants);
+ assert.deepEqual(model.variant_source.enum,['declared','candidate','inferred','default']);
+ for(const k of ['license','base_model','weights','creator_handle','creator','royalty_bps'])assert.ok(model[k],`Model.${k}`);
+ assert.match(model.variant.description,/never sent to a public or vendor-forwarded provider/);
+
+ const lane=spec.paths['/api/v1/models/{author}/{slug}/lane'].put;
+ assert.deepEqual(lane.security,[{BearerAuth:[]}],'declaring a variant is operator only');
+ assert.equal(spec.components.schemas.ModelLaneInput.additionalProperties,false);
+ assert.deepEqual(spec.components.schemas.ModelLaneInput.required,['variant']);
+ assert.deepEqual(spec.components.schemas.ModelLaneInput.properties.variant.enum,variants);
+ assert.equal(lane.parameters.filter((p)=>p.in==='path').length,2);
+
+ const candidates=['/api/v1/lane/candidates','/api/v1/lane/candidates/{id}','/api/v1/lane/candidates/{id}/endpoint','/api/v1/lane/candidates/{id}/evaluate','/api/v1/lane/candidates/{id}/approve','/api/v1/lane/candidates/{id}/promote'];
+ for(const path of candidates)for(const [method,op] of Object.entries(spec.paths[path])){
+  assert.deepEqual(op.tags,['Lane'],`${method} ${path}`);
+  assert.deepEqual(op.security,[{BearerAuth:[]}],`${method} ${path} is operator only`);
+  assert.ok(op.responses['401'],`${method} ${path} declares 401`);
+ }
+ assert.deepEqual(spec.components.schemas.LaneCandidate.properties.status.enum,['discovered','rejected','evaluated','failed','approved','servable']);
+ assert.match(spec.paths['/api/v1/lane/candidates/{id}/promote'].post.responses['409'].description,/not_servable/);
+
+ const claims=spec.paths['/api/v1/creators/claims'].post;
+ const verify=spec.paths['/api/v1/creators/claims/{id}/verify'].post;
+ for(const op of [claims,verify,spec.paths['/api/v1/creators/claims/{id}'].get]){
+  assert.deepEqual(op.tags,['Creator royalties']);
+  assert.equal(op.security,undefined,'claims are public');
+ }
+ assert.ok(claims.responses['201']&&claims.responses['429']);
+ for(const code of ['403','409','410','429','502'])assert.ok(verify.responses[code],`verify declares ${code}`);
+ assert.equal(claims.requestBody.content['application/json'].schema.additionalProperties,false);
+ assert.ok(spec.components.schemas.CreatorClaim.properties.file_content);
+ for(const name of ['Lane','Creator royalties'])assert.ok(spec.tags.some((t)=>t.name===name),name);
+
+ const ids=[];
+ walk(spec.paths,(n)=>{if(typeof n.operationId==='string')ids.push(n.operationId);});
+ assert.equal(new Set(ids).size,ids.length,'operation ids are unique');
+ for(const [path,item] of Object.entries(spec.paths)){
+  const declared=new Set();
+  for(const op of Object.values(item))for(const p of op.parameters??[])if(p.in==='path')declared.add(p.name);
+  for(const [,name] of path.matchAll(/\{(\w+)\}/g))assert.ok(declared.has(name),`${path} declares {${name}}`);
+ }
+});

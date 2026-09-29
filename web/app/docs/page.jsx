@@ -57,6 +57,24 @@ const councilResponse = JSON.stringify(
   2,
 );
 const verifyRequest = JSON.stringify({ model: "meta-llama/llama-3.3-70b-instruct", messages: [{ role: "user", content: "Your prompt" }], verify: "dual" }, null, 2);
+const claimRequest = JSON.stringify({ model: "<author>/<model>", address: "0x…your payout address" }, null, 2);
+const claimResponse = JSON.stringify(
+  {
+    data: {
+      id: "claim-…",
+      model: "<author>/<model>",
+      hugging_face_id: "<owner>/<repository>",
+      handle: "<owner>",
+      status: "pending",
+      file: "anyroute-claim.txt",
+      file_content: "anyroute-claim-…\n",
+      expires_at: "2026-…",
+      royalty_bps: 500,
+    },
+  },
+  null,
+  2,
+);
 const BASE = API_BASE || "<your router>";
 const claudeCode = `claude mcp add --transport http anyroute ${BASE}/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY"`;
 const cursorConfig = JSON.stringify({ mcpServers: { anyroute: { url: `${BASE}/mcp`, headers: { Authorization: "Bearer sk-ar-v1-…" } } } }, null, 2);
@@ -125,6 +143,8 @@ const endpoints = [
   ["POST · GET · DELETE /api/v1/sessions · GET /sessions/current", "Agent Sessions: short-lived, budget-capped keys for agent runs"],
   ["GET /api/v1/spend · /spend/alerts", "Spend Watch: totals, projection, breakdowns, key budgets and alert rules"],
   ["GET /api/v1/disclosure/:providerId", "A provider’s documented retention, jurisdiction, legal hold and training use, each with a source and date, and the class it is served under now"],
+  ["GET /api/v1/models?variant=…", "Open-weights variants (mainstream, native_low_refusal, abliterated) with license, base model and weights source; restricted variants list only attested endpoints"],
+  ["POST /api/v1/creators/claims · /claims/{id}/verify", "Claim a model’s creator royalty by publishing a challenge in its Hugging Face repository"],
   ["GET /api/v1/blind/keys", "Blind tokens, where enabled: the issuer keys per epoch and denomination, the challenge every token carries, and prices"],
   ["POST /api/v1/blind/purchase", "Blind tokens, where enabled: buy tokens with credits by sending blinded messages; spend one with Authorization: PrivateToken on chat or embeddings"],
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
@@ -152,6 +172,7 @@ export default function Docs() {
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
             <a href="#disclosure">Disclosure</a>
+            <a href="#lane">Lane</a>
             <a href="#payments">Payments</a>
             <a href="#x402">x402</a>
             <a href="#receipts">Receipts</a>
@@ -213,6 +234,32 @@ export default function Docs() {
               2,
             )}
           </Code>
+          <h2 id="lane">Open-weights variants, and paying their creators.</h2>
+          <p>
+            Every model has a variant. mainstream keeps the publisher’s own alignment. native_low_refusal (trained to refuse little) and abliterated (refusal behaviour removed from the weights after training) are restricted variants. GET
+            /api/v1/models reports variant, variant_source, license, base_model, weights (source, revision, digest) and creator_handle, and takes ?variant= (a comma list) next to ?lane=. variant_source says whether an operator declared the
+            variant; a model nobody has classified whose name says its refusals were removed is treated as abliterated.
+          </p>
+          <p>
+            A restricted variant is served only by a provider that is served under attested retention with a fresh attestation and whose attestation reported the in-enclave hard-block classifier as enabled (classifier_enabled in GET
+            /api/v1/providers). That is a property of the model, not a request option: no lane or disclosure setting, and no provider.only, sends it anywhere else, and the response cache is never used for it. Its listing shows only the endpoints
+            that qualify, and a request with none qualifying fails with no_providers before anything is sent. The router takes the flag only from what a verified attestation commits to (a development report counts only outside production) and treats
+            anything unknown as off, so a provider whose attestation says nothing about a classifier does not qualify. The flag shows what the attestation reports; it does not prove how the classifier behaves.
+          </p>
+          <p>
+            When an operator enables the day-zero pipeline (DAYZERO_ENABLED, with DAYZERO_BASE_MODELS naming the base models), the router watches Hugging Face for new fine-tunes of those models whose name or tags contain a configured keyword (abliterated, uncensored,
+            decensored and unfiltered by default), and keeps those whose model card carries an allowed license (MIT or Apache-2.0 by default; the base model’s own card is checked too). Each candidate is evaluated on a provider’s endpoint with 16 benign prompts that base models often
+            over-refuse (fiction, security education, medical and legal information; none is harmful or illegal), 12 capability prompts with exact checks and the router’s canary set, and the scores are stored. A model becomes servable only after an
+            operator approves the evaluated candidate and an attested provider that reports the classifier serves it. Until then it is routed to no one, and a candidate that later fails an evaluation is withdrawn. The operator endpoints are under
+            /api/v1/lane/candidates.
+          </p>
+          <p>
+            The uploader of a model’s weights can claim its royalty. POST /api/v1/creators/claims with the model and a payout address returns a challenge. Commit it, on its own line, to the file named in the response on the main branch of the Hugging
+            Face repository the weights come from, then POST /api/v1/creators/claims/{"{id}"}/verify. The router reads the repository’s owner and the file through the Hugging Face API. On a match the address is recorded as the model’s royalty recipient
+            (5% of the notional price unless the router is configured otherwise, at most 20%), registered in the royalty contract where one is deployed, and shown as creator and royalty_bps. Every later call to the model includes the royalty as its own
+            cost line, and each hourly settlement streams it in USDG to the recipient. A claim needs a Hugging Face weights source recorded by the operator, and it proves control of that repository and nothing more.
+          </p>
+          <Code label="Claim a royalty: request, then response">{`${claimRequest}\n\n${claimResponse}`}</Code>
           <h2 id="payments">One settlement unit. More ways to pay.</h2>
           <div className="table-wrap">
             <table className="docs-table">
