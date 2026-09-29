@@ -36,6 +36,7 @@ export default function Hero(){
         <h1 className="hero-title"><span className="brackets" aria-hidden="true"/>{words.map((line,l)=><span className="line" key={l}>{line.map((w,k)=><span key={k}><span className={'w'+(l===2?' accent':'')} style={{'--i':i++}}>{w}</span>{k<line.length-1?' ':''}</span>)}</span>)}</h1>
         <div className="hero-sub"><p>Route AI calls through <strong>one API, one USDG balance</strong> and a signed receipt for every generation. Choose your model. Keep control of the route.</p><p>Built on Robinhood Chain. Deposit USDG and start routing.</p></div>
         <div className="button-row"><Button href="/dashboard/">Open dashboard</Button><Button href="/docs/" secondary>Read the docs</Button></div>
+        <a className="hero-harness" href="/harness/">Or try every model and its tools on one page<b aria-hidden="true">→</b></a>
         <ContractAddress/>
       </div>
       <LiveCard route={route}/>
