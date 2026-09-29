@@ -1,10 +1,10 @@
 "use client";
 import { useDeferredValue, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ApiError, api } from "../../lib/api";
+import { api } from "../../lib/api";
 import { models as sampleModels, money } from "../../lib/demo";
 import {
-  BatchRunner, CONCURRENCY, MAX_INPUT_CHARS, MAX_RETRIES, MAX_ROWS, buildDefaults, checkFunds, clampConcurrency, estimateBatch, normalizeRoutes, parseBatch, priceIndex,
-  responseText, restoreStates, summarize, toCSV, toJSONL,
+  ATTESTED_LANE, BatchRunner, CONCURRENCY, MAX_INPUT_CHARS, MAX_RETRIES, MAX_ROWS, buildDefaults, checkFunds, clampConcurrency, countFailedClosed, estimateBatch, failClosed, makeSender,
+  modelsOnLane, normalizeRoutes, parseBatch, priceIndex, responseText, restoreStates, routesOnLane, rowsOffLane, summarize, toCSV, toJSONL,
 } from "../../lib/batch";
 import { Button, CopyButton, Modal } from "../UI";
 import styles from "./BatchStudio.module.css";
@@ -82,7 +82,7 @@ function saveNow() {
     v: 1,
     savedAt: Date.now(),
     draft: store.draft,
-    run: r && { id: r.id, createdAt: r.createdAt, endedAt: r.endedAt, rows: r.rows, states: r.runner.states, status: r.runner.status, concurrency: r.runner.concurrency, sourceName: r.sourceName, model: r.model, estimate: r.estimate, skipped: r.skipped },
+    run: r && { id: r.id, createdAt: r.createdAt, endedAt: r.endedAt, rows: r.rows, states: r.runner.states, status: r.runner.status, concurrency: r.runner.concurrency, sourceName: r.sourceName, model: r.model, lane: r.lane, estimate: r.estimate, skipped: r.skipped },
   };
   const hash = store.keyHash;
   idb("readwrite", (s) => s.put(record, recordKey(hash))).then(({ ok }) => {
@@ -96,11 +96,8 @@ function scheduleSave(ms = 2000) {
   if (store.keyHash && !store.saveTimer) store.saveTimer = setTimeout(saveNow, ms);
 }
 
-const sendWith = (key) => async (body, { signal }) => {
-  const json = await api("/api/v1/chat/completions", { key, method: "POST", body, signal });
-  if (!json || typeof json !== "object") throw new ApiError(502, "The router returned an empty response.", "empty_response");
-  return json;
-};
+// One chat completion per row. On a lane the response headers are kept per row and an answer that does not state the lane is refused.
+const sendWith = (key, lane) => makeSender((body, opts) => api("/api/v1/chat/completions", { key, method: "POST", body, ...opts }), { lane });
 
 function onRunnerChange() {
   const r = store.run;
@@ -115,7 +112,8 @@ function onRunnerChange() {
   r.endedAt = status === "completed" || status === "cancelled" ? Date.now() : null;
   if (r.endedAt) {
     const s = summarize(r.runner.states);
-    store.hooks.notify?.(`Batch ${status === "completed" ? "finished" : "cancelled"}: ${int(s.done)} succeeded, ${int(s.failed)} failed${s.cancelled ? `, ${int(s.cancelled)} cancelled` : ""}. Download the results in Batch Studio.`);
+    const closed = countFailedClosed(r.runner.states);
+    store.hooks.notify?.(`Batch ${status === "completed" ? "finished" : "cancelled"}: ${int(s.done)} succeeded, ${int(s.failed)} failed${closed ? ` (${int(closed)} failed closed)` : ""}${s.cancelled ? `, ${int(s.cancelled)} cancelled` : ""}. Download the results in Batch Studio.`);
     Promise.resolve()
       .then(() => store.hooks.refresh?.())
       .catch(() => {});
@@ -141,8 +139,9 @@ function guardUnload() {
 }
 
 function attachRun(meta, key) {
-  const runner = new BatchRunner({ rows: meta.rows, states: meta.states || undefined, send: sendWith(key), concurrency: meta.concurrency, onChange: onRunnerChange });
-  store.run = { id: meta.id, createdAt: meta.createdAt, endedAt: meta.endedAt ?? null, rows: meta.rows, sourceName: meta.sourceName, model: meta.model, estimate: meta.estimate, skipped: meta.skipped || 0, runner };
+  const lane = meta.lane === ATTESTED_LANE ? ATTESTED_LANE : null;
+  const runner = new BatchRunner({ rows: meta.rows, states: meta.states || undefined, send: sendWith(key, lane), concurrency: meta.concurrency, onChange: onRunnerChange });
+  store.run = { id: meta.id, createdAt: meta.createdAt, endedAt: meta.endedAt ?? null, rows: meta.rows, sourceName: meta.sourceName, model: meta.model, lane, estimate: meta.estimate, skipped: meta.skipped || 0, runner };
   guardUnload();
   return runner;
 }
@@ -200,6 +199,13 @@ function download(text, name, type) {
 }
 
 const STATUS = { pending: "Queued", running: "Running", waiting: "Retrying", done: "Done", failed: "Failed", cancelled: "Cancelled" };
+/** A row the router refused or withheld on the attested lane reads "Failed closed", not just "Failed". */
+const statusLabel = (st) => (failClosed(st) ? "Failed closed" : STATUS[st.status]);
+const statusKey = (st) => (failClosed(st) ? "closed" : st.status);
+const closedNote = (st) =>
+  failClosed(st) === "refused"
+    ? "Refused before anything was sent: no attested provider could serve this row, and nothing was charged."
+    : "The answer was withheld because it could not be shown to come from attested hardware. The call may have been billed; see its receipt.";
 const FILTERS = [
   ["all", "All rows"],
   ["pending", "Queued"],
@@ -330,6 +336,8 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
   const [fileName, setFileName] = useState(d.fileName || "");
   const [format, setFormat] = useState(d.format || "auto");
   const [model, setModel] = useState(d.model ?? null); // null: not chosen yet, "": rows set their own
+  const [attested, setAttested] = useState(live && d.attested === true); // run every row on the attested lane
+  const [laneList, setLaneList] = useState({ state: "idle", ids: new Set() }); // models with a live attested provider
   const [maxTokens, setMaxTokens] = useState(d.maxTokens ?? "512");
   const [temperature, setTemperature] = useState(d.temperature ?? "");
   const [extra, setExtra] = useState(d.extra || "");
@@ -340,15 +348,37 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
   const [modal, setModal] = useState(null);
   const [funds, setFunds] = useState(null);
 
+  // The attested lane limits the pickers to what the router lists for it (GET /api/v1/models?lane=attested).
   useEffect(() => {
-    if (model === null && models.length) setModel(models[0].id);
-  }, [model, models]);
-  useEffect(() => {
-    store.draft = { text, fileName, format, model, maxTokens, temperature, extra, concurrency };
-    scheduleSave(1000);
-  }, [text, fileName, format, model, maxTokens, temperature, extra, concurrency]);
+    if (!attested || !live) return;
+    let alive = true;
+    setLaneList({ state: "loading", ids: new Set() });
+    api("/api/v1/models?lane=attested", { key: apiKey })
+      .then((r) => alive && setLaneList({ state: "ok", ids: new Set((r?.data || []).map((m) => m.id)) }))
+      .catch(() => alive && setLaneList({ state: "error", ids: new Set() }));
+    return () => {
+      alive = false;
+    };
+  }, [attested, live, apiKey]);
+  const laneReady = attested && laneList.state === "ok";
+  const pickModels = useMemo(() => (!attested ? models : laneReady ? modelsOnLane(models, laneList.ids) : []), [attested, laneReady, laneList, models]);
+  const pickRoutes = useMemo(() => (!attested ? routes.list : laneReady ? routesOnLane(routes.list, laneList.ids) : []), [attested, laneReady, laneList, routes.list]);
 
-  const { defaults, error: defaultsError } = useMemo(() => buildDefaults({ model: model || "", maxTokens, temperature, extra }), [model, maxTokens, temperature, extra]);
+  useEffect(() => {
+    if (model === null && pickModels.length) setModel(pickModels[0].id);
+  }, [model, pickModels]);
+  // Turning the lane on drops a default that has no attested provider instead of leaving it to be refused row by row.
+  useEffect(() => {
+    if (!laneReady || !model) return;
+    if (!pickModels.some((m) => m.id === model) && !pickRoutes.some((r) => "@route/" + r.slug === model)) setModel(pickModels[0]?.id ?? "");
+  }, [laneReady, model, pickModels, pickRoutes]);
+  useEffect(() => {
+    store.draft = { text, fileName, format, model, maxTokens, temperature, extra, concurrency, attested };
+    scheduleSave(1000);
+  }, [text, fileName, format, model, maxTokens, temperature, extra, concurrency, attested]);
+
+  const lane = attested ? ATTESTED_LANE : null;
+  const { defaults, error: defaultsError } = useMemo(() => buildDefaults({ model: model || "", maxTokens, temperature, extra, lane }), [model, maxTokens, temperature, extra, lane]);
   const source = useDeferredValue(text);
   const parsed = useMemo(() => parseBatch(source, { format, fileName, defaults }), [source, format, fileName, defaults]);
   const estimate = useMemo(() => estimateBatch(parsed.rows, priceOf), [parsed, priceOf]);
@@ -356,21 +386,21 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
   const fundsNow = live ? checkFunds(estimate.maxCost, { available: ws?.credits?.available, budgetRemaining: ws?.me?.limit_remaining }) : null;
   const rpm = ws?.me?.rate_limit?.requests;
   const hasInvalid = parsed.invalid > 0 || (parsed.errors.length > 0 && !parsed.rows.length);
-  const hint = !text.trim()
-    ? "Add rows to see the estimate."
-    : checking
-      ? "Checking rows…"
-      : parsed.tooMany
-        ? `Batches hold up to ${int(MAX_ROWS)} rows.`
-        : !parsed.rows.length
-          ? "No valid rows yet."
-          : defaultsError
-            ? "Fix the default parameters first."
-            : parsed.invalid && !skipInvalid
-              ? "Fix the invalid rows, or choose to skip them."
-              : "";
+  const offLane = laneReady ? rowsOffLane(parsed.rows, laneList.ids, routes.list) : null;
+  const hint = (() => {
+    if (attested && laneList.state === "error") return "The attested model list did not load. Turn the option off, or reload and try again.";
+    if (attested && !laneReady) return "Loading the models on the attested lane…";
+    if (laneReady && !laneList.ids.size) return "No model has a live attested provider right now.";
+    if (!text.trim()) return "Add rows to see the estimate.";
+    if (checking) return "Checking rows…";
+    if (parsed.tooMany) return `Batches hold up to ${int(MAX_ROWS)} rows.`;
+    if (!parsed.rows.length) return "No valid rows yet.";
+    if (defaultsError) return "Fix the default parameters first.";
+    if (parsed.invalid && !skipInvalid) return "Fix the invalid rows, or choose to skip them.";
+    return "";
+  })();
   const canStart = live && !hint;
-  const knownModel = !model || models.some((m) => m.id === model) || routes.list.some((r) => "@route/" + r.slug === model);
+  const knownModel = !model || pickModels.some((m) => m.id === model) || pickRoutes.some((r) => "@route/" + r.slug === model);
 
   async function loadFile(file) {
     setFileError("");
@@ -417,6 +447,7 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
         concurrency,
         sourceName: fileName || "Pasted rows",
         model: model || "",
+        lane,
         estimate: { input: estimate.input, output: estimate.output, maxCost: estimate.maxCost, unpriced: estimate.unpriced },
         skipped: parsed.invalid,
       },
@@ -525,21 +556,29 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
         </p>
 
         <div className={styles.subhead}>Defaults for rows that don’t set them</div>
-        <Field label="Model or saved route" id="batch-model">
-          <select id="batch-model" value={model ?? ""} onChange={(e) => setModel(e.target.value)}>
-            <option value="">No default: every row sets its model</option>
+        <label className="check-label">
+          <input type="checkbox" checked={attested} disabled={!live} onChange={(e) => setAttested(e.target.checked)} /> Run on the attested lane
+        </label>
+        <p className="help-text" id="batch-lane-help">
+          {live
+            ? 'Sends provider.lane "attested" with every row. The router serves a row only from a provider with a fresh, verified attestation, or refuses it; it never falls back to a provider that is not attested. Results show the lane and receipt id of each row, and a refused or withheld row is marked failed closed.'
+            : "Running on the attested lane needs a live key."}
+        </p>
+        <Field label={attested ? "Model or saved route on the attested lane" : "Model or saved route"} id="batch-model">
+          <select id="batch-model" value={model ?? ""} disabled={attested && !laneReady} aria-describedby={attested ? "batch-lane-help" : undefined} onChange={(e) => setModel(e.target.value)}>
+            <option value="">{attested && !laneReady ? (laneList.state === "error" ? "The attested model list did not load" : "Loading attested models…") : "No default: every row sets its model"}</option>
             {!knownModel && <option value={model}>{model}</option>}
-            {routes.list.length > 0 && (
+            {pickRoutes.length > 0 && (
               <optgroup label="Saved routes">
-                {routes.list.map((r) => (
+                {pickRoutes.map((r) => (
                   <option key={r.slug} value={"@route/" + r.slug}>
                     {r.name} · @route/{r.slug}
                   </option>
                 ))}
               </optgroup>
             )}
-            <optgroup label={live ? "Models" : "Sample models"}>
-              {models.map((m) => (
+            <optgroup label={attested ? "Models with an attested provider" : live ? "Models" : "Sample models"}>
+              {pickModels.map((m) => (
                 <option key={m.id} value={m.id}>
                   {live ? m.id : m.name}
                 </option>
@@ -582,6 +621,13 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
             <span>
               <b>{int(estimate.unpriced)} rows</b> use a model or route without a catalog price ({estimate.unpricedModels.slice(0, 3).join(", ")}
               {estimate.unpricedModels.length > 3 ? ", …" : ""}). They are not in the maximum above.
+            </span>
+          </div>
+        )}
+        {offLane?.count > 0 && (
+          <div className={styles.check + " " + styles.warn}>
+            <span>
+              <b>{int(offLane.count)} rows</b> use a model without a live attested provider ({offLane.models.join(", ")}). The router refuses these rows and charges nothing; they are listed as failed closed.
             </span>
           </div>
         )}
@@ -654,6 +700,10 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
             <div>
               <dt>Default model</dt>
               <dd className="mono">{model || "Set on every row"}</dd>
+            </div>
+            <div>
+              <dt>Lane</dt>
+              <dd>{attested ? "Attested: rows the router cannot serve there fail closed" : "Public, the default"}</dd>
             </div>
             <div>
               <dt>Tokens</dt>
@@ -737,6 +787,7 @@ function PauseReason({ runner, remaining, navigate }) {
 
 function RunView({ run, navigate }) {
   const r = run.runner;
+  const laneRun = run.lane === ATTESTED_LANE;
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -762,11 +813,14 @@ function RunView({ run, navigate }) {
 
   const q = query.trim().toLowerCase();
   const list = [];
-  for (let i = 0; i < total; i++) if ((filter === "all" || r.states[i].status === filter) && (!q || r.rows[i].custom_id.toLowerCase().includes(q))) list.push(i);
+  const inFilter = (st) => filter === "all" || (filter === "closed" ? !!failClosed(st) : st.status === filter);
+  for (let i = 0; i < total; i++) if (inFilter(r.states[i]) && (!q || r.rows[i].custom_id.toLowerCase().includes(q))) list.push(i);
   const pages = Math.max(1, Math.ceil(list.length / PAGE));
   const pg = Math.min(page, pages - 1);
   const shown = list.slice(pg * PAGE, pg * PAGE + PAGE);
-  const counts = { all: total, ...s };
+  const closed = countFailedClosed(r.states);
+  const counts = { all: total, ...s, closed };
+  const filters = laneRun ? [...FILTERS, ["closed", "Failed closed"]] : FILTERS;
 
   const note = (st) => {
     if (st.status === "waiting") {
@@ -791,7 +845,7 @@ function RunView({ run, navigate }) {
         <div>
           <h2>{{ Running: "Batch running.", Pausing: "Pausing the batch.", Paused: "Batch paused.", Finished: "Batch finished.", Cancelled: "Batch cancelled." }[label]}</h2>
           <p className="help-text">
-            {run.sourceName} · {int(total)} rows{run.skipped ? ` (${int(run.skipped)} invalid skipped)` : ""} · default {run.model || "set per row"} · started {time(run.createdAt)}
+            {run.sourceName} · {int(total)} rows{run.skipped ? ` (${int(run.skipped)} invalid skipped)` : ""} · default {run.model || "set per row"}{laneRun ? " · attested lane" : ""} · started {time(run.createdAt)}
           </p>
         </div>
         <span className={styles.pill} data-status={pill}>
@@ -799,6 +853,11 @@ function RunView({ run, navigate }) {
         </span>
       </div>
       {r.status === "paused" && !r.inflight.size && <PauseReason runner={r} remaining={remaining} navigate={navigate} />}
+      {laneRun && (
+        <div className="note">
+          <strong>Attested lane.</strong> Every row asked for provider.lane attested. A row is answered only by an attested provider, and this page keeps an answer only when the response states that lane. A row the router refuses or withholds is marked failed closed; it is never answered from another provider.
+        </div>
+      )}
       {store.persisted === false && <div className="note">This browser could not save progress (private browsing or blocked storage). Keep the tab open: a reload cannot resume this batch.</div>}
 
       <section className={styles.panel} aria-labelledby="batch-progress-title">
@@ -814,7 +873,7 @@ function RunView({ run, navigate }) {
         <progress className={styles.progress} max={total || 1} value={answered} aria-label={`Batch progress: ${int(answered)} of ${int(total)} rows answered`} />
         <div className={styles.figures + " " + styles.wide}>
           <Figure label="Succeeded" value={int(s.done)} sub="HTTP 200" />
-          <Figure label="Failed" value={int(s.failed)} sub={s.cancelled ? `${int(s.cancelled)} cancelled` : "After retries"} />
+          <Figure label="Failed" value={int(s.failed)} sub={closed ? `${int(closed)} failed closed` : s.cancelled ? `${int(s.cancelled)} cancelled` : "After retries"} />
           <Figure label="In flight" value={int(r.inflight.size)} sub={s.waiting ? `${int(s.waiting)} waiting to retry` : `of ${r.concurrency} at once`} />
           <Figure label="Rows / min" value={rpm == null ? "—" : int(rpm)} sub={r.status === "running" ? "Last minute" : "While running"} />
           <Figure label="Spend so far" value={money(s.cost, 6)} sub="USDG · usage.cost" />
@@ -856,17 +915,17 @@ function RunView({ run, navigate }) {
           <p className="help-text">Built in this browser from the router’s responses. {ended ? "" : "Rows that have not run yet are included with the error code not_run."}</p>
         </div>
         <div className={styles.results}>
-          <Button onClick={() => download(toJSONL(r.rows, r.states), `anyroute-batch-${run.id}.jsonl`, "application/jsonl")} disabled={!answered && !s.cancelled}>
+          <Button onClick={() => download(toJSONL(r.rows, r.states, { lane: laneRun }), `anyroute-batch-${run.id}.jsonl`, "application/jsonl")} disabled={!answered && !s.cancelled}>
             Download JSONL
           </Button>
-          <Button secondary onClick={() => download(toCSV(r.rows, r.states), `anyroute-batch-${run.id}.csv`, "text/csv")} disabled={!answered && !s.cancelled}>
+          <Button secondary onClick={() => download(toCSV(r.rows, r.states, { lane: laneRun }), `anyroute-batch-${run.id}.csv`, "text/csv")} disabled={!answered && !s.cancelled}>
             Download CSV
           </Button>
         </div>
       </div>
       <div className={styles.figures + " " + styles.four}>
         <Figure label="Succeeded" value={int(s.done)} sub={`of ${int(total)} rows`} />
-        <Figure label="Failed" value={int(s.failed)} sub={s.cancelled ? `Plus ${int(s.cancelled)} cancelled` : "Errors are in the download"} />
+        <Figure label="Failed" value={int(s.failed)} sub={closed ? `${int(closed)} failed closed${s.cancelled ? ` · plus ${int(s.cancelled)} cancelled` : ""}` : s.cancelled ? `Plus ${int(s.cancelled)} cancelled` : "Errors are in the download"} />
         <Figure label="Tokens" value={int(s.promptTokens + s.completionTokens)} sub={`${int(s.promptTokens)} in · ${int(s.completionTokens)} out`} />
         <Figure label="Actual cost / USDG" value={money(s.cost, 6)} sub={run.estimate ? `Estimated max ${money(run.estimate.maxCost, 6)}` : "From usage.cost"} />
       </div>
@@ -874,7 +933,7 @@ function RunView({ run, navigate }) {
       <div className={styles.tools}>
         <input className="search-field" aria-label="Search rows by custom_id" placeholder="Search custom_id…" value={query} onChange={(e) => (setQuery(e.target.value), setPage(0))} />
         <select className="search-field" aria-label="Filter rows by status" value={filter} onChange={(e) => (setFilter(e.target.value), setPage(0))}>
-          {FILTERS.map(([value, name]) => (
+          {filters.map(([value, name]) => (
             <option key={value} value={value}>
               {name} ({int(counts[value] || 0)})
             </option>
@@ -889,6 +948,7 @@ function RunView({ run, navigate }) {
               <tr>
                 <th>Row</th>
                 <th>Status</th>
+                {laneRun && <th>Lane · receipt</th>}
                 <th className="num">Tokens</th>
                 <th className="num">Cost / USDG</th>
                 <th>
@@ -912,11 +972,23 @@ function RunView({ run, navigate }) {
                       </small>
                     </td>
                     <td data-label="Status">
-                      <span className={styles.pill} data-status={st.status}>
-                        {STATUS[st.status]}
+                      <span className={styles.pill} data-status={statusKey(st)}>
+                        {statusLabel(st)}
                       </span>
                       {why && <small className={styles.rowNote}>{why}</small>}
                     </td>
+                    {laneRun && (
+                      <td data-label="Lane · receipt">
+                        <span className={styles.lane} data-lane={st.served?.lane || "none"}>
+                          {st.served?.lane || "—"}
+                        </span>
+                        {st.served?.receipt_id && (
+                          <small className={styles.receipt} title={st.served.receipt_id}>
+                            {st.served.receipt_id}
+                          </small>
+                        )}
+                      </td>
+                    )}
                     <td className="num" data-label="Tokens">
                       {u?.total_tokens != null ? int(u.total_tokens) : "—"}
                     </td>
@@ -956,7 +1028,7 @@ function RunView({ run, navigate }) {
         </div>
       )}
 
-      {modal?.type === "row" && <RowDetails row={r.rows[modal.index]} st={r.states[modal.index]} navigate={navigate} onClose={() => setModal(null)} />}
+      {modal?.type === "row" && <RowDetails row={r.rows[modal.index]} st={r.states[modal.index]} laneRun={laneRun} navigate={navigate} onClose={() => setModal(null)} />}
       {modal?.type === "cancel" && (
         <Modal title="Cancel this batch?" onClose={() => setModal(null)}>
           <p>Requests in flight are stopped and no new rows start. A provider may already have done, and the router billed, work for requests in flight. Finished rows stay available to download.</p>
@@ -997,18 +1069,20 @@ function RunView({ run, navigate }) {
   );
 }
 
-function RowDetails({ row, st, navigate, onClose }) {
+function RowDetails({ row, st, laneRun, navigate, onClose }) {
   const body = st.status === "done" ? st.response?.body : null;
   const u = body?.usage;
-  const receipt = body?.receipt?.id || body?.id;
+  const receipt = st.served?.receipt_id || body?.receipt?.id || body?.id;
+  const closed = failClosed(st);
   const text = body ? responseText(body) : "";
   const lastUser = [...(row.body.messages || [])].reverse().find((m) => m.role === "user");
   const prompt = typeof lastUser?.content === "string" ? lastUser.content : Array.isArray(lastUser?.content) ? lastUser.content.map((p) => p?.text || "").join("") : "";
   return (
     <Modal title={"Row " + row.custom_id} onClose={onClose}>
-      <span className={styles.pill} data-status={st.status}>
-        {STATUS[st.status]}
+      <span className={styles.pill} data-status={statusKey(st)}>
+        {statusLabel(st)}
       </span>
+      {closed && <p className="help-text">{closedNote(st)}</p>}
       <dl className="detail-list">
         <div>
           <dt>Line</dt>
@@ -1036,10 +1110,22 @@ function RowDetails({ row, st, navigate, onClose }) {
             <dd>{money(u.cost, 8)} USDG</dd>
           </div>
         )}
+        {laneRun && (
+          <div>
+            <dt>Lane</dt>
+            <dd>{st.served?.lane || (closed === "refused" ? "None: refused before any provider was used" : "Not stated")}</dd>
+          </div>
+        )}
         {receipt && (
           <div>
             <dt>Receipt</dt>
             <dd className="mono">{receipt}</dd>
+          </div>
+        )}
+        {laneRun && st.served?.policy_hash && (
+          <div>
+            <dt>Policy hash</dt>
+            <dd className="mono">{st.served.policy_hash}</dd>
           </div>
         )}
       </dl>

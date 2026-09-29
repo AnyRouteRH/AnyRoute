@@ -52,7 +52,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function api(path, { key, method = "GET", body, signal, headers = {} } = {}) {
+export async function api(path, { key, method = "GET", body, signal, headers = {}, onResponse } = {}) {
   let res;
   try {
     res = await fetch(API_BASE + path, {
@@ -65,6 +65,7 @@ export async function api(path, { key, method = "GET", body, signal, headers = {
     if (e?.name === "AbortError") throw e;
     throw new ApiError(0, "The Anyroute API could not be reached. Check your connection and try again.", "unreachable");
   }
+  onResponse?.(res); // the response headers (lane, receipt id) of a success and of an error alike
   const text = await res.text();
   let json = null;
   try {

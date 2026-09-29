@@ -3,6 +3,8 @@
 // (concurrency, 429 back-off, transient retries, pause/resume/cancel) and result export.
 // Rows are sent by the caller's `send` function, one request per row; nothing here keeps
 // prompts or completions anywhere but in the arrays the caller owns.
+// A batch can run on the attested lane: every row asks for provider.lane "attested", the response headers
+// (X-Anyroute-Lane, X-Receipt-Id) are kept per row, and a row the router refuses or withholds is "failed closed".
 
 export const MAX_ROWS = 5000;
 export const MAX_INPUT_CHARS = 32 * 1024 * 1024;
@@ -143,6 +145,110 @@ function readCSV(text, out) {
   return raw;
 }
 
+// ---------------------------------------------------------------- the attested lane
+
+export const ATTESTED_LANE = "attested";
+const UNLINKABLE_MESSAGE = 'This row asks for lane "unlinkable", which Batch Studio cannot run. Remove it, or turn off the attested lane option.';
+const asksUnlinkable = (provider) => plain(provider) && String(provider.lane ?? "").trim().toLowerCase() === "unlinkable";
+const ROUTE_PREFIX = "@route/";
+const SUFFIX = /(:(nitro|floor|free|private))+$/;
+const baseId = (id) => String(id).replace(SUFFIX, "");
+
+/** Models (catalog entries with an `id`) that have a live attested provider: the picker of an attested batch. */
+export const modelsOnLane = (models, ids) => (models || []).filter((m) => ids.has(m.id));
+
+/** Saved routes (normalizeRoutes output) that can run on the lane: at least one of their models has an attested provider. */
+export const routesOnLane = (routes, ids) => (routes || []).filter((r) => r.models.some((m) => ids.has(baseId(m))));
+
+/**
+ * Rows whose model the router would refuse on the attested lane, judged from the list of models that have an attested
+ * provider: a model that is not on it, or a saved route none of whose models is. Rows that name no model, name a route
+ * that was not loaded, or set `models` fallbacks are not judged. Returns { count, models } (models: up to `limit`, unique).
+ */
+export function rowsOffLane(rows, ids, routes = [], limit = 3) {
+  const bySlug = new Map(routes.map((r) => [r.slug, r]));
+  const off = [];
+  let count = 0;
+  for (const row of rows) {
+    const model = row?.body?.model;
+    if (typeof model !== "string" || !model) continue;
+    let refused;
+    if (model.toLowerCase().startsWith(ROUTE_PREFIX)) {
+      const route = bySlug.get(model.slice(ROUTE_PREFIX.length));
+      refused = route ? !route.models.some((m) => ids.has(baseId(m))) : false;
+    } else refused = !ids.has(baseId(model)) && !(Array.isArray(row.body.models) && row.body.models.some((m) => typeof m === "string" && ids.has(baseId(m))));
+    if (!refused) continue;
+    count++;
+    if (!off.includes(model)) off.push(model);
+  }
+  return { count, models: off.slice(0, limit) };
+}
+
+/** Lane, receipt id and policy hash the router states in its response headers (a Headers object); null where absent. */
+export function servedFrom(headers) {
+  const get = (name) => {
+    try {
+      const v = headers?.get?.(name);
+      return v == null || String(v).trim() === "" ? null : String(v).trim();
+    } catch {
+      return null;
+    }
+  };
+  return { lane: get("x-anyroute-lane"), receipt_id: get("x-receipt-id") ?? get("inference-id") ?? get("x-generation-id"), policy_hash: get("x-anyroute-policy-hash"), disclosure: get("x-anyroute-disclosure") };
+}
+
+/** Why an answer cannot be accepted as served on `want`, or null. A missing lane header counts as not confirmed. */
+export function laneMismatch(want, served) {
+  if (!want) return null;
+  const got = served?.lane ? served.lane.toLowerCase() : null;
+  if (got === want) return null;
+  const why = got ? `The router answered on the "${got}" lane, not "${want}".` : `The router's answer did not state its lane (no X-Anyroute-Lane header), so it could not be confirmed as "${want}".`;
+  return `${why} The answer was discarded. The call may still have been billed; see its receipt.`;
+}
+
+/**
+ * Error types that mean the router (or this page) failed closed instead of answering from a weaker source:
+ * "refused" - nothing was sent to any provider and nothing was charged;
+ * "withheld" - the work was done (and billed) but the answer was not released because it could not be shown to
+ * come from attested hardware.
+ */
+export const FAIL_CLOSED = {
+  lane_unavailable: "refused",
+  disclosure_unavailable: "refused",
+  disclosure_provider_unavailable: "refused",
+  upstream_not_attested: "withheld",
+  lane_not_confirmed: "withheld",
+};
+// A withheld answer was already generated and billed, so the row is never sent again on its own.
+const NO_RETRY = new Set(["upstream_not_attested", "lane_not_confirmed"]);
+
+/** "refused", "withheld" or null for a row state. */
+export const failClosed = (st) => (st?.status === "failed" ? FAIL_CLOSED[st.error?.type] || null : null);
+export const countFailedClosed = (states) => states.reduce((n, st) => n + (failClosed(st) ? 1 : 0), 0);
+
+const fault = (status, message, type, metadata) => Object.assign(new Error(message), { status, type, ...(metadata ? { metadata } : {}) });
+
+/**
+ * The `send` of a run: one chat completion per row through `call(body, { signal, onResponse })`, which resolves with the
+ * response JSON or rejects with an error that has `status`, `type`, `message`. With a lane, the response headers are
+ * reported to the runner as `served`, and an answer that does not state that lane is refused (type lane_not_confirmed)
+ * rather than kept: an older router would otherwise answer a lane it does not know from any provider.
+ */
+export function makeSender(call, { lane = null } = {}) {
+  return async (body, { signal, served } = {}) => {
+    let head = null;
+    try {
+      const json = await call(body, { signal, ...(lane ? { onResponse: (res) => (head = servedFrom(res?.headers)) } : {}) });
+      if (!json || typeof json !== "object") throw fault(502, "The router returned an empty response.", "empty_response");
+      const bad = laneMismatch(lane, head);
+      if (bad) throw fault(502, bad, "lane_not_confirmed", { lane: head?.lane ?? null, receipt_id: head?.receipt_id ?? null });
+      return json;
+    } finally {
+      if (lane && head) served?.(head);
+    }
+  };
+}
+
 /** First problem with a chat request body, or null. */
 export function validateBody(body) {
   if (!plain(body)) return "The request must be a JSON object.";
@@ -172,7 +278,7 @@ export function validateBody(body) {
  * Validate the default-parameter inputs of the form. Blank fields mean "not set".
  * Returns { defaults: { model, params }, error }.
  */
-export function buildDefaults({ model = "", maxTokens = "", temperature = "", extra = "" } = {}) {
+export function buildDefaults({ model = "", maxTokens = "", temperature = "", extra = "", lane = null } = {}) {
   const params = {};
   let error = null;
   const extraText = String(extra).trim();
@@ -187,6 +293,7 @@ export function buildDefaults({ model = "", maxTokens = "", temperature = "", ex
     else {
       const bad = ["model", "messages", "stream", "prompt"].find((k) => k in v);
       if (bad) error = `Set "${bad}" per row or with the fields above, not in extra parameters.`;
+      else if (lane && asksUnlinkable(v.provider)) error = UNLINKABLE_MESSAGE;
       else Object.assign(params, v);
     }
   }
@@ -202,7 +309,7 @@ export function buildDefaults({ model = "", maxTokens = "", temperature = "", ex
     if (!Number.isFinite(n) || n < 0 || n > 2) error ||= "Temperature must be a number from 0 to 2.";
     else params.temperature = n;
   }
-  return { defaults: { model: String(model || "").trim(), params }, error };
+  return { defaults: { model: String(model || "").trim(), params, ...(lane === ATTESTED_LANE ? { lane } : {}) }, error };
 }
 
 function applyDefaults(r, defaults) {
@@ -216,6 +323,8 @@ function applyDefaults(r, defaults) {
   delete body.stream; // every row is a single non-streaming request
   delete body.stream_options;
   if (body.model === undefined) delete body.model;
+  // The attested lane is asked for on every row, in the request itself; the router never sees a row without it.
+  if (defaults.lane === ATTESTED_LANE) body.provider = { ...(plain(body.provider) ? body.provider : {}), lane: ATTESTED_LANE };
   return body;
 }
 
@@ -269,7 +378,7 @@ export function parseBatch(text, { format = "auto", fileName = "", defaults = {}
     if (!message && !r.body && (typeof r.prompt !== "string" || !r.prompt.trim())) message = typeof r.prompt === "string" ? "The prompt is empty." : '"prompt" must be a string.';
     if (!message) {
       body = applyDefaults(r, defaults);
-      message = validateBody(body);
+      message = validateBody(body) || (defaults.lane && asksUnlinkable(r.body?.provider) ? UNLINKABLE_MESSAGE : null);
     }
     if (message) {
       out.errors.push({ line: r.line, custom_id: r.auto ? null : r.custom_id, message });
@@ -406,6 +515,7 @@ export function backoffMs(attempt, { base = 1000, cap = 30_000, random = Math.ra
 /** aborted | rate_limit | funds (402) | auth (401) | transient (5xx, 408, network) | fatal (other 4xx). */
 export function classifyError(err) {
   if (err?.name === "AbortError") return "aborted";
+  if (NO_RETRY.has(err?.type)) return "fatal";
   const s = Number(err?.status);
   if (s === 429) return "rate_limit";
   if (s === 402) return "funds";
@@ -605,14 +715,15 @@ export class BatchRunner {
     Object.assign(st, { status: "running", attempts: st.attempts + 1, nextAt: 0, startedAt: this.clock.now() });
     this.onChange(i);
     let p;
+    let served = null; // response headers of this attempt, reported by `send` when the run is on a lane
     try {
-      p = Promise.resolve(this.send(this.rows[i].body, { signal: ctl.signal, row: this.rows[i] }));
+      p = Promise.resolve(this.send(this.rows[i].body, { signal: ctl.signal, row: this.rows[i], served: (head) => (served = head) }));
     } catch (e) {
       p = Promise.reject(e);
     }
     p.then(
-      (body) => this.settle(i, (alone) => this.succeed(i, body, alone)),
-      (err) => this.settle(i, (alone) => this.failed(i, err, alone)),
+      (body) => this.settle(i, (alone) => this.succeed(i, body, alone, served)),
+      (err) => this.settle(i, (alone) => this.failed(i, err, alone, served)),
     );
   }
 
@@ -631,9 +742,9 @@ export class BatchRunner {
     while (this.finishes.length && this.finishes[0] < now - 60_000) this.finishes.shift();
   }
 
-  succeed(i, body, alone) {
+  succeed(i, body, alone, served) {
     if (alone) this.solo = false; // a request sent on its own went through: full concurrency again
-    this.finish(i, { status: "done", response: { status_code: 200, body }, error: null });
+    this.finish(i, { status: "done", response: { status_code: 200, body }, error: null, ...(served ? { served } : {}) });
   }
 
   requeue(i) {
@@ -647,9 +758,10 @@ export class BatchRunner {
     this.waiting.add(i);
   }
 
-  failed(i, err, alone) {
+  failed(i, err, alone, served) {
     const st = this.states[i];
     const now = this.clock.now();
+    if (served) st.served = served;
     const kind = this.status === "cancelled" ? "aborted" : classifyError(err);
     const info = errorInfo(err);
     if (kind === "aborted") return this.finish(i, { status: "cancelled", error: { status: 0, type: "cancelled", message: "Cancelled before a response arrived. The router may still bill work a provider already did." } });
@@ -743,7 +855,7 @@ export function summarize(states) {
 }
 
 /** One OpenAI-batch-like output record: { custom_id, response: { status_code, body }, error, usage, cost, receipt_id }. */
-export function resultRecord(row, st) {
+export function resultRecord(row, st, { lane = false } = {}) {
   const done = st.status === "done";
   const body = done ? st.response?.body ?? null : null;
   const usage = usageOf(st);
@@ -754,11 +866,15 @@ export function resultRecord(row, st) {
   if (st.status === "failed") error = { code: st.error?.type || "error", message: st.error?.message || "The request failed." };
   else if (st.status === "cancelled") error = { code: "cancelled", message: st.error?.message || "Cancelled before it ran." };
   else if (!done) error = { code: "not_run", message: "This row has not run yet." };
-  return { custom_id: row.custom_id, response, error, usage, cost: num(usage?.cost), receipt_id: done ? body?.receipt?.id ?? body?.id ?? null : null };
+  const rec = { custom_id: row.custom_id, response, error, usage, cost: num(usage?.cost), receipt_id: done ? body?.receipt?.id ?? body?.id ?? null : null };
+  // A batch on a lane also records what the router said about each row: the receipt id from X-Receipt-Id (a withheld
+  // answer has one too), the lane from X-Anyroute-Lane, and whether the row failed closed.
+  if (lane) Object.assign(rec, { receipt_id: st.served?.receipt_id ?? rec.receipt_id, lane: st.served?.lane ?? null, fail_closed: failClosed(st) });
+  return rec;
 }
 
-export function toJSONL(rows, states) {
-  return rows.map((r, i) => JSON.stringify(resultRecord(r, states[i]))).join("\n") + (rows.length ? "\n" : "");
+export function toJSONL(rows, states, opts) {
+  return rows.map((r, i) => JSON.stringify(resultRecord(r, states[i], opts))).join("\n") + (rows.length ? "\n" : "");
 }
 
 /** A CSV cell: quoted when needed; text that a spreadsheet would run as a formula is prefixed with '. */
@@ -780,15 +896,18 @@ export function responseText(body) {
 
 export const CSV_COLUMNS = ["custom_id", "status", "status_code", "model", "content", "finish_reason", "prompt_tokens", "completion_tokens", "total_tokens", "cost", "receipt_id", "error"];
 
-export function toCSV(rows, states) {
-  const lines = [CSV_COLUMNS.join(",")];
+export const LANE_COLUMNS = ["lane", "fail_closed"];
+
+export function toCSV(rows, states, { lane = false } = {}) {
+  const lines = [(lane ? [...CSV_COLUMNS, ...LANE_COLUMNS] : CSV_COLUMNS).join(",")];
   rows.forEach((row, i) => {
     const st = states[i];
-    const rec = resultRecord(row, st);
+    const rec = resultRecord(row, st, { lane });
     const body = rec.response?.status_code === 200 ? rec.response.body : null;
     const u = rec.usage || {};
-    const status = { done: "succeeded", failed: "failed", cancelled: "cancelled" }[st.status] || "not_run";
+    const status = { done: "succeeded", failed: lane && rec.fail_closed ? "failed_closed" : "failed", cancelled: "cancelled" }[st.status] || "not_run";
     const cells = [row.custom_id, status, rec.response?.status_code ?? null, body?.model || row.body?.model, body ? responseText(body) : null, body?.choices?.[0]?.finish_reason ?? null, num(u.prompt_tokens), num(u.completion_tokens), num(u.total_tokens), rec.cost, rec.receipt_id, rec.error ? rec.error.message : null];
+    if (lane) cells.push(rec.lane, rec.fail_closed);
     lines.push(cells.map(csvCell).join(","));
   });
   return "\ufeff" + lines.join("\r\n") + "\r\n";

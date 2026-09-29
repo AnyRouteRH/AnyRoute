@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { api } from "../lib/api.js";
 import {
-  BatchRunner, MAX_ROWS, backoffMs, buildDefaults, checkFunds, classifyError, csvCell, detectFormat, estimateBatch, estimateRow, normalizeRoutes,
+  ATTESTED_LANE, BatchRunner, LANE_COLUMNS, MAX_ROWS, backoffMs, countFailedClosed, failClosed, laneMismatch, makeSender, modelsOnLane, routesOnLane, rowsOffLane, servedFrom, buildDefaults, checkFunds, classifyError, csvCell, detectFormat, estimateBatch, estimateRow, normalizeRoutes,
   parseBatch, parseCSV, parseRetryAfter, priceIndex, promptChars, restoreStates, resultRecord, retryAfterMs, rowsPerMinute, summarize, toCSV, toJSONL, validateBody,
 } from "../lib/batch.js";
 
@@ -519,4 +519,177 @@ test("CSV output is quoted, spreadsheet-safe and starts with a BOM", async (t) =
   const body = csv.slice(1).split("\r\n");
   assert.equal(body[1], "\"a,b\",succeeded,200,m/x,'=1+1,stop,1,2,3,0.5,gen-1,");
   assert.equal(body[2], 'c,failed,500,m/y,,,,,,,,"Boom, again"');
+});
+
+// ---------------------------------------------------------------- the attested lane
+
+const LLAMA = "meta-llama/llama-3.3-70b-instruct";
+const QWEN = "qwen/qwen3-32b";
+const laneHeaders = (extra = {}) => ({ "x-anyroute-lane": "attested", "x-receipt-id": "gen-attested", ...extra });
+const laneSend = (lane = ATTESTED_LANE) => makeSender((body, opts) => api("/api/v1/chat/completions", { key: "test-key", method: "POST", body, ...opts }), { lane });
+const closedErr = (status, type, headers) => ({ ...err(status, type), headers });
+
+test("the attested lane is asked for on every row, whatever the row says, and 'unlinkable' is refused up front", () => {
+  const { defaults, error } = buildDefaults({ model: LLAMA, lane: ATTESTED_LANE, extra: '{"provider":{"only":["alpha"],"lane":"public"}}' });
+  assert.equal(error, null);
+  assert.equal(defaults.lane, ATTESTED_LANE);
+  const text = [
+    JSON.stringify({ custom_id: "simple", prompt: "hello" }),
+    JSON.stringify({ custom_id: "own", body: { model: QWEN, messages: [{ role: "user", content: "hi" }], provider: { lane: "public", zdr: true } } }),
+    JSON.stringify({ custom_id: "bare", body: { messages: [{ role: "user", content: "hi" }] } }),
+    JSON.stringify({ custom_id: "unlinkable", body: { model: QWEN, messages: [{ role: "user", content: "hi" }], provider: { lane: "unlinkable" } } }),
+  ].join("\n");
+  const out = parseBatch(text, { defaults });
+  assert.deepEqual(out.rows.map((r) => r.custom_id), ["simple", "own", "bare"]);
+  assert.deepEqual(out.rows.map((r) => r.body.provider.lane), ["attested", "attested", "attested"]);
+  assert.deepEqual(out.rows[0].body.provider, { only: ["alpha"], lane: "attested" }, "default provider fields stay, the lane is raised");
+  assert.deepEqual(out.rows[1].body.provider, { lane: "attested", zdr: true });
+  assert.notEqual(out.rows[0].body.provider, out.rows[2].body.provider, "rows never share one provider object");
+  assert.equal(out.invalid, 1);
+  assert.match(out.errors[0].message, /"unlinkable"/);
+  assert.match(buildDefaults({ lane: ATTESTED_LANE, extra: '{"provider":{"lane":"unlinkable"}}' }).error, /"unlinkable"/);
+  // Without the option nothing is added and nothing is refused.
+  const plain = parseBatch(text, { defaults: buildDefaults({ model: LLAMA }).defaults });
+  assert.equal(plain.invalid, 0);
+  assert.equal(plain.rows[0].body.provider, undefined);
+  assert.equal(plain.rows[1].body.provider.lane, "public");
+  assert.equal(buildDefaults({ model: LLAMA, lane: "public" }).defaults.lane, undefined);
+});
+
+test("headers name the lane and the receipt; a lane that is not the one asked for is not accepted", () => {
+  assert.deepEqual(servedFrom(new Headers({ "x-anyroute-lane": "attested", "x-receipt-id": "gen-1", "x-anyroute-policy-hash": "sha256:" + "a".repeat(64), "x-anyroute-disclosure": "attested" })), { lane: "attested", receipt_id: "gen-1", policy_hash: "sha256:" + "a".repeat(64), disclosure: "attested" });
+  assert.deepEqual(servedFrom(new Headers({ "inference-id": "gen-2" })), { lane: null, receipt_id: "gen-2", policy_hash: null, disclosure: null });
+  assert.deepEqual(servedFrom(null), { lane: null, receipt_id: null, policy_hash: null, disclosure: null });
+  assert.equal(laneMismatch(null, { lane: "public" }), null, "a batch without a lane accepts what it gets");
+  assert.equal(laneMismatch("attested", { lane: "attested" }), null);
+  assert.equal(laneMismatch("attested", { lane: "ATTESTED" }), null);
+  assert.match(laneMismatch("attested", { lane: "public" }), /"public" lane, not "attested"\. The answer was discarded/);
+  assert.match(laneMismatch("attested", { lane: null }), /did not state its lane/);
+  assert.match(laneMismatch("attested", null), /could not be confirmed/);
+});
+
+test("on the attested lane each row keeps its lane and receipt id, and a refused or withheld row fails closed without being sent again", async (t) => {
+  const script = (id) =>
+    ({
+      r0: { ...ok("r0", 1), headers: laneHeaders({ "x-receipt-id": "rcpt-0" }) },
+      r1: closedErr(409, "lane_unavailable", {}),
+      r2: closedErr(502, "upstream_not_attested", laneHeaders({ "x-receipt-id": "rcpt-2" })),
+      r3: { ...ok("r3", 1), headers: laneHeaders({ "x-anyroute-lane": "public", "x-receipt-id": "rcpt-3" }) },
+      r4: ok("r4", 1),
+      r5: closedErr(503, "disclosure_provider_unavailable", { "retry-after": "30" }),
+      r6: closedErr(500, "internal_error", {}),
+    })[id] || null;
+  const { clock, router, runner } = await harness(t, { rows: 7, concurrency: 7, script, send: laneSend() });
+  runner.start();
+  await clock.advance(20_000);
+  await runner.settled();
+  assert.equal(runner.status, "completed");
+  const [r0, r1, r2, r3, r4, r5, r6] = runner.states;
+  assert.deepEqual([r0.status, r0.served.lane, r0.served.receipt_id], ["done", "attested", "rcpt-0"]);
+  assert.deepEqual([r1.status, failClosed(r1), r1.error.type, router.of("r1").length], ["failed", "refused", "lane_unavailable", 1]);
+  assert.deepEqual([r2.status, failClosed(r2), r2.served.receipt_id, r2.served.lane, router.of("r2").length], ["failed", "withheld", "rcpt-2", "attested", 1]);
+  assert.deepEqual([r3.status, failClosed(r3), r3.error.type, r3.response, router.of("r3").length], ["failed", "withheld", "lane_not_confirmed", null, 1]);
+  assert.equal(r3.served.receipt_id, "rcpt-3", "the receipt of a discarded answer is still recorded");
+  assert.deepEqual(r3.error.metadata, { lane: "public", receipt_id: "rcpt-3" });
+  assert.deepEqual([r4.status, failClosed(r4), r4.error.type, r4.response, router.of("r4").length], ["failed", "withheld", "lane_not_confirmed", null, 1], "no lane header is not a confirmation");
+  assert.deepEqual([r5.status, failClosed(r5), router.of("r5").length], ["failed", "refused", 3], "nothing was charged for a temporary refusal, so it is retried, then reported");
+  assert.deepEqual([r6.status, failClosed(r6)], ["failed", null], "an ordinary failure is not failed closed");
+  assert.equal(countFailedClosed(runner.states), 5);
+  assert.equal(countFailedClosed([{ status: "done" }, { status: "cancelled", error: { type: "lane_unavailable" } }, {}]), 0);
+});
+
+test("every row of an attested batch carries provider.lane on the wire", async (t) => {
+  const clock = fakeClock();
+  const router = fakeRouter(clock, () => ({ ...ok("x", 1), headers: laneHeaders() }));
+  t.after(router.install());
+  const { defaults } = buildDefaults({ model: LLAMA, lane: ATTESTED_LANE });
+  const { rows } = parseBatch('{"prompt":"r0"}\n{"prompt":"r1","model":"' + QWEN + '"}\n{"custom_id":"b","body":{"model":"' + LLAMA + '","messages":[{"role":"user","content":"r2"}],"provider":{"lane":"public"}}}', { defaults });
+  const runner = new BatchRunner({ rows, send: laneSend(), concurrency: 3, clock, random: () => 0.5 });
+  runner.start();
+  await clock.advance(1000);
+  assert.deepEqual(router.calls.map((c) => [c.id, c.body.provider]), [["r0", { lane: "attested" }], ["r1", { lane: "attested" }], ["r2", { lane: "attested" }]]);
+  assert.deepEqual(runner.states.map((s) => s.status), ["done", "done", "done"]);
+});
+
+test("a batch without a lane records nothing extra and accepts any answer", async (t) => {
+  const { clock, runner } = await harness(t, { rows: 2, script: () => ({ ...ok("x", 1), headers: { "x-anyroute-lane": "public", "x-receipt-id": "gen-1" } }), send: laneSend(null) });
+  runner.start();
+  await clock.advance(1000);
+  assert.deepEqual(runner.states.map((s) => s.status), ["done", "done"]);
+  assert.equal(runner.states.some((s) => "served" in s), false);
+});
+
+test("a network failure on the attested lane is a plain failure, not failed closed", async (t) => {
+  const { clock, runner } = await harness(t, { rows: 1, script: () => ({ network: true }), send: laneSend() });
+  runner.start();
+  await clock.advance(30_000);
+  assert.equal(runner.states[0].status, "failed");
+  assert.equal(failClosed(runner.states[0]), null);
+  assert.equal(runner.states[0].served, undefined);
+});
+
+test("lane results: JSONL and CSV add lane and fail_closed, and the receipt id comes from the header", async (t) => {
+  const script = (id) => (id === "r1" ? closedErr(409, "lane_unavailable", {}) : id === "r2" ? closedErr(502, "upstream_not_attested", laneHeaders({ "x-receipt-id": "rcpt-2" })) : { ...ok(id, 1), headers: laneHeaders({ "x-receipt-id": "rcpt-" + id }) });
+  const { clock, runner } = await harness(t, { rows: 3, concurrency: 3, script, send: laneSend() });
+  runner.start();
+  await clock.advance(1000);
+  const lane = { lane: true };
+  const [done, refused, withheld] = runner.rows.map((row, i) => resultRecord(row, runner.states[i], lane));
+  assert.deepEqual(Object.keys(done), ["custom_id", "response", "error", "usage", "cost", "receipt_id", "lane", "fail_closed"]);
+  assert.deepEqual([done.lane, done.receipt_id, done.fail_closed], ["attested", "rcpt-r0", null]);
+  assert.deepEqual([refused.lane, refused.receipt_id, refused.fail_closed, refused.error.code], [null, null, "refused", "lane_unavailable"]);
+  assert.deepEqual([withheld.lane, withheld.receipt_id, withheld.fail_closed], ["attested", "rcpt-2", "withheld"]);
+  assert.deepEqual(Object.keys(resultRecord(runner.rows[0], runner.states[0])), ["custom_id", "response", "error", "usage", "cost", "receipt_id"], "results without the option are unchanged");
+  const lines = toJSONL(runner.rows, runner.states, lane).trimEnd().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(lines.map((l) => l.fail_closed), [null, "refused", "withheld"]);
+  assert.equal(toJSONL(runner.rows, runner.states).includes("fail_closed"), false);
+  const csv = toCSV(runner.rows, runner.states, lane).slice(1).split("\r\n");
+  assert.ok(csv[0].endsWith(",error,lane,fail_closed"));
+  assert.deepEqual(LANE_COLUMNS, ["lane", "fail_closed"]);
+  assert.match(csv[1], /^r0,succeeded,200,.*,rcpt-r0,,attested,$/);
+  assert.match(csv[2], /^r1,failed_closed,409,.*,lane_unavailable \(409\),,refused$/);
+  assert.match(csv[3], /^r2,failed_closed,502,.*,rcpt-2,.*,attested,withheld$/);
+  assert.equal(toCSV(runner.rows, runner.states).slice(1).split("\r\n")[2].startsWith("r1,failed,409"), true, "without the option a refused row is just failed");
+});
+
+test("saved lane state survives a reload, and a retry of a failed closed row starts clean", async (t) => {
+  const { clock, runner } = await harness(t, { rows: 2, concurrency: 2, script: (id) => (id === "r1" ? closedErr(409, "lane_unavailable", {}) : { ...ok(id, 1), headers: laneHeaders() }), send: laneSend() });
+  runner.start();
+  await clock.advance(1000);
+  const restored = restoreStates(JSON.parse(JSON.stringify(runner.states)));
+  assert.equal(restored[0].served.lane, "attested");
+  assert.equal(failClosed(restored[1]), "refused");
+  assert.equal(runner.retry(["failed"]), 1);
+  assert.equal(runner.states[1].served, undefined);
+  assert.equal(failClosed(runner.states[1]), null);
+});
+
+test("the pickers of an attested batch list only what has an attested provider", () => {
+  const ids = new Set([LLAMA]);
+  const models = [{ id: LLAMA }, { id: QWEN }];
+  assert.deepEqual(modelsOnLane(models, ids), [{ id: LLAMA }]);
+  assert.deepEqual(modelsOnLane(undefined, ids), []);
+  const routes = [{ slug: "private", models: [QWEN, LLAMA + ":floor"] }, { slug: "open", models: [QWEN] }, { slug: "empty", models: [] }];
+  assert.deepEqual(routesOnLane(routes, ids).map((r) => r.slug), ["private"], "a route can run when any of its models can");
+  const rows = [
+    { body: { model: LLAMA } },
+    { body: { model: QWEN } },
+    { body: { model: QWEN + ":nitro" } },
+    { body: { model: QWEN, models: [QWEN, LLAMA] } },
+    { body: { model: "@route/private" } },
+    { body: { model: "@route/open" } },
+    { body: { model: "@route/not-loaded" } },
+    { body: {} },
+  ];
+  assert.deepEqual(rowsOffLane(rows, ids, routes), { count: 3, models: [QWEN, QWEN + ":nitro", "@route/open"] });
+  assert.deepEqual(rowsOffLane(rows, ids, routes, 1), { count: 3, models: [QWEN] });
+  assert.deepEqual(rowsOffLane([], ids, routes), { count: 0, models: [] });
+});
+
+test("answers the router withheld or this page could not confirm are never retried: the work was already billed", () => {
+  assert.equal(classifyError({ status: 502, type: "upstream_not_attested" }), "fatal");
+  assert.equal(classifyError({ status: 502, type: "lane_not_confirmed" }), "fatal");
+  assert.equal(classifyError({ status: 502, type: "all_providers_failed" }), "transient");
+  assert.equal(classifyError({ status: 409, type: "lane_unavailable" }), "fatal");
+  assert.equal(classifyError({ status: 503, type: "disclosure_provider_unavailable" }), "transient");
 });
