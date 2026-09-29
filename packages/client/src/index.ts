@@ -22,5 +22,7 @@ export type { CertificateInfo } from "./x509.js";
 export { HPKE_MEDIA_TYPE, sealedPost } from "./hpke.js";
 export type { HpkeExchange, HpkeHook, SealedPostOptions } from "./hpke.js";
 export { routingHeaders, withRouting } from "./options.js";
+export { TLOG_KINDS, TransparencyError, TransparencyLog, SplitViewDetected, bindingsDigest, blindIssuerKeyDigest, ohttpKeyConfigDigest, receiptKeyDigest, verifyConsistency as verifyTlogConsistency, verifyInclusion as verifyTlogInclusion } from "./tlog.js";
+export type { CheckpointStore, LoggedKey, TlogKind, TransparencyOptions } from "./tlog.js";
 export type { DisclosureMax, Lane, RoutingOptions } from "./options.js";
 export type { AnchorProof, Check, CheckStatus, Fetch, JwkKey, KeySet, ReceiptEnvelope } from "./types.js";
