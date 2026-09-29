@@ -3717,6 +3717,9 @@
           },
           {
             "$ref": "#/components/parameters/Lane"
+          },
+          {
+            "$ref": "#/components/parameters/LaneDowngrade"
           }
         ],
         "requestBody": {
