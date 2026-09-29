@@ -74,7 +74,9 @@ export async function api(path, { key, method = "GET", body, signal, headers = {
   }
   if (!res.ok) {
     const e = json?.error;
-    throw new ApiError(res.status, e?.message || `Request failed (${res.status}).`, e?.type || "error", e?.metadata);
+    const err = new ApiError(res.status, e?.message || `Request failed (${res.status}).`, e?.type || "error", e?.metadata);
+    err.retryAfter = res.headers.get("retry-after"); // seconds or an HTTP date; read by the batch and eval runners
+    throw err;
   }
   return json;
 }

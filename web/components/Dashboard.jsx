@@ -1284,6 +1284,11 @@ export default function Dashboard() {
           {notice}
         </div>
       )}
+      {error && ["Saved Routes", "Eval Lab", "Batch Studio", "Agent Sessions", "Spend Watch"].includes(tab) && (
+        <div className="error" role="alert">
+          {error}
+        </div>
+      )}
       {!loaded ? (
         <div className="empty loading-state" role="status">
           <span className="loading-bar" aria-hidden="true" />
