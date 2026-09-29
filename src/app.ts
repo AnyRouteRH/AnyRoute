@@ -29,6 +29,7 @@ import { agentSessionsRoutes } from "./api/agent-sessions.ts";
 import { spendRoutes } from "./api/spend.ts";
 import { holdersRoutes } from "./api/holders.ts";
 import { disclosureRoutes } from "./api/disclosure.ts";
+import { ipxRoutes } from "./api/ipx.ts";
 import { publicRoutes } from "./api/public.ts";
 import { embeddingsRoutes } from "./api/embeddings.ts";
 import { adminRoutes } from "./admin/trpc.ts";
@@ -100,6 +101,7 @@ export async function createApp(opts: AppOptions = {}) {
   spendRoutes(app, ctx);
   holdersRoutes(app, ctx);
   disclosureRoutes(app, ctx);
+  ipxRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   paymasterRoutes(app, ctx);

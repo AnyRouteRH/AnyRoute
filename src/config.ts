@@ -193,6 +193,14 @@ const schema = z.object({
   ANYR_TOKEN_DEPLOY_BLOCK: z.coerce.bigint().optional(), // first block the holder snapshot scans for Transfer logs
   HOLDER_CREDITS_EXCLUDE: opt, // comma list of addresses never credited (pool, treasury, escrow, burn...)
   HOLDER_TIERS: opt, // JSON [{name,min,rpm_multiplier,discount_bps}]; tiers are off unless ANYR_TOKEN_ADDRESS is set too
+
+  // ---- IPX, the inference price index: volume-weighted USDG price per 1M tokens per model class,
+  // computed from real generations (GET /api/v1/ipx/:class). Off unless IPX_ENABLED.
+  IPX_ENABLED: bool.default(false),
+  IPX_CLASSES: opt, // JSON {"IPX-OPEN-70B":["author/model-id", ...]}; default: IPX-OPEN-70B = meta-llama/llama-3.3-70b-instruct
+  IPX_THIN_USDG: z.string().regex(/^\d+(\.\d{1,6})?$/, "must be a USDG amount like \"50000\"").default("50000"), // trailing-24h volume below which a class is THIN
+  IPX_MAX_ACCOUNT_SHARE_BPS: int(10_000), // cap on one account's share of a window's volume; 10000 = no cap
+  IPX_ATTESTED_ONLY: bool.default(true), // count only fills served by providers with a stored attestation
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -441,6 +449,45 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     telegram: { botToken: e.TELEGRAM_BOT_TOKEN },
     backup: { required: e.BACKUP_REQUIRED, maxAgeHours: e.BACKUP_MAX_AGE_HOURS },
     holders,
+    ipx: ipxSettings(e),
+  };
+}
+
+// ---- IPX ---------------------------------------------------------------------------------------
+export type IpxClass = { id: string; models: string[] };
+const IPX_CLASS_ID = /^IPX-[A-Z0-9]+(?:-[A-Z0-9]+)*$/;
+const IPX_DEFAULT_CLASSES: Record<string, string[]> = { "IPX-OPEN-70B": ["meta-llama/llama-3.3-70b-instruct"] };
+
+function ipxSettings(e: Env) {
+  let raw: unknown = IPX_DEFAULT_CLASSES;
+  if (e.IPX_CLASSES) {
+    try {
+      raw = JSON.parse(e.IPX_CLASSES);
+    } catch {
+      throw new Error("IPX_CLASSES must be a JSON object of class id to model ids.");
+    }
+  }
+  const parsed = z.record(z.string(), z.array(z.string().trim().min(1).max(200)).min(1).max(500)).refine((o) => Object.keys(o).length > 0 && Object.keys(o).length <= 20, "1 to 20 classes").safeParse(raw);
+  if (!parsed.success) throw new Error(`IPX_CLASSES must be a JSON object of class id to model ids: ${parsed.error.issues.map((i) => i.message).join("; ")}`);
+  const classes: IpxClass[] = Object.entries(parsed.data).map(([id, models]) => ({ id: id.toUpperCase(), models: [...new Set(models.map((m) => m.toLowerCase()))] }));
+  const bad = classes.find((c) => !IPX_CLASS_ID.test(c.id) || c.id.length > 32);
+  if (bad) throw new Error(`IPX_CLASSES: "${bad.id}" is not a valid class id (IPX-<UPPERCASE-OR-DIGITS>, at most 32 characters).`);
+  if (new Set(classes.map((c) => c.id)).size !== classes.length) throw new Error("IPX_CLASSES: class ids must be unique.");
+  const seen = new Map<string, string>();
+  for (const c of classes)
+    for (const m of c.models) {
+      if (seen.has(m)) throw new Error(`IPX_CLASSES: model ${m} is in both ${seen.get(m)} and ${c.id}.`);
+      seen.set(m, c.id);
+    }
+  if (e.IPX_MAX_ACCOUNT_SHARE_BPS < 1 || e.IPX_MAX_ACCOUNT_SHARE_BPS > 10_000) throw new Error("IPX_MAX_ACCOUNT_SHARE_BPS must be between 1 and 10000.");
+  const [whole, frac = ""] = e.IPX_THIN_USDG.split(".");
+  return {
+    enabled: e.IPX_ENABLED,
+    classes,
+    /** Trailing-24h volume (USDG base units, 6 decimals) below which a class is THIN. */
+    thinUsdg: BigInt(whole) * 1_000_000n + BigInt(frac.padEnd(6, "0")),
+    maxAccountShareBps: e.IPX_MAX_ACCOUNT_SHARE_BPS,
+    attestedOnly: e.IPX_ATTESTED_ONLY,
   };
 }
 
