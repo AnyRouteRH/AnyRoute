@@ -3,7 +3,7 @@ import type { Hex } from "viem";
 import type { Ctx } from "../context.ts";
 import type { AnyrEscrow } from "../config.ts";
 import type { EscrowFinality, EscrowTransfer } from "../chain/service.ts";
-import { v4Twap } from "../chain/twap.ts";
+import { TwapError, v4Twap } from "../chain/twap.ts";
 import type { Db, Tx } from "../db/client.ts";
 import { chainCursor, escrowDeposits, kv } from "../db/schema.ts";
 import { balanceOf, ensureAccount, post } from "../ledger/ledger.ts";
@@ -68,8 +68,9 @@ export function acceptedTokens(ctx: Ctx): AcceptedToken[] {
 }
 const acceptedToken = (ctx: Ctx, address: string) => acceptedTokens(ctx).find((t) => t.address.toLowerCase() === address.toLowerCase());
 
-const priceCache = new Map<string, { at: number; price: EscrowPrice | null }>();
-const inflight = new Map<string, Promise<EscrowPrice | null>>();
+type PriceEntry = { at: number; price: EscrowPrice | null; quote?: AnyrQuote };
+const priceCache = new Map<string, PriceEntry>();
+const inflight = new Map<string, Promise<PriceEntry>>();
 export const clearEscrowPriceCache = () => {
   priceCache.clear();
   inflight.clear();
@@ -100,42 +101,140 @@ const twapState: { blockRate?: number } = {};
 /** The pool TWAP used to price $ANYR (chain/twap.ts); replaceable in tests. */
 export const anyrPricing = { twap: v4Twap };
 
+/** Why $ANYR cannot be priced right now, as a stable code (see `explainAnyrFailure` for the words). */
+export type AnyrPriceFailure = "price_swinging" | "pool_thin" | "pool_missing" | "history_short" | "history_inconsistent" | "no_price" | "source_unreachable";
+export type AnyrQuote =
+  | { available: true; priceUsd: number; spotUsd: number; averageUsd: number; windowSeconds: number; swaps: number; block: number; at: number }
+  | { available: false; code: AnyrPriceFailure; message: string; deviation?: number; limit?: number; direction?: "above" | "below"; at: number };
+
+const failureCode = (err: unknown): { code: AnyrPriceFailure; error?: TwapError } => {
+  if (err instanceof TwapError) {
+    const code: Record<TwapError["code"], AnyrPriceFailure> = {
+      spot_deviates: "price_swinging",
+      thin_liquidity: "pool_thin",
+      pool_uninitialized: "pool_missing",
+      history_short: "history_short",
+      history_mismatch: "history_inconsistent",
+      malformed_history: "history_inconsistent",
+      unusable_price: "no_price",
+      no_head: "source_unreachable",
+    };
+    return { code: code[err.code], error: err };
+  }
+  // Anything else (a transport or node error, or a replaced pricing function) is matched by its text; the text itself is never published.
+  const m = err instanceof Error ? err.message : "";
+  if (/too far from the average/.test(m)) return { code: "price_swinging" };
+  if (/too little liquidity/.test(m)) return { code: "pool_thin" };
+  if (/not initialized/.test(m)) return { code: "pool_missing" };
+  if (/history too short/.test(m)) return { code: "history_short" };
+  if (/doesn't match the pool|malformed swap/.test(m)) return { code: "history_inconsistent" };
+  if (/no usable price/.test(m)) return { code: "no_price" };
+  return { code: "source_unreachable" };
+};
+
+/** The reason $ANYR has no price, in plain words. Only numbers and fixed text: nothing from an exception is published. */
+export function explainAnyrFailure(code: AnyrPriceFailure, a: { symbol: string }, opts: { twapMinutes: number; deviation?: number; limit?: number; direction?: "above" | "below" }): string {
+  const pct = (f: number) => `${f >= 0.1 ? Math.round(f * 100) : Math.round(f * 1000) / 10}%`;
+  switch (code) {
+    case "price_swinging": {
+      const gap = opts.deviation == null ? "too far from" : `${pct(opts.deviation)} ${opts.direction ?? "away from"}`;
+      const limit = opts.limit == null ? "" : `; deposits are credited only while the two are within ${pct(opts.limit)}`;
+      return `The ${a.symbol} pool price is ${gap} its ${opts.twapMinutes}-minute average${limit}. Deposits wait and are credited automatically once the price settles.`;
+    }
+    case "pool_thin":
+      return `The ${a.symbol} pool holds too little liquidity to price a deposit safely right now. Deposits wait and are credited automatically once it recovers.`;
+    case "pool_missing":
+      return `The pool configured to price ${a.symbol} is not initialized on-chain. Deposits wait until an operator fixes the price source.`;
+    case "history_short":
+      return `The chain does not yet have ${opts.twapMinutes} minutes of history to average over. Deposits wait.`;
+    case "history_inconsistent":
+      return `The ${a.symbol} pool's swap history does not match its current state, so no trustworthy average exists. Deposits wait.`;
+    case "no_price":
+      return `No usable ${a.symbol} price could be computed. Deposits wait.`;
+    default:
+      return `The ${a.symbol} price source could not be read right now. Deposits wait and are credited automatically once it can.`;
+  }
+}
+
 /**
  * USD per whole ANYR (18 decimals): the lower of spot and the BUYBACK_TWAP_MINUTES average through
  * ANYR_POOL_LEGS, in USDG. Null when a pool is unreadable or too thin, or spot is more than
- * ANYR_ESCROW_MAX_DEVIATION (default BUYBACK_MAX_DEVIATION) from the average.
+ * ANYR_ESCROW_MAX_DEVIATION (default BUYBACK_MAX_DEVIATION) from the average. `anyrEscrowQuote` also says why.
  */
 export async function anyrEscrowPrice(ctx: Ctx, a: AnyrEscrow): Promise<EscrowPrice | null> {
+  return (await anyrEscrowQuote(ctx, a)).price;
+}
+
+/** The same reading with its outcome: the price and the TWAP behind it, or the reason there is none. */
+export async function anyrEscrowQuote(ctx: Ctx, a: AnyrEscrow): Promise<{ price: EscrowPrice | null; quote: AnyrQuote }> {
   const key = `anyr:${a.address}`;
   const hit = priceCache.get(key);
-  if (hit && Date.now() - hit.at < ANYR_PRICE_TTL_MS) return hit.price;
+  if (hit?.quote && Date.now() - hit.at < ANYR_PRICE_TTL_MS) return { price: hit.price, quote: hit.quote };
   let pending = inflight.get(key);
   if (!pending) {
     pending = (async () => {
+      const at = Date.now();
+      const twapMinutes = ctx.cfg.buyback.twapMinutes;
       let price: EscrowPrice | null = null;
+      let quote: AnyrQuote;
       try {
         const r = await anyrPricing.twap(ctx.chain.client, ctx.cfg.chain.poolManager, a.legs, {
-          windowSeconds: ctx.cfg.buyback.twapMinutes * 60,
+          windowSeconds: twapMinutes * 60,
           maxDeviation: a.maxDeviation,
           decimalsAdjust: 10 ** (a.decimals - USDG_DECIMALS),
           state: twapState,
         });
         const usd = r.conservative;
         const price18 = Number.isFinite(usd) && usd > 0 ? BigInt(Math.floor(usd * 1e18)) : 0n;
-        if (price18 > 0n) price = { price18, updatedAt: Math.floor(Date.now() / 1000) };
-        else log.warn("no trustworthy ANYR price", { error: "non-positive price" });
+        if (price18 > 0n) {
+          price = { price18, updatedAt: Math.floor(at / 1000) };
+          quote = { available: true, priceUsd: usd, spotUsd: r.spot, averageUsd: r.average, windowSeconds: r.windowSeconds, swaps: r.swaps, block: r.block, at };
+        } else {
+          log.warn("no trustworthy ANYR price", { error: "non-positive price" });
+          quote = { available: false, code: "no_price", message: explainAnyrFailure("no_price", a, { twapMinutes }), at };
+        }
       } catch (err) {
-        log.warn("no trustworthy ANYR price", { error: (err as Error).message.slice(0, 200) });
+        const { code, error } = failureCode(err);
+        // Only a deviation on the ANYR leg itself is described as the ANYR price; a later leg is the route to dollars.
+        const own = error?.detail.leg === undefined || error.detail.leg === 0;
+        const detail = code === "price_swinging" && error ? { deviation: error.detail.deviation, limit: error.detail.limit, direction: own ? error.detail.direction : undefined } : {};
+        quote = { available: false, code, message: explainAnyrFailure(code, a, { twapMinutes, ...detail }), ...detail, at };
+        log.warn("no trustworthy ANYR price", { code, error: (err as Error).message.slice(0, 200) });
       }
-      priceCache.set(key, { at: Date.now(), price });
-      return price;
+      const entry: PriceEntry = { at, price, quote };
+      priceCache.set(key, entry);
+      return entry;
     })().finally(() => inflight.delete(key));
     inflight.set(key, pending);
   }
-  return pending;
+  const { price, quote } = await pending;
+  return { price, quote: quote! };
+}
+
+/**
+ * The last $ANYR reading without waiting for one (null before the first). A stale or missing reading starts a
+ * refresh in the background, so status and readiness checks stay fast while the TWAP reads several blocks.
+ */
+export function peekAnyrQuote(ctx: Ctx): AnyrQuote | null {
+  const a = ctx.cfg.anyrEscrow;
+  if (!a || !escrowEnabled(ctx)) return null;
+  const hit = priceCache.get(`anyr:${a.address}`);
+  if (!hit?.quote || Date.now() - hit.at >= ANYR_PRICE_TTL_MS) void anyrEscrowQuote(ctx, a).catch(() => undefined);
+  return hit?.quote ?? null;
 }
 
 const tokenPrice = (ctx: Ctx, t: AcceptedToken) => (t.kind === "anyr" ? anyrEscrowPrice(ctx, t.anyr) : escrowPrice(ctx, t.feed));
+
+export type PriceReason = { code: AnyrPriceFailure | "feed_stale"; message: string };
+/** A token's price and, when there is none, why (so a deposit that waits can say what it waits for). */
+async function tokenPricing(ctx: Ctx, t: AcceptedToken): Promise<{ price: EscrowPrice | null; reason: PriceReason | null }> {
+  if (t.kind === "anyr") {
+    const { price, quote } = await anyrEscrowQuote(ctx, t.anyr);
+    return { price, reason: quote.available ? null : { code: quote.code, message: quote.message } };
+  }
+  const price = await escrowPrice(ctx, t.feed);
+  return { price, reason: price ? null : { code: "feed_stale", message: `The ${t.symbol} price feed is unreadable or older than ${Math.round(ctx.cfg.escrow.maxPriceAgeS / 3600)} hours (equity feeds pause while markets are closed). Deposits wait and are credited when it updates.` } };
+}
 
 /** Credits (pico-USD) for `raw` token units at `price18`, after the haircut (the stock one by default), rounded down. */
 export const escrowCredit = (ctx: Ctx, raw: bigint, decimals: number, price18: bigint, haircutBps = ctx.cfg.escrow.haircutBps): Pico =>
@@ -536,7 +635,7 @@ export async function escrowInfo(ctx: Ctx) {
     cachedFinality(ctx),
     Promise.all(
       acceptedTokens(ctx).map(async (t) => {
-        const price = await tokenPrice(ctx, t);
+        const { price, reason } = await tokenPricing(ctx, t);
         const one = 10n ** BigInt(t.decimals);
         return {
           symbol: t.symbol,
@@ -547,6 +646,8 @@ export async function escrowInfo(ctx: Ctx) {
           price_usd: price ? Number(rawToPico(one, t.decimals, price.price18)) / 1e12 : null,
           credit_usd_per_token: price ? Number(escrowCredit(ctx, one, t.decimals, price.price18, t.haircutBps)) / 1e12 : null,
           price_updated_at: price ? new Date(price.updatedAt * 1000).toISOString() : null,
+          // Why there is no price right now (null while there is one): deposits of this token wait until there is.
+          price_reason: reason,
           haircut_bps: t.haircutBps,
           // The most one deposit is credited (null: no limit); the rest is held for operator review.
           max_usd_per_deposit: t.kind === "anyr" ? t.anyr.maxUsdPerDeposit : null,
@@ -564,16 +665,37 @@ export async function escrowInfo(ctx: Ctx) {
     finality: ctx.cfg.escrow.finality,
     confirmations: ctx.cfg.chain.confirmations,
     expected_credit_delay_s: fin ? Math.max(0, fin.headTime - fin.finalTime) : null,
+    // The chain head and the highest block whose transfers are credited now (block numbers, as strings): a
+    // deposit in a block above `credit_block` is still waiting for finality.
+    head_block: fin ? fin.head.toString() : null,
+    credit_block: fin ? fin.creditable.toString() : null,
     haircut_bps: ctx.cfg.escrow.haircutBps, // Stock Tokens; each token lists its own haircut_bps
     anyr: anyrSummary(ctx),
     tokens,
   };
 }
 
+/**
+ * Where a deposit is on its way to a credit, in one word:
+ * confirming (seen, waiting for its block to be final), awaiting_price (final, but the token has no trustworthy
+ * price right now), crediting (final and priced; the next watcher poll credits it), then credited, orphaned or reversed.
+ */
+export type EscrowStage = "confirming" | "awaiting_price" | "crediting" | "credited" | "orphaned" | "reversed";
+export const escrowStage = (status: EscrowStatus, awaitingPrice: boolean): EscrowStage =>
+  status === "pending_finality" ? "confirming" : status === "pending" ? (awaitingPrice ? "awaiting_price" : "crediting") : status;
+
 export async function escrowDepositsFor(ctx: Ctx, accountId: string, limit = 50) {
   const rows = await ctx.db.select().from(escrowDeposits).where(eq(escrowDeposits.fromAddress, accountId.startsWith("w_") ? `0x${accountId.slice(2)}` : "")).orderBy(desc(escrowDeposits.blockNumber), desc(escrowDeposits.logIndex)).limit(limit);
+  // Deposits that are final but unpriced say why, from the same cached reading the public price endpoint serves.
+  const reasons = new Map<string, PriceReason | null>();
+  for (const token of new Set(rows.filter((d) => d.status === "pending").map((d) => d.token))) {
+    const tok = acceptedToken(ctx, token);
+    reasons.set(token, tok ? (await tokenPricing(ctx, tok)).reason : { code: "feed_stale", message: "This token is no longer accepted; the deposit needs operator review." });
+  }
   return rows.map((d) => {
     const tok = acceptedToken(ctx, d.token);
+    const status = d.status as EscrowStatus;
+    const reason = status === "pending" ? (reasons.get(d.token) ?? null) : null;
     return {
       id: d.id,
       tx_hash: d.txHash,
@@ -581,10 +703,13 @@ export async function escrowDepositsFor(ctx: Ctx, accountId: string, limit = 50)
       symbol: d.symbol,
       amount: tok ? formatRaw(BigInt(d.rawAmount), tok.decimals) : null,
       raw_amount: d.rawAmount,
-      status: d.status as EscrowStatus,
+      status,
+      stage: escrowStage(status, !!reason),
       credited_usd: d.credited != null ? Number(d.credited) / 1e12 : null,
       price_usd: d.price18 ? Number(BigInt(d.price18) / 10n ** 12n) / 1e6 : null,
-      note: d.error,
+      // While a final deposit waits for a price, the live reason replaces the stored "waiting" line.
+      note: reason ? reason.message : d.error,
+      price_reason: reason,
       at: (d.reversedAt ?? d.creditedAt ?? d.createdAt).toISOString(),
     };
   });
@@ -595,4 +720,56 @@ export function anyrSummary(ctx: Ctx) {
   const a = ctx.cfg.anyrEscrow;
   if (!a || !escrowEnabled(ctx)) return null;
   return { symbol: a.symbol, address: a.address, decimals: a.decimals, haircut_bps: a.haircutBps, max_usd_per_deposit: a.maxUsdPerDeposit, price_source: "twap" as const, twap_minutes: ctx.cfg.buyback.twapMinutes };
+}
+
+/**
+ * The rate $ANYR deposits are credited at right now: the TWAP the router uses (the lower of spot and the average),
+ * its window and source, or why there is none. Public; served from the same 30-second reading as /api/v1/escrow.
+ */
+export async function anyrPriceInfo(ctx: Ctx) {
+  const a = ctx.cfg.anyrEscrow;
+  if (!a || !escrowEnabled(ctx)) return { enabled: false as const };
+  const { price, quote } = await anyrEscrowQuote(ctx, a);
+  const one = 10n ** BigInt(a.decimals);
+  const terms = {
+    enabled: true as const,
+    symbol: a.symbol,
+    address: a.address,
+    decimals: a.decimals,
+    source: "twap" as const,
+    window_minutes: ctx.cfg.buyback.twapMinutes,
+    max_deviation: a.maxDeviation,
+    haircut_bps: a.haircutBps,
+    max_usd_per_deposit: a.maxUsdPerDeposit,
+  };
+  if (!quote.available || !price)
+    return {
+      ...terms,
+      available: false as const,
+      price_usd: null,
+      credit_usd_per_token: null,
+      spot_usd: null,
+      average_usd: null,
+      window_seconds: null,
+      swaps: null,
+      block: null,
+      updated_at: null,
+      checked_at: new Date(quote.at).toISOString(),
+      reason: quote.available ? null : { code: quote.code, message: quote.message, ...(quote.deviation != null ? { deviation: quote.deviation, limit: quote.limit, direction: quote.direction ?? null } : {}) },
+    };
+  return {
+    ...terms,
+    available: true as const,
+    // The price one whole ANYR is valued at: the lower of the pool's spot price and its time-weighted average.
+    price_usd: Number(rawToPico(one, a.decimals, price.price18)) / 1e12,
+    credit_usd_per_token: Number(escrowCredit(ctx, one, a.decimals, price.price18, a.haircutBps)) / 1e12,
+    spot_usd: quote.spotUsd,
+    average_usd: quote.averageUsd,
+    window_seconds: Math.round(quote.windowSeconds),
+    swaps: quote.swaps,
+    block: quote.block,
+    updated_at: new Date(price.updatedAt * 1000).toISOString(),
+    checked_at: new Date(quote.at).toISOString(),
+    reason: null,
+  };
 }

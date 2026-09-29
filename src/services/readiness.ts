@@ -3,7 +3,7 @@ import type { Ctx } from "../context.ts";
 import { anchors, spentRoots, chainCursor, kv, providers } from "../db/schema.ts";
 import type { JobSnapshot } from "./jobs.ts";
 import { attestationFresh } from "../router/select.ts";
-import { escrowFinality, escrowReviewsOpen } from "../pay/escrow.ts";
+import { escrowFinality, escrowReviewsOpen, peekAnyrQuote } from "../pay/escrow.ts";
 import { reconcileSpentRoots } from "./root-completeness.ts";
 import { backupFresh } from "./backup.ts";
 import { verifiersConfigured } from "./attestor-verifiers.ts";
@@ -33,6 +33,18 @@ async function bounded<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await Promise.race([fn(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Readiness timeout")), 2000); })]);
   } finally { clearTimeout(timer!); }
+}
+
+export type ReadinessWarning = { code: string; reason: string; message: string };
+
+/**
+ * Conditions that do not make the router unready but that an operator should see. $ANYR deposits wait while its
+ * pool price is unavailable (a swinging, thin or unreadable pool); the router keeps serving and crediting
+ * everything else, so this is a warning, not a failed check. It reads the last cached price and never waits for one.
+ */
+export function readinessWarnings(ctx: Ctx): ReadinessWarning[] {
+  const quote = peekAnyrQuote(ctx);
+  return quote && !quote.available ? [{ code: "anyr_price_unavailable", reason: quote.code, message: quote.message }] : [];
 }
 
 /** Public readiness never exposes exception text, credentials, hostnames or RPC URLs.
@@ -123,5 +135,5 @@ export async function readiness(ctx: Ctx) {
     })(),
   ]);
   if (!escrowMode) checks.receipt_anchor_configured = !!ctx.cfg.chain.receiptAnchor;
-  return { ok: Object.values(checks).every(Boolean), checks };
+  return { ok: Object.values(checks).every(Boolean), checks, warnings: readinessWarnings(ctx) };
 }

@@ -10,7 +10,7 @@ export type ProbeResult = {
   at: string;
   failing: string[];
   checks: Record<string, boolean>;
-  escrow?: { enabled: boolean; tokens?: number; stale_prices?: string[] };
+  escrow?: { enabled: boolean; tokens?: number; stale_prices?: string[]; waiting_prices?: string[] };
   metrics?: { reachable: boolean; ready?: boolean };
 };
 export type ProbeOptions = { timeoutMs?: number; fetch?: typeof fetch; now?: () => Date };
@@ -59,11 +59,16 @@ export async function probe(base: string, opts: ProbeOptions = {}): Promise<{ co
   if (!data || typeof data.enabled !== "boolean") checks.escrow = false;
   else if (!data.enabled) result.escrow = { enabled: false };
   else {
-    const tokens: { symbol?: unknown; price_usd?: unknown }[] = Array.isArray(data.tokens) ? data.tokens : [];
-    const stale = tokens.filter((t) => typeof t.price_usd !== "number" || !(t.price_usd > 0)).map((t) => (typeof t.symbol === "string" && SYMBOL.test(t.symbol) ? t.symbol : "unknown"));
+    const tokens: { symbol?: unknown; price_usd?: unknown; price_source?: unknown }[] = Array.isArray(data.tokens) ? data.tokens : [];
+    const unpriced = tokens.filter((t) => typeof t.price_usd !== "number" || !(t.price_usd > 0));
+    const name = (t: { symbol?: unknown }) => (typeof t.symbol === "string" && SYMBOL.test(t.symbol) ? t.symbol : "unknown");
+    // A pool-priced token ($ANYR) has no price whenever its pool is swinging or thin: its deposits wait and are credited
+    // once the price settles, so that is reported (waiting_prices) but does not fail the probe. A feed-priced token with no price does.
+    const stale = unpriced.filter((t) => t.price_source !== "twap").map(name);
+    const waiting = unpriced.filter((t) => t.price_source === "twap").map(name);
     checks["escrow.tokens"] = tokens.length > 0;
     checks["escrow.prices"] = stale.length === 0;
-    result.escrow = { enabled: true, tokens: tokens.length, stale_prices: stale };
+    result.escrow = { enabled: true, tokens: tokens.length, stale_prices: stale, ...(waiting.length ? { waiting_prices: waiting } : {}) };
   }
 
   // Optional: some proxies do not expose it. Informational only, never a failing check.

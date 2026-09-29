@@ -13,6 +13,17 @@ export type PoolKey = { currency0: Hex; currency1: Hex; fee: number; tickSpacing
  */
 export type Leg = { key: PoolKey; sign: 1 | -1; minLiquidity?: string | number };
 
+export type TwapFailure = "pool_uninitialized" | "thin_liquidity" | "spot_deviates" | "history_short" | "history_mismatch" | "malformed_history" | "unusable_price" | "no_head";
+/** Why a leg could not be priced. `deviation` (a fraction, 0.14 = 14%) and `direction` are set when spot strayed from the average. */
+export type TwapFailureDetail = { leg?: number; deviation?: number; limit?: number; direction?: "above" | "below"; liquidity?: string; minLiquidity?: string };
+/** A price that could not be taken, with a stable `code`; the message text is unchanged from before codes existed. */
+export class TwapError extends Error {
+  constructor(readonly code: TwapFailure, message: string, readonly detail: TwapFailureDetail = {}) {
+    super(message);
+    this.name = "TwapError";
+  }
+}
+
 export const SWAP_TOPIC = keccak256(toHex("Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)"));
 const POOLS_SLOT = 6n; // StateLibrary: pools live at keccak256(poolId, 6); slot0 first, liquidity three slots on
 const EXTSLOAD = "0x1e2eaeaf";
@@ -40,7 +51,7 @@ export async function readPool(client: PublicClient, poolManager: Hex, key: Pool
   const slot0 = await load(slot);
   const liquidity = (await load(slot + 3n)) & ((1n << 128n) - 1n);
   const sqrtPriceX96 = slot0 & ((1n << 160n) - 1n);
-  if (!sqrtPriceX96) throw new Error("pool not initialized");
+  if (!sqrtPriceX96) throw new TwapError("pool_uninitialized", "pool not initialized");
   return { tick: int24(slot0 >> 160n), sqrtPriceX96, liquidity };
 }
 
@@ -55,7 +66,7 @@ async function swaps(client: PublicClient, poolManager: Hex, ids: Hex[], from: n
   return logs
     .filter((l) => !l.removed && l.address.toLowerCase() === poolManager.toLowerCase())
     .map((l) => {
-      if (!/^0x[0-9a-fA-F]{384}$/.test(l.data)) throw new Error("malformed swap");
+      if (!/^0x[0-9a-fA-F]{384}$/.test(l.data)) throw new TwapError("malformed_history", "malformed swap");
       return { pool: l.topics[1].toLowerCase(), block: Number(l.blockNumber), index: Number(l.logIndex), tick: int24(BigInt("0x" + l.data.slice(2 + 64 * 4, 2 + 64 * 5))) };
     })
     .sort((a, b) => a.block - b.block || a.index - b.index);
@@ -73,7 +84,7 @@ async function timeWindow(client: PublicClient, head: number, seconds: number, s
   let start = Math.max(1, head - Math.ceil(seconds * rate * 1.02) - 1);
   let first = await header(client, start);
   for (let i = 0; first.time > top.time - seconds; i++) {
-    if (i >= 6 || start <= 1) throw new Error("chain history too short");
+    if (i >= 6 || start <= 1) throw new TwapError("history_short", "chain history too short");
     const observed = (head - start) / Math.max(1, top.time - first.time);
     if (observed > 0) rate = observed;
     start = Math.max(1, start - Math.ceil((first.time - (top.time - seconds)) * rate * 1.1) - 1);
@@ -140,7 +151,7 @@ export async function v4Twap(
   opts: { windowSeconds: number; maxDeviation: number; decimalsAdjust: number; state?: { blockRate?: number } },
 ): Promise<TwapResult> {
   const head = Number(await client.getBlockNumber({ cacheTime: 0 })) - 2;
-  if (!(head > 0)) throw new Error("no head block");
+  if (!(head > 0)) throw new TwapError("no_head", "no head block");
   const ids = legs.map((l) => poolId(l.key).toLowerCase() as Hex);
   const span = await timeWindow(client, head, opts.windowSeconds, opts.state ?? {});
   const logs = await swaps(client, poolManager, ids, span.start, head);
@@ -148,18 +159,25 @@ export async function v4Twap(
   const measured: { spot: number; average: number; sign: number }[] = [];
   for (let i = 0; i < legs.length; i++) {
     const state = await readPool(client, poolManager, legs[i].key, BigInt(head));
-    if (legs[i].minLiquidity != null && state.liquidity < BigInt(legs[i].minLiquidity!)) throw new Error("too little liquidity");
+    if (legs[i].minLiquidity != null && state.liquidity < BigInt(legs[i].minLiquidity!))
+      throw new TwapError("thin_liquidity", "too little liquidity", { leg: i, liquidity: state.liquidity.toString(), minLiquidity: String(legs[i].minLiquidity) });
     const own = logs.filter((l) => l.pool === ids[i]);
     const before = own.length ? ((await tickBefore(client, poolManager, ids[i], span.start, head - span.start + 1)) ?? own[0].tick) : state.tick;
     const { average, last } = averageTick(own, before, span.at, span.t0, span.t1);
-    if (own.length && last !== state.tick) throw new Error("swap history doesn't match the pool");
-    if (Math.abs(state.tick - average) > maxTicks) throw new Error("spot is too far from the average");
+    if (own.length && last !== state.tick) throw new TwapError("history_mismatch", "swap history doesn't match the pool", { leg: i });
+    if (Math.abs(state.tick - average) > maxTicks)
+      throw new TwapError("spot_deviates", "spot is too far from the average", {
+        leg: i,
+        deviation: Math.pow(1.0001, Math.abs(state.tick - average)) - 1,
+        limit: opts.maxDeviation,
+        direction: (state.tick - average) * legs[i].sign > 0 ? "above" : "below", // this leg's own price: its base in its quote
+      });
     measured.push({ spot: state.tick, average, sign: legs[i].sign });
   }
   const price = (pick: (m: (typeof measured)[number]) => number) => Math.pow(1.0001, measured.reduce((s, m) => s + m.sign * pick(m), 0)) * opts.decimalsAdjust;
   const spot = price((m) => m.spot);
   const average = price((m) => m.average);
   const conservative = Math.min(spot, average);
-  if (!(conservative > 0) || !Number.isFinite(conservative)) throw new Error("no usable price");
+  if (!(conservative > 0) || !Number.isFinite(conservative)) throw new TwapError("unusable_price", "no usable price");
   return { spot, average, conservative, windowSeconds: span.t1 - span.t0, block: head, swaps: logs.length };
 }
