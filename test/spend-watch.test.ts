@@ -426,6 +426,10 @@ describe("Spend Watch: the spend-watch job", () => {
     const stale = await rule(h, r.id);
     const results = await Promise.all([tick(NOW), tick(NOW), tick(NOW)]);
     expect(results.reduce((n, x) => n + x.fired, 0)).toBe(1);
+    // Delivery claims the rule with SKIP LOCKED, so the replica that fired can skip its own delivery
+    // while a sibling holds the row; the pending firing then goes out on the next tick. One more tick
+    // cannot fire again, and the delivery still happens exactly once.
+    expect((await tick(NOW)).fired).toBe(0);
     expect(sent).toHaveLength(1);
     expect(await history(r.id)).toHaveLength(1);
     expect((await history(r.id))[0].delivery).toMatchObject({ status: "delivered", attempts: 1, http_status: 204 });
