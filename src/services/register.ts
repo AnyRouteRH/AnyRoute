@@ -13,8 +13,9 @@ import { runSettlement } from "./settlement.ts";
 import { runSlasher } from "./slasher.ts";
 import { runBuyback } from "./buyback.ts";
 import { ALERT_INTERVAL_MS, runAlertNotifier } from "./alerts.ts";
+import { TelegramBot, type RouterCall } from "./telegram.ts";
 
-export function registerJobs(ctx: Ctx) {
+export function registerJobs(ctx: Ctx, router?: RouterCall) {
   const { cfg, jobs } = ctx;
   const chainOn = () => ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty", "staking"].some((n) => ctx.chain.address(n as never));
   jobs.register("health-flush", 5_000, () => ctx.health.flush(ctx.db));
@@ -34,4 +35,10 @@ export function registerJobs(ctx: Ctx) {
   jobs.register("escrow-indexer", 5_000, () => pollEscrow(ctx), { atStart: true });
   jobs.register("paywith-aggregator", 60_000, async () => (ctx.chain.address("payWithStock") ? runPaywithAggregator(ctx) : { skipped: "not configured" }));
   jobs.register("alert-notifier", ALERT_INTERVAL_MS, () => runAlertNotifier(ctx), { atStart: true });
+  // Long-polls Telegram: one getUpdates cycle per run, re-run every second (Jobs never overlaps a job with itself).
+  if (cfg.telegram.botToken && router) {
+    const bot = new TelegramBot(ctx, { token: cfg.telegram.botToken, router });
+    ctx.telegram = bot;
+    jobs.register("telegram-bot", 1_000, () => bot.poll());
+  }
 }

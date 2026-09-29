@@ -131,7 +131,7 @@ export async function createApp(opts: AppOptions = {}) {
     return c.json(new ApiError(500, "Internal router error.", "internal").toJSON(), 500);
   });
 
-  registerJobs(ctx);
+  registerJobs(ctx, (path, init) => app.request(path, init));
   if (opts.startJobs ?? cfg.workers.enabled) await ctx.jobs.start();
 
   // Passive health belongs to each API replica, not the shared registry worker's memory.
@@ -142,6 +142,7 @@ export async function createApp(opts: AppOptions = {}) {
     if (closed) return;
     closed = true;
     if (healthTimer) clearInterval(healthTimer);
+    await ctx.telegram?.stop();
     await ctx.jobs.stop();
     await ctx.health.flush(ctx.db).catch(() => undefined);
     await ctx.telemetry.close();

@@ -21,6 +21,8 @@ export type Ctx = {
   cache: ResponseCache;
   telemetry: Telemetry;
   jobs: Jobs;
+  /** Set only when TELEGRAM_BOT_TOKEN is configured; stopped before the jobs on shutdown. */
+  telegram?: { stop(): Promise<void> };
   /** Test hook: deterministic provider shuffle. */
   rand?: () => number;
 };
