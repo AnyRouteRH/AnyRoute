@@ -99,6 +99,13 @@
       "when": 1790685669388,
       "tag": "0013_v3_attestation_events",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790687317404,
+      "tag": "0014_v3_transparency",
+      "breakpoints": true
     }
   ]
 }

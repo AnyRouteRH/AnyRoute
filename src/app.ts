@@ -32,6 +32,7 @@ import { disclosureRoutes } from "./api/disclosure.ts";
 import { ipxRoutes } from "./api/ipx.ts";
 import { attestationRoutes } from "./api/attestation.ts";
 import { attestationHistoryRoutes } from "./api/attestation-history.ts";
+import { measurementRoutes } from "./api/measurements.ts";
 import { laneRoutes } from "./api/lane.ts";
 import { dayzeroRoutes } from "./api/dayzero.ts";
 import { creatorClaimRoutes } from "./api/creator-claims.ts";
@@ -117,6 +118,7 @@ export async function createApp(opts: AppOptions = {}) {
   ipxRoutes(app, ctx);
   attestationHistoryRoutes(app, ctx); // before attestationRoutes: /attestation/summary must not be read as a provider id
   attestationRoutes(app, ctx);
+  measurementRoutes(app, ctx);
   laneRoutes(app, ctx);
   dayzeroRoutes(app, ctx);
   creatorClaimRoutes(app, ctx);

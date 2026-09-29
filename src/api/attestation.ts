@@ -4,6 +4,8 @@ import type { Ctx } from "../context.ts";
 import { attestations, providers } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
 import { currentMeasurement } from "../services/measurements.ts";
+import { tdxRegisters } from "../services/measurement-bundle.ts";
+import { entryUrl, verifiedBundleForEntry } from "../services/measurement-bundles.ts";
 import { loadTlsPin } from "../providers/tls-pin.ts";
 
 // GET /api/v1/attestation/:providerId - what the router has actually checked about a provider's confidential
@@ -16,6 +18,15 @@ const NOT_CHECKED = [
   "Who signed the transparency-log entry: the router confirms an entry for the image digest exists and is included in the log, not that the entry came from the image's publisher.",
   "That the running software matches the image's source: reproducible-build provenance is not verified here.",
   "That prompts stay inside the enclave: attestation shows what is running, not what it does with data.",
+];
+
+// When the log entry is a signed measurement bundle, two of the statements above change: the router does check who signed the
+// entry (the measurement key it is configured with), and the bundle's source pins are the publisher's statement.
+const NOT_CHECKED_BUNDLE = [
+  NOT_CHECKED[0],
+  "Who holds the measurement key: the router confirms the log entry was signed with the measurement key it is configured with (published at /api/v1/measurements/key), not that the key belongs to the party you expect.",
+  "That the source commit, source tarball hash and model weights hash in the bundle are what they say: the router compares only the compose hash, image and model digests (and the MRTD and RTMR3 allow-lists) with the quote. Anyone can reproduce the rest from the public repository (scripts/check-reproducible.ts).",
+  NOT_CHECKED[3],
 ];
 
 export function attestationRoutes(app: Hono, ctx: Ctx) {
@@ -42,6 +53,8 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
     const pin = simulatedEvidence ? null : await loadTlsPin(ctx.db, p.id);
 
     const rekorFound = !!m && m.rekorInclusionVerified;
+    // Whether the recorded log entry is a signed measurement bundle (verified by the router) or an entry for the image digest.
+    const bundle = m?.rekorUuid && rekorFound ? await verifiedBundleForEntry(ctx, p.id, m.composeHash, m.rekorUuid) : null;
     const onchain = !m ? "not_recorded" : m.status === "registered" ? "registered" : m.status === "revoked" ? "revoked" : m.txHash ? "submitted_unconfirmed" : m.calldata ? "calldata_ready_not_submitted" : "not_submitted";
     c.header("Cache-Control", "public, max-age=30");
     return c.json({
@@ -59,6 +72,7 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
               image_digest: m.imageDigest,
               compose_hash: m.composeHash,
               model_digest: m.modelDigest,
+              registers: tdxRegisters(m.quote),
               status: m.status,
               attested_now: status === "attested",
               first_attested_at: m.attestedAt.toISOString(),
@@ -73,6 +87,11 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
                 inclusion_verified: m.rekorInclusionVerified,
                 checkpoint_signature_verified: m.rekorCheckpointVerified,
                 checked_at: m.rekorCheckedAt?.toISOString() ?? null,
+                subject: !m.rekorUuid || !rekorFound ? null : bundle ? "measurement_bundle" : "image_digest",
+                entry_url: m.rekorUuid ? entryUrl(ctx, m.rekorUuid) : null,
+                bundle: bundle
+                  ? { digest: bundle.bundleDigest, signer_key_id: bundle.signerKeyId, created_at: (bundle.bundle as { created_at?: string }).created_at ?? null, signature_verified: true, url: `/api/v1/measurements/bundles/${p.id}` }
+                  : null,
               },
               registry: { address: registry, state: onchain, tx_hash: m.txHash, registered_at: m.registeredAt?.toISOString() ?? null },
             }
@@ -84,7 +103,7 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
           transparency_log_checkpoint_signature: !!m?.rekorCheckpointVerified,
           registered_on_chain: m?.status === "registered",
         },
-        not_checked: NOT_CHECKED,
+        not_checked: bundle ? NOT_CHECKED_BUNDLE : NOT_CHECKED,
       },
     });
   });

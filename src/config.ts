@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -26,6 +26,20 @@ const opt = z
   .string()
   .optional()
   .transform((v) => (v ? v : undefined));
+
+/** The measurement public key, normalised to a PEM string; throws on anything that is not an ECDSA P-256 public key. */
+function measurementPublicKey(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const text = raw.replace(/\\n/g, "\n").trim();
+  if (/PRIVATE KEY/.test(text)) throw new Error("MEASUREMENT_PUBLIC_KEY must be the public key; a private key was given.");
+  try {
+    const key = text.includes("BEGIN") ? createPublicKey(text) : createPublicKey({ key: Buffer.from(text, "base64"), format: "der", type: "spki" });
+    if (key.asymmetricKeyType !== "ec" || key.asymmetricKeyDetails?.namedCurve !== "prime256v1") throw new Error("not P-256");
+    return key.export({ type: "spki", format: "pem" }).toString();
+  } catch {
+    throw new Error("MEASUREMENT_PUBLIC_KEY must be an ECDSA P-256 public key (PEM or base64 SPKI).");
+  }
+}
 
 const schema = z.object({
   RUNTIME_ROLE: z.enum(["all", "api", "worker"]).default("all"),
@@ -173,6 +187,10 @@ const schema = z.object({
   REKOR_URL: z.string().default("https://rekor.sigstore.dev"),
   REKOR_PUBLIC_KEY: opt, // PEM (ECDSA P-256) that signs Rekor checkpoints; without it checkpoints are not verified
   MEASUREMENT_REGISTRY_ADDRESS: addr,
+  // PEM (or base64 SPKI) of the ECDSA P-256 key that signs measurement bundles. Setting it turns on bundle checking: the router
+  // then accepts signed bundles (POST /trpc/measurements.submitBundle), verifies their transparency-log entries, and publishes
+  // the key at GET /api/v1/measurements/key. Only the public key belongs here; the private key stays with whoever publishes.
+  MEASUREMENT_PUBLIC_KEY: opt,
 
   // The Lane. Day-zero pipeline (off by default): watch Hugging Face for new fine-tunes of the listed permissive
   // base models, check their license, and create candidates for evaluation. Nothing is served without an
@@ -545,7 +563,8 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       enabled: e.MEASUREMENTS_ENABLED,
       intervalMs: e.MEASUREMENTS_INTERVAL_MS,
       rekorUrl: e.REKOR_URL.replace(/\/$/, ""),
-      rekorPublicKey: e.REKOR_PUBLIC_KEY,
+      rekorPublicKey: e.REKOR_PUBLIC_KEY?.replace(/\\n/g, "\n").trim(),
+      publicKey: measurementPublicKey(e.MEASUREMENT_PUBLIC_KEY),
       registry: e.MEASUREMENT_REGISTRY_ADDRESS && !/^0x0{40}$/.test(e.MEASUREMENT_REGISTRY_ADDRESS) ? (e.MEASUREMENT_REGISTRY_ADDRESS.toLowerCase() as `0x${string}`) : null,
     },
     lane: laneSettings(e),

@@ -570,6 +570,41 @@ export const measurements = pgTable(
   ],
 );
 
+// Signed measurement bundles (services/measurement-bundle.ts): what a provider's measurement is made of, signed with
+// the measurement key and recorded in a public transparency log. Handed over by an operator, verified by the router
+// (signature, log entry, inclusion proof), and only then applied to the matching measurement rows.
+export const measurementBundles = pgTable(
+  "measurement_bundles",
+  {
+    id: serial("id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    composeHash: text("compose_hash").notNull(), // 0x + 32 bytes: the quote-measured compose hash this bundle describes
+    bundleDigest: text("bundle_digest").notNull(), // 0x + sha256 of the canonical bundle bytes: the artifact hash in the log entry
+    bundle: jsonb("bundle").notNull(),
+    signature: text("signature").notNull(), // base64 ECDSA P-256 (DER) over the canonical bundle bytes
+    signerKeyId: text("signer_key_id").notNull(), // sha256 of the signer's SubjectPublicKeyInfo, hex
+    status: text("status").notNull().default("pending"), // pending -> verified | rejected
+    rekorUuid: text("rekor_uuid"),
+    rekorEntry: text("rekor_entry"), // 0x + the 32-byte entry (leaf) hash inside the uuid
+    rekorLogIndex: bigint("rekor_log_index", { mode: "number" }),
+    rekorIntegratedAt: ts("rekor_integrated_at"),
+    rekorEntryJson: jsonb("rekor_entry_json"), // the entry as the log returned it: body, proof and signed entry timestamp
+    rekorInclusionVerified: boolean("rekor_inclusion_verified").notNull().default(false),
+    rekorCheckpointVerified: boolean("rekor_checkpoint_verified").notNull().default(false),
+    rekorSetVerified: boolean("rekor_set_verified").notNull().default(false),
+    checkedAt: ts("checked_at"),
+    verifiedAt: ts("verified_at"),
+    error: text("error"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("measurement_bundles_provider_digest_uq").on(t.providerId, t.bundleDigest),
+    index("measurement_bundles_compose_idx").on(t.providerId, t.composeHash),
+    index("measurement_bundles_status_idx").on(t.status, t.checkedAt),
+  ],
+);
+
 export const kv = pgTable("kv", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),

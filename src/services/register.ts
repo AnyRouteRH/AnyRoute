@@ -6,7 +6,7 @@ import { pollEscrow } from "../pay/escrow.ts";
 import { runSpendWatch } from "./spend-watch.ts";
 import { retryAnchors, runAnchor, runKeyRotation } from "./anchor.ts";
 import { runAttestor } from "./attestor.ts";
-import { runMeasurements } from "./measurements.ts";
+import { runMeasurementJob } from "./measurement-bundles.ts";
 import { runIpxOracle } from "./ipx-oracle.ts";
 import { runDayzero } from "./dayzero.ts";
 import { runCanaries } from "./canaries.ts";
@@ -28,8 +28,9 @@ export function registerJobs(ctx: Ctx, router?: RouterCall) {
   if (cfg.routing.probes) jobs.register("health-probes", cfg.routing.probeIntervalMs, () => runProbes(ctx), { atStart: true });
   if (cfg.canaries.enabled) jobs.register("canaries", cfg.canaries.intervalMs, () => runCanaries(ctx));
   jobs.register("attestor", cfg.attestation.intervalMs, () => runAttestor(ctx), { atStart: true });
-  // Off unless MEASUREMENTS_ENABLED: Rekor lookups and register() calldata for attested measurements. Sends nothing.
-  if (cfg.measurements.enabled) jobs.register("measurements", cfg.measurements.intervalMs, () => runMeasurements(ctx));
+  // Off unless MEASUREMENTS_ENABLED: Rekor lookups, signed measurement bundles (with MEASUREMENT_PUBLIC_KEY) and
+  // register() calldata for attested measurements. Sends nothing.
+  if (cfg.measurements.enabled) jobs.register("measurements", cfg.measurements.intervalMs, () => runMeasurementJob(ctx));
   // Off unless IPX_ENABLED and IPX_ORACLE_ENABLED: signs IPX index price updates and hands them to the configured sinks.
   if (cfg.ipx.enabled && cfg.ipx.oracle.enabled) jobs.register("ipx-oracle", cfg.ipx.oracle.intervalS * 1000, () => runIpxOracle(ctx));
   // Off unless DAYZERO_ENABLED: watch Hugging Face for new fine-tunes of the configured permissive base models, and

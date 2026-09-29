@@ -20,6 +20,7 @@ import { laneInput, writeModelLane } from "../api/lane.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { chainKeyHashOf } from "../chain/keys.ts";
 import { parseProviderModels } from "../services/registry.ts";
+import { submitBundle } from "../services/measurement-bundles.ts";
 
 // Admin / account API over tRPC v11 at /trpc. Operator procedures need the ADMIN_TOKEN
 // (Authorization: Bearer <ADMIN_TOKEN> or x-admin-token); account procedures accept an API key.
@@ -139,6 +140,21 @@ export const adminRouter = t.router({
       await ctx.app.db.insert(kv).values({ key: `attest-allow:${id}`, value }).onConflictDoUpdate({ target: kv.key, set: { value, updatedAt: new Date() } });
       return { id, ...value };
     }),
+  }),
+  measurements: t.router({
+    /** Hand over a signed measurement bundle (scripts/publish-measurement.ts prints the input) and its transparency-log entry
+     * uuid. The router checks the signature against MEASUREMENT_PUBLIC_KEY and the entry against the log; nothing is
+     * trusted from the caller but the bundle's bytes. */
+    submitBundle: operator
+      .input(z.object({ bundle: z.unknown(), signature: z.string().min(1).max(400), rekor_uuid: z.string().max(80).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return ser(await submitBundle(ctx.app, { bundle: input.bundle, signature: input.signature, rekorUuid: input.rekor_uuid }));
+        } catch (e) {
+          if (isApiError(e)) throw new TRPCError({ code: e.status === 404 ? "NOT_FOUND" : e.status === 501 ? "NOT_IMPLEMENTED" : "BAD_REQUEST", message: e.message });
+          throw e;
+        }
+      }),
   }),
   models: t.router({
     list: t.procedure.query(async ({ ctx }) => {
