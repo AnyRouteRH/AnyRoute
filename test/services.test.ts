@@ -276,7 +276,8 @@ describe("provider onboarding + admin (tRPC) + LiteLLM import", () => {
     await processEvents(h.ctx);
     await runRegistry(h.ctx);
     expect((await h.ctx.db.select().from(providers).where(eq(providers.id, "newbie")))[0].status).toBe("applied");
-    const approved = await h.request("/trpc/providers.approve", { method: "POST", headers: { "x-admin-token": ADMIN }, json: { id: "newbie" } });
+    const review = (await (await h.request(`/trpc/providers.review?input=${encodeURIComponent(JSON.stringify({ id: "newbie" }))}`, { headers: { "x-admin-token": ADMIN } })).json()).result.data;
+    const approved = await h.request("/trpc/providers.approve", { method: "POST", headers: { "x-admin-token": ADMIN }, json: { id: "newbie", review_hash: review.reviewHash } });
     expect(approved.status).toBe(200);
     const [p1] = await h.ctx.db.select().from(providers).where(eq(providers.id, "newbie"));
     expect(p1.status).toBe("shadow");

@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Ctx } from "../context.ts";
 import { kv, providers } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
-import { encrypt, randomHex, safeEqual, sha256 } from "../lib/util.ts";
+import { canonicalJson, encrypt, randomHex, safeEqual, sha256 } from "../lib/util.ts";
 
 export const providerApplication = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,40}$/),
@@ -25,8 +25,23 @@ export function validateProviderUrl(value: string, production: boolean) {
     fail(400, "Provider URLs require HTTPS in production and must not contain credentials or fragments.", "invalid_request");
 }
 
+/** Content hash of one application revision: every stored field that an applicant (or the seed
+ * manifest) controls and that approval activates. Secrets are hashed as their stored ciphertext,
+ * so any resubmission, even of the same key, is a new revision. Chain- and job-maintained fields
+ * (bond, stake, attestation, timestamps) are excluded so they cannot invalidate a review. The
+ * operator approves a revision by passing this hash; see `providers.approve`. */
+export function applicationReviewHash(p: typeof providers.$inferSelect) {
+  return sha256(canonicalJson({
+    v: 1, id: p.id, name: p.name, kind: p.kind, baseUrl: p.baseUrl, apiKeyEnc: p.apiKeyEnc, headers: p.headers,
+    dataPolicy: p.dataPolicy, datacenter: p.datacenter, teeKind: p.teeKind, attestationUrl: p.attestationUrl,
+    payoutMode: p.payoutMode, payoutAddress: p.payoutAddress, contact: p.contact, timeoutMs: p.timeoutMs, staticModels: p.staticModels,
+  }));
+}
+
 /** Public applications are inert until an operator reviews both URLs and approves them.
- * Approval is a network trust grant; a bond alone must never authorize outbound traffic. */
+ * Approval is a network trust grant; a bond alone must never authorize outbound traffic.
+ * The token holder may revise a pending ("applied") application, but every revision changes its
+ * review hash, so an approval issued for an earlier revision is refused. Once approved, edits stop. */
 export async function submitProviderApplication(ctx: Ctx, v: z.infer<typeof providerApplication>, token?: string) {
   validateProviderUrl(v.base_url, ctx.cfg.production);
   if (v.tee) validateProviderUrl(v.tee.attestation_url, ctx.cfg.production);

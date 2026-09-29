@@ -27,7 +27,8 @@ describe("launch security regressions", () => {
     await runRegistry(h.ctx); await runAttestor(h.ctx);
     expect(hits).toBe(0);
     expect((await h.request("/trpc/providers.approve", { method: "POST", json: { id: "untrusted-rest" } })).status).toBe(401);
-    expect((await h.request("/trpc/providers.approve", { method: "POST", headers: { "x-admin-token": ADMIN }, json: { id: "untrusted-rest" } })).status).toBe(200);
+    const review = (await (await h.request(`/trpc/providers.review?input=${encodeURIComponent(JSON.stringify({ id: "untrusted-rest" }))}`, { headers: { "x-admin-token": ADMIN } })).json()).result.data;
+    expect((await h.request("/trpc/providers.approve", { method: "POST", headers: { "x-admin-token": ADMIN }, json: { id: "untrusted-rest", review_hash: review.reviewHash } })).status).toBe(200);
     expect(hits).toBeGreaterThan(0);
   });
   test("public provider responses omit every private field; operator views remain protected", async () => {

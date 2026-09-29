@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { trpcServer } from "@hono/trpc-server";
 import { initTRPC, TRPCError } from "@trpc/server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
 import { generations, keys, models, payouts, providers, royalties, settlements, slashes, kv } from "../db/schema.ts";
@@ -9,7 +9,7 @@ import { bearer, resolveKey, type KeyRow } from "../api/auth.ts";
 import { keyJson } from "../api/keys.ts";
 import { modelJson } from "../api/models.ts";
 import { verifyReceipt, anchorProof } from "../api/generation.ts";
-import { providerApplication, submitProviderApplication, publicProvider, validateProviderUrl } from "../providers/application.ts";
+import { applicationReviewHash, providerApplication, submitProviderApplication, publicProvider, validateProviderUrl } from "../providers/application.ts";
 import { statement } from "../pay/paywith.ts";
 import { importLiteLLM } from "../gateway/litellm.ts";
 import { verifyInvariants } from "../ledger/ledger.ts";
@@ -31,6 +31,12 @@ const account = t.procedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 const ser = <T>(v: T): T => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x)));
+/** Operator view of a provider row: never the encrypted upstream key; a pending application carries
+ * the revision hash that `providers.approve` requires. */
+const reviewView = (row: typeof providers.$inferSelect) => {
+  const { apiKeyEnc: _secret, ...p } = row;
+  return { ...p, reviewHash: row.status === "applied" ? applicationReviewHash(row) : null };
+};
 
 export const adminRouter = t.router({
   providers: t.router({
@@ -48,26 +54,51 @@ export const adminRouter = t.router({
       if (!p) throw new TRPCError({ code: "NOT_FOUND" });
       return ser(publicProvider(p));
     }),
-    list: operator.query(async ({ ctx }) => ser((await ctx.app.db.select().from(providers)).map(({ apiKeyEnc: _s, ...p }) => p))),
+    list: operator.query(async ({ ctx }) => ser((await ctx.app.db.select().from(providers)).map(reviewView))),
+    /** One application as the operator reviews it, with the `reviewHash` to pass to `approve`. */
+    review: operator.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+      const [p] = await ctx.app.db.select().from(providers).where(eq(providers.id, input.id));
+      if (!p) throw new TRPCError({ code: "NOT_FOUND" });
+      return ser(reviewView(p));
+    }),
     slashes: t.procedure.input(z.object({ id: z.string().optional() })).query(async ({ ctx, input }) =>
       ser(await ctx.app.db.select().from(slashes).where(input.id ? eq(slashes.providerId, input.id) : sql`true`).orderBy(desc(slashes.proposedAt)).limit(200)),
     ),
-    /** Operator onboarding for public inference APIs (router is a usage-reconciled customer): skip bond. */
-    approve: operator.input(z.object({ id: z.string(), live: z.boolean().default(false), api_key: z.string().optional() })).mutation(async ({ ctx, input }) => {
-      const [provider] = await ctx.app.db.select().from(providers).where(eq(providers.id, input.id));
-      if (!provider) throw new TRPCError({ code: "NOT_FOUND" });
-      validateProviderUrl(provider.baseUrl, ctx.app.cfg.production);
-      if (provider.attestationUrl) validateProviderUrl(provider.attestationUrl, ctx.app.cfg.production);
+    /** Operator onboarding for public inference APIs (router is a usage-reconciled customer): skip bond.
+     * Approves exactly the reviewed revision: under a row lock the application must still be pending
+     * and still hash to `review_hash` (from `review` or `list`), or nothing changes and the operator
+     * reviews the current revision. The applicant's token cannot edit it once it leaves "applied". */
+    approve: operator.input(z.object({ id: z.string(), review_hash: z.string().regex(/^[0-9a-f]{64}$/), live: z.boolean().default(false), api_key: z.string().optional() })).mutation(async ({ ctx, input }) => {
       const status = input.live ? "live" : "shadow";
-      await ctx.app.db
-        .update(providers)
-        .set({ status, shadowUntil: input.live ? null : new Date(Date.now() + ctx.app.cfg.canaries.shadowDays * 86_400_000), ...(input.api_key ? { apiKeyEnc: encrypt(ctx.app.cfg.appSecret, input.api_key) } : {}), updatedAt: new Date() })
-        .where(eq(providers.id, input.id));
+      await ctx.app.db.transaction(async (tx) => {
+        const [provider] = await tx.select().from(providers).where(eq(providers.id, input.id)).for("update");
+        if (!provider) throw new TRPCError({ code: "NOT_FOUND" });
+        if (provider.status !== "applied") throw new TRPCError({ code: "CONFLICT", message: "Only a pending application can be approved." });
+        if (!safeEqual(applicationReviewHash(provider), input.review_hash)) throw new TRPCError({ code: "CONFLICT", message: "The application changed after it was reviewed. Review the current revision and approve its hash." });
+        validateProviderUrl(provider.baseUrl, ctx.app.cfg.production);
+        if (provider.attestationUrl) validateProviderUrl(provider.attestationUrl, ctx.app.cfg.production);
+        const approved = await tx
+          .update(providers)
+          .set({ status, shadowUntil: input.live ? null : new Date(Date.now() + ctx.app.cfg.canaries.shadowDays * 86_400_000), ...(input.api_key ? { apiKeyEnc: encrypt(ctx.app.cfg.appSecret, input.api_key) } : {}), updatedAt: new Date() })
+          .where(and(eq(providers.id, input.id), eq(providers.status, "applied")))
+          .returning({ id: providers.id });
+        if (!approved.length) throw new TRPCError({ code: "CONFLICT", message: "Only a pending application can be approved." });
+      });
       await ctx.app.jobs.run("provider-registry").catch(() => undefined);
-      return { id: input.id, status };
+      return { id: input.id, status, review_hash: input.review_hash };
     }),
     setStatus: operator.input(z.object({ id: z.string(), status: z.enum(["applied", "shadow", "live", "suspended", "delisted"]) })).mutation(async ({ ctx, input }) => {
-      await ctx.app.db.update(providers).set({ status: input.status, updatedAt: new Date() }).where(eq(providers.id, input.id));
+      // A pending application becomes active only through `approve`, which binds it to the reviewed revision.
+      const activates = input.status === "shadow" || input.status === "live";
+      const changed = await ctx.app.db
+        .update(providers)
+        .set({ status: input.status, updatedAt: new Date() })
+        .where(activates ? and(eq(providers.id, input.id), ne(providers.status, "applied")) : eq(providers.id, input.id))
+        .returning({ id: providers.id });
+      if (!changed.length && activates) {
+        const [pending] = await ctx.app.db.select({ id: providers.id }).from(providers).where(eq(providers.id, input.id));
+        if (pending) throw new TRPCError({ code: "CONFLICT", message: "Approve a pending application with providers.approve and its review hash." });
+      }
       await ctx.app.catalog.refresh();
       return input;
     }),
