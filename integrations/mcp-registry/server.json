@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.AnyRouteRH/anyroute",
+  "title": "Anyroute",
+  "description": "Call 350+ AI models with signed receipts, or keep a prompt on attested TEE providers only.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/AnyRouteRH/AnyRoute",
+    "source": "github"
+  },
+  "websiteUrl": "https://api-production-70da.up.railway.app/docs",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api-production-70da.up.railway.app/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer <your Anyroute API key (sk-ar-v1-...)>. Only the chat tool needs it; the model lists, verify_provider and the receipt tools answer without one.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "X-Anyroute-Lane",
+          "description": "Optional. Set to attested to send every chat call only to providers whose enclave the router verified (it refuses rather than falls back).",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

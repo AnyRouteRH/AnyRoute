@@ -1,0 +1,85 @@
+{
+  "name": "@anyroute/plugin-anyroute",
+  "version": "0.1.0",
+  "description": "ElizaOS model provider for Anyroute: 350+ models behind one key, a signed receipt per call, and an attested-only lane that refuses rather than falls back.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "elizaos",
+    "elizaos-plugins",
+    "plugin",
+    "anyroute",
+    "llm",
+    "attested",
+    "tee"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnyRouteRH/AnyRoute.git",
+    "directory": "integrations/elizaos"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "^1.7.0"
+  },
+  "devDependencies": {
+    "@elizaos/core": "^1.7.2",
+    "typescript": "^5.9.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ANYROUTE_API_KEY": {
+        "type": "string",
+        "description": "Anyroute API key (sk-ar-v1-...).",
+        "required": true,
+        "sensitive": true
+      },
+      "ANYROUTE_BASE_URL": {
+        "type": "string",
+        "description": "Router base URL including /api/v1.",
+        "required": false,
+        "default": "https://api-production-70da.up.railway.app/api/v1"
+      },
+      "ANYROUTE_SMALL_MODEL": {
+        "type": "string",
+        "description": "Model id for TEXT_SMALL.",
+        "required": false,
+        "default": "meta-llama/llama-3.3-70b-instruct"
+      },
+      "ANYROUTE_LARGE_MODEL": {
+        "type": "string",
+        "description": "Model id for TEXT_LARGE.",
+        "required": false,
+        "default": "deepseek/deepseek-v3.2"
+      },
+      "ANYROUTE_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Model id for TEXT_EMBEDDING.",
+        "required": false,
+        "default": "qwen/qwen3-embedding-8b"
+      },
+      "ANYROUTE_LANE": {
+        "type": "string",
+        "description": "Set to attested to use only providers whose enclave the router verified.",
+        "required": false,
+        "default": "public"
+      }
+    }
+  }
+}

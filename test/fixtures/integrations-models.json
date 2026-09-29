@@ -1,0 +1,72 @@
+{
+  "data": [
+    {
+      "id": "z-ai/glm-5.3",
+      "context_length": 1048576,
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
+      "pricing": { "prompt": "0.0000014", "completion": "0.0000044", "request": "0", "image": "0" },
+      "top_provider": { "context_length": 1048576, "max_completion_tokens": 131072 },
+      "supported_parameters": ["max_tokens", "reasoning", "include_reasoning", "response_format", "stream", "structured_outputs", "temperature", "tool_choice", "tools"],
+      "attested_available": true
+    },
+    {
+      "id": "meta-llama/llama-3.3-70b-instruct",
+      "context_length": 131072,
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
+      "pricing": { "prompt": "0.0000001055", "completion": "0.0000003376" },
+      "top_provider": { "context_length": 131072, "max_completion_tokens": null },
+      "supported_parameters": ["max_tokens", "stream", "temperature", "tools"],
+      "attested_available": true
+    },
+    {
+      "id": "openai/gpt-6.1-sol-pro",
+      "context_length": 1050000,
+      "architecture": { "input_modalities": ["file", "image", "text", "audio"], "output_modalities": ["text", "audio"] },
+      "pricing": { "prompt": "0.00000211", "completion": "0.00001055", "input_cache_read": "0.000000211" },
+      "top_provider": { "context_length": 1050000, "max_completion_tokens": null },
+      "supported_parameters": ["max_tokens", "parallel_tool_calls", "reasoning_effort", "stream", "tool_choice", "tools", "web_search_options"],
+      "attested_available": false
+    },
+    {
+      "id": "nousresearch/hermes-4-405b",
+      "context_length": 131072,
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
+      "pricing": { "prompt": "0", "completion": "0", "input_cache_read": "0" },
+      "top_provider": { "context_length": 131072, "max_completion_tokens": 0 },
+      "supported_parameters": ["max_tokens", "stream"]
+    },
+    {
+      "id": "qwen/qwen3-embedding-8b",
+      "context_length": 32768,
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["embeddings"] },
+      "pricing": { "prompt": "0.00000001", "completion": "0" },
+      "top_provider": { "context_length": 32768, "max_completion_tokens": null },
+      "supported_parameters": ["max_tokens", "stream"],
+      "attested_available": true
+    },
+    {
+      "id": "~z-ai/glm-latest",
+      "context_length": 1048576,
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
+      "pricing": { "prompt": "0.0000014", "completion": "0.0000044" },
+      "top_provider": { "context_length": 1048576, "max_completion_tokens": null },
+      "supported_parameters": ["max_tokens", "stream"]
+    },
+    {
+      "id": "anyroute/auto-priced",
+      "context_length": 200000,
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
+      "pricing": { "prompt": "-1", "completion": "-1" },
+      "top_provider": { "context_length": 200000, "max_completion_tokens": null },
+      "supported_parameters": ["max_tokens"]
+    },
+    {
+      "id": "example/no-context",
+      "context_length": null,
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
+      "pricing": { "prompt": "0.000001", "completion": "0.000002" },
+      "top_provider": null,
+      "supported_parameters": null
+    }
+  ]
+}
