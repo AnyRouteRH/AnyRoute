@@ -69,6 +69,8 @@ const result = await client.chat.completions.create({
 
 [OpenAPI specification →](web/public/openapi.json)
 
+**Privacy protocol (SEAL):** attested serving, end-to-end encrypted relay transport, anonymous credits and verifiable receipts, specified in [`spec/`](spec/README.md) (Apache-2.0).
+
 ## Inside the router
 
 ```mermaid
@@ -102,7 +104,7 @@ Questions or problems with the service or a deposit: Anyroute1@atomicmail.io. Se
 
 Anyroute is **source-available under [PolyForm Noncommercial 1.0.0](LICENSE)**, except for files with their own license notices. Commercial use outside the license's permitted purposes requires separate written permission. [Request commercial licensing →](https://github.com/AnyRouteRH/AnyRoute/issues/new?template=licensing.yml)
 
-Existing MIT-licensed contracts and third-party licenses remain in effect; see [NOTICE](NOTICE). This is a non-commercial software license, not an OSI-approved open-source license.
+Existing MIT-licensed contracts and third-party licenses remain in effect; see [NOTICE](NOTICE). The SEAL protocol specification in [`spec/`](spec) is Apache-2.0 ([spec/LICENSE](spec/LICENSE)). This is a non-commercial software license, not an OSI-approved open-source license.
 
 <details>
 <summary>Prefer a still header?</summary>
