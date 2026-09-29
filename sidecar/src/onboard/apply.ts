@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SidecarError } from "../util.ts";
 import { UsageError } from "./args.ts";
@@ -97,5 +97,6 @@ export function saveApplication(dir: string, a: Application): string {
   const path = join(dir, FILES.applicationJson);
   // 0600: the file holds the router key when --include-key was used.
   writeFileSync(path, JSON.stringify(a, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(path, 0o600); // the file may already exist with looser permissions
   return path;
 }
