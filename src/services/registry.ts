@@ -7,7 +7,7 @@ import { canaries, models, offers, providers } from "../db/schema.ts";
 import { usdToPico } from "../lib/money.ts";
 import { boundedJson, providerFetch } from "../providers/network.ts";
 import { decrypt, log } from "../lib/util.ts";
-import { normalizePerMillionCatalogue } from "../providers/per-million.ts";
+import { isPerMillionCatalogue, normalizePerMillionCatalogue } from "../providers/per-million.ts";
 
 // provider-registry: pulls each provider's /models (OpenRouter provider-spec shape), validates it,
 // diffs it into `offers`, creates unknown models, drives onboarding
@@ -94,7 +94,7 @@ export async function fetchProviderModels(ctx: RegistryConfig, p: DiscoveryProvi
   const res = await providerFetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, redirect: "error", signal: AbortSignal.timeout(20_000) }, { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production });
   if (!res.ok) throw new Error(`GET /models returned ${res.status}`);
   const json = await boundedJson(res);
-  return parseProviderModels(new URL(p.baseUrl).origin === "https://upstream.example" ? normalizePerMillionCatalogue(json) : json);
+  return parseProviderModels(isPerMillionCatalogue(json) ? normalizePerMillionCatalogue(json) : json);
 }
 
 export async function syncProvider(ctx: RegistryConfig & { db: Db | Tx }, p: typeof providers.$inferSelect) {

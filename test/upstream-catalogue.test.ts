@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { normalizePerMillionCatalogue } from "../src/providers/per-million.ts";
+import { isPerMillionCatalogue, normalizePerMillionCatalogue } from "../src/providers/per-million.ts";
 import { parseProviderModels } from "../src/services/registry.ts";
 import { usdToPico, tokenCost } from "../src/lib/money.ts";
 import { openDatabase } from "../src/db/client.ts";
@@ -15,7 +15,14 @@ const model = {
 };
 const parse = (data: unknown[]) => parseProviderModels(normalizePerMillionCatalogue({ data }));
 
-test("upstream prices become per-token rates with exact million-token billing", () => {
+test("per-million catalogues are detected from their pricing shape only", () => {
+  expect(isPerMillionCatalogue({ data: [model] })).toBe(true);
+  expect(isPerMillionCatalogue({ data: [{ id: "a/b", pricing: { prompt: "0.000001", completion: "0.000002" } }] })).toBe(false);
+  expect(isPerMillionCatalogue({ data: null })).toBe(false);
+  expect(isPerMillionCatalogue(null)).toBe(false);
+});
+
+test("per-million prices become per-token rates with exact million-token billing", () => {
   const { ok, errors } = parse([model]);
   expect(errors).toEqual([]);
   expect(ok[0].pricing).toEqual({ prompt: "0.00000015825", completion: "0.000000633" });
@@ -25,13 +32,13 @@ test("upstream prices become per-token rates with exact million-token billing", 
   expect(ok[0].supported_parameters).toEqual(["tools", "temperature"]);
 });
 
-test("upstream excludes encrypted/private and non-chat models", () => {
+test("per-million catalogues exclude encrypted/private and non-chat models", () => {
   const result = parse([model, { ...model, id: "private/test" }, { ...model, privacyLevel: "e2e" }, { ...model, type: "image" }]);
   expect(result.ok).toHaveLength(1);
   expect(result.errors).toEqual([]);
 });
 
-test("upstream invalid or unsupported prices cannot create free offers", () => {
+test("per-million invalid or unsupported prices cannot create free offers", () => {
   for (const pricing of [undefined, {}, { ...model.pricing, currency: "EUR" },
     { ...model.pricing, type: "variable" }, { ...model.pricing, input_per_1M_tokens: -1 },
     { ...model.pricing, input_per_1M_tokens: Infinity }, { ...model.pricing, output_per_1M_tokens: null }]) {
@@ -41,12 +48,12 @@ test("upstream invalid or unsupported prices cannot create free offers", () => {
   }
 });
 
-test("upstream preserves zero rates and rounds sub-pico rates upward", () => {
+test("per-million catalogues preserve zero rates and round sub-pico rates upward", () => {
   const { ok } = parse([{ ...model, pricing: { ...model.pricing, input_per_1M_tokens: 0, output_per_1M_tokens: 0.0000001 } }]);
   expect(ok[0].pricing).toEqual({ prompt: "0", completion: "0.000000000001" });
 });
 
-test("upstream malformed catalogue produces validation errors", () => {
+test("a malformed per-million catalogue produces validation errors", () => {
   expect(parseProviderModels(normalizePerMillionCatalogue({ data: null })).errors).toHaveLength(1);
   expect(parse([null]).errors).toHaveLength(1);
 });
@@ -57,7 +64,7 @@ test("upstream catalogue provisioning rolls back atomically on transaction failu
   try {
     const provision = async (rollback: boolean) => handle.db.transaction(async (db) => {
       const [provider] = await db.insert(providers).values({
-        id: "upstream", name: "upstream", baseUrl: "https://upstream.example/v1", status: "live",
+        id: "relay", name: "Anyroute Relay", baseUrl: "https://upstream.example/v1", status: "live",
         staticModels: parse([model]).ok,
       }).returning();
       await syncProvider({ db, cfg }, provider);

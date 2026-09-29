@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { picoToUsdString, usdToPico } from "../lib/money.ts";
 
-// upstream publishes USD per million tokens, unlike the OpenRouter provider spec.
+// Some upstream catalogues publish USD per million tokens, unlike the OpenRouter provider spec.
 // Keep conversion in integer money units and round upward only at pico precision.
 const rate = z.number().nonnegative().max(1_000_000_000);
 const pricing = z.object({
@@ -12,7 +12,16 @@ const pricing = z.object({
 });
 const perToken = (value: number) => picoToUsdString((usdToPico(value) + 999_999n) / 1_000_000n);
 
-/** Normalize only upstream's public chat catalogue; private models need an E2EE proxy. */
+/** A catalogue priced per million tokens (typed per_token pricing with input/output per 1M), detected from its shape. */
+export function isPerMillionCatalogue(json: unknown): boolean {
+  const data = (json as { data?: unknown } | null)?.data;
+  return Array.isArray(data) && data.some((item) => {
+    const p = (item as { pricing?: Record<string, unknown> } | null)?.pricing;
+    return !!p && typeof p === "object" && ("input_per_1M_tokens" in p || "output_per_1M_tokens" in p);
+  });
+}
+
+/** Normalize only the public chat entries of a per-million catalogue; private (end-to-end encrypted) models need a proxy. */
 export function normalizePerMillionCatalogue(json: unknown): unknown {
   const data = (json as { data?: unknown } | null)?.data;
   if (!Array.isArray(data)) return json; // The shared parser reports a malformed envelope.
