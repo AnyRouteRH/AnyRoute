@@ -146,6 +146,16 @@ code,pre,kbd,samp{font-family:var(--mono)}
 .hero-sub{margin-top:32px;display:grid;gap:10px;max-width:560px;font-size:clamp(17px,1.4vw,19px);line-height:1.5;color:var(--muted-dark);animation:fade-up 1s var(--ease-out) .75s both}
 .hero-sub strong{color:var(--paper);font-weight:560}
 .hero .button-row{margin-top:36px;animation:fade-up 1s var(--ease-out) .9s both}
+.ca{margin-top:20px;max-width:100%;animation:fade-up 1s var(--ease-out) 1s both}
+.ca-field{display:inline-flex;align-items:center;gap:12px;max-width:100%;padding:8px 8px 8px 12px;border:1px solid var(--line-dark);background:rgba(245,245,240,.04);color:var(--paper);font:500 12px/1 var(--mono);text-align:left;cursor:pointer;transition:border-color .2s var(--ease),background .2s var(--ease)}
+.ca-field:hover{border-color:var(--line-dark-strong);background:rgba(245,245,240,.07)}
+.ca-field:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+.ca-label{color:var(--signal);font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.ca-value,.ca-short{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;letter-spacing:.01em;user-select:all}
+.ca-short{display:none}
+.ca-action{padding:6px 9px;border:1px solid var(--line-dark);color:var(--muted-dark);font-size:10px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;transition:color .2s var(--ease),background .2s var(--ease),border-color .2s var(--ease)}
+.ca-field:hover .ca-action{color:var(--paper);border-color:var(--line-dark-strong)}
+.ca-field.copied .ca-action{color:var(--ink);background:var(--signal);border-color:var(--signal)}
 .hero-status{position:relative;border-top:1px solid var(--line-dark);font:500 11px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted-dark);animation:fade-up 1s var(--ease-out) 1.1s both}
 .hero-status .container{display:flex;flex-wrap:wrap;gap:12px 36px;padding:18px 0}
 .hero-status span{display:inline-flex;align-items:center;gap:10px}
@@ -596,6 +606,8 @@ progress::-moz-progress-bar{background:var(--signal-deep)}
   .footer-links{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:600px){
+  .ca-value{display:none}
+  .ca-short{display:inline}
   .feature-grid,.roadmap-grid{grid-template-columns:1fr}
   .feature.wide{grid-column:auto}
   .feature{min-height:0}

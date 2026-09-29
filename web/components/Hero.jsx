@@ -1,5 +1,6 @@
 'use client';
 import {useState} from 'react';
+import ContractAddress from './ContractAddress';
 import RouteField from './RouteField';
 import {Button,Scramble} from './UI';
 
@@ -35,6 +36,7 @@ export default function Hero(){
         <h1 className="hero-title"><span className="brackets" aria-hidden="true"/>{words.map((line,l)=><span className="line" key={l}>{line.map((w,k)=><span key={k}><span className={'w'+(l===2?' accent':'')} style={{'--i':i++}}>{w}</span>{k<line.length-1?' ':''}</span>)}</span>)}</h1>
         <div className="hero-sub"><p>Route AI calls through <strong>one API, one USDG balance</strong> and a signed receipt for every generation. Choose your model. Keep control of the route.</p><p>Built on Robinhood Chain. Deposit USDG and start routing.</p></div>
         <div className="button-row"><Button href="/dashboard/">Open dashboard</Button><Button href="/docs/" secondary>Read the docs</Button></div>
+        <ContractAddress/>
       </div>
       <LiveCard route={route}/>
     </div>
