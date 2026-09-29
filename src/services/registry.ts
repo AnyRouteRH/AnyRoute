@@ -6,6 +6,7 @@ import type { Db, Tx } from "../db/client.ts";
 import { canaries, models, offers, providers } from "../db/schema.ts";
 import { usdToPico } from "../lib/money.ts";
 import { boundedJson, providerFetch } from "../providers/network.ts";
+import { loadTlsPins, type TlsPin } from "../providers/tls-pin.ts";
 import { decrypt, log } from "../lib/util.ts";
 import { isPerMillionCatalogue, normalizePerMillionCatalogue } from "../providers/per-million.ts";
 
@@ -84,20 +85,20 @@ export function parseProviderModels(json: unknown) {
 }
 
 type RegistryConfig = { cfg: Pick<Ctx["cfg"], "appSecret" | "production"> };
-type DiscoveryProvider = Pick<typeof providers.$inferSelect, "status" | "staticModels" | "headers" | "apiKeyEnc" | "baseUrl">;
+type DiscoveryProvider = Pick<typeof providers.$inferSelect, "status" | "staticModels" | "headers" | "apiKeyEnc" | "baseUrl"> & { tlsPin?: TlsPin | null };
 
 export async function fetchProviderModels(ctx: RegistryConfig, p: DiscoveryProvider) {
   if (!["shadow", "live"].includes(p.status)) throw new Error("Provider requires operator approval before discovery.");
   if (p.staticModels) return parseProviderModels({ data: p.staticModels });
   const headers: Record<string, string> = { accept: "application/json", ...openProviderHeaders(ctx.cfg.appSecret, p.headers) };
   if (p.apiKeyEnc) headers.authorization = `Bearer ${decrypt(ctx.cfg.appSecret, p.apiKeyEnc)}`;
-  const res = await providerFetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, redirect: "error", signal: AbortSignal.timeout(20_000) }, { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production });
+  const res = await providerFetch(p.baseUrl.replace(/\/$/, "") + "/models", { headers, redirect: "error", signal: AbortSignal.timeout(20_000) }, { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production, tlsPin: p.tlsPin });
   if (!res.ok) throw new Error(`GET /models returned ${res.status}`);
   const json = await boundedJson(res);
   return parseProviderModels(isPerMillionCatalogue(json) ? normalizePerMillionCatalogue(json) : json);
 }
 
-export async function syncProvider(ctx: RegistryConfig & { db: Db | Tx }, p: typeof providers.$inferSelect) {
+export async function syncProvider(ctx: RegistryConfig & { db: Db | Tx }, p: typeof providers.$inferSelect & { tlsPin?: TlsPin | null }) {
   const { ok, errors } = await fetchProviderModels(ctx, p);
   const now = new Date();
   const seen: string[] = [];
@@ -169,10 +170,11 @@ async function advanceOnboarding(ctx: Ctx, p: typeof providers.$inferSelect, _sc
 
 export async function runRegistry(ctx: Ctx) {
   const rows = await ctx.db.select().from(providers).where(inArray(providers.status, ["shadow", "live"]));
+  const pins = await loadTlsPins(ctx.db);
   const results: Record<string, unknown> = {};
   for (const p of rows) {
     try {
-      const r = await syncProvider(ctx, p);
+      const r = await syncProvider(ctx, { ...p, tlsPin: pins.get(p.id) ?? null });
       results[p.id] = r;
       await advanceOnboarding(ctx, p, r.models > 0);
     } catch (e) {

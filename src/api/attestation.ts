@@ -4,6 +4,7 @@ import type { Ctx } from "../context.ts";
 import { attestations, providers } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
 import { currentMeasurement } from "../services/measurements.ts";
+import { loadTlsPin } from "../providers/tls-pin.ts";
 
 // GET /api/v1/attestation/:providerId - what the router has actually checked about a provider's confidential
 // endpoint, and what it has not. The default answer is "unverified": a provider is "attested" only while the router
@@ -36,6 +37,9 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
     // so an operator restarting an endpoint can still compare what it serves with what the router last verified.
     const m = simulatedEvidence ? null : await currentMeasurement(ctx, p.id);
     const registry = ctx.cfg.measurements.registry;
+    // The certificate the router's connections to this provider are pinned to, when it attested through a
+    // self-signed certificate (providers/tls-pin.ts).
+    const pin = simulatedEvidence ? null : await loadTlsPin(ctx.db, p.id);
 
     const rekorFound = !!m && m.rekorInclusionVerified;
     const onchain = !m ? "not_recorded" : m.status === "registered" ? "registered" : m.status === "revoked" ? "revoked" : m.txHash ? "submitted_unconfirmed" : m.calldata ? "calldata_ready_not_submitted" : "not_submitted";
@@ -49,6 +53,7 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
         attested_at: status === "attested" || status === "simulated" ? p.attestedAt?.toISOString() ?? null : null,
         attestation_hash: status === "attested" || status === "simulated" ? p.attestationHash ?? null : null,
         verifiers,
+        tls_pin: pin ? { spki_sha256: pin.spkiSha256, attestation_ref: pin.attestationRef, pinned_at: pin.pinnedAt } : null,
         measurement: m
           ? {
               image_digest: m.imageDigest,

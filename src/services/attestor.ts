@@ -1,5 +1,6 @@
 import { and, eq, isNotNull, inArray } from "drizzle-orm";
-import { boundedJson, providerFetch } from "../providers/network.ts";
+import { boundedJson, peekProviderCertificate, providerFetch } from "../providers/network.ts";
+import { clearTlsPin, describePeerCertificate, saveTlsPin, type PeerCertificate } from "../providers/tls-pin.ts";
 import { randomBytes } from "node:crypto";
 import type { Ctx } from "../context.ts";
 import { attestations, kv, providers } from "../db/schema.ts";
@@ -23,6 +24,15 @@ import { bindingsCommittedIn, digestsFromBindings, recordMeasurement, type Diges
 // A sidecar attestation document ({ type: "anyroute.sidecar.attestation", evidence, bindings }) is accepted as
 // well: its quote must also commit to sha256(canonical_json(bindings)) in report_data, and with
 // MEASUREMENTS_ENABLED the bound image/compose/model digests are recorded (services/measurements.ts).
+//
+// Quote-pinned TLS (providers/tls-pin.ts). An https endpoint whose certificate names an attestation reference
+// (`<32 hex>.<32 hex>.attest.anyroute`, a sidecar's self-signed certificate) is not checked against public CAs.
+// The attestor reads that certificate without sending anything, fetches over a connection that accepts only it,
+// and accepts it only if: the endpoint serves the quote whose sha256 is the reference, that quote verifies, its
+// report_data commits to bindings whose tls_pubkey is this certificate's key, and the fresh nonce-bound quote binds
+// the same key. The certificate is then pinned: every later call to the provider accepts only it. Anything else
+// with a self-signed certificate is refused as before, and a sidecar that binds a TLS key but is reached through a
+// different certificate is refused too.
 
 export type TdxFields = { mrtd: string; rtmr0: string; rtmr1: string; rtmr2: string; rtmr3: string; reportData: string };
 
@@ -96,12 +106,28 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
     await ctx.db.update(providers).set({ attested: false, updatedAt: new Date() }).where(eq(providers.id, p.id));
     return { provider: p.id, ok: false, reason };
   };
+  const policy = { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production };
+  // A certificate that names an attestation reference is only as trustworthy as the quote it names: every fetch
+  // below accepts exactly that certificate, and the checks further down must prove it.
+  let peer: PeerCertificate | null = null;
+  if (url.protocol === "https:") {
+    try {
+      const described = describePeerCertificate(await peekProviderCertificate(url, policy, AbortSignal.timeout(20_000)));
+      if (described.attestationRef) peer = described;
+    } catch {
+      peer = null; // an ordinary endpoint (or an unreachable one): the fetch below checks it against public CAs
+    }
+  }
+  const tlsPin = peer ? { certPem: peer.certPem, spkiSha256: peer.spkiSha256 } : null;
+  const getReport = async (target: URL) => {
+    const res = await providerFetch(target, { redirect: "error", signal: AbortSignal.timeout(20_000) }, { ...policy, tlsPin });
+    if (!res.ok) throw Object.assign(new Error(`attestation endpoint HTTP ${res.status}`), { http: true });
+    return normalizeSidecarReport((await boundedJson(res)) as Record<string, any>);
+  };
   try {
-    const res = await providerFetch(url, { redirect: "error", signal: AbortSignal.timeout(20_000) }, { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production });
-    if (!res.ok) return fail(`attestation endpoint HTTP ${res.status}`);
-    report = normalizeSidecarReport((await boundedJson(res)) as Record<string, any>);
+    report = await getReport(url);
   } catch (e) {
-    return fail(`attestation endpoint unreachable: ${(e as Error).message}`);
+    return fail((e as { http?: boolean }).http ? (e as Error).message : `attestation endpoint unreachable: ${(e as Error).message}`);
   }
   const [allow] = await ctx.db.select().from(kv).where(eq(kv.key, `attest-allow:${p.id}`));
   const allowlist = (allow?.value ?? null) as { mrtd?: string[]; rtmr3?: string[]; measurement?: string[] } | null;
@@ -110,6 +136,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   let bound: Digests | null = null;
   let quoteHex: string | null = null;
 
+  if (peer && (p.teeKind === "dev" || report.kind === "dev" || !report.intel_quote)) return fail("a self-signed endpoint must prove its certificate with a hardware TDX quote");
   if (p.teeKind === "dev" || report.kind === "dev") {
     if (!ctx.cfg.attestation.allowDev) return fail("dev attestation is disabled");
     if (String(report.nonce).replace(/^0x/, "") !== nonce) return fail("nonce mismatch");
@@ -139,6 +166,14 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
       quoteHex = report.intel_quote;
       if (allowlist?.mrtd?.length && !allowlist.mrtd.includes(f.mrtd)) return fail("MRTD not in allowlist", measurements);
       if (allowlist?.rtmr3?.length && !allowlist.rtmr3.includes(f.rtmr3)) return fail("RTMR3 not in allowlist", measurements);
+      const boundKey = String((report.sidecar_bindings as Record<string, unknown> | undefined)?.tls_pubkey ?? "").toLowerCase();
+      if (peer) {
+        const pinned = await provePinnedCertificate(ctx, p, peer, report, getReport);
+        if (pinned) return fail(pinned, measurements);
+      } else if (url.protocol === "https:" && boundKey) {
+        // The sidecar terminates TLS itself with the key it binds; any other certificate here is someone else's.
+        return fail("the endpoint did not present the TLS key its quote binds", measurements);
+      }
     } else {
       const q = await verifyQuote(ctx, { kind: "snp", quoteHex: report.snp_report, registers: null });
       if (!q.ok) return fail(q.reason!);
@@ -162,8 +197,47 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
       log.error("recording the measurement failed", { provider: p.id, error: (e as Error).message });
     }
   }
+  // From now on the provider's connections accept only the certificate this attestation proved; an endpoint that
+  // attested through public CAs has no pin.
+  if (peer) await saveTlsPin(ctx.db, p.id, { certPem: peer.certPem, spkiSha256: peer.spkiSha256, attestationRef: peer.attestationRef!, pinnedAt: new Date().toISOString() });
+  else await clearTlsPin(ctx.db, p.id);
   await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), updatedAt: new Date() }).where(eq(providers.id, p.id));
-  return { provider: p.id, ok: true, hash: reportHash };
+  return { provider: p.id, ok: true, hash: reportHash, ...(peer ? { tls_pin: { spki_sha256: peer.spkiSha256, attestation_ref: peer.attestationRef } } : {}) };
+}
+
+/**
+ * The checks that let a self-signed certificate stand in for a CA: returns a failure reason, or null when the
+ * certificate is proven. The fresh, nonce-bound report has already passed every ordinary check.
+ */
+async function provePinnedCertificate(ctx: Ctx, p: typeof providers.$inferSelect, peer: PeerCertificate, fresh: Record<string, any>, getReport: (u: URL) => Promise<Record<string, any>>): Promise<string | null> {
+  const bindsPeerKey = (bindings: unknown) => !!bindings && typeof bindings === "object" && String((bindings as Record<string, unknown>).tls_pubkey ?? "").toLowerCase() === peer.spkiHex;
+  if (fresh.sidecar_bindings === undefined) return "a self-signed endpoint must serve a sidecar attestation document";
+  if (!bindsPeerKey(fresh.sidecar_bindings)) return "the certificate's key is not the TLS key the quote binds";
+  // The certificate names its boot quote by hash: fetch that quote (no nonce) over the same pinned connection.
+  const bootUrl = new URL(p.attestationUrl!);
+  bootUrl.searchParams.delete("nonce");
+  let boot: Record<string, any>;
+  try {
+    boot = await getReport(bootUrl);
+  } catch (e) {
+    return `boot attestation unreachable: ${(e as Error).message}`;
+  }
+  const bootQuote = typeof boot.intel_quote === "string" ? boot.intel_quote.replace(/^0x/, "").toLowerCase() : "";
+  if (!bootQuote || sha256(Buffer.from(bootQuote, "hex")) !== peer.attestationRef) return "the certificate's attestation reference is not the hash of the quote the endpoint serves";
+  let f: TdxFields;
+  try {
+    f = parseTdxQuote(bootQuote);
+  } catch (e) {
+    return `unparseable boot quote: ${(e as Error).message}`;
+  }
+  if (!bindsPeerKey(boot.sidecar_bindings) || !bindingsCommittedIn(f.reportData, boot.sidecar_bindings)) return "the quote the certificate names does not bind the certificate's key";
+  // One process, one set of bindings: the boot quote and the fresh one must commit to the same values.
+  if (canonicalJson(boot.sidecar_bindings) !== canonicalJson(fresh.sidecar_bindings)) return "the boot and fresh quotes bind different values";
+  const q = await verifyQuote(ctx, { kind: "tdx", quoteHex: bootQuote, registers: f, eventLog: boot.event_log ?? null, vmConfig: typeof boot.vm_config === "string" ? boot.vm_config : null });
+  if (!q.ok) return `the quote the certificate names did not verify: ${q.reason}`;
+  const bootDigests = digestsFromBindings(boot.sidecar_bindings);
+  if (q.composeHash && bootDigests && q.composeHash !== bootDigests.composeHash.slice(2)) return "compose hash in the boot bindings does not match the verified evidence";
+  return null;
 }
 
 export async function runAttestor(ctx: Ctx) {

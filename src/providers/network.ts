@@ -2,7 +2,9 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { connect as tlsConnect } from "node:tls";
 import { Readable } from "node:stream";
+import { pinnedTlsOptions, type TlsPin } from "./tls-pin.ts";
 
 /** Bound untrusted discovery/attestation JSON, including chunked responses. */
 export async function boundedJson(response: Response, maxBytes = 2 * 1024 * 1024): Promise<unknown> {
@@ -30,7 +32,14 @@ export async function boundedJson(response: Response, maxBytes = 2 * 1024 * 1024
 }
 
 type Address = { address: string; family: number };
-type NetworkPolicy = { production: boolean; allowDevelopmentMockLoopback?: boolean; allowDevelopmentLoopbackHostnames?: string[]; resolve?: (hostname: string) => Promise<Address[]> };
+type NetworkPolicy = {
+  production: boolean;
+  allowDevelopmentMockLoopback?: boolean;
+  allowDevelopmentLoopbackHostnames?: string[];
+  resolve?: (hostname: string) => Promise<Address[]>;
+  /** An attested provider's pinned certificate (providers/tls-pin.ts): the only certificate its connections accept. */
+  tlsPin?: Pick<TlsPin, "certPem" | "spkiSha256"> | null;
+};
 
 function ipv4Number(address: string): number | null {
   if (isIP(address) !== 4) return null;
@@ -124,28 +133,66 @@ function hostnameFrom(url: URL) {
   return url.hostname.startsWith("[") && url.hostname.endsWith("]") ? url.hostname.slice(1, -1) : url.hostname;
 }
 
-/** Resolve and pin the actual socket to a reviewed public address. */
-export async function providerFetch(input: string | URL, init: RequestInit = {}, policy: NetworkPolicy): Promise<Response> {
-  const url = new URL(input);
+/** Check a provider URL and resolve it to one reviewed address (public, or loopback for development mocks). */
+async function resolveDestination(url: URL, policy: NetworkPolicy, signal?: AbortSignal | null) {
   const host = hostnameFrom(url);
   if (!(url.protocol === "https:" || (!policy.production && url.protocol === "http:")) || url.username || url.password || url.hash)
     throw new Error("Provider URL must use HTTPS in production and cannot contain credentials or a fragment.");
-  if (init.redirect && init.redirect !== "error") throw new Error("Provider redirects are disabled.");
-
-  if (init.signal?.aborted) throw init.signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+  if (signal?.aborted) throw signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
   const literalFamily = isIP(host);
   const resolved = literalFamily
     ? [{ address: host, family: literalFamily }]
-    : await resolveWithSignal((policy.resolve ?? ((h) => lookup(h, { all: true, verbatim: true })))(host), init.signal);
-  if (init.signal?.aborted) throw init.signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+    : await resolveWithSignal((policy.resolve ?? ((h) => lookup(h, { all: true, verbatim: true })))(host), signal);
+  if (signal?.aborted) throw signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
   if (!resolved.length) throw new Error("Provider hostname did not resolve.");
   const devLoopback = !policy.production && policy.allowDevelopmentMockLoopback === true &&
     (host === "localhost" || host === "localhost.localdomain" || policy.allowDevelopmentLoopbackHostnames?.includes(host) || (literalFamily > 0 && isLoopbackAddress(host)));
   if (devLoopback ? !resolved.every((x) => isLoopbackAddress(x.address)) : !resolved.every((x) => isPublicAddress(x.address)))
     throw new Error("Provider destination resolves to a non-public address.");
+  return { host, literalFamily, pinned: resolved[0] };
+}
+
+/**
+ * Read the certificate an https provider presents, without sending it anything: a TLS handshake to the same
+ * reviewed address providerFetch would use, then close. The certificate is not trusted by this call; the attestor
+ * decides whether to pin it (providers/tls-pin.ts).
+ */
+export async function peekProviderCertificate(input: string | URL, policy: NetworkPolicy, signal?: AbortSignal): Promise<Buffer> {
+  const url = new URL(input);
+  if (url.protocol !== "https:") throw new Error("Only https providers present a certificate.");
+  const { host, literalFamily, pinned } = await resolveDestination(url, policy, signal);
+  return await new Promise<Buffer>((resolve, reject) => {
+    const socket = tlsConnect({
+      host: pinned.address,
+      port: Number(url.port || 443),
+      ...(literalFamily === 0 ? { servername: host } : {}),
+      // Nothing is sent over this connection; the certificate is only read.
+      rejectUnauthorized: false,
+    });
+    const done = (err: Error | null, der?: Buffer) => {
+      signal?.removeEventListener("abort", abort);
+      socket.destroy();
+      if (err) reject(err);
+      else resolve(der!);
+    };
+    const abort = () => done(signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"));
+    signal?.addEventListener("abort", abort, { once: true });
+    socket.once("secureConnect", () => {
+      const raw = socket.getPeerCertificate(true)?.raw;
+      done(raw && raw.length ? null : new Error("Provider presented no certificate."), raw ? Buffer.from(raw) : undefined);
+    });
+    socket.once("error", (e: Error) => done(e));
+  });
+}
+
+/** Resolve and pin the actual socket to a reviewed public address. */
+export async function providerFetch(input: string | URL, init: RequestInit = {}, policy: NetworkPolicy): Promise<Response> {
+  const url = new URL(input);
+  if (init.redirect && init.redirect !== "error") throw new Error("Provider redirects are disabled.");
+  const { host, literalFamily, pinned } = await resolveDestination(url, policy, init.signal);
+  if (init.signal?.aborted) throw init.signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
   // Selecting one already-vetted answer and returning it from the request's lookup callback pins
   // the connection. The HTTP client cannot perform a second DNS lookup after the security check.
-  const pinned = resolved[0];
   const lookupPinned = (_hostname: string, options: { all?: boolean }, callback: (...args: any[]) => void) => {
     if (options?.all) callback(null, [pinned]);
     else callback(null, pinned.address, pinned.family);
@@ -160,6 +207,8 @@ export async function providerFetch(input: string | URL, init: RequestInit = {},
     signal: init.signal ?? undefined,
     lookup: lookupPinned,
     ...(url.protocol === "https:" && literalFamily === 0 ? { servername: host } : {}),
+    // An attested provider's connections accept exactly its pinned certificate (see providers/tls-pin.ts).
+    ...(url.protocol === "https:" && policy.tlsPin ? { ...pinnedTlsOptions(policy.tlsPin), agent: false } : {}),
   };
   const request = url.protocol === "https:" ? httpsRequest : httpRequest;
   const body = init.body;

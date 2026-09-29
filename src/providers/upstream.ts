@@ -187,7 +187,7 @@ export async function callUpstream(opts: {
       headers,
       body: JSON.stringify(opts.body),
       signal: ctl.signal,
-    }, { production: opts.production, allowDevelopmentMockLoopback: !opts.production });
+    }, { production: opts.production, allowDevelopmentMockLoopback: !opts.production, tlsPin: c.provider.tlsPin });
   } catch (e) {
     clearTimeout(firstTimer);
     if (opts.signal.aborted) {

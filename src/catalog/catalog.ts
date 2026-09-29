@@ -1,10 +1,13 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { models, offers, providerDisclosure, providers } from "../db/schema.ts";
+import { loadTlsPin, loadTlsPins, type TlsPin } from "../providers/tls-pin.ts";
 
 export type ModelRow = typeof models.$inferSelect;
 export type OfferRow = typeof offers.$inferSelect;
-export type ProviderRow = typeof providers.$inferSelect;
+/** A provider row, plus the certificate its connections are pinned to once it attested through a self-signed
+ *  certificate (providers/tls-pin.ts). */
+export type ProviderRow = typeof providers.$inferSelect & { tlsPin?: TlsPin | null };
 export type DisclosureRow = typeof providerDisclosure.$inferSelect;
 export type Candidate = OfferRow & { provider: ProviderRow };
 
@@ -27,13 +30,14 @@ export class Catalog {
   async refresh() {
     this.loading ??= (async () => {
       try {
-        const [m, p, o, d] = await Promise.all([
+        const [m, p, o, d, pins] = await Promise.all([
           this.db.select().from(models),
           this.db.select().from(providers),
           this.db.select().from(offers),
           this.db.select().from(providerDisclosure),
+          loadTlsPins(this.db),
         ]);
-        const pm = new Map(p.map((x) => [x.id, x]));
+        const pm = new Map<string, ProviderRow>(p.map((x) => [x.id, { ...x, tlsPin: pins.get(x.id) ?? null }]));
         const byModel = new Map<string, Candidate[]>();
         for (const offer of o) {
           const provider = pm.get(offer.providerId);
@@ -82,6 +86,6 @@ export class Catalog {
     const cached = this.providers.get(id);
     if (cached) return cached;
     const [row] = await this.db.select().from(providers).where(eq(providers.id, id));
-    return row ?? null;
+    return row ? { ...row, tlsPin: await loadTlsPin(this.db, id) } : null;
   }
 }

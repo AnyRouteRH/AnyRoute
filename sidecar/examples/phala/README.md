@@ -107,10 +107,12 @@ To serve other weights, change the URL, revision and sha256 in `model-fetch`, th
 * `image_digest` names the base image the sidecar runs in, as the operator declares it. The sidecar code itself is
   pinned only through the compose hash.
 * `/attest` does not include the VM configuration, so a verifier that recomputes MRTD and RTMR0-2 from the OS image
-  (dstack-verifier) needs it from the platform.
-* The certificate is self-signed. Clients pin it (step 1 above); a client that verifies against public CAs,
-  including the router's attestor as it stands (`src/services/attestor.ts` fetches `attestation_url` with ordinary
-  certificate checks), cannot use the passthrough URL.
+  (dstack-verifier) needs it from the platform. The router's `phala` verifier (`ATTESTATION_VERIFIERS=phala`) uses
+  Phala's public quote verifier instead, which needs only the quote.
+* The certificate is self-signed. Clients pin it (step 1 above); a client that only trusts public CAs cannot use
+  the passthrough URL. The router pins it the same way: its attestor accepts the certificate only after the quote
+  it names verifies and binds its key, and then sends that provider's traffic only to that certificate
+  (`src/providers/tls-pin.ts`).
 * Keys and the certificate are regenerated on every start, so a restart changes the attestation reference.
 * CPU only: there is no GPU evidence to collect. The quota and the 512-token cap are for a public demo; list API
   keys in `auth.keys` for anything else.
