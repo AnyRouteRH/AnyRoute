@@ -18,11 +18,11 @@ RUN set -eu; \
       "https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/age-${AGE_VERSION}-linux-${arch}.tar.gz" age.tar.gz; \
     echo "${sum}  age.tar.gz" | sha256sum -c -; \
     tar -xzf age.tar.gz; \
-    install -m 0755 age/age /tools/age
+    install -D -m 0755 age/age /out/age
 
 FROM ${POSTGRES_CLIENT_IMAGE}
 COPY --from=tools /usr/local/bin/bun /usr/local/bin/bun
-COPY --from=tools /tools/age /usr/local/bin/age
+COPY --from=tools /out/age /usr/local/bin/age
 WORKDIR /opt/anyroute
 COPY scripts/backup-db.sh scripts/backup-offsite.ts ./scripts/
 RUN set -eu; for tool in bash bun age pg_dump psql sha256sum; do command -v "$tool" >/dev/null || { echo "missing $tool" >&2; exit 1; }; done; \
