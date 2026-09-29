@@ -111,6 +111,27 @@ curl --socks5-hostname 127.0.0.1:9050 http://<onion address>/api/v1/chat/complet
   -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
   -d '{"model":"meta-llama/llama-3.3-70b-instruct","messages":[{"role":"user","content":"Hello"}]}'`;
 const claudeCode = `claude mcp add --transport http anyroute ${BASE}/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY"`;
+const claudeCodeAttested = `claude mcp add --transport http anyroute-attested "${BASE}/mcp?lane=attested" --header "Authorization: Bearer $ANYROUTE_API_KEY"
+
+# the same restriction as a header instead of a URL query
+claude mcp add --transport http anyroute-attested ${BASE}/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY" --header "X-Anyroute-Lane: attested"`;
+const mcpAttestedCall = JSON.stringify(
+  { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "chat", arguments: { model: "<model from list_attested_models>", prompt: "Your prompt", lane: "attested" } } },
+  null,
+  2,
+);
+const mcpAttestedResult = JSON.stringify(
+  {
+    text: "…",
+    receipt_id: "gen-…",
+    lane: "attested",
+    disclosure: "attested",
+    upstream_attestation: { attested: true, gpu_attested: true, receipt_verified: true, kind: "aci/1", receipt_id: "<gateway receipt id>" },
+    "…": "cost_usd, latency_ms, model, provider, usage",
+  },
+  null,
+  2,
+);
 const cursorConfig = JSON.stringify({ mcpServers: { anyroute: { url: `${BASE}/mcp`, headers: { Authorization: "Bearer sk-ar-v1-…" } } } }, null, 2);
 const desktopConfig = JSON.stringify(
   { mcpServers: { anyroute: { command: "npx", args: ["-y", "mcp-remote", `${BASE}/mcp`, "--header", "Authorization:${ANYROUTE_AUTH}"], env: { ANYROUTE_AUTH: "Bearer sk-ar-v1-…" } } } },
@@ -232,7 +253,7 @@ const endpoints = [
   ["GET /api/v1/attestation/:providerId", "What the router has verified about a provider’s hardware attestation: status, verifiers, measurements, transparency-log and on-chain state, and what was not checked"],
   ["GET /api/v1/attestation/summary · /attestation/:providerId/history", "Proof-time: per attesting provider, the share of the last 24 hours and 7 days with a fresh attestation the router verified itself, measurement changes and the last failed check; and a provider’s recorded attestor, canary and probe events, newest first, paged by cursor. Failures are codes with fixed messages, never the provider’s own text. Kept for ATTESTATION_HISTORY_DAYS (30); 501 when it is 0"],
   ["GET /api/v1/measurements/key · /measurements/bundles/:providerId", "Where enabled: the key that signs measurement bundles (compose hash, source commit and tarball hash, model and image digests, MRTD allow-list), and a provider’s bundles with the transparency-log entry the router verified for each"],
-  ["POST /mcp", "AnyRoute MCP: list_models, chat, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
+  ["POST /mcp", "AnyRoute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
@@ -474,14 +495,36 @@ export default function Docs() {
           </p>
           <h2 id="mcp">Use every model as a tool.</h2>
           <p>
-            The router hosts a remote MCP server at /mcp (Streamable HTTP, stateless, JSON replies). Connect it to Claude, Cursor or any MCP client with your Anyroute key. Four tools: list_models (live models, context length and price per 1M
-            tokens), chat (call any model; returns the reply, a receipt id, cost and latency), get_receipt and verify_receipt. Chat goes through /api/v1/chat/completions with your key, so balance, limits and signed receipts are the same.
+            The router hosts a remote MCP server at /mcp (Streamable HTTP, stateless, JSON replies). Connect it to Claude, Cursor or any MCP client with your Anyroute key. Six tools: list_models (live models, context length and price per 1M
+            tokens), chat (call any model; returns the reply, a receipt id, cost and latency), get_receipt and verify_receipt, and two for private work, list_attested_models and verify_provider (below). Chat goes through /api/v1/chat/completions with your key, so balance, limits and signed receipts are the same.
             Only chat needs a key.
           </p>
           <Code label="Claude Code">{claudeCode}</Code>
           <Code label="Cursor · ~/.cursor/mcp.json">{cursorConfig}</Code>
           <Code label="Claude Desktop · claude_desktop_config.json (through the mcp-remote bridge)">{desktopConfig}</Code>
           <Code label="Check it with curl">{mcpCurl}</Code>
+          <h3>Keep a prompt with proven enclaves</h3>
+          <p>
+            list_attested_models lists the models the attested lane can serve now: those with an endpoint whose TEE attestation the router verified itself and whose provider documents no retention. Each carries gpu_attested, true when the latest verified gateway receipt
+            for the model asserted GPU attestation, false when it did not and null before any receipt. chat takes lane (public or attested) and disclosure (none, policy or any) with the meaning of provider.lane and provider.disclosure: on the attested lane the prompt goes only to
+            such a provider, and when none can answer the call fails (409 lane_unavailable, or 503 while they are down) with nothing sent and nothing charged. The result reports the lane, the disclosure class the signed receipt records and, when the provider is an attested gateway,
+            its upstream_attestation (attested, gpu_attested, receipt_verified and a reason when it is not attested). If the gateway’s receipt does not show an attested upstream, the reply is withheld and the error carries the receipt id; the upstream had already produced the answer, so the call is billed.
+          </p>
+          <p>
+            To make every chat call on a connection attested, add ?lane=attested to the /mcp URL, or send X-Anyroute-Lane: attested; ?disclosure= and X-Anyroute-Disclosure-Max set a ceiling the same way. The strictest setting wins: a call can tighten the connection’s setting and never relax it,
+            and a value the router does not recognise refuses the call instead of falling back to public. The unlinkable lane needs a relay and a blind token, so it is not offered over MCP.
+          </p>
+          <Code label="Claude Code · every chat call attested">{claudeCodeAttested}</Code>
+          <Code label="tools/call · chat on the attested lane">{mcpAttestedCall}</Code>
+          <Code label="Result (abridged)">{mcpAttestedResult}</Code>
+          <p>
+            verify_provider takes a provider id (the provider field of a receipt) and returns the router’s own attestation record in plain terms: the status (attested or unverified; a development report is marked as such and refused in production), the TEE and the verifiers that accepted its quote, whether the router pins the
+            provider’s TLS key, the state of the transparency-log entry for its measurement, and not_checked, the list of what the router does not verify. Attestation shows what code is running, not what a provider does with a prompt. The same record is at GET /api/v1/attestation/:providerId and on the verify page.
+          </p>
+          <p>
+            The Telegram bot follows the same rule. /private on sends every chat with lane attested, /models attested lists the models with a proven enclave and /model accepts only those while private mode is on. Each answer’s footer says attested, or attested · GPU when the gateway’s receipt asserts GPU attestation,
+            taken from the signed receipt, with a link to the provider’s verify page; an answer whose receipt does not show an attested provider is not delivered. When no attested provider can answer, the bot says nothing was sent and nothing was charged.
+          </p>
           <h2 id="sdk">Verify before you send.</h2>
           <p>
             Two client libraries wrap the OpenAI-shaped call and add the checks a plain HTTP client would skip. The TypeScript package, @anyroute/client, has no runtime dependencies and runs on Bun, Node 20 and later, and in browsers. The Python package, anyroute-client (Python
