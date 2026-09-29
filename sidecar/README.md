@@ -60,6 +60,87 @@ that is switched on without its settings, weights or allow-list entry, and simul
 stop the process at startup with a stable error code. The classifier and the encrypted transport are both off unless
 `classifier.enabled` / `hpke.enabled` say otherwise.
 
+## Onboarding a model host
+
+`src/cli.ts` sets a model host up from an empty directory to a checked, applied provider. It needs Bun and this
+repository, nothing installed (`bun src/cli.ts` from `sidecar/`, or `bun sidecar/src/cli.ts` from the repository root).
+It publishes nothing and spends nothing: it writes files, and calls a router only when you pass `--submit`.
+
+```sh
+bun sidecar/src/cli.ts init          # asks for what you leave out; --yes never asks
+bun sidecar/src/cli.ts doctor --dir anyroute-provider --url https://<endpoint>
+bun sidecar/src/cli.ts apply  --dir anyroute-provider --url https://<endpoint> --router https://<router> --submit
+```
+
+### `init`
+
+Choose where the model runs with `--target`:
+
+| Target | Runs on | Model server | Weights |
+| --- | --- | --- | --- |
+| `phala-cpu` | Phala Cloud (dstack) Intel TDX VM, CPU | llama.cpp, image pinned for you | one GGUF file, downloaded in the VM |
+| `phala-gpu` | Phala Cloud (dstack) Intel TDX VM with NVIDIA GPUs | vLLM (`--model-image name@sha256:...`) | a directory, downloaded in the VM |
+| `tdx-host` | your own Intel TDX host or VM (`attestation.provider: tdx`) | vLLM or llama.cpp | mounted read-only from the host |
+
+It hashes `--weights` (the model digest below; `--exclude` leaves files out) and writes, in `--out` (default
+`./anyroute-provider`):
+
+| File | What it is |
+| --- | --- |
+| `sidecar.yaml` | The sidecar configuration, with the digest on the allow-list and the router key's SHA-256. Only settings the pinned sidecar commit accepts. |
+| `docker-compose.yml` | The deployment, pinned like `examples/phala`: images by digest; on Phala the weights by Hugging Face commit and per-file sha256 (`--hf-repo`, `--hf-revision`, a full commit hash; a branch is refused); the sidecar source by public commit tarball and its sha256 (`--sidecar-commit` with `--sidecar-sha256`, or `--fetch-source-hash`; default: the commit `examples/phala` runs). It carries a verbatim copy of `sidecar.yaml`. |
+| `router-api-key` | 32 random bytes, hex, mode 0600, never overwritten. Only its SHA-256 appears anywhere else. Give it to the router's operator over a private channel. |
+| `anyroute-provider.json` | What `init` decided (digest, pins, provider fields), for `apply` and `doctor`. No secrets. |
+| `.gitignore` | Keeps the key and application files out of a repository. |
+
+`init` refuses to replace files it wrote earlier without `--force`, and always keeps an existing key. Before writing
+anything it loads the generated `sidecar.yaml` with this sidecar's own loader and checks the compose copy is identical,
+the model server's network is internal and every image is pinned by digest. The same inputs give the same files.
+
+Options that matter: `--served-name`, `--id` and `--name` (the provider's slug and display name), `--hostname` (required
+on `tdx-host`: names for the certificate), `--host-weights-path` (where the weights are on the TDX host if not here),
+`--requests-per-minute` and `--tokens-per-minute` (the router key's quota), `--royalty-recipient`, `--contact`,
+`--datacenter`, `--payout-address`, and the data policy you declare to the router: `--retains-prompts`, `--training`,
+`--retention-days`, `--zdr`. The defaults declare no training and no retention; declare what is true for your deployment.
+
+### `doctor`
+
+Checks a running sidecar as a client would, with the checks in `packages/client`:
+
+* `GET /attest`: the boot quote and a fresh quote for a nonce it chooses parse as TDX quotes whose report data commits to
+  the TLS key, receipt key and image, compose and model digests; the attestation reference is the quote's hash; the
+  measurement registers are the quote's own.
+* The certificate, read from the same connection: it carries the attestation name and the attested TLS key and is in
+  date. The host name being missing from the certificate is a warning (the router pins the certificate and does not
+  check names).
+* The served model digest is the one you hashed (from the manifest, or hashed again with `--weights`), is on
+  `sidecar.yaml`'s allow-list, and is what `/healthz` reports; the image digest is the one pinned.
+* `/healthz` says the model server answers; a request without a key is refused; the router key is accepted.
+* One small chat request (`--no-chat` skips it): the response carries a receipt signed by the attested key, naming the
+  attestation and model digest, whose request and response hashes are those of the bytes exchanged.
+* With `--router` and `--id`: the router's own record of the provider, when it has one.
+
+The router key is sent only over a certificate the evidence proves belongs to the attested instance. Simulated evidence
+is refused unless you pass `--allow-simulated`. `doctor` does not repeat Intel's signature check on the quote (the router
+does; it reports that as skipped), and exits 1 if anything failed.
+
+### `apply`
+
+Prints the body for `POST /api/v1/providers/apply` and saves it as `provider-application.json`: your id and name,
+`base_url` (`https://<endpoint>/v1`), `tee: {kind: "tdx", attestation_url: "https://<endpoint>/attest"}`, and the fields
+above. With `--router` and `--submit` it files the application; the router's operator reviews it before anything is
+routed, and the response's application token (needed to revise a pending application) is saved 0600. The router key is
+not in the body unless you pass `--include-key`; the terminal shows it masked unless you pass `--print-secrets`.
+
+### What this does not cover
+
+* The sidecar attests the Intel TDX VM. It does not collect NVIDIA confidential-computing evidence, so `phala-gpu`
+  says nothing about the GPU's state. On a `tdx-host` nothing measures the compose file into a register; the sidecar
+  declares its hash, bound in the quote as data the sidecar committed to.
+* The data policy is your declaration. The router shows it as declared.
+* Prices and the model list are settled with the router's operator during review; the wizard does not set them.
+* The in-enclave classifier and end-to-end encryption are configured in `sidecar.yaml` by hand (see below).
+
 ## What happens at boot
 
 In this order, cheapest first; any failure exits non-zero before anything listens.

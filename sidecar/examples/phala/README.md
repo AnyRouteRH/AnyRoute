@@ -9,6 +9,8 @@ source are fetched by pinned hashes, so the compose hash dstack measures covers 
 | `docker-compose.yml` | The deployment. The only file the CVM receives. |
 | `sidecar.yaml` | The sidecar's configuration. The compose file carries a verbatim copy (see below). |
 
+To generate a deployment like this one for your own model (weights hashed, everything pinned, a router key made, the application printed), use the onboarding command: see "Onboarding a model host" in [../../README.md](../../README.md).
+
 ## What runs
 
 | Service | Image | Does |
