@@ -505,7 +505,8 @@ export const kv = pgTable("kv", {
 });
 
 // Stock Token transfers into the escrow wallet (PAYMENTS_MODE=escrow). One row per Transfer log;
-// the ledger credit uses ref `escrow:<tx>:<logIndex>`, so a deposit can never be credited twice.
+// the ledger credit uses ref `escrow:<tx>:<logIndex>`, so a deposit can never be credited twice, and a
+// reversal (the transfer left the canonical chain after crediting) uses `escrow-reversal:<tx>:<logIndex>`.
 // raw_amount is numeric: 18-decimal token amounts overflow bigint above ~9.2 whole tokens.
 export const escrowDeposits = pgTable(
   "escrow_deposits",
@@ -518,7 +519,12 @@ export const escrowDeposits = pgTable(
     symbol: text("symbol").notNull(),
     fromAddress: text("from_address").notNull(),
     rawAmount: numeric("raw_amount", { precision: 78, scale: 0 }).notNull(),
-    status: text("status").notNull().default("pending"), // pending | credited
+    // pending_finality: seen above the finality point, not credited yet and may still disappear
+    // pending: at or below the finality point, waiting for a price and the pre-credit canonical check
+    // credited | orphaned (left the canonical chain before crediting; never credited)
+    // reversed (left the canonical chain after crediting; a compensating debit was posted)
+    status: text("status").notNull().default("pending"),
+    blockHash: text("block_hash"), // hash of block_number when recorded; the credit is checked against it
     accountId: text("account_id"),
     price18: text("price18"), // USD per whole token, 18 decimals, as read from the feed
     priceUpdatedAt: ts("price_updated_at"),
@@ -526,6 +532,10 @@ export const escrowDeposits = pgTable(
     error: text("error"),
     createdAt: ts("created_at").notNull().defaultNow(),
     creditedAt: ts("credited_at"),
+    checkedAt: ts("checked_at"), // last time a credit was re-verified against the canonical chain
+    reversedAt: ts("reversed_at"),
+    reviewReason: text("review_reason"), // set when an operator must look (a reversal, or an orphan after finality)
+    reviewedAt: ts("reviewed_at"), // set by the operator once reconciled; clears the readiness alert
   },
   (t) => [index("escrow_deposits_from_idx").on(t.fromAddress), index("escrow_deposits_status_idx").on(t.status)],
 );

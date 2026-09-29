@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { encodePacked, keccak256, toBytes, type Hex } from "viem";
 import { createApp } from "../src/app.ts";
-import { ChainService, type DecodedLog, type EscrowTransfer, type FeedReading } from "../src/chain/service.ts";
+import { ChainService, type DecodedLog, type EscrowReceipt, type EscrowTransfer, type FeedReading } from "../src/chain/service.ts";
 import { loadConfig } from "../src/config.ts";
 import { providers } from "../src/db/schema.ts";
 import { runRegistry } from "../src/services/registry.ts";
@@ -133,14 +133,50 @@ export class FakeChain extends ChainService {
   }
 
   // Stock escrow: transfers already sent to the escrow address, one price feed for every token,
-  // and the on-chain decimals the watcher verifies before crediting.
-  escrowLogs: EscrowTransfer[] = [];
+  // and the on-chain decimals the watcher verifies before crediting. Blocks have hashes; reorg(n)
+  // replaces block n and every block after it, as a real reorganization does. The finality point
+  // trails the head by escrowFinalLag blocks (~10 blocks per second, as on Robinhood Chain).
+  escrowLogs: Omit<EscrowTransfer, "blockHash">[] = [];
   escrowHead = 100n;
+  escrowFinalLag = 0n;
+  escrowForks: bigint[] = [];
+  escrowReverted = new Set<string>();
+  escrowMissingReceipts = new Set<string>();
   feedReading: FeedReading | null = { answer: 180n * 10n ** 8n, decimals: 8, updatedAt: Math.floor(Date.now() / 1000) };
   escrowDecimals = 18;
+  escrowBlockHash(n: bigint): Hex | null {
+    if (n < 0n || n > this.escrowHead) return null;
+    return keccak256(toBytes(`block:${n}:fork:${this.escrowForks.filter((f) => f <= n).length}`));
+  }
+  /** Replace block `from` and all later blocks; `edit` changes which transfers the new branch holds. */
+  reorg(from: bigint, edit?: (logs: Omit<EscrowTransfer, "blockHash">[]) => Omit<EscrowTransfer, "blockHash">[]) {
+    this.escrowForks.push(from);
+    if (edit) this.escrowLogs = edit(this.escrowLogs);
+  }
   override async escrowTransfers(tokens: Hex[], _escrow: Hex, from: bigint, to: bigint) {
     const allowed = tokens.map((t) => t.toLowerCase());
-    return this.escrowLogs.filter((l) => l.blockNumber >= from && l.blockNumber <= to && allowed.includes(l.token.toLowerCase()));
+    return this.escrowLogs
+      .filter((l) => l.blockNumber >= from && l.blockNumber <= to && l.blockNumber <= this.escrowHead && allowed.includes(l.token.toLowerCase()))
+      .map((l) => ({ ...l, blockHash: this.escrowBlockHash(l.blockNumber)! }));
+  }
+  override async escrowFinality() {
+    const now = Math.floor(Date.now() / 1000);
+    const final = this.escrowHead - this.escrowFinalLag;
+    return { head: this.escrowHead, headTime: now, final, finalHash: this.escrowBlockHash(final)!, finalTime: now - Number(this.escrowFinalLag / 10n) };
+  }
+  override async blockHashAt(n: bigint) {
+    return this.escrowBlockHash(n);
+  }
+  override async escrowReceipt(txHash: Hex): Promise<EscrowReceipt | null> {
+    const logs = this.escrowLogs.filter((l) => l.txHash === txHash && l.blockNumber <= this.escrowHead);
+    if (!logs.length || this.escrowMissingReceipts.has(txHash)) return null;
+    const reverted = this.escrowReverted.has(txHash);
+    return {
+      success: !reverted,
+      blockNumber: logs[0].blockNumber,
+      blockHash: this.escrowBlockHash(logs[0].blockNumber)!,
+      transfers: reverted ? [] : logs.map((l) => ({ token: l.token, from: l.from, value: l.value, logIndex: l.logIndex })),
+    };
   }
   override async readFeed() {
     if (!this.feedReading) throw new Error("feed unreadable");

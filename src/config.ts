@@ -99,7 +99,7 @@ const schema = z.object({
   PAYWITH_TOKENS: opt, // JSON: [{symbol,address,decimals,feed?}]
 
   // Stock escrow payments: a customer transfers an allowlisted Stock Token from their own wallet to
-  // ESCROW_ADDRESS; after confirmations the sending wallet's account is credited at the Chainlink
+  // ESCROW_ADDRESS; once its block is final the sending wallet's account is credited at the Chainlink
   // price minus ESCROW_HAIRCUT_BPS. PAYMENTS_MODE=escrow runs without the Anyroute contracts.
   PAYMENTS_MODE: z.enum(["contracts", "escrow"]).default("contracts"),
   ESCROW_ADDRESS: addr,
@@ -107,6 +107,10 @@ const schema = z.object({
   ESCROW_HAIRCUT_BPS: int(300),
   ESCROW_MAX_PRICE_AGE_S: int(302_400), // equity feeds pause outside market hours; 3.5 days covers long weekends
   ESCROW_START_BLOCK: z.coerce.bigint().optional(),
+  // Credit only transfers in blocks the chain reports as final (CHAIN_CONFIRMATIONS stays an extra floor),
+  // and keep re-verifying credits for ESCROW_REORG_HORIZON_BLOCKS below that point (~1 day on Robinhood Chain).
+  ESCROW_FINALITY: z.enum(["finalized", "safe"]).default("finalized"),
+  ESCROW_REORG_HORIZON_BLOCKS: int(864_000),
 
   // Routing / health
   OUTAGE_WINDOW_MS: int(30_000),
@@ -179,6 +183,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   }
   if (e.ESCROW_HAIRCUT_BPS < 0 || e.ESCROW_HAIRCUT_BPS >= 10_000) throw new Error("ESCROW_HAIRCUT_BPS must be between 0 and 9999.");
   if (e.ESCROW_MAX_PRICE_AGE_S <= 0) throw new Error("ESCROW_MAX_PRICE_AGE_S must be positive.");
+  if (e.ESCROW_REORG_HORIZON_BLOCKS <= 0) throw new Error("ESCROW_REORG_HORIZON_BLOCKS must be positive.");
   if (production) {
     if (escrowMode && e.ESCROW_START_BLOCK == null && e.CHAIN_START_BLOCK == null) throw new Error("PAYMENTS_MODE=escrow requires ESCROW_START_BLOCK in production, so no transfer before the watcher starts is missed.");
     if (!e.APP_SECRET || e.APP_SECRET.length < 32) throw new Error("APP_SECRET (>= 32 chars) is required in production.");
@@ -327,6 +332,8 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       haircutBps: e.ESCROW_HAIRCUT_BPS,
       maxPriceAgeS: e.ESCROW_MAX_PRICE_AGE_S,
       startBlock: e.ESCROW_START_BLOCK ?? e.CHAIN_START_BLOCK,
+      finality: e.ESCROW_FINALITY,
+      reorgHorizonBlocks: e.ESCROW_REORG_HORIZON_BLOCKS,
     },
     routing: {
       outageWindowMs: e.OUTAGE_WINDOW_MS,

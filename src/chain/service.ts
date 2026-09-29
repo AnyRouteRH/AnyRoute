@@ -1,4 +1,6 @@
 import {
+  BlockNotFoundError,
+  TransactionReceiptNotFoundError,
   createPublicClient,
   createWalletClient,
   decodeEventLog,
@@ -40,7 +42,11 @@ export const CONTRACT_ABIS: Record<ContractName, Abi> = {
 };
 
 export type DecodedLog = { contract: ContractName; event: string; args: Record<string, unknown>; txHash: Hex; logIndex: number; blockNumber: bigint };
-export type EscrowTransfer = { token: Hex; from: Hex; value: bigint; txHash: Hex; logIndex: number; blockNumber: bigint };
+export type EscrowTransfer = { token: Hex; from: Hex; value: bigint; txHash: Hex; logIndex: number; blockNumber: bigint; blockHash: Hex };
+/** A transaction's receipt as the escrow watcher needs it: where it is included and its Transfer logs to escrow. */
+export type EscrowReceipt = { success: boolean; blockNumber: bigint; blockHash: Hex; transfers: { token: Hex; from: Hex; value: bigint; logIndex: number }[] };
+/** The chain head and the finality point (the `finalized` or `safe` block) with their timestamps. */
+export type EscrowFinality = { head: bigint; headTime: number; final: bigint; finalHash: Hex; finalTime: number };
 export type FeedReading = { answer: bigint; decimals: number; updatedAt: number };
 const transferEvent = { type: "event", name: "Transfer", inputs: [{ name: "from", type: "address", indexed: true }, { name: "to", type: "address", indexed: true }, { name: "value", type: "uint256", indexed: false }] } as const;
 export type CallPayment = { nonce: Hex; payer: Hex; amount: bigint; blockNumber: bigint; confirmations: number; logIndex: number };
@@ -161,7 +167,45 @@ export class ChainService {
     const allowed = new Set(tokens.map((t) => t.toLowerCase()));
     return raw
       .filter((l) => allowed.has(l.address.toLowerCase()) && l.args.to.toLowerCase() === escrow.toLowerCase() && l.args.value > 0n)
-      .map((l) => ({ token: l.address, from: l.args.from, value: l.args.value, txHash: l.transactionHash!, logIndex: l.logIndex!, blockNumber: l.blockNumber! }));
+      .map((l) => ({ token: l.address, from: l.args.from, value: l.args.value, txHash: l.transactionHash!, logIndex: l.logIndex!, blockNumber: l.blockNumber!, blockHash: l.blockHash! }));
+  }
+
+  /** The latest block and the chain's finality point. Robinhood Chain (Arbitrum Nitro) reports both tags. */
+  async escrowFinality(tag: "finalized" | "safe"): Promise<EscrowFinality> {
+    const [head, final] = await Promise.all([this.client.getBlock({ blockTag: "latest" }), this.client.getBlock({ blockTag: tag })]);
+    return { head: head.number, headTime: Number(head.timestamp), final: final.number, finalHash: final.hash, finalTime: Number(final.timestamp) };
+  }
+
+  /** Hash of the canonical block at `n`, or null when the node does not have that block. */
+  async blockHashAt(n: bigint): Promise<Hex | null> {
+    try {
+      return (await this.client.getBlock({ blockNumber: n })).hash;
+    } catch (err) {
+      if (err instanceof BlockNotFoundError) return null;
+      throw err;
+    }
+  }
+
+  /** The canonical receipt of `txHash` (null when the chain does not include it) with its ERC-20 Transfer logs to `escrow`. */
+  async escrowReceipt(txHash: Hex, escrow: Hex): Promise<EscrowReceipt | null> {
+    let r;
+    try {
+      r = await this.client.getTransactionReceipt({ hash: txHash });
+    } catch (err) {
+      if (err instanceof TransactionReceiptNotFoundError) return null;
+      throw err;
+    }
+    const transfers: EscrowReceipt["transfers"] = [];
+    for (const l of r.logs) {
+      if (l.topics.length !== 3) continue; // ERC-20 Transfer: signature, from, to (ERC-721 indexes a fourth topic)
+      try {
+        const d = decodeEventLog({ abi: [transferEvent], topics: l.topics as [Hex, ...Hex[]], data: l.data, strict: true });
+        if (d.args.to.toLowerCase() === escrow.toLowerCase()) transfers.push({ token: l.address, from: d.args.from, value: d.args.value, logIndex: l.logIndex });
+      } catch {
+        // not a Transfer event
+      }
+    }
+    return { success: r.status === "success", blockNumber: r.blockNumber, blockHash: r.blockHash, transfers };
   }
 
   async tokenDecimals(token: Hex): Promise<number> {

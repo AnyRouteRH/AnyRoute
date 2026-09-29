@@ -3,6 +3,7 @@ import type { Ctx } from "../context.ts";
 import { anchors, spentRoots, chainCursor, kv, providers } from "../db/schema.ts";
 import type { JobSnapshot } from "./jobs.ts";
 import { attestationFresh } from "../router/select.ts";
+import { escrowFinality, escrowReviewsOpen } from "../pay/escrow.ts";
 
 // One-day production timelock plus one day for review/execution. Submission failures retain the 2-minute bound.
 export const ROOT_REVIEW_SLA_MS = 48 * 3_600_000;
@@ -10,6 +11,11 @@ export const CRITICAL_JOBS = ["chain-indexer", "catalog-refresh", "provider-regi
 // PAYMENTS_MODE=escrow has no Anyroute contracts: receipts stay signed locally, no settlement runs,
 // and chain health is the escrow watcher's progress.
 export const ESCROW_CRITICAL_JOBS = ["escrow-indexer", "catalog-refresh", "provider-registry", "receipts-anchor"];
+// The escrow cursor follows the chain's finality point, which advances in steps (one L1 epoch, ~3,700
+// Robinhood Chain blocks), so allow a few steps of lag; the escrow-indexer heartbeat catches a stalled
+// watcher much sooner. A finality point more than an hour behind the head means credits have stalled.
+export const ESCROW_MAX_CURSOR_LAG = 12_000n;
+export const ESCROW_MAX_FINALITY_LAG_S = 3_600;
 export function jobReady(state: JobSnapshot | undefined, now = Date.now()) {
   if (!state || state.last_error || !state.last_success || !(state.every_ms > 0)) return false;
   const age = now - Date.parse(state.last_success);
@@ -72,15 +78,28 @@ export async function readiness(ctx: Ctx) {
       if (!escrowMode && !ctx.cfg.chain.credits && !ctx.cfg.chain.callPay) { checks.chain = false; return; }
       try {
         await bounded(async () => {
+          if (escrowMode) {
+            // Escrow credits only final blocks, so the watcher is measured against the finality point.
+            const [fin, chainId] = await Promise.all([escrowFinality(ctx), ctx.chain.client.getChainId()]);
+            if (chainId !== ctx.cfg.chain.id) throw new Error("Chain mismatch");
+            const [cursor] = await ctx.db.select().from(chainCursor).where(eq(chainCursor.id, "escrow"));
+            checks.chain = !!cursor && fin.creditable - cursor.block <= ESCROW_MAX_CURSOR_LAG && cursor.block <= fin.head;
+            checks.escrow_finality = fin.headTime - fin.finalTime <= ESCROW_MAX_FINALITY_LAG_S;
+            return;
+          }
           const [head, chainId] = await Promise.all([ctx.chain.blockNumber(), ctx.chain.client.getChainId()]);
           if (chainId !== ctx.cfg.chain.id) throw new Error("Chain mismatch");
-          const [cursor] = await ctx.db.select().from(chainCursor).where(eq(chainCursor.id, escrowMode ? "escrow" : "main"));
-          // Robinhood Chain produces ~10 blocks/s and the escrow watcher polls every 5 s, so its lag is
-          // bounded in time (~2 minutes of blocks), not by a handful of blocks.
-          const maxLag = escrowMode ? Math.max(ctx.cfg.chain.confirmations + 20, 1_200) : Math.max(ctx.cfg.chain.confirmations + 20, 30);
+          const [cursor] = await ctx.db.select().from(chainCursor).where(eq(chainCursor.id, "main"));
+          const maxLag = Math.max(ctx.cfg.chain.confirmations + 20, 30);
           checks.chain = !!cursor && head - cursor.block <= BigInt(maxLag) && cursor.block <= head;
         });
-      } catch { checks.chain = false; }
+      } catch { checks.chain = false; if (escrowMode) checks.escrow_finality = false; }
+    })(),
+    (async () => {
+      if (!escrowMode) return;
+      // A reversed credit or a final transfer that left the canonical chain stays an alert until an operator
+      // marks it reviewed (escrow_deposits.reviewed_at).
+      try { checks.escrow_reconciliation = (await bounded(() => escrowReviewsOpen(ctx.db))).length === 0; } catch { checks.escrow_reconciliation = false; }
     })(),
     (async () => {
       if (escrowMode) return;

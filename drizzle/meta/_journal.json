@@ -43,6 +43,13 @@
       "when": 1790634917905,
       "tag": "0005_escrow_deposits",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790641770115,
+      "tag": "0006_escrow_finality",
+      "breakpoints": true
     }
   ]
 }
