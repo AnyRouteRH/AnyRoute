@@ -1,0 +1,50 @@
+{
+  "provider": "example-provider",
+  "status": "attested",
+  "tee": "tdx",
+  "attested_at": "2026-09-29T08:20:04.512Z",
+  "attestation_hash": "0x15719fe400f6b9baec1e86ec3701ef07618fe99c460fac5ccf9c6dff42acd11d",
+  "verifiers": [
+    "dcap",
+    "dstack"
+  ],
+  "measurement": {
+    "image_digest": "0xe10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4",
+    "compose_hash": "0x4bb1069e88343c2f600f3c08b4460be233e50094253bf2e5dc27208cdf0db583",
+    "model_digest": "0x1144b5db331424ae40213378a83575a5cf67090b0ce1ad49cf66ec75f17e2095",
+    "status": "observed",
+    "attested_now": true,
+    "first_attested_at": "2026-09-29T08:20:04.509Z",
+    "last_seen_at": "2026-09-29T08:20:04.509Z",
+    "transparency_log": {
+      "found": false,
+      "entry": null,
+      "uuid": null,
+      "log_index": null,
+      "kind": null,
+      "integrated_at": null,
+      "inclusion_verified": false,
+      "checkpoint_signature_verified": false,
+      "checked_at": null
+    },
+    "registry": {
+      "address": null,
+      "state": "not_submitted",
+      "tx_hash": null,
+      "registered_at": null
+    }
+  },
+  "checks": {
+    "quote_verified": true,
+    "digests_bound_to_quote": true,
+    "transparency_log_entry": false,
+    "transparency_log_checkpoint_signature": false,
+    "registered_on_chain": false
+  },
+  "not_checked": [
+    "The image and model digests are values the endpoint's software committed to inside the quote; the router does not derive them from the hardware registers. The compose hash is compared with the verified event log only when the dstack verifier is configured.",
+    "Who signed the transparency-log entry: the router confirms an entry for the image digest exists and is included in the log, not that the entry came from the image's publisher.",
+    "That the running software matches the image's source: reproducible-build provenance is not verified here.",
+    "That prompts stay inside the enclave: attestation shows what is running, not what it does with data."
+  ]
+}

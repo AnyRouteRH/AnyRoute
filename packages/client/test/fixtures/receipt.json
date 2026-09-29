@@ -1,0 +1,27 @@
+{
+  "payload": {
+    "v": 1,
+    "type": "anyroute.sidecar.receipt",
+    "id": "rcpt_32b8833ee8684cb99eb63186",
+    "ts": 1790670017149,
+    "path": "/v1/chat/completions",
+    "status": 200,
+    "stream": false,
+    "complete": true,
+    "req_hash": "sha256:365d00ba6f9698dda02afb16577ae7325cdc48168cbee5d5eba4e1ce6e6248a7",
+    "resp_hash": "sha256:06df851ceeb9317921898c719605acfd24804dd4265e90061e1b7dd0fc15efcd",
+    "model_digest": "sha256:1144b5db331424ae40213378a83575a5cf67090b0ce1ad49cf66ec75f17e2095",
+    "attestation_ref": "2407bc5921f607291e765ada315fd731b5a97b7e037def81d0fb53714f7dd760",
+    "nullifier": "",
+    "usage": {
+      "prompt_tokens": 40,
+      "completion_tokens": 28,
+      "total_tokens": 68
+    },
+    "dev": false
+  },
+  "sig": "4CSfyvkkou0n2aHgyjhIsb7lXVuODJ/kWIIVniqNgFDJypcaotvlv0dpRlJdRU8bPG9er8ansh0bGMW6fCexDg==",
+  "key_id": "644b0e2c91520ec4",
+  "alg": "Ed25519",
+  "leaf": "0x57d136cfc3543618904fe16a03369824b4720c4874ef9183cbe01c0f0fb2123e"
+}

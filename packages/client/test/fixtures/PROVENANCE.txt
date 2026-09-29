@@ -1,0 +1,18 @@
+Evidence recorded from a sidecar running in an Intel TDX confidential VM. Public material only; no keys or secrets.
+
+quote-boot.hex          the boot quote exactly as /attest served it (hex of the raw TDX v4 quote)
+attest-boot.json        GET /attest (boot document)
+attest-fresh.json       GET /attest?nonce=<nonce> ({ nonce, response })
+receipt.json            a receipt the sidecar signed for one chat completion
+sidecar-cert.crt        the certificate the sidecar presented
+router-attestation.json GET /api/v1/attestation/:providerId as the router answered after verifying this quote, from a
+                        local run of the router's own code
+
+Edits made before committing:
+  * the platform event log is removed from both /attest documents (it names the deployment);
+  * the deployment host name in the certificate's subjectAltName is replaced by a same-length placeholder. That
+    breaks the certificate's own self-signature, which no check here uses: the certificate is pinned, and what is
+    checked is its attestation name and its public key;
+  * the provider id in router-attestation.json is renamed.
+
+The quote's Intel signature and certificate chain are untouched but are not verified by the SDK: the router does that.
