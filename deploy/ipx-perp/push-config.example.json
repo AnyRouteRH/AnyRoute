@@ -1,0 +1,30 @@
+{
+  "_note": "Placeholder values only. Replace url, headers, body and signing with what the venue's price-push documentation requires. Nothing here is a real endpoint. Secrets are read from IPX_ORACLE_PUSH_* environment variables and never written in this file.",
+  "url": "https://oracle.example.invalid/v1/index-price",
+  "method": "POST",
+  "timeout_ms": 10000,
+  "markets": { "IPX-OPEN-70B": "REPLACE_WITH_MARKET_SYMBOL" },
+  "headers": {
+    "content-type": "application/json",
+    "x-api-key": "{{env:IPX_ORACLE_PUSH_API_KEY}}",
+    "x-timestamp": "{{timestamp_ms}}"
+  },
+  "body": {
+    "symbol": "{{market}}",
+    "price": "{{price}}",
+    "timestamp_ms": "{{timestamp_ms}}",
+    "valid_until_ms": "{{valid_until_ms}}",
+    "status": "{{status}}",
+    "thin": "{{thin}}",
+    "reduce_only": "{{reduce_only}}",
+    "receipt_root": "{{receipt_root}}",
+    "sequence": "{{sequence}}"
+  },
+  "signing": {
+    "algorithm": "ed25519",
+    "message": "{{timestamp_ms}}{{method}}{{path}}{{body}}",
+    "encoding": "base64",
+    "header": "x-signature"
+  },
+  "success_status": [200, 201]
+}
