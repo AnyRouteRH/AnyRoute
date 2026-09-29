@@ -14,6 +14,7 @@ import { requireKey } from "./auth.ts";
 import { verifyReceipt, anchorProof } from "./generation.ts";
 import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAllowance, openDebt, rawToPico, saveAllowance, signCharge, statement, typedDataJson } from "../pay/paywith.ts";
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
+import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
 import { x402Enabled } from "../pay/x402.ts";
 
 export { providerApplication } from "../providers/application.ts";
@@ -282,6 +283,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         settlement: { spent_root_interval_ms: ctx.cfg.workers.settlementIntervalMs },
         fees: { prepaid_bps: 0, per_call_margin_bps: ctx.cfg.fees.perCallMarginBps, provider_fee_bps: ctx.cfg.fees.providerFeeBps, byok_fee_bps: ctx.cfg.fees.byokFeeBps },
         paywith: { tokens: ctx.cfg.paywith.tokens.map((t) => t.symbol), configured: !!ctx.cfg.chain.payWithStock },
+        // Escrow payments: the tokens it credits, the Stock Token haircut, and $ANYR's own terms (null when not accepted).
+        escrow: { enabled: escrowEnabled(ctx), tokens: escrowEnabled(ctx) ? acceptedTokens(ctx).map((t) => t.symbol) : [], haircut_bps: ctx.cfg.escrow.haircutBps, anyr: anyrSummary(ctx) },
         per_call: { configured: !!ctx.cfg.chain.callPay || x402Enabled(ctx), max_usd: ctx.cfg.fees.perCallMaxUsd, x402: { configured: x402Enabled(ctx), network: ctx.cfg.x402.network } },
         telemetry: ctx.telemetry.enabled,
         jobs: ctx.jobs.status().map((job) => ({ ...job, last_error: job.last_error ? "Job failed" : null })),

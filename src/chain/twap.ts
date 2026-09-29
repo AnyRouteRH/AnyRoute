@@ -7,8 +7,11 @@ import { encodeAbiParameters, keccak256, toHex, type Hex, type PublicClient } fr
 // (or too little liquidity) means "no trustworthy price".
 
 export type PoolKey = { currency0: Hex; currency1: Hex; fee: number; tickSpacing: number; hooks: Hex };
-/** sign +1: price of currency0 in currency1; -1: the inverse. Legs are multiplied (e.g. ANYR->ETH->USDG). */
-export type Leg = { key: PoolKey; sign: 1 | -1 };
+/**
+ * sign +1: price of currency0 in currency1; -1: the inverse. Legs are multiplied (e.g. ANYR->ETH->USDG).
+ * minLiquidity (optional, raw v4 liquidity): below it the pool is too thin to price, and the TWAP throws.
+ */
+export type Leg = { key: PoolKey; sign: 1 | -1; minLiquidity?: string | number };
 
 export const SWAP_TOPIC = keccak256(toHex("Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)"));
 const POOLS_SLOT = 6n; // StateLibrary: pools live at keccak256(poolId, 6); slot0 first, liquidity three slots on
@@ -145,6 +148,7 @@ export async function v4Twap(
   const measured: { spot: number; average: number; sign: number }[] = [];
   for (let i = 0; i < legs.length; i++) {
     const state = await readPool(client, poolManager, legs[i].key, BigInt(head));
+    if (legs[i].minLiquidity != null && state.liquidity < BigInt(legs[i].minLiquidity!)) throw new Error("too little liquidity");
     const own = logs.filter((l) => l.pool === ids[i]);
     const before = own.length ? ((await tickBefore(client, poolManager, ids[i], span.start, head - span.start + 1)) ?? own[0].tick) : state.tick;
     const { average, last } = averageTick(own, before, span.at, span.t0, span.t1);

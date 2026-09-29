@@ -119,6 +119,16 @@ const schema = z.object({
   ESCROW_FINALITY: z.enum(["finalized", "safe"]).default("finalized"),
   ESCROW_REORG_HORIZON_BLOCKS: int(864_000),
 
+  // Pay with $ANYR in escrow (off unless ANYR_TOKEN_ADDRESS is set). ANYR sent to ESCROW_ADDRESS is credited
+  // like a Stock Token, with the same finality and reorganization rules, but priced from its pools
+  // (ANYR_POOL_LEGS: the lower of spot and the BUYBACK_TWAP_MINUTES average) instead of a Chainlink feed,
+  // minus ANYR_ESCROW_HAIRCUT_BPS, and credited at most ANYR_ESCROW_MAX_USD_PER_DEPOSIT per deposit.
+  ANYR_TOKEN_ADDRESS: addr,
+  ANYR_TOKEN_SYMBOL: z.string().default("ANYR"),
+  ANYR_TOKEN_DECIMALS: int(18), // checked against the token contract before anything is credited
+  ANYR_ESCROW_HAIRCUT_BPS: int(0),
+  ANYR_ESCROW_MAX_USD_PER_DEPOSIT: num(250),
+
   // Routing / health
   OUTAGE_WINDOW_MS: int(30_000),
   HEALTH_PROBE_INTERVAL_MS: int(15_000),
@@ -297,6 +307,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   const lower = escrowTokens.map((t) => t.address.toLowerCase());
   if (new Set(lower).size !== lower.length) throw new Error("ESCROW_TOKENS lists a token address twice.");
   if (escrowMode && !escrowTokens.length) throw new Error("PAYMENTS_MODE=escrow requires ESCROW_TOKENS (or PAYWITH_TOKENS) with price feeds.");
+  const anyrEscrow = anyrEscrowConfig(e, lower);
   return {
     env: e.ANYROUTE_ENV,
     production,
@@ -375,6 +386,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       finality: e.ESCROW_FINALITY,
       reorgHorizonBlocks: e.ESCROW_REORG_HORIZON_BLOCKS,
     },
+    anyrEscrow, // null unless ANYR_TOKEN_ADDRESS is set
     routing: {
       outageWindowMs: e.OUTAGE_WINDOW_MS,
       probeIntervalMs: e.HEALTH_PROBE_INTERVAL_MS,
@@ -425,6 +437,52 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
 
 export type PaywithToken = { symbol: string; address: string; decimals: number; feed?: string; name?: string };
 export type EscrowToken = PaywithToken & { feed: string };
+
+// ---- Pay with $ANYR in escrow ------------------------------------------------------------------
+// ANYR has no Chainlink feed, so escrow prices it with the off-chain v4 TWAP the buyback keeper already
+// uses (ANYR_POOL_LEGS). The legs must chain from the ANYR token to USDG, or ANYR deposits could be
+// priced in the wrong unit; a leg may set `minLiquidity` (raw v4 liquidity) so a thin pool gives no price.
+export type AnyrEscrow = {
+  address: `0x${string}`;
+  symbol: string;
+  decimals: number;
+  haircutBps: number;
+  maxUsdPerDeposit: number;
+  legs: import("./chain/twap.ts").Leg[];
+};
+
+function anyrEscrowConfig(e: Env, stockAddresses: string[]): AnyrEscrow | null {
+  if (!e.ANYR_TOKEN_ADDRESS || /^0x0{40}$/.test(e.ANYR_TOKEN_ADDRESS)) return null;
+  const address = e.ANYR_TOKEN_ADDRESS.toLowerCase() as `0x${string}`;
+  if (!/^[A-Za-z0-9.$_-]{1,16}$/.test(e.ANYR_TOKEN_SYMBOL)) throw new Error("ANYR_TOKEN_SYMBOL must be 1-16 letters or digits.");
+  if (e.ANYR_TOKEN_DECIMALS < 0 || e.ANYR_TOKEN_DECIMALS > 36) throw new Error("ANYR_TOKEN_DECIMALS must be between 0 and 36.");
+  if (e.ANYR_ESCROW_HAIRCUT_BPS < 0 || e.ANYR_ESCROW_HAIRCUT_BPS >= 10_000) throw new Error("ANYR_ESCROW_HAIRCUT_BPS must be between 0 and 9999.");
+  if (!(e.ANYR_ESCROW_MAX_USD_PER_DEPOSIT > 0) || !Number.isFinite(e.ANYR_ESCROW_MAX_USD_PER_DEPOSIT)) throw new Error("ANYR_ESCROW_MAX_USD_PER_DEPOSIT must be a positive USD amount.");
+  if (stockAddresses.includes(address)) throw new Error("ANYR_TOKEN_ADDRESS is also listed in ESCROW_TOKENS.");
+  if (!e.ANYR_POOL_LEGS) throw new Error("ANYR_TOKEN_ADDRESS needs ANYR_POOL_LEGS: ANYR deposits are priced from its pools.");
+  const hex = /^0x[0-9a-fA-F]{40}$/;
+  const leg = z.object({
+    key: z.object({ currency0: z.string().regex(hex), currency1: z.string().regex(hex), fee: z.number().int().min(0), tickSpacing: z.number().int(), hooks: z.string().regex(hex) }),
+    sign: z.union([z.literal(1), z.literal(-1)]),
+    minLiquidity: z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)]).optional(),
+  });
+  let legs: AnyrEscrow["legs"];
+  try {
+    legs = z.array(leg).min(1).parse(JSON.parse(e.ANYR_POOL_LEGS)) as AnyrEscrow["legs"];
+  } catch (err) {
+    throw new Error(`ANYR_POOL_LEGS must be a JSON array of {key:{currency0,currency1,fee,tickSpacing,hooks},sign,minLiquidity?}: ${(err as Error).message.slice(0, 200)}`);
+  }
+  // Each leg prices its base in its quote (sign 1: currency0 in currency1); the first base must be ANYR
+  // and every quote the next leg's base, ending in USDG.
+  let at = address as string;
+  for (const l of legs) {
+    const [base, quote] = l.sign === 1 ? [l.key.currency0, l.key.currency1] : [l.key.currency1, l.key.currency0];
+    if (base.toLowerCase() !== at) throw new Error("ANYR_POOL_LEGS must price ANYR_TOKEN_ADDRESS: each leg's base must be ANYR or the previous leg's quote.");
+    at = quote.toLowerCase();
+  }
+  if (at !== e.USDG_ADDRESS?.toLowerCase()) throw new Error("ANYR_POOL_LEGS must end in USDG (USDG_ADDRESS).");
+  return { address, symbol: e.ANYR_TOKEN_SYMBOL, decimals: e.ANYR_TOKEN_DECIMALS, haircutBps: e.ANYR_ESCROW_HAIRCUT_BPS, maxUsdPerDeposit: e.ANYR_ESCROW_MAX_USD_PER_DEPOSIT, legs };
+}
 
 // ---- Contract-path launch guards ---------------------------------------------------------------
 // H-02: production contract mode moves customer funds through the Anyroute contracts, so it starts

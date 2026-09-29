@@ -51,7 +51,7 @@ Alertmanager (Compose) reads the same URL from the file named by `ALERT_WEBHOOK_
 | `catalog-refresh`, `provider-registry`, `escrow-indexer`, `chain-indexer`, `receipts-anchor`, `settlement`, `attestor` | That worker job has not succeeded within twice its interval (at least 60 s), or its last run failed. | Check the worker service logs. If every job is stale the worker is down: restart it. A single job failing usually means its dependency (RPC, provider) is failing. |
 | `chain` | The RPC is unreachable, on the wrong chain, or the indexer cursor is too far behind. | Check the RPC provider, then the indexer job. |
 | `escrow_finality` | The chain's finality point is more than an hour behind its head, so escrow deposits wait. | Check the chain's status and the RPC. Credits resume on their own once blocks finalize. |
-| `escrow_reconciliation` | A credited deposit was reversed, or a final transfer left the canonical chain, and no operator has reviewed it yet. | Review each flagged deposit in the admin interface and resolve the account balance. Then mark it reviewed. The check stays red until you do. |
+| `escrow_reconciliation` | A credited deposit was reversed, a final transfer left the canonical chain, or an ANYR deposit was above `ANYR_ESCROW_MAX_USD_PER_DEPOSIT` (only the limit was credited), and no operator has reviewed it yet. | Review each flagged deposit in the admin interface and resolve the account balance. Then mark it reviewed. The check stays red until you do. |
 | `root_completeness` | The latest spent root omits a funded key, overspends one, or does not reconcile (contracts mode). | Approve no root. Run `bun scripts/reconcile-roots.ts` and fix the cause first. |
 | `chain_submissions` | A receipt anchor or spent root has been pending for over 2 minutes. | Check the anchoring worker's logs and signer balance. |
 | `settlement_review` | A spent root has waited over 48 hours for approval. | Review and approve or reject it through the governance process. |
@@ -59,7 +59,7 @@ Alertmanager (Compose) reads the same URL from the file named by `ALERT_WEBHOOK_
 | `private_attestation_verifiers`, `private_attestation` | Private routing lacks a verifier, or no fresh attestation exists. | Check the verifier configuration and the `attestor` job. |
 | `backup_fresh` | No verified off-host backup within `BACKUP_MAX_AGE_HOURS` (only with `BACKUP_REQUIRED=true`). | Check the `backup` cron service's last run and its one-line JSON result (it names the failed stage). Then check the bucket and credentials. |
 | `escrow` (probe) | `/api/v1/escrow` does not answer. | Same as `health`. |
-| `escrow.tokens`, `escrow.prices` (probe) | Escrow has no tokens, or a token's price feed is stale or unreadable (`stale_prices` lists it). | Deposits of that token wait until its feed is fresh again. Check the feed and the RPC. |
+| `escrow.tokens`, `escrow.prices` (probe) | Escrow has no tokens, or a token's price feed is stale or unreadable (`stale_prices` lists it). For ANYR the price is its pool TWAP: it is missing while a pool in `ANYR_POOL_LEGS` is unreadable or below its `minLiquidity`, or spot is more than `BUYBACK_MAX_DEVIATION` from the average. | Deposits of that token wait until its price is fresh again. Check the feed (or ANYR's pools) and the RPC. |
 | `readiness_evaluation` (webhook only) | The notifier itself could not evaluate readiness. | Check the worker's database connection and logs. |
 | any other name | A check added in a later release. | Its name is in `/ready`. Check the worker and API logs. |
 

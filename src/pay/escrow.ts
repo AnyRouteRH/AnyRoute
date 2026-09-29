@@ -1,12 +1,13 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { Hex } from "viem";
 import type { Ctx } from "../context.ts";
-import type { EscrowToken } from "../config.ts";
+import type { AnyrEscrow } from "../config.ts";
 import type { EscrowFinality, EscrowTransfer } from "../chain/service.ts";
+import { v4Twap } from "../chain/twap.ts";
 import type { Db, Tx } from "../db/client.ts";
 import { chainCursor, escrowDeposits, kv } from "../db/schema.ts";
 import { balanceOf, ensureAccount, post } from "../ledger/ledger.ts";
-import { mulBps, type Pico } from "../lib/money.ts";
+import { mulBps, usdToPico, type Pico } from "../lib/money.ts";
 import { log } from "../lib/util.ts";
 import { rawToPico } from "./paywith.ts";
 
@@ -15,6 +16,12 @@ import { rawToPico } from "./paywith.ts";
 // (w_<address>, the same account wallet sign-in uses) is credited at the Chainlink price minus a
 // haircut. Credits are spendable on inference only; the tokens stay in escrow. No Anyroute contract
 // is involved.
+//
+// $ANYR (when ANYR_TOKEN_ADDRESS is set) is accepted the same way, with the same finality, reorganization
+// and idempotency rules. It has no Chainlink feed, so it is priced from its pools (ANYR_POOL_LEGS, the
+// lower of spot and the time-weighted average), minus its own ANYR_ESCROW_HAIRCUT_BPS. No trustworthy
+// price leaves the deposit pending. One deposit is credited at most ANYR_ESCROW_MAX_USD_PER_DEPOSIT: the
+// rest is not credited, and the deposit is flagged for operator review (refund or credit it by hand).
 //
 // A credit must never outlive the transfer that paid for it, so:
 // - Only blocks at or below the chain's finality point (ESCROW_FINALITY, with CHAIN_CONFIRMATIONS as an
@@ -44,11 +51,29 @@ type Deposit = typeof escrowDeposits.$inferSelect;
 type Checkpoint = { block: bigint; hash: string };
 type Verdict = { ok: true; blockNumber: bigint; blockHash: string } | { ok: false; reason: string; unknown?: boolean };
 
-export const escrowEnabled = (ctx: Ctx) => !!ctx.cfg.escrow.address && ctx.cfg.escrow.tokens.length > 0;
+export const escrowEnabled = (ctx: Ctx) => !!ctx.cfg.escrow.address && (ctx.cfg.escrow.tokens.length > 0 || !!ctx.cfg.anyrEscrow);
 export const escrowAccountId = (wallet: string) => `w_${wallet.toLowerCase().slice(2)}`;
 
+/** A token escrow accepts: a Stock Token priced by its Chainlink feed, or $ANYR priced from its pools. */
+export type AcceptedToken = { symbol: string; address: string; decimals: number; haircutBps: number } & (
+  | { kind: "stock"; feed: string; maxCredit: null }
+  | { kind: "anyr"; anyr: AnyrEscrow; maxCredit: Pico }
+);
+
+export function acceptedTokens(ctx: Ctx): AcceptedToken[] {
+  const stocks: AcceptedToken[] = ctx.cfg.escrow.tokens.map((t) => ({ symbol: t.symbol, address: t.address, decimals: t.decimals, haircutBps: ctx.cfg.escrow.haircutBps, kind: "stock", feed: t.feed, maxCredit: null }));
+  const a = ctx.cfg.anyrEscrow;
+  if (!a) return stocks;
+  return [...stocks, { symbol: a.symbol, address: a.address, decimals: a.decimals, haircutBps: a.haircutBps, kind: "anyr", anyr: a, maxCredit: usdToPico(a.maxUsdPerDeposit, "floor") }];
+}
+const acceptedToken = (ctx: Ctx, address: string) => acceptedTokens(ctx).find((t) => t.address.toLowerCase() === address.toLowerCase());
+
 const priceCache = new Map<string, { at: number; price: EscrowPrice | null }>();
-export const clearEscrowPriceCache = () => priceCache.clear();
+const inflight = new Map<string, Promise<EscrowPrice | null>>();
+export const clearEscrowPriceCache = () => {
+  priceCache.clear();
+  inflight.clear();
+};
 
 /** USD per whole token (18 decimals), or null when the feed is unreadable, non-positive or stale. */
 export async function escrowPrice(ctx: Ctx, feed: string): Promise<EscrowPrice | null> {
@@ -67,9 +92,60 @@ export async function escrowPrice(ctx: Ctx, feed: string): Promise<EscrowPrice |
   return price;
 }
 
-/** Credits (pico-USD) for `raw` token units at `price18`, after the haircut, rounded down. */
-export const escrowCredit = (ctx: Ctx, raw: bigint, decimals: number, price18: bigint): Pico =>
-  mulBps(rawToPico(raw, decimals, price18), 10_000 - ctx.cfg.escrow.haircutBps, "floor");
+// The TWAP reads several blocks and logs, and /api/v1/escrow is public: one computation per 30 s per process,
+// shared by concurrent callers, whether it produced a price or not.
+const ANYR_PRICE_TTL_MS = 30_000;
+const USDG_DECIMALS = 6;
+const twapState: { blockRate?: number } = {};
+/** The pool TWAP used to price $ANYR (chain/twap.ts); replaceable in tests. */
+export const anyrPricing = { twap: v4Twap };
+
+/**
+ * USD per whole ANYR (18 decimals): the lower of spot and the BUYBACK_TWAP_MINUTES average through
+ * ANYR_POOL_LEGS, in USDG. Null when a pool is unreadable or too thin, or spot is more than
+ * BUYBACK_MAX_DEVIATION from the average.
+ */
+export async function anyrEscrowPrice(ctx: Ctx, a: AnyrEscrow): Promise<EscrowPrice | null> {
+  const key = `anyr:${a.address}`;
+  const hit = priceCache.get(key);
+  if (hit && Date.now() - hit.at < ANYR_PRICE_TTL_MS) return hit.price;
+  let pending = inflight.get(key);
+  if (!pending) {
+    pending = (async () => {
+      let price: EscrowPrice | null = null;
+      try {
+        const r = await anyrPricing.twap(ctx.chain.client, ctx.cfg.chain.poolManager, a.legs, {
+          windowSeconds: ctx.cfg.buyback.twapMinutes * 60,
+          maxDeviation: ctx.cfg.buyback.maxDeviation,
+          decimalsAdjust: 10 ** (a.decimals - USDG_DECIMALS),
+          state: twapState,
+        });
+        const usd = r.conservative;
+        const price18 = Number.isFinite(usd) && usd > 0 ? BigInt(Math.floor(usd * 1e18)) : 0n;
+        if (price18 > 0n) price = { price18, updatedAt: Math.floor(Date.now() / 1000) };
+        else log.warn("no trustworthy ANYR price", { error: "non-positive price" });
+      } catch (err) {
+        log.warn("no trustworthy ANYR price", { error: (err as Error).message.slice(0, 200) });
+      }
+      priceCache.set(key, { at: Date.now(), price });
+      return price;
+    })().finally(() => inflight.delete(key));
+    inflight.set(key, pending);
+  }
+  return pending;
+}
+
+const tokenPrice = (ctx: Ctx, t: AcceptedToken) => (t.kind === "anyr" ? anyrEscrowPrice(ctx, t.anyr) : escrowPrice(ctx, t.feed));
+
+/** Credits (pico-USD) for `raw` token units at `price18`, after the haircut (the stock one by default), rounded down. */
+export const escrowCredit = (ctx: Ctx, raw: bigint, decimals: number, price18: bigint, haircutBps = ctx.cfg.escrow.haircutBps): Pico =>
+  mulBps(rawToPico(raw, decimals, price18), 10_000 - haircutBps, "floor");
+
+/** Pico-USD as dollars and cents, rounded down (for notes). */
+const usd2 = (p: Pico) => {
+  const cents = p / 10_000_000_000n;
+  return `${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")}`;
+};
 
 export function formatRaw(raw: bigint, decimals: number, maxFraction = 6) {
   const unit = 10n ** BigInt(decimals);
@@ -84,7 +160,7 @@ function verifyTokens(ctx: Ctx) {
   let p = verified.get(ctx);
   if (!p) {
     p = (async () => {
-      for (const t of ctx.cfg.escrow.tokens) {
+      for (const t of acceptedTokens(ctx)) {
         const onchain = await ctx.chain.tokenDecimals(t.address as Hex);
         if (onchain !== t.decimals) throw new Error(`${t.symbol} has ${onchain} decimals on-chain but ${t.decimals} in configuration`);
       }
@@ -121,7 +197,7 @@ async function saveProgress(db: Db | Tx, block: bigint, points: Checkpoint[]) {
 }
 
 function toRows(ctx: Ctx, transfers: EscrowTransfer[]) {
-  const byAddress = new Map(ctx.cfg.escrow.tokens.map((t) => [t.address.toLowerCase(), t]));
+  const byAddress = new Map(acceptedTokens(ctx).map((t) => [t.address.toLowerCase(), t]));
   return transfers.flatMap((t) => {
     const tok = byAddress.get(t.token.toLowerCase());
     if (!tok) return [];
@@ -164,7 +240,7 @@ async function recordFinal(tx: Tx, rows: Row[]) {
 
 /** Scan (cursor, creditable] for transfers into escrow, rewinding first if the scanned range was reorganized. */
 async function scanFinal(ctx: Ctx, fin: EscrowFinal, maxRange: bigint) {
-  const tokens = ctx.cfg.escrow.tokens.map((t) => t.address as Hex);
+  const tokens = acceptedTokens(ctx).map((t) => t.address as Hex);
   const escrow = ctx.cfg.escrow.address as Hex;
   const [cur] = await ctx.db.select().from(chainCursor).where(eq(chainCursor.id, CURSOR));
   let points: Checkpoint[] = [];
@@ -216,7 +292,7 @@ async function scanFinal(ctx: Ctx, fin: EscrowFinal, maxRange: bigint) {
 
 /** Show transfers above the finality point as `pending_finality`. Display only: nothing here is credited. */
 async function scanPreview(ctx: Ctx, fin: EscrowFinal, finalCursor: bigint, maxRange: bigint) {
-  const tokens = ctx.cfg.escrow.tokens.map((t) => t.address as Hex);
+  const tokens = acceptedTokens(ctx).map((t) => t.address as Hex);
   const [pc] = await ctx.db.select().from(chainCursor).where(eq(chainCursor.id, PREVIEW));
   let from = (pc && pc.block > finalCursor ? pc.block : finalCursor) + 1n;
   let seen = 0;
@@ -303,8 +379,8 @@ export async function creditEscrowDeposits(ctx: Ctx, fin?: EscrowFinal) {
       waiting++;
       continue;
     }
-    const tok = ctx.cfg.escrow.tokens.find((t) => t.address.toLowerCase() === d.token);
-    const price = tok ? await escrowPrice(ctx, tok.feed) : null;
+    const tok = acceptedToken(ctx, d.token);
+    const price = tok ? await tokenPrice(ctx, tok) : null;
     if (!tok || !price) {
       const error = tok ? `waiting for a fresh ${tok.symbol} price` : "token is no longer accepted; needs operator review";
       if (d.error !== error) await ctx.db.update(escrowDeposits).set({ error }).where(and(eq(escrowDeposits.id, d.id), eq(escrowDeposits.status, "pending")));
@@ -325,22 +401,39 @@ export async function creditEscrowDeposits(ctx: Ctx, fin?: EscrowFinal) {
       continue;
     }
     const raw = BigInt(d.rawAmount);
-    const amount = escrowCredit(ctx, raw, tok.decimals, price.price18);
+    const full = escrowCredit(ctx, raw, tok.decimals, price.price18, tok.haircutBps);
+    // Above the per-deposit limit only the limit is credited; the rest waits for the operator.
+    const amount = tok.maxCredit !== null && full > tok.maxCredit ? tok.maxCredit : full;
+    const over = amount < full ? { value: usd2(full), limit: usd2(amount) } : null;
     const accountId = escrowAccountId(d.fromAddress);
     const done = await ctx.db.transaction(async (tx) => {
       const [row] = await tx.select().from(escrowDeposits).where(eq(escrowDeposits.id, d.id)).for("update");
       if (!row || row.status !== "pending" || row.blockNumber !== v.blockNumber) return false;
       await ensureAccount(tx, accountId, "wallet", d.fromAddress);
       if (amount > 0n)
-        await post(tx, { accountId, amount, kind: "stock_deposit", ref: `escrow:${d.id}`, description: `${formatRaw(raw, tok.decimals)} ${tok.symbol} sent to escrow (${d.txHash})` });
+        await post(tx, {
+          accountId,
+          amount,
+          kind: tok.kind === "anyr" ? "anyr_deposit" : "stock_deposit",
+          ref: `escrow:${d.id}`,
+          description: `${formatRaw(raw, tok.decimals)} ${tok.symbol} sent to escrow (${d.txHash})${over ? `; credited up to the $${over.limit} per-deposit limit` : ""}`,
+        });
       const now = new Date();
+      const review = over
+        ? {
+            error: `Credited $${over.limit} of $${over.value}: ${tok.symbol} deposits are credited up to $${over.limit} each. The rest is held for operator review.`,
+            reviewReason: `${tok.symbol} deposit above the per-deposit limit: credited $${over.limit} of $${over.value}; refund or credit the rest by hand`,
+            reviewedAt: null,
+          }
+        : { error: null };
       await tx
         .update(escrowDeposits)
-        .set({ status: "credited", accountId, blockHash: v.blockHash, price18: price.price18.toString(), priceUpdatedAt: new Date(price.updatedAt * 1000), credited: amount, error: null, creditedAt: now, checkedAt: now })
+        .set({ status: "credited", accountId, blockHash: v.blockHash, price18: price.price18.toString(), priceUpdatedAt: new Date(price.updatedAt * 1000), credited: amount, creditedAt: now, checkedAt: now, ...review })
         .where(eq(escrowDeposits.id, d.id));
       return true;
     });
     if (done) credited++;
+    if (done && over) log.error("escrow deposit above the per-deposit limit: credited only the limit; needs operator review", { id: d.id, symbol: tok.symbol, value_usd: over.value, credited_usd: over.limit });
   }
   return { credited, waiting, orphaned };
 }
@@ -354,7 +447,8 @@ async function reverse(ctx: Ctx, d: Deposit, reason: string) {
     const accountId = row.accountId ?? escrowAccountId(row.fromAddress);
     if (amount > 0n) {
       await ensureAccount(tx, accountId, "wallet", row.fromAddress);
-      await post(tx, { accountId, amount: -amount, kind: "stock_deposit_reversal", ref: `escrow-reversal:${row.id}`, description: `Reversed ${row.symbol} escrow credit: ${reason} (${row.txHash})` });
+      const kind = row.token === ctx.cfg.anyrEscrow?.address ? "anyr_deposit_reversal" : "stock_deposit_reversal";
+      await post(tx, { accountId, amount: -amount, kind, ref: `escrow-reversal:${row.id}`, description: `Reversed ${row.symbol} escrow credit: ${reason} (${row.txHash})` });
     }
     await tx
       .update(escrowDeposits)
@@ -441,16 +535,21 @@ export async function escrowInfo(ctx: Ctx) {
   const [fin, tokens] = await Promise.all([
     cachedFinality(ctx),
     Promise.all(
-      ctx.cfg.escrow.tokens.map(async (t: EscrowToken) => {
-        const price = await escrowPrice(ctx, t.feed);
+      acceptedTokens(ctx).map(async (t) => {
+        const price = await tokenPrice(ctx, t);
         const one = 10n ** BigInt(t.decimals);
         return {
           symbol: t.symbol,
           address: t.address.toLowerCase(),
           decimals: t.decimals,
+          // chainlink: the token's feed; twap: the lower of spot and the time-weighted average of its pools
+          price_source: t.kind === "anyr" ? ("twap" as const) : ("chainlink" as const),
           price_usd: price ? Number(rawToPico(one, t.decimals, price.price18)) / 1e12 : null,
-          credit_usd_per_token: price ? Number(escrowCredit(ctx, one, t.decimals, price.price18)) / 1e12 : null,
+          credit_usd_per_token: price ? Number(escrowCredit(ctx, one, t.decimals, price.price18, t.haircutBps)) / 1e12 : null,
           price_updated_at: price ? new Date(price.updatedAt * 1000).toISOString() : null,
+          haircut_bps: t.haircutBps,
+          // The most one deposit is credited (null: no limit); the rest is held for operator review.
+          max_usd_per_deposit: t.kind === "anyr" ? t.anyr.maxUsdPerDeposit : null,
         };
       }),
     ),
@@ -465,7 +564,8 @@ export async function escrowInfo(ctx: Ctx) {
     finality: ctx.cfg.escrow.finality,
     confirmations: ctx.cfg.chain.confirmations,
     expected_credit_delay_s: fin ? Math.max(0, fin.headTime - fin.finalTime) : null,
-    haircut_bps: ctx.cfg.escrow.haircutBps,
+    haircut_bps: ctx.cfg.escrow.haircutBps, // Stock Tokens; each token lists its own haircut_bps
+    anyr: anyrSummary(ctx),
     tokens,
   };
 }
@@ -473,7 +573,7 @@ export async function escrowInfo(ctx: Ctx) {
 export async function escrowDepositsFor(ctx: Ctx, accountId: string, limit = 50) {
   const rows = await ctx.db.select().from(escrowDeposits).where(eq(escrowDeposits.fromAddress, accountId.startsWith("w_") ? `0x${accountId.slice(2)}` : "")).orderBy(desc(escrowDeposits.blockNumber), desc(escrowDeposits.logIndex)).limit(limit);
   return rows.map((d) => {
-    const tok = ctx.cfg.escrow.tokens.find((t) => t.address.toLowerCase() === d.token);
+    const tok = acceptedToken(ctx, d.token);
     return {
       id: d.id,
       tx_hash: d.txHash,
@@ -488,4 +588,11 @@ export async function escrowDepositsFor(ctx: Ctx, accountId: string, limit = 50)
       at: (d.reversedAt ?? d.creditedAt ?? d.createdAt).toISOString(),
     };
   });
+}
+
+/** $ANYR escrow terms for public status and payment instructions; null when ANYR is not accepted. */
+export function anyrSummary(ctx: Ctx) {
+  const a = ctx.cfg.anyrEscrow;
+  if (!a || !escrowEnabled(ctx)) return null;
+  return { symbol: a.symbol, address: a.address, decimals: a.decimals, haircut_bps: a.haircutBps, max_usd_per_deposit: a.maxUsdPerDeposit, price_source: "twap" as const, twap_minutes: ctx.cfg.buyback.twapMinutes };
 }
