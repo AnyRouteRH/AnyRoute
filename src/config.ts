@@ -77,7 +77,7 @@ const schema = z.object({
   DEV_FAUCET: bool.default(false),
   DEV_FAUCET_PRIVATE_KEY: pk,
   V4_POOL_MANAGER: addr.default("0x8366a39cc670b4001a1121b8f6a443a643e40951"),
-  ANYR_POOL_LEGS: opt, // JSON [{key:{currency0,currency1,fee,tickSpacing,hooks}, sign}] pricing ANYR in USDG
+  ANYR_POOL_LEGS: opt, // optional off-chain second opinion: JSON v4 legs [{key:{currency0,currency1,fee,tickSpacing,hooks}, sign}] pricing ANYR in USDG
   BUYBACK_TWAP_MINUTES: num(30),
   BUYBACK_MAX_DEVIATION: num(0.05),
   BUYBACK_SLIPPAGE_BPS: int(100),
@@ -376,6 +376,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     canaries: { intervalMs: e.CANARY_INTERVAL_MS, enabled: e.CANARIES, shadowDays: e.SHADOW_DAYS },
     buyback: {
       legs: e.ANYR_POOL_LEGS ? (JSON.parse(e.ANYR_POOL_LEGS) as import("./chain/twap.ts").Leg[]) : null,
+      oracle: e.BUYBACK_ORACLE_ADDRESS && !/^0x0{40}$/.test(e.BUYBACK_ORACLE_ADDRESS) ? (e.BUYBACK_ORACLE_ADDRESS.toLowerCase() as `0x${string}`) : null,
       twapMinutes: e.BUYBACK_TWAP_MINUTES,
       maxDeviation: e.BUYBACK_MAX_DEVIATION,
       slippageBps: e.BUYBACK_SLIPPAGE_BPS,
@@ -488,7 +489,8 @@ function contractPathGuards(e: Env, production: boolean, escrowMode: boolean) {
     if (escrowMode) throw new Error("Buybacks need the Anyroute contracts; PAYMENTS_MODE=escrow must not run the buyback job.");
     if (!e.BUYBACK_ORACLE_ADDRESS || /^0x0{40}$/.test(e.BUYBACK_ORACLE_ADDRESS))
       throw new Error("Buybacks stay disabled until BUYBACK_ORACLE_ADDRESS names the reviewed buyback-floor oracle; otherwise remove the buyback job and KEEPER_PRIVATE_KEY.");
-    if (!e.ANYR_STAKING_ADDRESS || !e.ANYR_POOL_LEGS) throw new Error("Buybacks require ANYR_STAKING_ADDRESS and ANYR_POOL_LEGS.");
+    // The floor is that on-chain oracle's quote; ANYR_POOL_LEGS only adds an optional off-chain second opinion.
+    if (!e.ANYR_STAKING_ADDRESS) throw new Error("Buybacks require ANYR_STAKING_ADDRESS.");
   }
 
   // M-06: PayWithStock delegates router spending up to each session's daily cap.

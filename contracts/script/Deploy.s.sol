@@ -22,6 +22,7 @@ import {AnyrStaking} from "../src/AnyrStaking.sol";
 import {PayWithStock} from "../src/PayWithStock.sol";
 import {AnyrPaymaster} from "../src/AnyrPaymaster.sol";
 import {ChainlinkStockOracle, AggregatorV3Interface} from "../src/oracle/ChainlinkStockOracle.sol";
+import {TwapBuybackPriceOracle} from "../src/oracle/TwapBuybackPriceOracle.sol";
 import {UniswapV4Adapter} from "../src/adapters/UniswapV4Adapter.sol";
 import {UniswapV3Adapter, ISwapRouter02} from "../src/adapters/UniswapV3Adapter.sol";
 import {ICredits} from "../src/interfaces/ICredits.sol";
@@ -241,8 +242,10 @@ contract Deploy is Script {
         _d.uniswapV4Adapter = address(new UniswapV4Adapter(IPoolManager(_d.poolManager), deployer));
         _d.uniswapV3Adapter = address(new UniswapV3Adapter(ISwapRouter02(_d.swapRouter02), deployer));
         _d.anyrToken = address(new AnyrToken(r.anyrRecipients));
-        // Buybacks go through the V4 adapter; the USDG->ANYR route is registered once the ANYR pool exists.
-        _d.buybackAdapter = _d.uniswapV4Adapter;
+        // Buybacks go through the V3 adapter, in the Uniswap V3 ANYR/USDG pool whose TWAP sets the buyback floor
+        // (TwapBuybackPriceOracle); the route and the oracle are enabled together once that pool exists, see
+        // `deployBuybackOracle`. Until then AnyrStaking has no oracle and buybacks revert.
+        _d.buybackAdapter = _d.uniswapV3Adapter;
 
         _deployCore(deployer);
 
@@ -799,6 +802,205 @@ contract Deploy is Script {
         f[2] = _kvS("data", vm.toString(data));
         f[3] = _kv("contractMethod", "null");
         f[4] = _kv("contractInputsValues", "null");
+        return _obj(f);
+    }
+
+    // =============================================================================================
+    // Buyback floor oracle (opt-in, once the ANYR/USDG Uniswap V3 pool exists)
+    // =============================================================================================
+
+    bytes32 internal constant BUYBACK_ORACLE_SALT_TAG = keccak256("anyroute.buyback-oracle.v1");
+
+    /// @notice Inputs of `deployBuybackOracleWith`: the existing deployment, the pool and the guards.
+    struct BuybackOracleParams {
+        uint256 deployerKey;
+        address timelock; // oracle owner; executes the governance batch
+        address ownerSafe; // proposes and executes on the timelock
+        address guardian; // may pause the oracle instantly
+        TwapBuybackPriceOracle.Config oracle; // .staking / .routeAdapter = anyrStaking / uniswapV3Adapter
+        string outPath; // Safe batch + oracle record ("" = none)
+    }
+
+    /// @notice Opt-in step, never part of `run()`: deploy the TWAP buyback-floor oracle for an existing production
+    /// deployment and write the timelock batch that routes buybacks through its pool. Nothing changes on-chain
+    /// until OWNER_SAFE schedules that batch and executes it after TIMELOCK_DELAY.
+    ///   BUYBACK_ORACLE=1 BUYBACK_V3_POOL=0x... BUYBACK_MIN_LIQUIDITY=... DEPLOYER_PRIVATE_KEY=... \
+    ///   forge script script/Deploy.s.sol --sig "deployBuybackOracle()" --rpc-url rhc --broadcast
+    ///   Reads DEPLOYMENTS_PATH (default deployments/<chainid>.json) and CONFIG_PATH (.uniswap.v3Factory,
+    ///   .usdg.decimals). Optional: BUYBACK_TWAP_WINDOW (s, 1800), BUYBACK_SHORT_WINDOW (s, 300),
+    ///   BUYBACK_MIN_CARDINALITY (1800), BUYBACK_MAX_DEVIATION_TICKS (500), BUYBACK_HAIRCUT_BPS (100),
+    ///   BUYBACK_ORACLE_PATH (default deployments/<chainid>-buyback-oracle.json).
+    ///   Output: a Safe Transaction Builder batch, OWNER_SAFE -> timelock.scheduleBatch(
+    ///   UniswapV3Adapter.setPath(USDG, ANYR, USDG|fee|ANYR), AnyrStaking.setAdapter(UniswapV3Adapter),
+    ///   AnyrStaking.setBuybackPriceOracle(oracle)), with the oracle record under "anyroute"; and <path>-execute.json.
+    function deployBuybackOracle() external returns (address) {
+        string memory flag = vm.envOr("BUYBACK_ORACLE", string(""));
+        require(
+            _eq(flag, "1") || _eq(flag, "true"), "Deploy: set BUYBACK_ORACLE=1 to deploy the buyback oracle"
+        );
+        string memory chain = vm.toString(block.chainid);
+        string memory m =
+            vm.readFile(vm.envOr("DEPLOYMENTS_PATH", string.concat("deployments/", chain, ".json")));
+        require(
+            _eq(vm.parseJsonString(m, ".mode"), "production"),
+            "Deploy: manifest is not a production deployment"
+        );
+        require(vm.parseJsonUint(m, ".chainId") == block.chainid, "Deploy: manifest chainId != block.chainid");
+        string memory cfg = vm.readFile(vm.envOr("CONFIG_PATH", string(DEFAULT_CONFIG)));
+
+        BuybackOracleParams memory p;
+        p.deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        p.timelock = vm.parseJsonAddress(m, ".contracts.timelock");
+        p.ownerSafe = vm.parseJsonAddress(m, ".roles.ownerSafe");
+        p.guardian = vm.parseJsonAddress(m, ".roles.guardian");
+        p.outPath =
+            vm.envOr("BUYBACK_ORACLE_PATH", string.concat("deployments/", chain, "-buyback-oracle.json"));
+        TwapBuybackPriceOracle.Config memory c = p.oracle;
+        c.pool = vm.envAddress("BUYBACK_V3_POOL");
+        c.factory = vm.parseJsonAddress(cfg, ".uniswap.v3Factory");
+        c.staking = vm.parseJsonAddress(m, ".contracts.anyrStaking");
+        c.routeAdapter = vm.parseJsonAddress(m, ".contracts.uniswapV3Adapter");
+        c.usdg = vm.parseJsonAddress(m, ".contracts.usdg");
+        c.anyr = vm.parseJsonAddress(m, ".contracts.anyrToken");
+        c.usdgDecimals = uint8(vm.parseJsonUint(cfg, ".usdg.decimals"));
+        c.anyrDecimals = 18;
+        c.twapWindow = uint32(vm.envOr("BUYBACK_TWAP_WINDOW", uint256(30 minutes)));
+        c.shortWindow = uint32(vm.envOr("BUYBACK_SHORT_WINDOW", uint256(5 minutes)));
+        c.minCardinality = uint16(vm.envOr("BUYBACK_MIN_CARDINALITY", uint256(1800)));
+        c.minLiquidity = uint128(vm.envUint("BUYBACK_MIN_LIQUIDITY"));
+        c.maxDeviationTicks = int24(vm.envOr("BUYBACK_MAX_DEVIATION_TICKS", int256(500)));
+        c.haircutBps = uint16(vm.envOr("BUYBACK_HAIRCUT_BPS", uint256(100)));
+        return deployBuybackOracleWith(p);
+    }
+
+    /// @notice Deploy the oracle (owner = timelock) and write the governance batch that enables it.
+    function deployBuybackOracleWith(BuybackOracleParams memory p) public returns (address oracle) {
+        require(
+            p.timelock.code.length != 0 && p.ownerSafe != address(0),
+            "Deploy: timelock and OWNER_SAFE required"
+        );
+        vm.startBroadcast(p.deployerKey);
+        oracle = address(new TwapBuybackPriceOracle(p.oracle, p.timelock, p.guardian));
+        vm.stopBroadcast();
+        if (bytes(p.outPath).length != 0) _writeBuybackOracle(TwapBuybackPriceOracle(oracle), p);
+    }
+
+    /// @notice The timelock batch that routes buybacks through the oracle's pool and selects the oracle.
+    function buybackOracleBatch(TwapBuybackPriceOracle oracle)
+        public
+        view
+        returns (address[] memory targets, uint256[] memory values, bytes[] memory payloads, bytes32 salt)
+    {
+        address adapter = oracle.routeAdapter();
+        targets = new address[](3);
+        values = new uint256[](3);
+        payloads = new bytes[](3);
+        targets[0] = adapter;
+        payloads[0] =
+            abi.encodeCall(UniswapV3Adapter.setPath, (oracle.usdg(), oracle.anyr(), _buybackPath(oracle)));
+        targets[1] = oracle.staking();
+        payloads[1] = abi.encodeCall(AnyrStaking.setAdapter, (IBuybackAdapter(adapter)));
+        targets[2] = oracle.staking();
+        payloads[2] = abi.encodeCall(AnyrStaking.setBuybackPriceOracle, (oracle));
+        salt = keccak256(abi.encode(BUYBACK_ORACLE_SALT_TAG, block.chainid, address(oracle)));
+    }
+
+    /// @notice Where `_writeBuybackOracle` puts the execute step for a given batch path.
+    function executeBatchPathFor(string memory batchPath) external pure returns (string memory) {
+        return _executePath(batchPath);
+    }
+
+    function _buybackPath(TwapBuybackPriceOracle oracle) internal view returns (bytes memory) {
+        return abi.encodePacked(oracle.usdg(), oracle.fee(), oracle.anyr());
+    }
+
+    function _writeBuybackOracle(TwapBuybackPriceOracle oracle, BuybackOracleParams memory p) internal {
+        (address[] memory targets, uint256[] memory values, bytes[] memory payloads, bytes32 salt) =
+            buybackOracleBatch(oracle);
+        string memory scheduleTx = _safeTx(
+            p.timelock,
+            abi.encodeCall(
+                TimelockController.scheduleBatch,
+                (targets, values, payloads, bytes32(0), salt, TIMELOCK_DELAY)
+            )
+        );
+        string memory executeTx = _safeTx(
+            p.timelock,
+            abi.encodeCall(TimelockController.executeBatch, (targets, values, payloads, bytes32(0), salt))
+        );
+
+        string[] memory g = new string[](12);
+        g[0] = _kvS("schema", "anyroute.buyback-oracle/v1");
+        g[1] = _kvA("oracle", address(oracle));
+        g[2] = _kvA("pool", address(oracle.pool()));
+        g[3] = _kvA("factory", oracle.factory());
+        g[4] = _kvA("anyrStaking", oracle.staking());
+        g[5] = _kvA("uniswapV3Adapter", oracle.routeAdapter());
+        g[6] = _kvS("path", vm.toString(_buybackPath(oracle)));
+        g[7] = _kv("params", _buybackOracleParamsJson(oracle));
+        g[8] = _kvA("owner", p.timelock);
+        g[9] = _kvA("guardian", p.guardian);
+        g[10] = _kvS(
+            "operationId",
+            vm.toString(
+                TimelockController(payable(p.timelock))
+                    .hashOperationBatch(targets, values, payloads, bytes32(0), salt)
+            )
+        );
+        g[11] = _kv("executeTransactions", string.concat("[", executeTx, "]"));
+
+        string[] memory f = new string[](6);
+        f[0] = _kvS("version", "1.0");
+        f[1] = _kvS("chainId", vm.toString(block.chainid));
+        f[2] = _kvU("createdAt", block.timestamp * 1000);
+        f[3] = _kv("meta", _buybackOracleMeta(p.ownerSafe, "step 1/2: schedule"));
+        f[4] = _kv("transactions", string.concat("[", scheduleTx, "]"));
+        f[5] = _kv("anyroute", _obj(g));
+        vm.writeFile(p.outPath, _obj(f));
+
+        f[3] = _kv("meta", _buybackOracleMeta(p.ownerSafe, "step 2/2: execute"));
+        f[4] = _kv("transactions", string.concat("[", executeTx, "]"));
+        string[] memory e = new string[](5);
+        for (uint256 i; i < 5; ++i) {
+            e[i] = f[i];
+        }
+        vm.writeFile(_executePath(p.outPath), _obj(e));
+    }
+
+    function _buybackOracleParamsJson(TwapBuybackPriceOracle o) internal view returns (string memory) {
+        string[] memory f = new string[](12);
+        f[0] = _kvA("usdg", o.usdg());
+        f[1] = _kvA("anyr", o.anyr());
+        f[2] = _kvU("fee", o.fee());
+        f[3] = _kv("anyrIsToken0", o.anyrIsToken0() ? "true" : "false");
+        f[4] = _kvU("usdgDecimals", o.usdgDecimals());
+        f[5] = _kvU("anyrDecimals", o.anyrDecimals());
+        f[6] = _kvU("twapWindow", o.twapWindow());
+        f[7] = _kvU("shortWindow", o.shortWindow());
+        f[8] = _kvU("minCardinality", o.minCardinality());
+        f[9] = _kvS("minLiquidity", vm.toString(o.minLiquidity()));
+        f[10] = string.concat(_q("maxDeviationTicks"), ":", vm.toString(int256(o.maxDeviationTicks())));
+        f[11] = _kvU("haircutBps", o.haircutBps());
+        return _obj(f);
+    }
+
+    function _buybackOracleMeta(address ownerSafe, string memory step) internal pure returns (string memory) {
+        string[] memory f = new string[](5);
+        f[0] = _kvS(
+            "name", string.concat("Anyroute: route buybacks through the TWAP floor oracle (", step, ")")
+        );
+        f[1] = _kvS(
+            "description",
+            string.concat(
+                "OWNER_SAFE proposes/executes on the TimelockController: UniswapV3Adapter.setPath, ",
+                "AnyrStaking.setAdapter and AnyrStaking.setBuybackPriceOracle; execute no earlier than ",
+                vm.toString(TIMELOCK_DELAY),
+                "s after scheduling."
+            )
+        );
+        f[2] = _kvS("txBuilderVersion", "1.16.5");
+        f[3] = _kvA("createdFromSafeAddress", ownerSafe);
+        f[4] = _kvS("createdFromOwnerAddress", "");
         return _obj(f);
     }
 

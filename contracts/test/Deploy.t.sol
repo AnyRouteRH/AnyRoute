@@ -311,7 +311,8 @@ contract DeployProductionForkTest is Test {
         // --- wiring
         assertTrue(Credits(d.credits).isCreditor(d.payWithStock));
         assertEq(ProviderBond(d.providerBond).slasher(), r.slasher);
-        assertEq(address(AnyrStaking(d.anyrStaking).adapter()), d.uniswapV4Adapter);
+        // buybacks route through the V3 pool whose TWAP sets the floor
+        assertEq(address(AnyrStaking(d.anyrStaking).adapter()), d.uniswapV3Adapter);
         assertTrue(UniswapV4Adapter(payable(d.uniswapV4Adapter)).isCaller(d.payWithStock));
         assertTrue(UniswapV4Adapter(payable(d.uniswapV4Adapter)).isCaller(d.anyrStaking));
         assertTrue(UniswapV3Adapter(d.uniswapV3Adapter).isCaller(d.payWithStock));
