@@ -1,0 +1,24 @@
+{
+  "name": "@anyroute/sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gateway that runs in front of any OpenAI-compatible server: pins the served weights, binds attestation evidence to its keys and signs a receipt for every response.",
+  "scripts": {
+    "start": "bun src/main.ts serve",
+    "digest": "bun src/main.ts digest",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  },
+  "license": "Apache-2.0"
+}
