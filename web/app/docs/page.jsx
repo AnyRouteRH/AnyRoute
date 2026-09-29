@@ -334,6 +334,65 @@ const badgeImg = `<img src="https://<router>/api/v1/badge/<provider id>.svg" alt
 <!-- Markdown, for a README or a model card -->
 [![Anyroute attestation status](https://<router>/api/v1/badge/<author>/<model>.svg)](https://<router>/registry/)`;
 
+const agentsSdk = `import asyncio
+import os
+
+from agents import Agent, Runner, set_default_openai_api, set_default_openai_client, set_tracing_disabled
+from openai import AsyncOpenAI
+
+client = AsyncOpenAI(
+    base_url="${BASE}/v1",
+    api_key=os.environ["ANYROUTE_API_KEY"],  # sk-ar-v1-…
+    default_headers={"X-Anyroute-Lane": "attested"},  # optional: attested providers only
+)
+set_default_openai_client(client, use_for_tracing=False)
+set_default_openai_api("responses")
+set_tracing_disabled(True)  # otherwise the SDK sends traces to its own tracing service
+
+agent = Agent(name="Assistant", instructions="Answer briefly.", model="<model from GET /api/v1/models?lane=attested>")
+
+
+async def main():
+    result = await Runner.run(agent, "Hello, AnyRoute.")
+    print(result.final_output)
+
+
+asyncio.run(main())`;
+const codexConfig = `# ~/.codex/config.toml  (export ANYROUTE_API_KEY first)
+model = "<model id from GET /api/v1/models>"
+model_provider = "anyroute"
+
+[model_providers.anyroute]
+name = "AnyRoute"
+base_url = "${BASE}/v1"
+env_key = "ANYROUTE_API_KEY"
+wire_api = "responses"
+# optional: send every prompt only to attested providers
+http_headers = { "X-Anyroute-Lane" = "attested" }`;
+const responsesCurl = `curl -s ${BASE}/v1/responses \\
+  -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
+  -H "X-Anyroute-Lane: attested" \\
+  -d '{"model":"<model from GET /api/v1/models?lane=attested>","input":"Your prompt","max_output_tokens":200}'`;
+const responsesResult = JSON.stringify(
+  {
+    id: "resp_gen-…",
+    object: "response",
+    status: "completed",
+    model: "<model>",
+    output: [{ type: "message", id: "msg_…", role: "assistant", status: "completed", content: [{ type: "output_text", text: "…", annotations: [] }] }],
+    usage: { input_tokens: 12, output_tokens: 5, total_tokens: 17, cost: 0.00002 },
+    metadata: { anyroute_receipt_id: "gen-…", anyroute_lane: "attested", anyroute_disclosure: "attested" },
+    store: false,
+    "…": "instructions, tools, tool_choice, temperature, top_p and the other fields Responses clients read",
+  },
+  null,
+  2,
+);
+const responsesRefusal = JSON.stringify(
+  { error: { code: 400, type: "previous_response_id_not_supported", param: "previous_response_id", message: "`previous_response_id` is not supported. AnyRoute stores no responses, so there is no earlier turn to continue from. Send the whole conversation in `input` on every request…" } },
+  null,
+  2,
+);
 const endpoints = [
   ["POST /api/v1/chat/completions", "Chat, tools and streaming (OpenAI/OpenRouter shape); X-Pay-With, X-Payment, X-Wallet-Auth headers"],
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
@@ -366,6 +425,7 @@ const endpoints = [
   ["GET /api/v1/measurements/key · /measurements/bundles/:providerId", "Where enabled: the key that signs measurement bundles (compose hash, source commit and tarball hash, model and image digests, MRTD allow-list), and a provider’s bundles with the transparency-log entry the router verified for each"],
   ["POST /mcp", "AnyRoute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["POST /v1/messages · /messages/count_tokens", "Anthropic Messages API (also under /api/v1) for the Anthropic SDKs and Claude Code: x-api-key or Authorization: Bearer; tools, images and streaming; the lane in X-Anyroute-Lane or provider.lane; the receipt in the reply and in X-Receipt-Id"],
+  ["POST /v1/responses · /api/v1/responses", "OpenAI Responses API for the OpenAI Agents SDK, the Codex CLI and other Responses clients: the chat route’s billing, lanes and signed receipts behind the Responses shape and event stream. Stateless: store must be false, there is no previous_response_id and no GET; function tools only"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
@@ -397,6 +457,7 @@ export default function Docs() {
             <a href="#council">Council</a>
             <a href="#mcp">MCP</a>
             <a href="#anthropic">Anthropic</a>
+            <a href="#responses">Responses</a>
             <a href="#sdk">SDKs</a>
             <a href="#run-a-provider">Run a provider</a>
             <a href="#badge">Badge</a>
@@ -785,6 +846,36 @@ export default function Docs() {
           <p>
             Every error has Anthropic’s shape, {`{"type":"error","error":{"type","message"},"request_id"}`}, plus an anyroute object with the router’s own error type, its metadata, and the receipt id when a refused call was billed. Every response has a request-id header. A browser
             can call the endpoint directly: the router allows the x-api-key, anthropic-version, anthropic-beta and anthropic-dangerous-direct-browser-access headers.
+          <h2 id="responses">Use AnyRoute with the OpenAI Agents SDK and Codex.</h2>
+          <p>
+            POST /v1/responses (also /api/v1/responses) is the OpenAI Responses API, so the OpenAI Agents SDK, the Codex CLI and other Responses clients work with a change of base URL and key. The base URL is this router’s address followed by /v1 (or /api/v1: the two are the same), and the key is the
+            one you use for chat completions. The endpoint is an adapter: it sends your request to /api/v1/chat/completions inside the router with your credentials and your routing headers, so balance, limits, disclosure ceilings, lanes and signed receipts are exactly those of a chat call, and the answer comes back as a Response object,
+            or as the Responses event stream when stream is true (response.created, response.in_progress, response.output_item.added, response.content_part.added, response.output_text.delta, response.output_text.done, response.content_part.done, response.function_call_arguments.delta and .done, response.output_item.done, then
+            response.completed, or response.incomplete when the answer was cut off by max_output_tokens; a failure after the stream has started is an error event followed by response.failed).
+          </p>
+          <Code label="OpenAI Agents SDK (Python)">{agentsSdk}</Code>
+          <Code label="Codex CLI · ~/.codex/config.toml">{codexConfig}</Code>
+          <Code label="Check it with curl">{responsesCurl}</Code>
+          <h3>Keep a prompt with proven enclaves</h3>
+          <p>
+            Set the lane the same way as for chat: the X-Anyroute-Lane: attested header (the Agents SDK example above and the Codex config send it on every call) or {'provider: {"lane": "attested"}'} in the request body; when both are given the stricter applies. On the attested lane the prompt goes only to a provider whose TEE attestation the router
+            verified itself and that documents no retention. If none can answer, the call is refused with 409 lane_unavailable (503 while they are down), nothing is sent to any provider and nothing is charged; the router does not fall back to a public provider. Attestation shows what code is running, not what a provider does with a prompt; see
+            the verify page for what is and is not checked. The response carries the receipt and lane headers of a chat call (X-Receipt-Id, Inference-Id, X-Anyroute-Lane and, where the serving endpoint attested one, X-Anyroute-Policy-Hash), and its metadata has anyroute_receipt_id, anyroute_lane and anyroute_disclosure taken from the same signed receipt.
+            The response id is resp_ followed by the receipt id. Models that can serve the attested lane are listed at GET /api/v1/models?lane=attested.
+          </p>
+          <Code label="Response (abridged)">{responsesResult}</Code>
+          <h3>Stateless by design</h3>
+          <p>
+            AnyRoute keeps no conversation or response on the server, so there is nothing to continue from or fetch back. Send the whole conversation in input on every request, including the function_call and function_call_output items of a tool round trip; the Agents SDK and Codex already do this. store defaults to false and store: true is refused with a 400, as are previous_response_id,
+            conversation, background, stored prompts and references to stored items or files. GET, DELETE and cancel under /v1/responses/:id answer 404 and say why. A call’s signed receipt, which holds no prompt or answer, is at GET /api/v1/receipts/:id with the id from X-Receipt-Id.
+          </p>
+          <Code label="A refusal">{responsesRefusal}</Code>
+          <h3>What is supported</h3>
+          <p>
+            Request: model, instructions, input (text, or message items with input_text and input_image, function_call and function_call_output items; earlier reasoning items are ignored), function tools with tool_choice and parallel_tool_calls, max_output_tokens, temperature, top_p, text.format (text, json_object or json_schema, which
+            needs a model and provider that support it), reasoning.effort, metadata (echoed back, never sent to a provider), user, and provider for routing. Other options, such as include, truncation and service_tier, are accepted and ignored. Response: a message with output_text and one function_call item per tool call, and usage with
+            input_tokens, output_tokens and total_tokens (plus cost in USD). Tools that run on the API provider’s servers (web_search, file_search, code_interpreter, computer_use, image_generation, hosted mcp) are refused with a 400 that names the tool, because AnyRoute hosts none: give the model a function tool and run the work in your own code, and switch off
+            any client feature, such as web search in Codex, that depends on one. Freeform (custom) tools and file inputs are also refused.
           </p>
           <h2 id="sdk">Verify before you send.</h2>
           <p>

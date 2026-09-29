@@ -99,6 +99,10 @@
     {
       "name": "Creator royalties",
       "description": "Claim a model's creator royalty by publishing a challenge in the Hugging Face repository the weights come from."
+    },
+    {
+      "name": "Responses",
+      "description": "OpenAI Responses API compatible endpoint for the OpenAI Agents SDK, the Codex CLI and other Responses clients. Stateless: nothing is stored."
     }
   ],
   "paths": {
@@ -3671,6 +3675,157 @@
           },
           "default": {
             "$ref": "#/components/responses/AnthropicError"
+          }
+        }
+      }
+    },
+    "/api/v1/responses": {
+      "post": {
+        "tags": [
+          "Responses"
+        ],
+        "operationId": "createResponse",
+        "summary": "Create a response (OpenAI Responses API)",
+        "description": "The OpenAI Responses API, for the OpenAI Agents SDK, the Codex CLI and other Responses clients (POST /v1/responses is the same route). It is an adapter over POST /api/v1/chat/completions: the request is translated and sent to that route in-process with the same credentials and headers, so keys, wallet and per-call payment, blind tokens, limits, disclosure ceilings, lanes, signed receipts and error responses are the chat route's own, and the answer is returned in the Responses shape. With stream true the body is the Responses event stream, each frame an event: line and a data: line carrying type and sequence_number: response.created, response.in_progress, response.output_item.added, response.content_part.added, response.output_text.delta, response.output_text.done, response.content_part.done, response.function_call_arguments.delta, response.function_call_arguments.done, response.output_item.done and last response.completed (or response.incomplete when the answer was cut off by max_output_tokens). A failure after the stream has started is an error event followed by response.failed; there is no [DONE]. Stateless by design: nothing is stored, so store must be false (the default; true is refused), and previous_response_id, conversation, background, stored prompts and file or item references are refused with a 400 whose error.param names the field. Send the whole conversation in input on every request, including function_call and function_call_output items for tool round trips. GET, DELETE and cancel under /api/v1/responses/{id} answer 404. Only function tools run. Hosted tools (web_search, file_search, code_interpreter, computer_use, image_generation, mcp) are refused with a 400 naming the tool, because AnyRoute hosts none; run the work in your own code and return it as a function_call_output. Route with provider (lane, disclosure and the router's other preferences) or the X-Anyroute-Lane header; the stricter of the two applies, and a request no provider can serve under the lane is refused (409 lane_unavailable) with nothing sent and nothing charged. The response carries X-Receipt-Id, Inference-Id and X-Anyroute-Lane (and X-Anyroute-Policy-Hash where the serving endpoint attested one), and its metadata carries anyroute_receipt_id, anyroute_lane and, once known, anyroute_disclosure. Other Responses options (include, truncation, service_tier, prompt_cache_key, safety_identifier, stream_options) are accepted and ignored.",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "WalletAuth": []
+          },
+          {
+            "PrivateToken": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Referer"
+          },
+          {
+            "$ref": "#/components/parameters/Title"
+          },
+          {
+            "$ref": "#/components/parameters/Payment"
+          },
+          {
+            "$ref": "#/components/parameters/PayWith"
+          },
+          {
+            "$ref": "#/components/parameters/DisclosureMax"
+          },
+          {
+            "$ref": "#/components/parameters/Lane"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponsesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A Response object, or the Responses event stream when stream is true.",
+            "headers": {
+              "X-Anyroute-Disclosure": {
+                "$ref": "#/components/headers/Disclosure"
+              },
+              "X-Anyroute-Lane": {
+                "$ref": "#/components/headers/LaneServed"
+              },
+              "X-Receipt-Id": {
+                "$ref": "#/components/headers/ReceiptId"
+              },
+              "Inference-Id": {
+                "$ref": "#/components/headers/InferenceId"
+              },
+              "X-Generation-Id": {
+                "$ref": "#/components/headers/GenerationId"
+              },
+              "X-Anyroute-Policy-Hash": {
+                "$ref": "#/components/headers/PolicyHash"
+              },
+              "X-PAYMENT-RESPONSE": {
+                "description": "Present when an x402 payment was settled for this call: base64 JSON {success, transaction, network, payer}.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsesObject"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE frames (event: and data: lines) in the order described above; the response.completed, response.incomplete and response.failed frames carry the whole Response object."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/DisclosureUnavailable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "501": {
+            "$ref": "#/components/responses/LaneNotAvailable"
+          },
+          "503": {
+            "$ref": "#/components/responses/DisclosureProviderDown"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/responses/{id}": {
+      "get": {
+        "tags": [
+          "Responses"
+        ],
+        "operationId": "getResponse",
+        "summary": "Not available: responses are not stored",
+        "description": "Always 404 (responses_not_stored), like DELETE and POST .../cancel and GET .../input_items on this path. AnyRoute is stateless: it stores no responses, conversations or input items, so there is nothing to retrieve. A response is returned by the call that creates it. The call's signed receipt, which holds no prompt or answer, is at GET /api/v1/receipts/{id}: the id is in the X-Receipt-Id header and the response's metadata.anyroute_receipt_id.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -8089,6 +8244,492 @@
             "additionalProperties": true
           }
         }
+      },
+      "ResponsesInputItem": {
+        "description": "An input item: a message, a function_call from an earlier turn, or the function_call_output for it.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "role",
+              "content"
+            ],
+            "properties": {
+              "type": {
+                "const": "message"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "assistant",
+                  "system",
+                  "developer"
+                ],
+                "description": "developer is sent to the model as system."
+              },
+              "content": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "description": "input_text ({type, text}), input_image ({type, image_url: an https or data: URL, detail}); output_text and refusal in an earlier assistant message. File ids and input_file are refused.",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "input_text",
+                            "input_image",
+                            "output_text",
+                            "refusal"
+                          ]
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "call_id",
+              "name"
+            ],
+            "properties": {
+              "type": {
+                "const": "function_call"
+              },
+              "call_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "string",
+                "description": "JSON text."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "call_id",
+              "output"
+            ],
+            "properties": {
+              "type": {
+                "const": "function_call_output"
+              },
+              "call_id": {
+                "type": "string"
+              },
+              "output": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                ],
+                "description": "The function's result: text, or input_text parts."
+              }
+            }
+          }
+        ]
+      },
+      "ResponsesRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "description": "A Responses API request. Options AnyRoute cannot honour because they need stored state are refused (store true, previous_response_id, conversation, background, prompt) and so is every tool that is not a function tool.",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Public model ID, as in chat completions."
+          },
+          "input": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ResponsesInputItem"
+                }
+              }
+            ],
+            "description": "The whole conversation: one user message as text, or input items. reasoning items are ignored; item_reference and hosted tool items are refused."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Sent as a system message before the input."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "name"
+              ],
+              "properties": {
+                "type": {
+                  "const": "function"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "parameters": {
+                  "type": "object",
+                  "description": "JSON Schema of the arguments."
+                },
+                "strict": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "description": "Function tools only. Requires a model and provider that support tools."
+          },
+          "tool_choice": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "required"
+                ]
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type",
+                  "name"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "function"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "parallel_tool_calls": {
+            "type": "boolean"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "top_p": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "text": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "object",
+                "description": "text (default), json_object, or json_schema ({type, name, schema, strict, description}), sent as response_format. Requires a model and provider that support it.",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "json_object",
+                      "json_schema"
+                    ]
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "reasoning": {
+            "type": "object",
+            "properties": {
+              "effort": {
+                "type": "string"
+              }
+            },
+            "description": "reasoning.effort is passed on as reasoning.effort; providers that do not support it drop it."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Echoed in the Response. Not sent to a provider."
+          },
+          "user": {
+            "type": "string",
+            "description": "Passed to the provider as the end-user identity, as in chat completions."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false
+          },
+          "store": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false,
+            "description": "Must be false or omitted: AnyRoute stores no responses."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ProviderPreferences"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ResponsesObject": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "created_at",
+          "status",
+          "model",
+          "output",
+          "metadata"
+        ],
+        "description": "A Response. The request's instructions, tools, tool_choice, max_output_tokens, temperature, top_p, parallel_tool_calls, text, reasoning and user are echoed back; store is always false and previous_response_id null.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "resp_ followed by the receipt id. There is nothing to fetch with it; the receipt is at GET /api/v1/receipts/{id} for the id without the resp_ prefix."
+          },
+          "object": {
+            "const": "response"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "in_progress",
+              "completed",
+              "incomplete",
+              "failed"
+            ],
+            "description": "incomplete: the answer was cut off (incomplete_details.reason max_output_tokens or content_filter). failed appears only in a stream, in response.failed."
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "incomplete_details": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "max_output_tokens",
+                  "content_filter"
+                ]
+              }
+            }
+          },
+          "model": {
+            "type": "string",
+            "description": "The model the router resolved the request to."
+          },
+          "output": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "id",
+                    "role",
+                    "status",
+                    "content"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "message"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "const": "assistant"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "in_progress",
+                        "completed"
+                      ]
+                    },
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "type"
+                        ],
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "output_text",
+                              "refusal"
+                            ]
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "annotations": {
+                            "type": "array",
+                            "items": {}
+                          },
+                          "refusal": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "id",
+                    "call_id",
+                    "name",
+                    "arguments",
+                    "status"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "function_call"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "call_id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "JSON text."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "in_progress",
+                        "completed"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "description": "A message with output_text, and a function_call item for each tool call the model made."
+          },
+          "usage": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "input_tokens": {
+                "type": "integer"
+              },
+              "input_tokens_details": {
+                "type": "object",
+                "properties": {
+                  "cached_tokens": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "output_tokens": {
+                "type": "integer"
+              },
+              "output_tokens_details": {
+                "type": "object",
+                "properties": {
+                  "reasoning_tokens": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "total_tokens": {
+                "type": "integer"
+              },
+              "cost": {
+                "type": "number",
+                "description": "What the call cost in USD, as usage.cost in chat completions."
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The request's metadata plus anyroute_receipt_id (the id of the signed receipt), anyroute_lane (public, attested or unlinkable), anyroute_disclosure (the class the receipt records, once known) and anyroute_policy_hash (only when the serving endpoint attested one)."
+          }
+        },
+        "additionalProperties": true
       }
     }
   }
