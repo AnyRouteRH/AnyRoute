@@ -7,6 +7,7 @@ import { currentMeasurement } from "../services/measurements.ts";
 import { tdxRegisters } from "../services/measurement-bundle.ts";
 import { entryUrl, verifiedBundleForEntry } from "../services/measurement-bundles.ts";
 import { loadTlsPin } from "../providers/tls-pin.ts";
+import { servedPolicyHash } from "./disclosure.ts";
 
 // GET /api/v1/attestation/:providerId - what the router has actually checked about a provider's confidential
 // endpoint, and what it has not. The default answer is "unverified": a provider is "attested" only while the router
@@ -71,6 +72,8 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
         attested_at: status === "attested" || status === "simulated" ? p.attestedAt?.toISOString() ?? null : null,
         attestation_hash: status === "attested" || status === "simulated" ? p.attestationHash ?? null : null,
         verifiers,
+        // The classifier policy hash this fresh attestation bound (sent as X-Anyroute-Policy-Hash), else null.
+        policy_hash: status === "attested" && ctx.catalog.providers.get(p.id) ? servedPolicyHash(ctx, { provider: ctx.catalog.providers.get(p.id)! }) : null,
         tls_pin: pin ? { spki_sha256: pin.spkiSha256, attestation_ref: pin.attestationRef, pinned_at: pin.pinnedAt } : null,
         measurement: m
           ? {

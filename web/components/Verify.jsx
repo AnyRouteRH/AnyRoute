@@ -135,5 +135,9 @@ export default function Verify(){
       <Code label="JavaScript · @anyroute/client">{SDK}</Code>
       <div className={styles.actions}><Button href="/docs/#sdk" secondary>SDK documentation</Button></div>
     </section>
+    <section className={styles.section} aria-labelledby="v-registry"><h2 id="v-registry">History and badge</h2>
+      <p className={styles.lead}>The registry keeps every measurement the router verified for an attested provider, and every check it ran. Each entry has a badge any site can embed, which re-reads this record from the visitor’s browser and shows Attested only when the checks pass.</p>
+      <div className={styles.actions}><Button href={providerId&&view?`/registry/${encodeURIComponent(providerId)}/`:'/registry/'}>{providerId&&view?'Open its registry entry':'Open the registry'}</Button><Button href="/docs/#badge" secondary>Badge docs</Button></div>
+    </section>
   </div>;
 }

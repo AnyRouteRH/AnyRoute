@@ -238,6 +238,13 @@ try:
     print(res["anyroute"]["receipt_verification"].valid)
 except AttestationRefused as e:
     print([c for c in e.verification.checks if c.status == "fail"])`;
+const badgeScript = `<script src="https://<router>/badge.js" data-endpoint="<provider id or model id>"
+        data-theme="light" async></script>`;
+const badgeImg = `<img src="https://<router>/api/v1/badge/<provider id>.svg" alt="Anyroute attestation status" height="48">
+
+<!-- Markdown, for a README or a model card -->
+[![Anyroute attestation status](https://<router>/api/v1/badge/<author>/<model>.svg)](https://<router>/registry/)`;
+
 const endpoints = [
   ["POST /api/v1/chat/completions", "Chat, tools and streaming (OpenAI/OpenRouter shape); X-Pay-With, X-Payment, X-Wallet-Auth headers"],
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
@@ -264,6 +271,7 @@ const endpoints = [
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt’s signature and anchor inclusion; signing keys (JWKS)"],
   ["GET /.well-known/anyroute-receipt-keys.json", "The same signing keys at a fixed path, for clients that verify receipts themselves"],
   ["GET /api/v1/attestation/:providerId", "What the router has verified about a provider’s hardware attestation: status, verifiers, measurements, transparency-log and on-chain state, and what was not checked"],
+  ["GET /api/v1/badge/:id.svg", "Attestation badge image for a provider id or a model id (attested, policy, vendor-forwarded or unverified), with the measurement and policy hash while attested and the share of 7 days with a fresh attestation; ?theme=dark. An unknown id is Unverified with a 404"],
   ["GET /api/v1/attestation/summary · /attestation/:providerId/history", "Proof-time: per attesting provider, the share of the last 24 hours and 7 days with a fresh attestation the router verified itself, measurement changes and the last failed check; and a provider’s recorded attestor, canary and probe events, newest first, paged by cursor. Failures are codes with fixed messages, never the provider’s own text. Kept for ATTESTATION_HISTORY_DAYS (30); 501 when it is 0"],
   ["GET /api/v1/measurements/key · /measurements/bundles/:providerId", "Where enabled: the key that signs measurement bundles (compose hash, source commit and tarball hash, model and image digests, MRTD allow-list), and a provider’s bundles with the transparency-log entry the router verified for each"],
   ["POST /mcp", "AnyRoute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
@@ -298,6 +306,7 @@ export default function Docs() {
             <a href="#mcp">MCP</a>
             <a href="#sdk">SDKs</a>
             <a href="#run-a-provider">Run a provider</a>
+            <a href="#badge">Badge</a>
             <a href="#endpoints">Endpoints</a>
             <a href="#limits">Limits</a>
           </nav>
@@ -610,6 +619,22 @@ export default function Docs() {
               the providers page
             </a>
             .
+          </p>
+          <h2 id="badge">Show your attestation with a badge.</h2>
+          <p>
+            Any site can show an endpoint’s live status with one line. The script has no dependencies and sets no cookies. It reads the router’s public record from each visitor’s browser (the proof-time summary, the attestation record and the disclosure class, and for a model its attestation object and endpoints) and shows Attested only when every check passes: the record was read within five minutes of the visitor’s clock, the last verified attestation is inside the router’s freshness window, the record and the summary agree and name the same measurement, and the policy hash is well formed and, for a model, the same in the model’s attestation object, its endpoint and the record. Any failed check reads Unverified.
+          </p>
+          <Code label="HTML · script badge">{badgeScript}</Code>
+          <p>
+            data-endpoint takes a provider id or a model id. data-theme is light, dark or auto (follows the visitor’s colour scheme). The badge shows the status (Attested, Policy, Vendor-forwarded or Unverified), the first eight characters of the measurement and of the policy hash while attested, and the share of the last 7 days with a fresh attestation, never rounded up. It links to the endpoint’s registry entry. It does not verify the hardware quote itself: the router does that with its configured verifiers, and the badge says so.
+          </p>
+          <p>For places that do not run scripts, the router serves the same status as an image. The image says what the router’s record says; nothing about it is checked in the viewer’s browser.</p>
+          <Code label="HTML and Markdown · image badge">{badgeImg}</Code>
+          <p>
+            <a href="/registry/" className="inline-link">
+              The registry
+            </a>{" "}
+            lists every attested endpoint, and each entry (/registry/&lt;provider id&gt;/) shows its measurement versions, every check the router ran and the badge snippets for it.
           </p>
           <h2 id="endpoints">Endpoint map</h2>
           <div className="table-wrap">

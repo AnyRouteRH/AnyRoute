@@ -27,7 +27,7 @@ export function offerPricing(o: Candidate) {
 const live = (o: Candidate) => o.status === "live" && o.provider.status === "live";
 
 /** Live offers that may serve the model now: a restricted variant lists only attested, classifier-enabled endpoints. */
-const servable = (ctx: Ctx, m: ModelRow) => {
+export const servable = (ctx: Ctx, m: ModelRow) => {
   const lane = ctx.catalog.laneOf(m);
   return ctx.catalog.offers(m.id).filter(live).filter((o) => offerEligible(ctx, lane, o));
 };

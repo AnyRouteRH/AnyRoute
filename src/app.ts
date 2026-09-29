@@ -44,6 +44,7 @@ import { paymasterRoutes } from "./api/paymaster.ts";
 import { registerJobs } from "./services/register.ts";
 import { mcpRoutes } from "./api/mcp.ts";
 import { siteRoutes } from "./api/site.ts";
+import { badgeRoutes } from "./api/badge.ts";
 import { BlindIssuer } from "./blind/issuer.ts";
 import { ensurePool } from "./blind/redeem.ts";
 import { blindRoutes } from "./blind/routes.ts";
@@ -130,6 +131,7 @@ export async function createApp(opts: AppOptions = {}) {
   attestationHistoryRoutes(app, ctx); // before attestationRoutes: /attestation/summary must not be read as a provider id
   attestationRoutes(app, ctx);
   measurementRoutes(app, ctx);
+  badgeRoutes(app, ctx);
   laneRoutes(app, ctx);
   dayzeroRoutes(app, ctx);
   creatorClaimRoutes(app, ctx);
@@ -148,6 +150,13 @@ export async function createApp(opts: AppOptions = {}) {
       c.header("cache-control", "public, max-age=31536000, immutable");
     });
     app.use("*", serveStatic({ root: webDir }));
+    // /registry/<provider id>/ is one static page (exported as /registry/_/) that reads the id from the address.
+    const registryShell = resolve(webDir, "registry/_/index.html");
+    if (existsSync(registryShell)) {
+      const html = readFileSync(registryShell, "utf8");
+      app.get("/registry/:id/", (c) => (/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(c.req.param("id")) ? c.html(html) : c.notFound()));
+      app.get("/registry/:id", (c) => (/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(c.req.param("id")) ? c.redirect(`/registry/${c.req.param("id")}/`, 308) : c.notFound()));
+    }
     if (existsSync(resolve(webDir, "brand/anyroute-symbol.png"))) app.get("/favicon.ico", (c) => c.redirect("/brand/anyroute-symbol.png", 301));
   } else siteRoutes(app, ctx);
   const notFoundPage = webBuilt && existsSync(resolve(webDir, "404.html")) ? readFileSync(resolve(webDir, "404.html"), "utf8") : null;
