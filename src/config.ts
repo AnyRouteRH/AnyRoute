@@ -165,6 +165,12 @@ const schema = z.object({
   SEMANTIC_CACHE_THRESHOLD: num(0.97),
   SEMANTIC_CACHE_EMBEDDING_MODEL: opt,
 
+  // Council mode (model "anyroute/council") and dual verification (verify: "dual"). Off unless enabled.
+  ANYROUTE_FEATURE_COUNCIL: bool.default(false),
+  ANYROUTE_COUNCIL_MODELS: opt, // comma list of 2-5 model ids used when a council request names none
+  ANYROUTE_COUNCIL_JUDGE: opt, // model id of the judge used when a council request names none
+  ANYROUTE_COUNCIL_MODE: z.enum(["judge", "fuse"]).default("judge"),
+
   // Default per-key limits (0 = unlimited)
   DEFAULT_RPM: int(600),
   DEFAULT_TPM: int(0),
@@ -322,6 +328,9 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   const lower = escrowTokens.map((t) => t.address.toLowerCase());
   if (new Set(lower).size !== lower.length) throw new Error("ESCROW_TOKENS lists a token address twice.");
   if (escrowMode && !escrowTokens.length) throw new Error("PAYMENTS_MODE=escrow requires ESCROW_TOKENS (or PAYWITH_TOKENS) with price feeds.");
+  const councilModels = (e.ANYROUTE_COUNCIL_MODELS ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+  if (councilModels.length && (councilModels.length < 2 || councilModels.length > 5 || new Set(councilModels).size !== councilModels.length))
+    throw new Error("ANYROUTE_COUNCIL_MODELS must list 2 to 5 distinct model ids.");
   const anyrEscrow = anyrEscrowConfig(e, lower);
   const holders = holderSettings(e, anyrEscrow);
   return {
@@ -444,6 +453,9 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       semanticThreshold: e.SEMANTIC_CACHE_THRESHOLD,
       semanticEmbeddingModel: e.SEMANTIC_CACHE_EMBEDDING_MODEL,
     },
+    // Off unless enabled. Council members and the judge are billed and receipted like any other call.
+    features: { council: e.ANYROUTE_FEATURE_COUNCIL },
+    council: { models: councilModels, judge: e.ANYROUTE_COUNCIL_JUDGE ?? null, mode: e.ANYROUTE_COUNCIL_MODE },
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
     telegram: { botToken: e.TELEGRAM_BOT_TOKEN },

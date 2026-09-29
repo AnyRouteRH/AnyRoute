@@ -16,6 +16,10 @@ export type MockConfig = {
   delayMs?: number;
   tee?: "dev" | null;
   wrongAnswers?: boolean; // degrade the canary benchmark
+  /** Test hook: the reply for a prompt, or undefined to fall back to the built-in answers. Not settable through /_control. */
+  reply?: (prompt: string, body: any) => string | undefined;
+  /** Test hook: token counts to report instead of the measured ones. */
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
 };
 
 const WORDS = "the quick brown fox jumps over the lazy dog and keeps running far away".split(" ");
@@ -113,10 +117,12 @@ export function createMockProvider(initial: MockConfig) {
     const prompt = typeof last?.content === "string" ? last.content : (last?.content ?? []).map((p: any) => p.text ?? "").join(" ");
     const empty = cfg.behaviour === "empty200";
     const wantsTool = Array.isArray(body.tools) && body.tools.length && body.tool_choice !== "none";
-    const text = empty ? "" : answerFor(prompt, cfg).slice(0, Math.max(1, (body.max_tokens ?? 4096) * 4));
+    const text = empty ? "" : (cfg.reply?.(prompt, body) ?? answerFor(prompt, cfg)).slice(0, Math.max(1, (body.max_tokens ?? 4096) * 4));
     const promptTokens = Math.ceil(JSON.stringify(body.messages ?? []).length / 4);
     const completionTokens = empty ? 0 : Math.max(1, Math.ceil(text.length / 4));
-    const usage = cfg.behaviour === "no_usage" ? undefined : { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens };
+    const reportedIn = cfg.usage?.prompt_tokens ?? promptTokens;
+    const reportedOut = cfg.usage?.completion_tokens ?? completionTokens;
+    const usage = cfg.behaviour === "no_usage" ? undefined : { prompt_tokens: reportedIn, completion_tokens: reportedOut, total_tokens: reportedIn + reportedOut };
     const id = "cmpl-" + randomBytes(6).toString("hex");
     const toolCalls = wantsTool && !empty ? [{ id: "call_1", type: "function", function: { name: body.tools[0].function?.name ?? "fn", arguments: '{"ok":true}' } }] : undefined;
     if (!body.stream) {

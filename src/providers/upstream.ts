@@ -24,7 +24,7 @@ export type UpstreamStream = { ok: true; kind: "stream"; status: number; events:
 export type UpstreamResult = UpstreamJson | UpstreamStream | UpstreamFailure;
 
 // Fields that only mean something to the router and must not reach providers.
-const ROUTER_FIELDS = new Set(["provider", "models", "route", "transforms", "usage", "plugins", "cache", "guardrails", "user_id", "debug"]);
+const ROUTER_FIELDS = new Set(["provider", "models", "route", "transforms", "usage", "plugins", "cache", "guardrails", "user_id", "debug", "council", "verify"]);
 // Parameters dropped quietly when a provider does not list them (OpenRouter behaviour);
 // everything else is forwarded, and semantic parameters are filtered at selection time.
 const DROPPABLE = new Set(["top_k", "min_p", "top_a", "repetition_penalty", "logit_bias", "seed", "logprobs", "top_logprobs", "stop", "presence_penalty", "frequency_penalty", "verbosity"]);

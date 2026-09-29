@@ -24,9 +24,10 @@ import { resolveSavedRoute } from "../routing/saved-routes.ts";
 import { payPerCall } from "../pay/percall.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import type { HolderTier } from "../config.ts";
+import { COUNCIL_MODEL, applyDualDecoding, runCouncil, runDual, validateMulti } from "./council.ts";
 
-type Kind = "chat" | "completion";
-type Billing =
+export type Kind = "chat" | "completion";
+export type Billing =
   | { mode: "prepaid"; accountId: string; key: KeyRow }
   | { mode: "paywith"; accountId: string; key: KeyRow; grant: PaywithGrant }
   | { mode: "per_call"; accountId: string; payer: string; paymentTx?: string; paymentResponse?: string; key?: undefined };
@@ -92,107 +93,8 @@ async function byokFor(ctx: Ctx, accountId: string | undefined) {
   return map;
 }
 
-/** x402: the settlement receipt rides on the served response. */
-const paymentHeaders = (b: Billing): Record<string, string> => (b.mode === "per_call" && b.paymentResponse ? { "x-payment-response": b.paymentResponse } : {});
-
-function chunkBase(id: string, created: number, model: ModelRow, provider: string, kind: Kind) {
-  return { id, object: kind === "chat" ? "chat.completion.chunk" : "text_completion", created, model: model.id, provider };
-}
-
-export function chatRoutes(app: Hono, ctx: Ctx) {
-  app.post("/api/v1/chat/completions", (c) => handle(ctx, c, "chat"));
-  app.post("/api/v1/completions", (c) => handle(ctx, c, "completion"));
-  // OpenAI-SDK style base URLs (…/api/v1) already covered; also accept /v1/* for convenience.
-  app.post("/v1/chat/completions", (c) => handle(ctx, c, "chat"));
-  app.post("/v1/completions", (c) => handle(ctx, c, "completion"));
-}
-
-async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
-  const t0 = Date.now();
-  const body = await readJson(c);
-  validate(kind, body);
-  validateCacheTtl(body, ctx.cfg.gateway.cacheTtlS);
-  const stream = body.stream === true;
-  const bodySha = requestHash(body);
-
-  // ---- 1. Who is calling -------------------------------------------------------------------
-  const secret = bearer(c.req.header("authorization"));
-  let key: KeyRow | null = null;
-  let wallet: { accountId: string; wallet: string; exists: boolean } | null = null;
-  // $ANYR holder tier of the wallet behind this request (null unless HOLDER_TIERS is live).
-  let tier: HolderTier | null = null;
-  if (secret) {
-    key = await resolveKey(ctx, secret);
-    if (!key) fail(401, "Unknown API key. Create one (POST /api/v1/keys) or deposit USDG to its key hash first.", "invalid_key");
-    await requireRole(ctx, key, ["owner", "admin", "member"]);
-    tier = await holderTier(ctx, walletOfAccount(key.accountId));
-    await limitOrThrow(ctx, `k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), "requests");
-  } else {
-    await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
-    const wa = c.req.header("x-wallet-auth");
-    if (wa) wallet = await walletAuth(ctx, wa, bodySha);
-  }
-
-  // ---- 2. Key presets, model resolution, guardrails, transforms --------------------------------
-  const routing = (key?.routing ?? null) as { aliases?: Record<string, { model: string; provider?: ProviderPrefs; models?: string[] }>; provider?: ProviderPrefs } | null;
-  const alias = typeof body.model === "string" ? routing?.aliases?.[body.model] : undefined;
-  if (alias) {
-    body.model = alias.model;
-    if (alias.models && !body.models) body.models = alias.models;
-    body.provider = { ...(alias.provider ?? {}), ...((body.provider as object) ?? {}) };
-  }
-  // Saved route (`model: "@route/<slug>"`, the caller's account only): fills in the fallback models,
-  // provider prefs and default params the request leaves unset. Precedence: request > alias > route > key.
-  const savedRoute = await resolveSavedRoute(ctx.db, key?.accountId ?? wallet?.accountId ?? null, body);
-  if (routing?.provider) body.provider = { ...routing.provider, ...((body.provider as object) ?? {}) };
-  // Disclosure ceiling and lane: `provider.disclosure` / `provider.lane` and the X-Anyroute-* headers, the
-  // stricter of the two winning. Defaults (any, public) add nothing to `prefs`, so existing requests route as before.
-  const { disclosure: _wantDisclosure, lane: _wantLane, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs;
-  const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") });
-  const strict = disc.max !== "any";
-  const prefs: ProviderPrefs = { ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) };
-
-  const modelIds = [...new Set([...(typeof body.model === "string" ? [body.model] : []), ...((body.models as string[] | undefined) ?? [])])];
-  if (!modelIds.length) fail(400, "`model` is required (e.g. \"meta-llama/llama-3.3-70b-instruct\").", "invalid_request");
-  await ctx.catalog.ensureFresh();
-  // A key allowed `@route/<slug>` (e.g. an agent session) may use exactly that route's own models.
-  const allowed = new Set(key?.allowedModels ?? []);
-  if (savedRoute && allowed.has(`@route/${savedRoute}`) && key) {
-    const [row] = await ctx.db.select({ config: savedRoutes.config }).from(savedRoutes).where(and(eq(savedRoutes.accountId, key.accountId), eq(savedRoutes.slug, savedRoute)));
-    for (const m of ((row?.config as { models?: string[] } | undefined)?.models ?? [])) {
-      const r = ctx.catalog.resolve(m);
-      if (r) allowed.add(r.model.id);
-    }
-  }
-  const resolved: { model: ModelRow; modifiers: Set<Modifier>; requested: string }[] = [];
-  for (const id of modelIds) {
-    const r = ctx.catalog.resolve(id);
-    if (!r) continue;
-    if (allowed.size && !allowed.has(r.model.id)) continue;
-    resolved.push({ ...r, requested: id });
-  }
-  if (!resolved.length)
-    fail(
-      key?.allowedModels?.length ? 403 : 404,
-      key?.allowedModels?.length ? `This key may only use: ${key.allowedModels.join(", ")}.` : `Model ${modelIds[0]} is not available. See GET /api/v1/models.`,
-      key?.allowedModels?.length ? "model_not_allowed" : "model_not_found",
-    );
-
-  // Request-level guardrails only for authenticated keys; a key's own guardrails always apply.
-  const guardCfg = mergeGuardrails(key?.guardrails as GuardrailConfig | null, key ? body.guardrails as GuardrailConfig | undefined : undefined);
-  const guard = applyGuardrails(body, guardCfg);
-  if (stream && guardCfg?.redact_output) fail(400, "Output redaction requires a non-streaming response.", "invalid_guardrails");
-
-  const transforms = Array.isArray(body.transforms) ? (body.transforms as string[]) : [];
-  const primary = resolved[0].model;
-  let middle: { removed: number; truncated: number } | null = null;
-  if (transforms.includes("middle-out") && kind === "chat") {
-    const reserveOut = Number(body.max_tokens ?? body.max_completion_tokens ?? Math.min(4096, Math.floor(primary.ctx / 4)));
-    middle = middleOut(body, primary.ctx, reserveOut);
-  }
-  const promptTokens = estimatePromptTokens(body);
-
-  // ---- 3. Accounts: key, pay-with, wallet change, per-call payment -------------------------------
+/** Who pays: the key's prepaid balance, a Stock Token pay-with grant, or (no key) a wallet / per-call payment. */
+async function resolveBilling(ctx: Ctx, c: Context, key: KeyRow | null, wallet: { accountId: string; wallet: string } | null): Promise<{ billing: Billing | null; paywithNote?: string }> {
   const paySymbol = c.req.header("x-pay-with") ?? (key?.payWithDefault || undefined);
   let billing: Billing | null = null;
   let paywithNote: string | undefined;
@@ -206,23 +108,21 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   } else if (wallet) {
     billing = { mode: "per_call", accountId: wallet.accountId, payer: wallet.wallet };
   }
+  return { billing, paywithNote };
+}
 
-  // ---- 4. Cache (opt-in, never across accounts, keys, policies or end users) ----------------------
-  const cacheSpec = (body.cache as { mode?: CacheMode; ttl?: number } | undefined) ?? (c.req.header("x-anyroute-cache") ? { mode: c.req.header("x-anyroute-cache") as CacheMode } : undefined);
-  // The response cache keeps prompts and answers in the router, and a hit is served without any provider, so a
-  // request with a disclosure ceiling never reads or writes it.
-  const cacheMode: CacheMode | null = !strict && (cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic") ? cacheSpec.mode : null;
-  // `user` is forwarded to the provider as the end-user identity; a response made for one end user
-  // must never be replayed to another behind the same key (exact or semantic).
-  const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })), ...(savedRoute ? { route: savedRoute } : {}) }))}` : "";
-  if (cacheMode && billing && !stream) {
-    const hit = await ctx.cache.get(cacheMode, cacheScope, body, ctx.cfg.gateway.semanticThreshold);
-    if (hit) return cachedResponse(ctx, c, { body, hit, billing, model: primary, t0, bodySha, disc });
-  }
-
-  // ---- 5. Provider selection ------------------------------------------------------------------
-  const byok = await byokFor(ctx, billing?.accountId);
-  const params = requestParams(body);
+/**
+ * Providers able to serve each resolved model under the caller's routing preferences, in routing order.
+ * Shared by single calls, council members and the judge, and dual-verification legs, so all of them honour a
+ * disclosure ceiling or lane the same way: a request whose ceiling leaves no provider is refused (409, or 503
+ * while compliant providers are down) and is never routed to one that does not meet it.
+ */
+function selectTargets(
+  ctx: Ctx,
+  o: { resolved: { model: ModelRow; modifiers: Set<Modifier> }[]; prefs: ProviderPrefs; params: string[]; promptTokens: number; byok: Map<string, string>; disc: DisclosureRequest },
+) {
+  const { resolved, prefs, params, promptTokens, byok, disc } = o;
+  const strict = disc.max !== "any";
   const targets: RouteTarget[] = [];
   const excluded: { model: string; provider: string; reason: string }[] = [];
   const plan = (r: (typeof resolved)[number], p: ProviderPrefs) => {
@@ -266,8 +166,140 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     const refusal = disclosureRefusal(disc, resolved.map((r) => r.model.id), excluded, () => resolved.some((r) => plan(r, relaxed).ordered.length > 0));
     if (refusal) throw refusal;
   }
+  return { targets, excluded };
+}
+
+/** x402: the settlement receipt rides on the served response. */
+const paymentHeaders = (b: Billing): Record<string, string> => (b.mode === "per_call" && b.paymentResponse ? { "x-payment-response": b.paymentResponse } : {});
+
+function chunkBase(id: string, created: number, model: ModelRow, provider: string, kind: Kind) {
+  return { id, object: kind === "chat" ? "chat.completion.chunk" : "text_completion", created, model: model.id, provider };
+}
+
+export function chatRoutes(app: Hono, ctx: Ctx) {
+  app.post("/api/v1/chat/completions", (c) => handle(ctx, c, "chat"));
+  app.post("/api/v1/completions", (c) => handle(ctx, c, "completion"));
+  // OpenAI-SDK style base URLs (…/api/v1) already covered; also accept /v1/* for convenience.
+  app.post("/v1/chat/completions", (c) => handle(ctx, c, "chat"));
+  app.post("/v1/completions", (c) => handle(ctx, c, "completion"));
+}
+
+async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
+  const t0 = Date.now();
+  const body = await readJson(c);
+  validate(kind, body);
+  validateCacheTtl(body, ctx.cfg.gateway.cacheTtlS);
+  validateMulti(ctx, kind, body);
+  const stream = body.stream === true;
+  const bodySha = requestHash(body);
+
+  // ---- 1. Who is calling -------------------------------------------------------------------
+  const secret = bearer(c.req.header("authorization"));
+  let key: KeyRow | null = null;
+  let wallet: { accountId: string; wallet: string; exists: boolean } | null = null;
+  // $ANYR holder tier of the wallet behind this request (null unless HOLDER_TIERS is live).
+  let tier: HolderTier | null = null;
+  if (secret) {
+    key = await resolveKey(ctx, secret);
+    if (!key) fail(401, "Unknown API key. Create one (POST /api/v1/keys) or deposit USDG to its key hash first.", "invalid_key");
+    await requireRole(ctx, key, ["owner", "admin", "member"]);
+    tier = await holderTier(ctx, walletOfAccount(key.accountId));
+    await limitOrThrow(ctx, `k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), "requests");
+  } else {
+    await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
+    const wa = c.req.header("x-wallet-auth");
+    if (wa) wallet = await walletAuth(ctx, wa, bodySha);
+  }
+
+  // ---- 2. Key presets, model resolution, guardrails, transforms --------------------------------
+  const routing = (key?.routing ?? null) as { aliases?: Record<string, { model: string; provider?: ProviderPrefs; models?: string[] }>; provider?: ProviderPrefs } | null;
+  const alias = typeof body.model === "string" ? routing?.aliases?.[body.model] : undefined;
+  if (alias) {
+    body.model = alias.model;
+    if (alias.models && !body.models) body.models = alias.models;
+    body.provider = { ...(alias.provider ?? {}), ...((body.provider as object) ?? {}) };
+  }
+  // Saved route (`model: "@route/<slug>"`, the caller's account only): fills in the fallback models,
+  // provider prefs and default params the request leaves unset. Precedence: request > alias > route > key.
+  const savedRoute = await resolveSavedRoute(ctx.db, key?.accountId ?? wallet?.accountId ?? null, body);
+  if (routing?.provider) body.provider = { ...routing.provider, ...((body.provider as object) ?? {}) };
+  // Disclosure ceiling and lane: `provider.disclosure` / `provider.lane` and the X-Anyroute-* headers, the
+  // stricter of the two winning. Defaults (any, public) add nothing to `prefs`, so existing requests route as before.
+  const { disclosure: _wantDisclosure, lane: _wantLane, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs;
+  const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") });
+  const strict = disc.max !== "any";
+  const prefs: ProviderPrefs = { ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) };
+
+  // Council mode (`model: "anyroute/council"`): several member calls plus a judge call, each billed and receipted.
+  if (ctx.cfg.features.council && body.model === COUNCIL_MODEL) return runCouncil(toolkit, { ctx, c, kind, body, bodySha, t0, key, wallet, tier, prefs, disc });
+
+  const modelIds = [...new Set([...(typeof body.model === "string" ? [body.model] : []), ...((body.models as string[] | undefined) ?? [])])];
+  if (!modelIds.length) fail(400, "`model` is required (e.g. \"meta-llama/llama-3.3-70b-instruct\").", "invalid_request");
+  await ctx.catalog.ensureFresh();
+  // A key allowed `@route/<slug>` (e.g. an agent session) may use exactly that route's own models.
+  const allowed = new Set(key?.allowedModels ?? []);
+  if (savedRoute && allowed.has(`@route/${savedRoute}`) && key) {
+    const [row] = await ctx.db.select({ config: savedRoutes.config }).from(savedRoutes).where(and(eq(savedRoutes.accountId, key.accountId), eq(savedRoutes.slug, savedRoute)));
+    for (const m of ((row?.config as { models?: string[] } | undefined)?.models ?? [])) {
+      const r = ctx.catalog.resolve(m);
+      if (r) allowed.add(r.model.id);
+    }
+  }
+  const resolved: { model: ModelRow; modifiers: Set<Modifier>; requested: string }[] = [];
+  for (const id of modelIds) {
+    const r = ctx.catalog.resolve(id);
+    if (!r) continue;
+    if (allowed.size && !allowed.has(r.model.id)) continue;
+    resolved.push({ ...r, requested: id });
+  }
+  if (!resolved.length)
+    fail(
+      key?.allowedModels?.length ? 403 : 404,
+      key?.allowedModels?.length ? `This key may only use: ${key.allowedModels.join(", ")}.` : `Model ${modelIds[0]} is not available. See GET /api/v1/models.`,
+      key?.allowedModels?.length ? "model_not_allowed" : "model_not_found",
+    );
+
+  // Request-level guardrails only for authenticated keys; a key's own guardrails always apply.
+  const guardCfg = mergeGuardrails(key?.guardrails as GuardrailConfig | null, key ? body.guardrails as GuardrailConfig | undefined : undefined);
+  const guard = applyGuardrails(body, guardCfg);
+  if (stream && guardCfg?.redact_output) fail(400, "Output redaction requires a non-streaming response.", "invalid_guardrails");
+
+  const transforms = Array.isArray(body.transforms) ? (body.transforms as string[]) : [];
+  const primary = resolved[0].model;
+  let middle: { removed: number; truncated: number } | null = null;
+  if (transforms.includes("middle-out") && kind === "chat") {
+    const reserveOut = Number(body.max_tokens ?? body.max_completion_tokens ?? Math.min(4096, Math.floor(primary.ctx / 4)));
+    middle = middleOut(body, primary.ctx, reserveOut);
+  }
+  const promptTokens = estimatePromptTokens(body);
+
+  // ---- 3. Accounts: key, pay-with, wallet change, per-call payment -------------------------------
+  const { billing: resolvedBilling, paywithNote } = await resolveBilling(ctx, c, key, wallet);
+  let billing: Billing | null = resolvedBilling;
+
+  // ---- 4. Cache (opt-in, never across accounts, keys, policies or end users) ----------------------
+  const cacheSpec = (body.cache as { mode?: CacheMode; ttl?: number } | undefined) ?? (c.req.header("x-anyroute-cache") ? { mode: c.req.header("x-anyroute-cache") as CacheMode } : undefined);
+  // The response cache keeps prompts and answers in the router, and a hit is served without any provider, so a
+  // request with a disclosure ceiling never reads or writes it.
+  const cacheMode: CacheMode | null = !strict && (cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic") ? cacheSpec.mode : null;
+  // `user` is forwarded to the provider as the end-user identity; a response made for one end user
+  // must never be replayed to another behind the same key (exact or semantic).
+  const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })), ...(savedRoute ? { route: savedRoute } : {}) }))}` : "";
+  if (cacheMode && billing && !stream && body.verify == null) {
+    const hit = await ctx.cache.get(cacheMode, cacheScope, body, ctx.cfg.gateway.semanticThreshold);
+    if (hit) return cachedResponse(ctx, c, { body, hit, billing, model: primary, t0, bodySha, disc });
+  }
+
+  // ---- 5. Provider selection ------------------------------------------------------------------
+  const byok = await byokFor(ctx, billing?.accountId);
+  if (body.verify != null) applyDualDecoding(body); // temperature 0 and a fixed seed, before parameter support is checked
+  const params = requestParams(body);
+  const { targets, excluded } = selectTargets(ctx, { resolved, prefs, params, promptTokens, byok, disc });
   if (!targets.length)
     fail(404, "No providers match this request's model and routing preferences.", "no_providers", { excluded: excluded.slice(0, 50) });
+
+  // Dual verification (`verify: "dual"`): the same request to two providers, outputs compared.
+  if (body.verify != null) return runDual(toolkit, { ctx, c, kind, body, bodySha, t0, key, wallet, tier, billing, paywithNote, prefs, disc, resolved, targets, excluded, promptTokens, byok, guard, guardCfg, middle, savedRoute });
 
   // ---- 6. Hold the worst case --------------------------------------------------------------------
   const fees = { royaltyBps: 0, perCallMarginBps: ctx.cfg.fees.perCallMarginBps, byokFeeBps: ctx.cfg.fees.byokFeeBps };
@@ -354,7 +386,7 @@ function allFailed(attempts: Attempt[], last?: { status?: number; errorKind: str
   );
 }
 
-type Common = {
+export type Common = {
   ctx: Ctx;
   c: Context;
   body: Record<string, unknown>;
@@ -374,24 +406,40 @@ type Common = {
   planned: DisclosureClass | null;
 };
 
-async function finalize(
-  p: Common & {
-    r: RouteSuccess;
-    usage: Usage;
-    responseText: string;
-    finishReason: string | null;
-    nativeFinish: string | null;
-    generationMs: number;
-    cancelled: boolean;
-  },
-) {
+/** Extra inputs for calls made on behalf of a larger request (council members, dual verification). */
+export type FinalizeExtra = {
+  /** Extra signed receipt fields (`council`, `verification`); never replaces a base field. */
+  payload?: { council?: unknown; verification?: unknown };
+  /** The most this call may charge: usage above it is not billed to the caller (reported as `over_budget`). */
+  budget?: Pico;
+  /**
+   * For a receipt that stands for several calls (the top-level council receipt): the weakest disclosure class
+   * among all of them, and whether any rests on a simulated attestation. Never stronger than this call's own.
+   */
+  served?: { class: DisclosureClass; simulated: boolean };
+};
+
+export type FinalizeInput = Common & {
+  r: RouteSuccess;
+  usage: Usage;
+  responseText: string;
+  finishReason: string | null;
+  nativeFinish: string | null;
+  generationMs: number;
+  cancelled: boolean;
+  extra?: FinalizeExtra;
+};
+
+async function finalize(p: FinalizeInput) {
   const { ctx, billing, r } = p;
   const isByok = p.byok.has(r.candidate.providerId);
   const mode: Mode = isByok ? "byok" : billing.mode;
   const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: ctx.cfg.fees.perCallMarginBps, byokFeeBps: ctx.cfg.fees.byokFeeBps, discountBps: p.tier?.discountBps ?? 0 };
   const cost = priceUsage(r.candidate, r.model, p.usage, billing.mode === "per_call" ? "per_call" : mode, fees, isByok);
   const id = p.holdId;
-  const settled = await settle(ctx.db, p.holdId, cost.total, {
+  const budget = p.extra?.budget;
+  const overBudget = budget != null && cost.total > budget;
+  const settled = await settle(ctx.db, p.holdId, overBudget ? budget : cost.total, {
     description: `${r.model.id} via ${r.candidate.providerId}`,
     generationId: id,
     creditLine: billing.mode === "paywith" ? billing.grant.creditLine : 0n,
@@ -406,7 +454,7 @@ async function finalize(
   }
 
   const attestation = r.candidate.provider.attested && r.candidate.provider.attestationHash ? r.candidate.provider.attestationHash : null;
-  const served = servedDisclosure(ctx, r.candidate);
+  const served = p.extra?.served ?? servedDisclosure(ctx, r.candidate);
   const privateRoute = (p.body.provider as ProviderPrefs | undefined)?.private === true || String(p.body.model ?? "").includes(":private");
   const payer = billing.key ? billing.key.chainKeyHash : billing.mode === "per_call" ? billing.payer : null;
   const payload = {
@@ -418,7 +466,7 @@ async function finalize(
     provider: r.candidate.providerId,
     tokens: { prompt: p.usage.prompt, completion: p.usage.completion, reasoning: p.usage.reasoning, cached: p.usage.cachedRead, estimated: p.usage.estimated },
     cost: picoToUsdString(charged),
-    cost_details: { upstream: picoToUsdString(cost.upstream), royalty: picoToUsdString(cost.royalty), margin: picoToUsdString(cost.margin) },
+    cost_details: { upstream: picoToUsdString(cost.upstream), royalty: picoToUsdString(cost.royalty), margin: picoToUsdString(cost.margin), ...(overBudget ? { over_budget: picoToUsdString(cost.total) } : {}) },
     paid_with: paidWith,
     latency_ms: Math.round(r.latencyMs),
     generation_ms: p.generationMs,
@@ -433,6 +481,7 @@ async function finalize(
     payment_tx: billing.mode === "per_call" ? (billing.paymentTx ?? null) : null,
     request_sha256: p.bodySha,
     response_sha256: sha256(p.responseText),
+    ...(p.extra?.payload ?? {}),
   };
   const signed = ctx.signer.sign(payload);
   const leaf = receiptLeaf(signed.bytes, signed.sigBytes);
@@ -527,7 +576,14 @@ async function finalize(
   return {
     id,
     disclosure: served.class,
+    simulated: served.simulated,
     upstream: cost.upstream,
+    charged,
+    cost,
+    overBudget,
+    mode,
+    isByok,
+    payload,
     usageJson,
     receiptJson,
     extras: (redactions: number) => {
@@ -710,5 +766,8 @@ async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, un
     { "x-generation-id": id, "x-anyroute-cache": "hit", "x-anyroute-disclosure": "vendor-forwarded", "x-anyroute-lane": p.disc.lane, ...paymentHeaders(p.billing) },
   );
 }
+
+/** What the multi-call modes (council, dual verification) reuse from the single-call path. */
+export const toolkit = { finalize, selectTargets, resolveBilling, allFailed, byokFor, limitOrThrow, requestHash, requestParams, paymentHeaders };
 
 export { canonical };
