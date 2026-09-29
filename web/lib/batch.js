@@ -213,6 +213,8 @@ export function laneMismatch(want, served) {
  * come from attested hardware.
  */
 export const FAIL_CLOSED = {
+  no_attested_endpoint: "refused",
+  lane_requires_anonymous_auth: "refused",
   lane_unavailable: "refused",
   disclosure_unavailable: "refused",
   disclosure_provider_unavailable: "refused",

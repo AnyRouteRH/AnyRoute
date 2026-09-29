@@ -182,6 +182,12 @@ const xPayment = btoa(JSON.stringify({
 const paid = await fetch(url, { method: "POST", headers: { ...headers, "X-PAYMENT": xPayment }, body });
 const completion = await paid.json(); // usage + signed receipt; receipt.payload.payment_tx is the settlement
 const settlement = JSON.parse(atob(paid.headers.get("X-PAYMENT-RESPONSE"))); // { success, transaction, network, payer }`;
+const laneRefusal = `POST /api/v1/chat/completions
+{ "model": "<model>", "messages": [...], "provider": { "lane": "attested" } }
+
+HTTP/1.1 503
+{ "error": { "code": 503, "type": "no_attested_endpoint",
+    "metadata": { "lane": "attested", "reason": "none_attested", "excluded": [...] } } }`;
 const responseHeaders = `X-Receipt-Id: gen-1790461071-M1D5SJxd7YpD5A
 Inference-Id: gen-1790461071-M1D5SJxd7YpD5A
 X-Anyroute-Lane: attested
@@ -297,6 +303,7 @@ export default function Docs() {
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
             <a href="#disclosure">Disclosure</a>
+            <a href="#lanes">Lanes</a>
             <a href="#tor">Tor</a>
             <a href="#lane">Lane</a>
             <a href="#payments">Payments</a>
@@ -345,13 +352,37 @@ export default function Docs() {
           </p>
           <p>
             Set provider.disclosure (or the X-Anyroute-Disclosure-Max header) to none, policy or any, the default. none routes only to providers whose retention is declared attested and whose TEE attestation is fresh; policy also accepts a
-            documented no-retention policy with no legal hold. provider.lane (or X-Anyroute-Lane) is public, the default, or attested, which implies none; if both are set the stricter applies. When nothing qualifies the request fails with 409, or
-            503 when qualifying providers are down. It is never sent to a provider that does not qualify, and nothing is charged. The unlinkable lane is served only where the router enables Oblivious HTTP (see below); elsewhere it returns 501. A request with a disclosure setting never uses the response cache.
+            documented no-retention policy with no legal hold. provider.lane (or X-Anyroute-Lane) picks a privacy lane (see below); attested and unlinkable imply none, and if body and header are both set the stricter applies. When no
+            provider meets a disclosure setting the request fails with 409 disclosure_unavailable, or 503 disclosure_provider_unavailable when qualifying providers are down; a lane that no attested endpoint can serve fails with 503
+            no_attested_endpoint. It is never sent to a provider that does not qualify, and nothing is charged. A request with a disclosure setting or a lane never uses the response cache.
           </p>
           <p>
             Responses carry X-Anyroute-Disclosure (attested, policy or vendor-forwarded) and X-Anyroute-Lane, and the signed receipt records disclosure and lane. On a stream the header is sent only when every reachable provider shares one class; the
             receipt always states it. A development attestation is marked attestation_simulated and is refused in production. GET /api/v1/models?lane=attested lists the models that have an attested endpoint now.
           </p>
+          <h2 id="lanes">Three privacy lanes.</h2>
+          <p>
+            Every request is served on one lane. public, the default, may use any endpoint. attested uses only endpoints whose retention is declared attested and whose hardware attestation the router verified recently. unlinkable adds two
+            things on top of attested: the request arrives through an Oblivious HTTP relay, and it is paid with a blind token, so the router cannot tie the payer or the address to the prompt. Pick one with provider.lane or the X-Anyroute-Lane
+            header. A key can carry a default (routing.provider.lane on PATCH /api/v1/keys/:hash), which a lane named in the request replaces. A saved route can pin a lane too (config.provider.lane, public or attested); there the stricter of the route and the request applies, as described below. A request that arrives through
+            an independent relay with a blind token and names no lane is served on unlinkable.
+          </p>
+          <p>
+            On attested and unlinkable there is no fallback. If no endpoint of the model has a fresh, verified attestation, the request fails with 503 no_attested_endpoint and error.metadata.reason none_attested; if attested endpoints exist but are
+            all down, the reason is attested_endpoints_down and Retry-After is set. Nothing is sent to any other endpoint and nothing is charged. provider.order, only and ignore still apply inside the lane, but they cannot bring back an endpoint the
+            lane excludes. On unlinkable, an API key or a wallet is refused with 403 lane_requires_anonymous_auth, because both name the payer; set provider.lane_downgrade (or X-Anyroute-Lane-Downgrade) to attested to be served on the attested lane
+            instead, never on public.
+          </p>
+          <p>
+            Within a lane the router picks among endpoints by weight: uptime times quality times attested_bonus, divided by the square of the price relative to the cheapest endpoint. attested_bonus is 1.25 on public, so an attested endpoint is
+            preferred at equal price, and 1 on the other two lanes, where every endpoint is attested. Ties break by stake, then provider id. GET /api/v1/models lists lanes for each model and each endpoint, GET /api/v1/models?lane=attested keeps the
+            models that can be served on that lane now, and GET /api/v1/status reports a lanes section with how many models and endpoints each lane has.
+          </p>
+          <p>
+            What the lanes do not do yet: on attested and unlinkable the router still terminates TLS and sees the prompt in plaintext before sending it to the enclave over a connection pinned to its attested key. The host outside the enclave cannot
+            read it; the router can. End-to-end encryption from your client to the enclave through the router is planned. Until then, a client that needs the router blind to the prompt can encrypt to the enclave directly (see the SDKs).
+          </p>
+          <Code label="503 · no attested endpoint">{laneRefusal}</Code>
           <p>
             A saved route can carry the same settings: provider.lane (public or attested) and provider.disclosure in its provider policy. When a request calls @route/&lt;slug&gt;, the stricter of the route’s and the request’s value applies, so a
             request can tighten a route but never loosen it, and a route on the attested lane is served by an attested provider or refused. Saving such a route fails with 409 route_lane_unavailable, naming the models, when a model in its list has
@@ -365,8 +396,8 @@ export default function Docs() {
             says lane unlinkable. GET /api/v1/relays lists the relays by operator. GET /api/v1/ohttp/keys is the gateway’s key configuration and GET /api/v1/ohttp/key-list is the key history, signed with the receipt key and hash-chained, for pinning.
           </p>
           <p>
-            A direct request for the lane is refused with 403 unlinkable_requires_relay and says what to do; through the gateway without a token it is 401 (unlinkable_requires_token) with the token challenge, and 403 for a key or a relay run by the
-            router’s own operator. What is hidden: the relay sees your address and an encrypted request; the router sees the request and the relay, never your address; the token’s purchase cannot be tied to its use. What is not: a relay that
+            A request that carries an API key or a wallet is refused with 403 lane_requires_anonymous_auth. A direct request for the lane is refused with 403 unlinkable_requires_relay and says what to do; through the gateway without a token it
+            is 401 (unlinkable_requires_token) with the token challenge, and 403 through a relay run by the router’s own operator. With no attested endpoint it is 503 no_attested_endpoint, and the token is not spent. What is hidden: the relay sees your address and an encrypted request; the router sees the request and the relay, never your address; the token’s purchase cannot be tied to its use. What is not: a relay that
             cooperates with the router can join the two, timing and message sizes can be correlated (responses are padded), and any identifier you put in the request body reaches the provider. Streaming is not available through the gateway.
           </p>
           <Code label="Attested providers only">
@@ -499,7 +530,7 @@ export default function Docs() {
           <h2 id="council">Ask several models, or the same one twice.</h2>
           <p>
             Two opt-in modes, available when the router enables them (the ANYROUTE_FEATURE_COUNCIL setting, off by default). Neither streams. Every call they make is routed, billed and receipted like a request of its own, and the worst case of all of
-            them is held before anything is sent, so your balance and key budget bound the whole request. Your provider preferences, including a disclosure ceiling or lane, apply to every call, the judge included: a member with no provider that meets them refuses the request with a 409 instead of being dropped or downgraded. The disclosure header and the top-level receipt show the weakest class among the calls; each member’s receipt shows its own.
+            them is held before anything is sent, so your balance and key budget bound the whole request. Your provider preferences, including a disclosure ceiling or lane, apply to every call, the judge included: a member with no provider that meets them refuses the request (409, or 503 no_attested_endpoint on a lane) instead of being dropped or downgraded. The disclosure header and the top-level receipt show the weakest class among the calls; each member’s receipt shows its own.
           </p>
           <p>
             <b>Council.</b> Set model to anyroute/council and list 2 to 5 members and a judge. The members run in parallel; the judge either picks one answer, returned unchanged (mode judge), or writes a final one (mode fuse, text only). A member
@@ -517,7 +548,7 @@ export default function Docs() {
           <p>
             <b>Attested council and attested dual verification.</b> Set council.attested to true (or send provider.lane or the X-Anyroute-Lane header as attested, which asks for the same thing) and every member and the judge are held to the attested lane:
             a provider whose retention is declared attested and whose hardware attestation the router holds fresh, the same test as any other attested-lane request. Nothing is downgraded and no member is dropped. A member, or the judge, with no
-            attested provider refuses the whole request with a 409 (lane_unavailable, and error.metadata.council_seat says which seat), or a 503 while attested providers are down; nothing is sent, held or charged. Each call’s signed receipt then has an
+            attested provider refuses the whole request with a 503 (no_attested_endpoint, and error.metadata.council_seat says which seat); nothing is sent, held or charged. Each call’s signed receipt then has an
             attestation_ref: the hash of the attestation report the router verified for the provider that served it, and the TLS key its connection was pinned to (tls_pin is null for a provider that did not attest through a self-signed certificate).
             The response’s council field adds attested and attestation_refs (members in order, then the judge), and both are signed in the top-level receipt, so changing a reference breaks its signature. attested is true only when every call was served
             under the attested class. These are the router’s own records, the same ones behind GET /api/v1/attestation/{"{providerId}"}; they show what was running and pinned, not what it did with your prompt.
@@ -526,7 +557,7 @@ export default function Docs() {
           <Code label="Attested council response (abridged)">{attestedCouncilResponse}</Code>
           <p>
             Dual verification with provider.lane set to attested sends the two calls to two different attested providers of the model. Both receipts carry the agreement bit, and the verification field and each receipt add attested and the two
-            attestation references. If the model has fewer than two attested providers the answer is 409 (verification_unavailable with one, lane_unavailable with none), and nothing is sent or charged. Agreement still only shows that two providers
+            attestation references. If the model has fewer than two attested providers the answer is 409 verification_unavailable with one, or 503 no_attested_endpoint with none, and nothing is sent or charged. Agreement still only shows that two providers
             gave the same text.
           </p>
           <Code label="Attested dual verification request">{attestedDualRequest}</Code>
@@ -549,7 +580,7 @@ export default function Docs() {
           <p>
             list_attested_models lists the models the attested lane can serve now: those with an endpoint whose TEE attestation the router verified itself and whose provider documents no retention. Each carries gpu_attested, true when the latest verified gateway receipt
             for the model asserted GPU attestation, false when it did not and null before any receipt. chat takes lane (public or attested) and disclosure (none, policy or any) with the meaning of provider.lane and provider.disclosure: on the attested lane the prompt goes only to
-            such a provider, and when none can answer the call fails (409 lane_unavailable, or 503 while they are down) with nothing sent and nothing charged. The result reports the lane, the disclosure class the signed receipt records and, when the provider is an attested gateway,
+            such a provider, and when none can answer the call fails (503 no_attested_endpoint) with nothing sent and nothing charged. The result reports the lane, the disclosure class the signed receipt records and, when the provider is an attested gateway,
             its upstream_attestation (attested, gpu_attested, receipt_verified and a reason when it is not attested). If the gateway’s receipt does not show an attested upstream, the reply is withheld and the error carries the receipt id; the upstream had already produced the answer, so the call is billed.
           </p>
           <p>

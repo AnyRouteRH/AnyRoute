@@ -6,7 +6,7 @@ import { maxPico, picoToUsd, picoToUsdString } from "../lib/money.ts";
 import { genId, log, sha256 } from "../lib/util.ts";
 import { reserve, release, settle } from "../ledger/ledger.ts";
 import { selectProviders, type ProviderPrefs } from "../router/select.ts";
-import { disclosureRefusal, profileOf, resolveDisclosureRequest } from "../router/disclosure.ts";
+import { disclosureRefusal, profileOf } from "../router/disclosure.ts";
 import { priceUsage, readUsage } from "../router/pricing.ts";
 import { callUpstream, providerKey, upstreamBody } from "../providers/upstream.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
@@ -19,7 +19,7 @@ import { payPerCall } from "../pay/percall.ts";
 import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
-import { requireUnlinkable } from "../ohttp/lane.ts";
+import { requestLane } from "../ohttp/lane.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken } from "../blind/redeem.ts";
 
 // POST /api/v1/embeddings — prepaid keys, or no key at all: an unpaid call gets the same 402 as chat
@@ -58,9 +58,9 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const chars = (Array.isArray(input) ? input : [input]).reduce((n: number, s) => n + String(s).length, 0);
     const promptTokens = Math.ceil(chars / 3) + 8;
     // Same disclosure ceiling and lane as chat (`provider.disclosure`, `provider.lane`, X-Anyroute-Disclosure-Max, X-Anyroute-Lane).
-    const { disclosure: _wantDisclosure, lane: _wantLane, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs;
-    const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") }, { unlinkable: ctx.cfg.ohttp.enabled });
-    if (disc.lane === "unlinkable") requireUnlinkable(ctx, c, { hasKey: !!key, hasToken: !!pass });
+    const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
+    // A per-call payment names its payer as a wallet does: it is identity-bearing for lane "unlinkable".
+    const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!c.req.header("x-payment")), hasToken: !!pass });
     const strict = disc.max !== "any";
     const plan = (p: ProviderPrefs) =>
       selectProviders({
@@ -75,6 +75,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         attestationMaxAgeMs: ctx.cfg.attestation.intervalMs * 3,
         disclosure: (id) => profileOf(ctx.catalog.disclosure.get(id)),
         modelLane: ctx.catalog.laneOf(r.model),
+        attestedBonus: ctx.cfg.routing.attestedBonus,
         rand: ctx.rand,
       });
     const sel = plan({ ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) });

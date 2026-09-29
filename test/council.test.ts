@@ -224,12 +224,12 @@ describe("council mode", () => {
     const balance = await balanceOf(h.ctx.db, accountId);
     const cases: [Record<string, unknown>, Record<string, string>, string][] = [
       [{ provider: { disclosure: "none" } }, auth, "disclosure_unavailable"],
-      [{ provider: { lane: "attested" } }, auth, "lane_unavailable"],
+      [{ provider: { lane: "attested" } }, auth, "no_attested_endpoint"],
       [{}, { ...auth, "x-anyroute-disclosure-max": "none" }, "disclosure_unavailable"],
     ];
     for (const [patch, headers, type] of cases) {
       const r = await ask(patch, headers);
-      expect(r.status).toBe(409);
+      expect(r.status).toBe(type === "no_attested_endpoint" ? 503 : 409);
       const e = (await r.json()).error;
       expect(e.type).toBe(type);
       expect(e.message).toMatch(/Nothing was sent to any provider and nothing was charged/);
@@ -576,9 +576,9 @@ describe("verify: dual", () => {
     const before = await Promise.all(["alpha", "beta", "gamma"].map(async (id) => (await stats(id)).requests));
     const count = await generationCount();
     const balance = await balanceOf(h.ctx.db, accountId);
-    for (const [patch, type] of [[{ provider: { only: ["alpha", "beta"], disclosure: "none" } }, "disclosure_unavailable"], [{ provider: { only: ["alpha", "beta"], lane: "attested" } }, "lane_unavailable"]] as const) {
+    for (const [patch, type] of [[{ provider: { only: ["alpha", "beta"], disclosure: "none" } }, "disclosure_unavailable"], [{ provider: { only: ["alpha", "beta"], lane: "attested" } }, "no_attested_endpoint"]] as const) {
       const r = await ask({ ...patch });
-      expect(r.status).toBe(409);
+      expect(r.status).toBe(type === "no_attested_endpoint" ? 503 : 409);
       const e = (await r.json()).error;
       expect(e.type).toBe(type);
       expect(e.message).toMatch(/Nothing was sent to any provider and nothing was charged/);
@@ -696,9 +696,9 @@ describe("council and dual verification honour disclosure", () => {
   test("a member with no provider under the ceiling refuses the whole council; nothing is sent or charged", async () => {
     const before = await requests();
     const count = await generationCount();
-    for (const [provider, type] of [[{ disclosure: "none" }, "disclosure_unavailable"], [{ lane: "attested" }, "lane_unavailable"]] as const) {
+    for (const [provider, type] of [[{ disclosure: "none" }, "disclosure_unavailable"], [{ lane: "attested" }, "no_attested_endpoint"]] as const) {
       const r = await ask(council(["acme/m1", "acme/m2", "acme/m3"], { ...provider }));
-      expect(r.status).toBe(409);
+      expect(r.status).toBe(type === "no_attested_endpoint" ? 503 : 409);
       const e = (await r.json()).error;
       expect(e.type).toBe(type);
       expect(e.message).toContain("acme/m3");

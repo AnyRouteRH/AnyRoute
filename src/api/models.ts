@@ -4,7 +4,7 @@ import type { Candidate, ManifestRef, ModelRow } from "../catalog/catalog.ts";
 import { priceString } from "../lib/money.ts";
 import { blendedPrice, attestationFresh } from "../router/select.ts";
 import { fail } from "../lib/errors.ts";
-import { parseLane } from "../router/disclosure.ts";
+import { parseLane, type Lane } from "../router/disclosure.ts";
 import { VARIANTS, isVariant, type Variant } from "../router/lane.ts";
 import { servedDisclosure, servedPolicyHash } from "./disclosure.ts";
 import type { DisclosureClass } from "../router/disclosure.ts";
@@ -31,6 +31,44 @@ export const servable = (ctx: Ctx, m: ModelRow) => {
   const lane = ctx.catalog.laneOf(m);
   return ctx.catalog.offers(m.id).filter(live).filter((o) => offerEligible(ctx, lane, o));
 };
+
+/**
+ * The lanes an endpoint can serve right now: "public" always; "attested" while it is served under the attested class
+ * (attested retention and a fresh, verified attestation, the same test routing applies); "unlinkable" as well when this
+ * router runs the Oblivious HTTP gateway and blind tokens.
+ */
+export function offerLanes(ctx: Ctx, o: Candidate): Lane[] {
+  if (servedDisclosure(ctx, o).class !== "attested") return ["public"];
+  return ctx.cfg.ohttp.enabled ? ["public", "attested", "unlinkable"] : ["public", "attested"];
+}
+
+/** The lanes a model can be served on right now: the union over its servable endpoints (none when it has none). */
+export function modelLanes(ctx: Ctx, offers: Candidate[]): Lane[] {
+  if (!offers.length) return [];
+  const attested = offers.some((o) => servedDisclosure(ctx, o).class === "attested");
+  return !attested ? ["public"] : ctx.cfg.ohttp.enabled ? ["public", "attested", "unlinkable"] : ["public", "attested"];
+}
+
+/**
+ * Lane availability across the catalog, for GET /api/v1/status: per lane, how many listed models and live endpoints
+ * can serve it right now; plus the attested bonus each lane's selection weight uses, and whether unlinkable is served.
+ */
+export function laneSummary(ctx: Ctx) {
+  const count = { public: { models: 0, endpoints: 0 }, attested: { models: 0, endpoints: 0 }, unlinkable: { models: 0, endpoints: 0 } };
+  for (const m of ctx.catalog.models.values()) {
+    if (m.hidden) continue;
+    const offers = servable(ctx, m);
+    for (const lane of modelLanes(ctx, offers)) count[lane].models++;
+    for (const o of offers) for (const lane of offerLanes(ctx, o)) count[lane].endpoints++;
+  }
+  const bonus = ctx.cfg.routing.attestedBonus;
+  return {
+    public: { available: true, ...count.public, attested_bonus: bonus.public },
+    attested: { available: true, ...count.attested, attested_bonus: bonus.attested },
+    unlinkable: { available: ctx.cfg.ohttp.enabled, ...count.unlinkable, attested_bonus: bonus.unlinkable },
+    weight: "uptime * quality * attested_bonus / price^2",
+  };
+}
 
 /** ?variant=abliterated,native_low_refusal: null when unset, 400 for anything that is not a variant. */
 export function parseVariants(raw: unknown): Set<Variant> | null {
@@ -117,6 +155,8 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     quantization: [...new Set(offers.map((o) => o.quant))],
     attested_available: offers.some((o) => attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production)),
     disclosure: { best: classes.attested ? "attested" : classes.policy ? "policy" : classes["vendor-forwarded"] ? "vendor-forwarded" : null, endpoints: classes },
+    // The lanes this model can be served on right now (public, attested, unlinkable); see provider.lane.
+    lanes: modelLanes(ctx, offers),
     attestation: modelAttestation(ctx, offers),
     datacenter_region: datacenterRegion(offers),
     creator: m.creator ?? null,
@@ -149,7 +189,7 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
       .filter((m) => !m.hidden && servable(ctx, m).length > 0)
       .map((m) => modelJson(ctx, m))
       .filter((m) => need.every((p) => m.supported_parameters.includes(p)))
-      .filter((m) => (lane !== "attested" && lane !== "unlinkable") || m.disclosure.endpoints.attested > 0)
+      .filter((m) => !lane || m.lanes.includes(lane))
       .filter((m) => !variants || variants.has(m.variant))
       .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id))
       // The attested lane also says, per model, whether GPU attestation was seen (gateway receipts).
@@ -192,6 +232,7 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
         // The classifier policy hash this endpoint's fresh attestation bound (sent as X-Anyroute-Policy-Hash), else null.
         policy_hash: servedPolicyHash(ctx, o),
         disclosure: servedDisclosure(ctx, o).class,
+        lanes: offerLanes(ctx, o),
         bond_usdg: o.provider.bondUsdg.toString(),
         is_moderated: o.isModerated,
       };

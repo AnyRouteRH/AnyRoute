@@ -160,8 +160,8 @@ describe("against a running router", () => {
     const k = await h.fundedKey(5n);
     const c = new AnyRoute({ baseUrl: "http://router.test", apiKey: k.secret, fetch: shim(h) });
     const e = await c.chat.completions.create(chat, { lane: "attested" }).catch((x) => x);
-    expect(e.status).toBe(409);
-    expect(e.code).toBe("lane_unavailable");
+    expect(e.status).toBe(503);
+    expect(e.code).toBe("no_attested_endpoint");
     const d = await c.chat.completions.create(chat, { disclosure: "none" }).catch((x) => x);
     expect(d.code).toBe("disclosure_unavailable");
     const u = await c.chat.completions.create(chat, { lane: "unlinkable" }).catch((x) => x);

@@ -13,6 +13,7 @@ import { readJson } from "./common.ts";
 import { requireKey } from "./auth.ts";
 import { verifyReceipt, anchorProof } from "./generation.ts";
 import { holdersStatus } from "../holders/tiers.ts";
+import { laneSummary } from "./models.ts";
 import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAllowance, openDebt, rawToPico, saveAllowance, signCharge, statement, typedDataJson } from "../pay/paywith.ts";
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
@@ -259,8 +260,9 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
     return c.json({ data: { model: m.id, creator: v.address.toLowerCase(), royalty_bps: bps, onchain_tx: tx } }, 201);
   });
 
-  app.get("/api/v1/status", async (c) =>
-    c.json({
+  app.get("/api/v1/status", async (c) => {
+    await ctx.catalog.ensureFresh();
+    return c.json({
       data: {
         launch: await launchMetrics(),
         router: ctx.cfg.publicUrl,
@@ -295,9 +297,11 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         onion: ctx.cfg.onion.address ? { address: ctx.cfg.onion.address, url: `http://${ctx.cfg.onion.address}` } : null,
         jobs: ctx.jobs.status().map((job) => ({ ...job, last_error: job.last_error ? "Job failed" : null })),
         catalog: { models: ctx.catalog.models.size, providers: ctx.catalog.providers.size },
+        // Privacy lanes: how many models and live endpoints can serve each one right now, and the selection weight.
+        lanes: laneSummary(ctx),
       },
-    }),
-  );
+    });
+  });
   app.get("/ready", async (c) => {
     const result = await readiness(ctx);
     return c.json(result, result.ok ? 200 : 503);

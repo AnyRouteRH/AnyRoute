@@ -169,9 +169,9 @@ describe("attested council over HTTP", () => {
       [["acme/m1", "acme/m2", "acme/m3"], { attested: true, min_members: 2 }, "member C", "acme/m3"],
     ] as const) {
       const r = await ask(council([...models], { ...extra }));
-      expect(r.status).toBe(409);
+      expect(r.status).toBe(503);
       const e = (await r.json()).error;
-      expect(e.type).toBe("lane_unavailable");
+      expect(e.type).toBe("no_attested_endpoint");
       expect(e.message).toContain(model);
       expect(e.message).toMatch(/Nothing was sent to any provider and nothing was charged/);
       expect(e.metadata).toMatchObject({ council_seat: seat, requested: { disclosure: "none", lane: "attested" } });
@@ -179,8 +179,8 @@ describe("attested council over HTTP", () => {
     }
     // Lane "attested" on the request alone is held to the same rule.
     const viaLane = await ask({ ...council(["acme/m1", "acme/m3"]), provider: { lane: "attested" } });
-    expect(viaLane.status).toBe(409);
-    expect((await viaLane.json()).error.type).toBe("lane_unavailable");
+    expect(viaLane.status).toBe(503);
+    expect((await viaLane.json()).error.type).toBe("no_attested_endpoint");
     expect(await requests()).toEqual(before);
     expect(await generationCount()).toBe(count);
     expect(await openHolds()).toBe(0);
@@ -190,13 +190,13 @@ describe("attested council over HTTP", () => {
     expect((await plain.json()).council.members.map((m: any) => m.provider)).toEqual(["enc1", "ven"]);
   });
 
-  test("no attested judge is a 409, even when the members are attested", async () => {
+  test("no attested judge is a 503 no_attested_endpoint, even when the members are attested", async () => {
     const before = await requests();
     const count = await generationCount();
     const r = await ask(council(["acme/m1", "acme/m2"], { attested: true }, "acme/vjudge"));
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(503);
     const e = (await r.json()).error;
-    expect(e.type).toBe("lane_unavailable");
+    expect(e.type).toBe("no_attested_endpoint");
     expect(e.message).toContain("acme/vjudge");
     expect(e.metadata.council_seat).toBe("judge");
     expect(await requests()).toEqual(before);
@@ -211,9 +211,9 @@ describe("attested council over HTTP", () => {
     try {
       const before = await requests();
       const r = await ask(council(["acme/m1", "acme/m2"], { attested: true }));
-      expect(r.status).toBe(409);
+      expect(r.status).toBe(503);
       const e = (await r.json()).error;
-      expect(e.type).toBe("lane_unavailable");
+      expect(e.type).toBe("no_attested_endpoint");
       expect(e.metadata.council_seat).toBe("member B");
       expect(await requests()).toEqual(before);
     } finally {
@@ -233,7 +233,8 @@ describe("attested council over HTTP", () => {
       expect(r.status).toBe(503);
       expect(r.headers.get("retry-after")).toBe("30");
       const e = (await r.json()).error;
-      expect(e.type).toBe("disclosure_provider_unavailable");
+      expect(e.type).toBe("no_attested_endpoint");
+      expect(e.metadata.reason).toBe("attested_endpoints_down");
       expect(e.metadata.council_seat).toBe("member B");
       expect(await requests()).toEqual(before);
     } finally {
@@ -314,8 +315,8 @@ describe("attested council over HTTP", () => {
     }
     // None at all: refused by the lane itself.
     const none = await dual({ lane: "attested", only: ["ven"] });
-    expect(none.status).toBe(409);
-    expect((await none.json()).error.type).toBe("lane_unavailable");
+    expect(none.status).toBe(503);
+    expect((await none.json()).error.type).toBe("no_attested_endpoint");
     expect(await requests()).toEqual(before);
     expect(await generationCount()).toBe(count);
     expect(await openHolds()).toBe(0);

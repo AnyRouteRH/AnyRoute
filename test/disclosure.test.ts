@@ -109,7 +109,8 @@ describe("routing filters", () => {
       let seed = 7;
       return selectProviders({ modelId: "m/x", offers, prefs: {}, modifiers: new Set(), requestParams: [], estimatedTokens: 100, health: healthy, production: false, attestationMaxAgeMs: 3_600_000, rand: () => ((seed = (seed * 16807) % 2147483647) / 2147483647), ...extra } as never).ordered.map((o) => o.providerId);
     };
-    expect(seq({ disclosure: (id: string) => profiles[id] })).toEqual(seq({}));
+    // With the attested bonus at 1 (on the public lane it defaults to 1.25, see lane-routing.test.ts), wiring it changes nothing.
+    expect(seq({ disclosure: (id: string) => profiles[id], attestedBonus: { public: 1 } })).toEqual(seq({}));
   });
 
   test('"none" and lane "attested": attested retention with a fresh attestation only', () => {
@@ -282,18 +283,18 @@ describe("disclosure in requests, headers and receipts", () => {
     expect((await chat({}, { "x-anyroute-disclosure-max": "any", "x-anyroute-lane": "public" })).status).toBe(200);
   });
 
-  test("with nothing attested yet, none/attested are refused with a clear 409 and nothing is sent or charged", async () => {
+  test("with nothing attested yet, none/attested are refused (409 disclosure, 503 no_attested_endpoint) and nothing is sent or charged", async () => {
     await declareEnclave(); // declared, but the attestor has not run: no fresh report
     const before = await balance();
     for (const [body, headers, type] of [
       [{ provider: { disclosure: "none" } }, {}, "disclosure_unavailable"],
-      [{ provider: { lane: "attested" } }, {}, "lane_unavailable"],
+      [{ provider: { lane: "attested" } }, {}, "no_attested_endpoint"],
       [{}, { "x-anyroute-disclosure-max": "none" }, "disclosure_unavailable"],
-      [{}, { "x-anyroute-lane": "attested" }, "lane_unavailable"],
+      [{}, { "x-anyroute-lane": "attested" }, "no_attested_endpoint"],
       [{ stream: true, provider: { disclosure: "none" } }, {}, "disclosure_unavailable"],
     ] as const) {
       const r = await chat({ ...body }, { ...headers });
-      expect(r.status).toBe(409);
+      expect(r.status).toBe(type === "no_attested_endpoint" ? 503 : 409);
       const j = await r.json();
       expect(j.error.type).toBe(type);
       expect(j.error.message).toMatch(/Nothing was sent to any provider and nothing was charged/);
@@ -407,7 +408,12 @@ describe("disclosure in requests, headers and receipts", () => {
       expect(r.status).toBe(503);
       expect(r.headers.get("retry-after")).toBe("30");
       const j = await r.json();
-      expect(j.error.type).toBe("disclosure_provider_unavailable");
+      expect(j.error.type).toBe("no_attested_endpoint");
+      expect(j.error.metadata.reason).toBe("attested_endpoints_down");
+      // With only a disclosure ceiling, the code is the disclosure one.
+      const d = await chat({ provider: { disclosure: "none" } });
+      expect(d.status).toBe(503);
+      expect((await d.json()).error.type).toBe("disclosure_provider_unavailable");
       expect(j.error.message).toMatch(/nothing was charged/);
       expect(await balance()).toBe(before);
       expect((await chat()).status).toBe(200); // the default request is unaffected

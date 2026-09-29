@@ -144,7 +144,45 @@ The router MAY also be reached as a Tor v3 onion service. The proxy in front of 
 
 ## 5. Lanes (implemented)
 
-A request names its lane in `provider.lane` or the `X-Anyroute-Lane` header; responses echo it in `X-Anyroute-Lane`. Lanes `attested` and `unlinkable` imply disclosure `none`: only providers whose attestation the router verified recently are eligible.
+A request names its lane in `provider.lane` or the `X-Anyroute-Lane` header; responses echo the lane that was enforced in `X-Anyroute-Lane`, and the signed receipt records it. Lanes `attested` and `unlinkable` imply disclosure `none`: only endpoints whose retention is declared attested and whose attestation the router verified recently (a fresh, verified attestation) are eligible.
+
+### 5.1 Choosing a lane (implemented)
+
+G resolves the lane of a request in this order:
+
+1. If the body or the header names a lane, the stricter of the two (`public` < `attested` < `unlinkable`). A key's default (`routing.provider.lane`) and a saved route's `provider.lane` fill in the body field when the request leaves it unset, so a lane the request names itself wins over both. A saved route MAY set only `public` or `attested`, since it is called with an API key.
+2. Otherwise, if G runs the gateway and blind tokens, the request arrived through the gateway from an independent relay, and it presents a blind token and no API key, wallet or per-call payment: `unlinkable`.
+3. Otherwise `public`.
+
+### 5.2 Enforcement (implemented)
+
+On `attested` and `unlinkable`, G MUST NOT send a request to an endpoint without a fresh, verified attestation, and MUST NOT retry it on one: there is no fallback to a lower lane. `provider.order`, `only` and `ignore` apply inside the lane and cannot bring back an excluded endpoint. When no eligible endpoint remains, G answers before pricing the request or spending a token:
+
+| Condition | Refusal |
+| :--- | :--- |
+| No endpoint of the model that fits the request has a fresh, verified attestation | 503 `no_attested_endpoint`, `error.metadata.reason` = `none_attested` |
+| Such endpoints exist but are all in an outage | 503 `no_attested_endpoint`, `error.metadata.reason` = `attested_endpoints_down`, with `Retry-After` |
+| No endpoint would serve the request on any lane | 404 `no_providers` |
+
+A request with only `provider.disclosure` (no lane) keeps the disclosure codes: 409 `disclosure_unavailable` and 503 `disclosure_provider_unavailable`.
+
+### 5.3 Selection weight (implemented)
+
+Within a lane, G orders eligible endpoints by weighted random sampling without replacement, with
+
+```
+weight = uptime_30d * quality * attested_bonus / price_rel^2
+price_rel = max(price, cheapest / 10) / cheapest        (blended 3:1 prompt:completion price)
+attested_bonus = bonus[lane] for an endpoint served under the attested class, else 1
+```
+
+`bonus` defaults to 1.25 on `public` and 1 on `attested` and `unlinkable`, where every eligible endpoint is attested; it is configurable per lane and never below 1. Equal draws are broken by the higher weight, then by the provider's stake, then by provider id, so the order never depends on the order of the catalog. `sort`, `order` and the preferred latency and throughput settings apply on top as before.
+
+### 5.4 Availability (implemented)
+
+`GET /api/v1/models` lists `lanes` for each model and each endpoint: `public` whenever it has a live endpoint, `attested` while one endpoint is served under the attested class, and `unlinkable` as well where G runs the gateway and blind tokens. `GET /api/v1/models?lane=` keeps the models that list that lane. `GET /api/v1/status` has a `lanes` section with `available`, `models`, `endpoints` and `attested_bonus` for each lane.
+
+### 5.5 Transport and payment per lane
 
 | Lane | Outer transport | Inner transport | Payment |
 | :--- | :--- | :--- | :--- |
@@ -152,14 +190,19 @@ A request names its lane in `provider.lane` or the `X-Anyroute-Lane` header; res
 | `attested` | TLS to G | TLS from G to E, pinned where the evidence binds a key (today); HPKE from U to E (planned) | Key, credits, per-call payment or blind token |
 | `unlinkable` | Oblivious HTTP through an independent relay | TLS from G to E, pinned where the evidence binds a key (today); HPKE from U to E (planned) | Blind token only |
 
-G MUST refuse lane `unlinkable` unless all of the following hold, and MUST do so before pricing the request or spending a token:
+G MUST refuse lane `unlinkable` unless all of the following hold, checked in this order, and MUST do so before pricing the request or spending a token:
 
 | Condition | Refusal |
 | :--- | :--- |
+| The router runs the gateway and blind tokens at all | 501 `lane_not_available` |
+| It carries no API key, wallet or per-call payment, all of which name the payer | 403 `lane_requires_anonymous_auth` |
 | The request arrived through the gateway from a relay | 403 `unlinkable_requires_relay` |
 | That relay is independent | 403 `unlinkable_requires_independent_relay` |
-| It is paid with `Authorization: PrivateToken` and carries no API key or wallet | 401 or 403 `unlinkable_requires_token` |
-| The router runs the gateway and blind tokens at all | 501 `lane_not_available` |
+| It is paid with `Authorization: PrivateToken` | 401 `unlinkable_requires_token`, with the token challenge |
+
+A client MAY allow a downgrade with `provider.lane_downgrade: "attested"` or `X-Anyroute-Lane-Downgrade: attested`. A request for `unlinkable` that carries an identity-bearing credential is then served on `attested`, and `X-Anyroute-Lane` and the receipt say `attested`. G MUST NOT downgrade by default, and MUST NOT downgrade to `public`. On `unlinkable`, G records no application attribution (`HTTP-Referer`, `X-Title`) for the request, and the receipt names no payer: it carries the spent token's nullifier and the issuing key.
+
+**Limit today.** On `attested` and `unlinkable`, G terminates TLS and sees the request in plaintext before forwarding it to the enclave over TLS pinned to the attested key (Section 2). The host outside the enclave cannot read it; G can. Carrying inner ciphertext through G is planned (Section 3.2).
 
 The gateway records that it dispatched a request, and for which relay, in memory keyed by the request object it constructed. Nothing a client sends (header, query, body) can set or forge that record.
 

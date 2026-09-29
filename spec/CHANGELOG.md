@@ -2,6 +2,12 @@
 
 All notable changes to the SEAL specification. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Before 1.0.0 any document may change incompatibly; implemented wire formats keep their own version strings.
 
+## [Unreleased]
+
+### Changed
+
+- `0002-transport.md` Section 5: lanes are first-class in the router. How a lane is chosen (request, key default, saved route, and `unlinkable` by default for a relayed blind-token request), enforcement with no fallback (503 `no_attested_endpoint`), 403 `lane_requires_anonymous_auth` for an API key or wallet on `unlinkable` with an opt-in downgrade to `attested`, the lane-aware selection weight `uptime * quality * attested_bonus / price^2`, and lane availability in the model list and status. Replaces 409 `lane_unavailable` and, for lanes, 503 `disclosure_provider_unavailable`.
+
 ## [0.1.0] - 2026-09-29
 
 First public draft.

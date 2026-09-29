@@ -176,7 +176,7 @@ describe("chat on the attested lane", () => {
     const sent = fx.state.requests.length;
     const r = (await call("chat", { model: PLAIN.slug, prompt: "keep this private", lane: "attested" })).result!;
     expect(r.isError).toBe(true);
-    expect(r.structuredContent.error).toMatchObject({ code: 409, type: "lane_unavailable" });
+    expect(r.structuredContent.error).toMatchObject({ code: 503, type: "no_attested_endpoint" });
     expect(r.structuredContent.error.message).toContain("Nothing was sent to any provider and nothing was charged");
     expect(r.structuredContent.error.hint).toContain("list_attested_models");
     expect(r.content[0]!.text).toContain("list_attested_models");
@@ -189,7 +189,7 @@ describe("chat on the attested lane", () => {
     const before = await balance();
     const r = (await call("chat", { model: GW_MODEL, prompt: "hi", lane: "attested" })).result!;
     expect(r.isError).toBe(true);
-    expect(r.structuredContent.error.type).toBe("lane_unavailable");
+    expect(r.structuredContent.error.type).toBe("no_attested_endpoint");
     expect(await balance()).toBe(before);
   });
 
@@ -237,7 +237,7 @@ describe("a server-level default on the /mcp URL or in a header", () => {
     const before = await balance();
     const refused = (await call("chat", { model: PLAIN.slug, prompt: "hi" }, auth, url)).result!;
     expect(refused.isError).toBe(true);
-    expect(refused.structuredContent.error.type).toBe("lane_unavailable");
+    expect(refused.structuredContent.error.type).toBe("no_attested_endpoint");
     expect(await balance()).toBe(before);
     // The same call on the plain URL still reaches the public provider.
     expect((await call("chat", { model: PLAIN.slug, prompt: "hi" })).result!.structuredContent.provider).toBe("Vendor");
@@ -245,7 +245,7 @@ describe("a server-level default on the /mcp URL or in a header", () => {
 
   test("the X-Anyroute-Lane and X-Anyroute-Disclosure-Max headers do the same, and the strictest setting wins", async () => {
     const lane = (await call("chat", { model: PLAIN.slug, prompt: "hi" }, { ...auth, "x-anyroute-lane": "attested" })).result!;
-    expect(lane.structuredContent.error.type).toBe("lane_unavailable");
+    expect(lane.structuredContent.error.type).toBe("no_attested_endpoint");
     const ceiling = (await call("chat", { model: PLAIN.slug, prompt: "hi" }, { ...auth, "x-anyroute-disclosure-max": "none" })).result!;
     expect(ceiling.structuredContent.error.type).toBe("disclosure_unavailable");
     const mixed = (await call("chat", { model: GW_MODEL, prompt: "hi" }, { ...auth, "x-anyroute-lane": "public" }, "/mcp?lane=attested")).result!.structuredContent;

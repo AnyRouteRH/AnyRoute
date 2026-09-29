@@ -9,7 +9,7 @@ import { canonical, canonicalJson, decrypt, genId, log, sha256 } from "../lib/ut
 import { reserve, release, settle } from "../ledger/ledger.ts";
 import { selectProviders, type ProviderPrefs } from "../router/select.ts";
 import { isRestricted } from "../router/lane.ts";
-import { disclosureClass, disclosureRefusal, profileOf, resolveDisclosureRequest, type DisclosureClass, type DisclosureRequest } from "../router/disclosure.ts";
+import { disclosureClass, disclosureRefusal, profileOf, type DisclosureClass, type DisclosureRequest } from "../router/disclosure.ts";
 import { servedDisclosure, servedPolicyHash } from "./disclosure.ts";
 import { estimatePromptTokens, maxOutputTokens, priceUsage, readUsage, worstCase, type Mode, type Usage } from "../router/pricing.ts";
 import { route, type Attempt, type RouteSuccess, type RouteTarget } from "../router/execute.ts";
@@ -28,7 +28,7 @@ import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import type { HolderTier } from "../config.ts";
 import { COUNCIL_MODEL, applyDualDecoding, runCouncil, runDual, validateMulti } from "./council.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
-import { requireUnlinkable } from "../ohttp/lane.ts";
+import { requestLane } from "../ohttp/lane.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken, type BlindPass } from "../blind/redeem.ts";
 
 export type Kind = "chat" | "completion";
@@ -148,6 +148,7 @@ function selectTargets(
       attestationMaxAgeMs: ctx.cfg.attestation.intervalMs * 3,
       disclosure: (id) => profileOf(ctx.catalog.disclosure.get(id)),
       modelLane: ctx.catalog.laneOf(r.model),
+      attestedBonus: ctx.cfg.routing.attestedBonus,
       rand: ctx.rand,
     });
     // Tools / structured output must be supported by whoever serves the request.
@@ -251,11 +252,13 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const savedRoute = await resolveSavedRoute(ctx.db, key?.accountId ?? wallet?.accountId ?? null, body);
   if (routing?.provider) body.provider = { ...routing.provider, ...((body.provider as object) ?? {}) };
   // Disclosure ceiling and lane: `provider.disclosure` / `provider.lane` and the X-Anyroute-* headers, the
-  // stricter of the two winning. Defaults (any, public) add nothing to `prefs`, so existing requests route as before.
-  const { disclosure: _wantDisclosure, lane: _wantLane, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs;
-  const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") }, { unlinkable: ctx.cfg.ohttp.enabled });
-  // Lane "unlinkable" (OHTTP_ENABLED): only through a relay, only with a blind token. Checked before anything is priced or spent.
-  if (disc.lane === "unlinkable") requireUnlinkable(ctx, c, { hasKey: !!key, hasWallet: !!wallet, hasToken: !!pass });
+  // stricter of the two winning, after the key's default and the saved route filled in what the request left unset.
+  // A request naming no lane is public, except one relayed through the Oblivious HTTP gateway and paid with a blind
+  // token, which defaults to unlinkable. Defaults (any, public) add nothing to `prefs`, so such requests route as before.
+  // Lane "unlinkable" (OHTTP_ENABLED): only through an independent relay, only with a blind token and no key or wallet.
+  // Checked before anything is priced or spent (ohttp/lane.ts).
+  const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
+  const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !!wallet || (!key && !pass && !!c.req.header("x-payment")), hasToken: !!pass });
   const strict = disc.max !== "any";
   const prefs: ProviderPrefs = { ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) };
 
@@ -603,7 +606,8 @@ async function finalize(p: FinalizeInput) {
   const referer = p.c.req.header("http-referer") ?? p.c.req.header("referer");
   const title = p.c.req.header("x-title");
   let appId: string | null = null;
-  if (referer || title) {
+  // App attribution names where a call came from, so it is never recorded for the unlinkable lane.
+  if ((referer || title) && p.disc.lane !== "unlinkable") {
     appId = sha256((referer ?? "") + "|" + (title ?? "")).slice(0, 24);
     await ctx.db.insert(apps).values({ id: appId, url: referer?.slice(0, 500) ?? null, title: title?.slice(0, 200) ?? null }).onConflictDoNothing();
   }

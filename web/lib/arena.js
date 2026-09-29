@@ -134,10 +134,11 @@ export function pickWinners(lanes) {
 export const ATTESTED_LANE = "attested";
 
 /**
- * Error types with which the router refuses instead of downgrading: no attested provider meets the lane (409, or 503
- * while every one is down), or the answer's receipt did not show an attested upstream (502, answer withheld).
+ * Error types with which the router refuses instead of downgrading: no attested endpoint can serve the lane (503
+ * no_attested_endpoint; lane_unavailable from older routers), a disclosure ceiling nothing meets (409, or 503 while
+ * every one is down), or the answer's receipt did not show an attested upstream (502, answer withheld).
  */
-const FAIL_CLOSED = new Set(["lane_unavailable", "disclosure_unavailable", "disclosure_provider_unavailable", "upstream_not_attested"]);
+const FAIL_CLOSED = new Set(["no_attested_endpoint", "lane_unavailable", "disclosure_unavailable", "disclosure_provider_unavailable", "upstream_not_attested"]);
 export const isFailClosed = (type) => FAIL_CLOSED.has(String(type || ""));
 
 /**

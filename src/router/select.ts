@@ -7,8 +7,12 @@ import { DISCLOSURE_MAX_VALUES, OUTAGE_REASON, UNDECLARED, classAllowed, disclos
 //   candidates = providers.serving(model)
 //     .filter(prefs: only/ignore/data_collection/zdr/quantizations/private->attested/disclosure+lane/max_price/require_parameters)
 //     .filter(p => !outage(p, 30s))
-//   weights = 1/price^2 x uptime30d x qualityScore(model,p)     // quality in [0.5, 1.0] from canaries
+//   weights = uptime30d x qualityScore(model,p) x attested_bonus / price^2   // quality in [0.5, 1.0] from canaries
 //   order = prefs.order ?? (sort ? sortBy(sort) : weightedShuffle(weights))
+//
+// Lanes (router/disclosure.ts): "attested" and "unlinkable" admit only endpoints served under the attested class
+// (declared attested retention and a fresh, verified attestation) and never fall back to any other; "public" admits
+// every endpoint and gives attested ones `attested_bonus` (default 1.25) in the weight above.
 
 export type Percentiles = { p50?: number; p75?: number; p90?: number; p99?: number };
 export type ProviderPrefs = {
@@ -61,8 +65,29 @@ export type SelectInput = {
    * Left out, the model is treated as mainstream.
    */
   modelLane: ModelLane;
+  /**
+   * Weight multiplier for an endpoint served under the attested class, by lane (config ATTESTED_BONUS_*). Left out,
+   * DEFAULT_ATTESTED_BONUS applies. Values below 1 are read as 1: attestation never lowers a weight.
+   */
+  attestedBonus?: Partial<Record<Lane, number>>;
   rand?: () => number;
 };
+
+/** Default attested bonus per lane: attested endpoints get a quarter more weight on the public lane. */
+export const DEFAULT_ATTESTED_BONUS: Readonly<Record<Lane, number>> = Object.freeze({ public: 1.25, attested: 1, unlinkable: 1 });
+
+/**
+ * The selection weight of one endpoint within its lane: uptime x quality x attested_bonus / price^2, with price taken
+ * relative to the cheapest priced endpoint of the request (scale-free) and floored at a tenth of it, so a free or
+ * near-free endpoint cannot take every request. `attested` must come from the router's own attestation checks.
+ */
+export function selectionWeight(o: { price: number; minPrice: number; uptime: number; quality: number; attested: boolean; bonus: number }): number {
+  const min = o.minPrice === Number.MAX_VALUE || !(o.minPrice > 0) ? 1 : o.minPrice;
+  const price = Math.max(o.price, o.minPrice === Number.MAX_VALUE ? 1 : min / 10);
+  const rel = price / min;
+  const bonus = o.attested && Number.isFinite(o.bonus) ? Math.max(1, o.bonus) : 1;
+  return (o.uptime * o.quality * bonus) / (rel * rel);
+}
 
 const PER_MILLION = 1_000_000n;
 
@@ -116,14 +141,17 @@ function meetsPreferred(
   return check(minTps, s.throughput, (h, w) => h >= w) && check(maxLatency, s.latency, (h, w) => h <= w);
 }
 
-/** Efraimidis–Spirakis weighted random order (sampling without replacement). */
-export function weightedShuffle<T>(items: T[], weight: (t: T) => number, rand: () => number = Math.random): T[] {
+/**
+ * Efraimidis–Spirakis weighted random order (sampling without replacement). Equal keys (the same draw at the same
+ * weight) are ordered by the higher weight, then by `tie`, so the order never depends on the order of `items`.
+ */
+export function weightedShuffle<T>(items: T[], weight: (t: T) => number, rand: () => number = Math.random, tie?: (a: T, b: T) => number): T[] {
   return items
     .map((item) => {
       const w = Math.max(weight(item), 1e-300);
-      return { item, key: Math.log(Math.max(rand(), 1e-12)) / w };
+      return { item, w, key: Math.log(Math.max(rand(), 1e-12)) / w };
     })
-    .sort((a, b) => b.key - a.key)
+    .sort((a, b) => b.key - a.key || b.w - a.w || (tie ? tie(a.item, b.item) : 0))
     .map((x) => x.item);
 }
 
@@ -142,13 +170,17 @@ export function selectProviders(input: SelectInput): Selection {
   const { max: disclosureMax, lane } = disclosureCeiling(prefs);
   const restricted = isRestricted(input.modelLane?.variant);
   const servable = input.modelLane?.servable !== false;
+  const bonus = input.attestedBonus?.[lane] ?? DEFAULT_ATTESTED_BONUS[lane];
+  // The class each passing candidate is served under, when a rule or the weight needs it (computed once per candidate).
+  const classes = new Map<Candidate, DisclosureClass>();
 
   const pass: Candidate[] = [];
   for (const c of input.offers) {
     const id = c.providerId.toLowerCase();
     const policy = (c.provider.dataPolicy ?? {}) as { training?: boolean; retains_prompts?: boolean; zdr?: boolean };
     const isFree = c.pricePrompt === 0n && c.priceCompletion === 0n && c.priceRequest === 0n;
-    const cls = disclosureMax === "any" && !restricted ? null : candidateDisclosure(c, input.disclosure?.(c.providerId), input.attestationMaxAgeMs, input.production);
+    const cls = disclosureMax === "any" && !restricted && bonus === 1 ? null : candidateDisclosure(c, input.disclosure?.(c.providerId), input.attestationMaxAgeMs, input.production);
+    if (cls) classes.set(c, cls);
     // Lane rules apply before the outage check, so an outage is only ever reported for a provider that could serve.
     const laneReason = !servable ? NOT_SERVABLE_REASON : restricted ? restrictedExclusion(cls ?? "vendor-forwarded", c.provider.classifierEnabled) : null;
     const reason =
@@ -172,7 +204,7 @@ export function selectProviders(input: SelectInput): Selection {
                         ? `quantization ${c.quant} not allowed`
                         : wantPrivate && !attestationFresh(c, input.attestationMaxAgeMs, input.production)
                           ? "private route requires a fresh TEE attestation"
-                          : cls && !classAllowed(cls, disclosureMax)
+                          : cls && disclosureMax !== "any" && !classAllowed(cls, disclosureMax)
                             ? disclosureExclusion(disclosureMax, lane, cls)
                             : maxPrompt != null && c.pricePrompt * PER_MILLION > maxPrompt
                               ? "above max_price.prompt"
@@ -219,12 +251,17 @@ export function selectProviders(input: SelectInput): Selection {
     const minPrice = Math.min(...pass.map((c) => blendedPrice(c)).filter((p) => p > 0), Number.MAX_VALUE);
     ordered = weightedShuffle(
       pass,
-      (c) => {
-        const price = Math.max(blendedPrice(c), minPrice === Number.MAX_VALUE ? 1 : minPrice / 10);
-        const rel = price / (minPrice === Number.MAX_VALUE ? 1 : minPrice); // scale-free
-        return (1 / (rel * rel)) * health.uptime30d(c.modelId, c.providerId) * health.quality(c.modelId, c.providerId);
-      },
+      (c) =>
+        selectionWeight({
+          price: blendedPrice(c),
+          minPrice,
+          uptime: health.uptime30d(c.modelId, c.providerId),
+          quality: health.quality(c.modelId, c.providerId),
+          attested: classes.get(c) === "attested",
+          bonus,
+        }),
       input.rand,
+      tieBreak,
     );
   }
 

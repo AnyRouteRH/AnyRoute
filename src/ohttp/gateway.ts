@@ -40,7 +40,7 @@ const ROUTES: readonly { method: string; path: string; stream?: boolean }[] = [
 ];
 
 /** Request fields that reach the router. Anything else a client sends (user agent, language, cookies, trace ids) is dropped. */
-const FORWARD_REQUEST_HEADERS = new Set(["authorization", "content-type", "accept", "x-anyroute-lane", "x-anyroute-disclosure-max"]);
+const FORWARD_REQUEST_HEADERS = new Set(["authorization", "content-type", "accept", "x-anyroute-lane", "x-anyroute-lane-downgrade", "x-anyroute-disclosure-max"]);
 const HOP_BY_HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length", "set-cookie"]);
 
 const relayNoStore = { "cache-control": "no-store" };

@@ -582,16 +582,16 @@ describe("blind tokens: disclosure ceilings and lanes still apply", () => {
     const before = { spent: await spentCount(), generations: await generationCount(), pool: (await balanceOf(h.ctx.db, BLIND_POOL)).balance };
     const cases: [Record<string, unknown>, Record<string, string>, string, string?][] = [
       [{ provider: { disclosure: "none" } }, {}, "disclosure_unavailable"],
-      [{ provider: { lane: "attested" } }, {}, "lane_unavailable"],
+      [{ provider: { lane: "attested" } }, {}, "no_attested_endpoint"],
       [{}, { "x-anyroute-disclosure-max": "none" }, "disclosure_unavailable"],
-      [{}, { "x-anyroute-lane": "attested" }, "lane_unavailable"],
+      [{}, { "x-anyroute-lane": "attested" }, "no_attested_endpoint"],
       [{ stream: true, provider: { disclosure: "none" } }, {}, "disclosure_unavailable"],
       [{ model: "acme/embed-small", input: "hello", provider: { disclosure: "none" } }, {}, "disclosure_unavailable", "/api/v1/embeddings"],
     ];
     const token = tokens[0];
     for (const [body, headers, type, path] of cases) {
       const r = await redeem(h, token, path ? body : { ...chat, ...body }, path, headers);
-      expect(r.status).toBe(409);
+      expect(r.status).toBe(type === "no_attested_endpoint" ? 503 : 409);
       const j = await r.json();
       expect(j.error.type).toBe(type);
       expect(j.error.message).toMatch(/Nothing was sent to any provider and nothing was charged/);

@@ -143,7 +143,7 @@ test('the switch never carries a key, and keys in the prompt are still removed',
 });
 
 test('the router\'s refusals are the fail-closed types',()=>{
- for(const t of ['lane_unavailable','disclosure_unavailable','disclosure_provider_unavailable','upstream_not_attested'])assert.equal(isFailClosed(t),true,t);
+ for(const t of ['no_attested_endpoint','lane_unavailable','disclosure_unavailable','disclosure_provider_unavailable','upstream_not_attested'])assert.equal(isFailClosed(t),true,t);
  for(const t of ['insufficient_credits','providers_unavailable','','error',undefined,null])assert.equal(isFailClosed(t),false,String(t));
 });
 

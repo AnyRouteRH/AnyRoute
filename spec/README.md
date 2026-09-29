@@ -22,7 +22,7 @@ The HTTP API around these documents is described in OpenAPI 3.1 at [`web/public/
 
 ## Lanes
 
-A request chooses a lane (`provider.lane` in the body or the `X-Anyroute-Lane` header). A lane is a floor: the router never serves a request below the lane it asked for, and says why when it cannot serve it.
+A request chooses a lane (`provider.lane` in the body or the `X-Anyroute-Lane` header; a key or a saved route can set a default). A lane is a floor: the router never serves a request below the lane it asked for, and says why when it cannot serve it (`no_attested_endpoint`, `lane_requires_anonymous_auth`).
 
 | Lane | Path | Who can run it | Payment |
 | :--- | :--- | :--- | :--- |
@@ -91,7 +91,7 @@ These hold for the design, not only for today's code, and are published with it.
 | Independent Oblivious HTTP relay | 0002 | Implemented | [`relay/`](../relay) |
 | Chunked Oblivious HTTP for streaming responses | 0002 | Planned | |
 | Tor onion service in front of the router | 0002 | Implemented | [`deploy/onion/`](../deploy/onion) |
-| Lanes `public`, `attested`, `unlinkable` in the router | 0002 | Implemented; `unlinkable` needs Oblivious HTTP and blind tokens switched on | [`src/router/disclosure.ts`](../src/router/disclosure.ts), [`src/ohttp/lane.ts`](../src/ohttp/lane.ts) |
+| Lanes `public`, `attested`, `unlinkable` in the router: per request, per key and per saved route; no fallback off an attested lane (`no_attested_endpoint`); lane-aware selection weight | 0002 | Implemented; `unlinkable` needs Oblivious HTTP and blind tokens switched on | [`src/router/disclosure.ts`](../src/router/disclosure.ts), [`src/router/select.ts`](../src/router/select.ts), [`src/ohttp/lane.ts`](../src/ohttp/lane.ts) |
 | Blind RSA tokens (Privacy Pass type 0x0002), per-epoch issuer keys, on-chain key commitments | 0003 | Implemented, off by default | [`src/blind/`](../src/blind), [`contracts/src/BlindIssuer.sol`](../contracts/src/BlindIssuer.sol) |
 | Blinded e-cash credits (BDHKE, DLEQ, P2PK, swap and change); issuer in an enclave; sealed nullifier store | 0003 | Planned | |
 | Receipts v1: Ed25519 over canonical JSON, from the router and from the sidecar | 0004 | Implemented | [`src/receipts/`](../src/receipts), [`sidecar/src/receipts.ts`](../sidecar/src/receipts.ts) |

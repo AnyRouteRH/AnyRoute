@@ -361,9 +361,9 @@ describe("calling an attested route", () => {
     ];
     for (const [body, why] of refused) {
       const r = await chat(body);
-      expect(r.status, why).toBe(409);
+      expect(r.status, why).toBe(503);
       const j = await r.json();
-      expect(j.error.type, why).toBe("lane_unavailable");
+      expect(j.error.type, why).toBe("no_attested_endpoint");
       expect(j.error.message, why).toMatch(/Nothing was sent to any provider and nothing was charged/);
       expect(j.error.metadata.requested, why).toEqual({ disclosure: "none", lane: "attested" });
     }
@@ -378,8 +378,8 @@ describe("calling an attested route", () => {
       const before = { money: await balance(), vendor: await requests("vendor"), policy: await requests("policy"), enclave: await requests("enclave") };
       for (const body of [{ model: "@route/private-chat" }, { model: "@route/private-chat", stream: true }, { model: "@route/private-chat", provider: { lane: "public" } }]) {
         const r = await chat(body);
-        expect(r.status).toBe(409);
-        expect((await r.json()).error.type).toBe("lane_unavailable");
+        expect(r.status).toBe(503);
+        expect((await r.json()).error.type).toBe("no_attested_endpoint");
       }
       // An unrelated call without a lane is unaffected, so the refusal is the route's, not an outage.
       expect((await chat({ model: LLAMA })).status).toBe(200);
@@ -408,7 +408,7 @@ describe("calling an attested route", () => {
       const r = await chat({ model: "@route/private-chat" });
       expect(r.status).toBe(503);
       expect(r.headers.get("retry-after")).toBe("30");
-      expect((await r.json()).error.type).toBe("disclosure_provider_unavailable");
+      expect((await r.json()).error.type).toBe("no_attested_endpoint");
       expect(await balance()).toBe(before.money);
       expect(await requests("vendor")).toBe(before.vendor);
     } finally {
@@ -422,8 +422,8 @@ describe("calling an attested route", () => {
     expect(plain.headers.get("x-anyroute-lane")).toBe("public");
     expect((await plain.json()).provider).toBe("Vendor");
     const asked = await chat({ model: "@route/plain-public", provider: { lane: "attested" } });
-    expect(asked.status).toBe(409); // qwen has no attested provider: refused, not served by the vendor
-    expect((await asked.json()).error.type).toBe("lane_unavailable");
+    expect(asked.status).toBe(503); // qwen has no attested provider: refused, not served by the vendor
+    expect((await asked.json()).error.type).toBe("no_attested_endpoint");
   });
 
   test("a junk lane in a request is still the chat path's 400", async () => {

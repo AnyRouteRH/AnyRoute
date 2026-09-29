@@ -410,6 +410,10 @@ export class TelegramBot {
     // Private mode fails closed: the router refuses instead of sending to a provider that is not attested. Say so plainly.
     if (priv) {
       switch (err?.type) {
+        case "no_attested_endpoint":
+          if (err.metadata && (err.metadata as { reason?: unknown }).reason === "attested_endpoints_down")
+            return `The providers with a proven enclave for ${model} are temporarily unavailable. I did not send your message to any other provider and you were not charged. Please try again in a minute.`;
+          return `No provider with a proven enclave can answer ${model} right now, so I sent nothing and you were not charged. Private mode only uses providers whose attestation the router has verified. Send /models attested to see what can answer now, or /private off to allow any provider.`;
         case "lane_unavailable":
         case "disclosure_unavailable":
           return `No provider with a proven enclave can answer ${model} right now, so I sent nothing and you were not charged. Private mode only uses providers whose attestation the router has verified. Send /models attested to see what can answer now, or /private off to allow any provider.`;

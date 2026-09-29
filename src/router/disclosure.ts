@@ -115,9 +115,14 @@ const LANE_RANK: Record<Lane, number> = { public: 0, attested: 1, unlinkable: 2 
 export type DisclosureRequest = {
   /** The effective ceiling: the strictest of `provider.disclosure`, the header, and what the lane implies. */
   max: DisclosureMax;
-  /** The lane the caller asked for (`public` when unset). */
+  /** The lane the request is served on (`public` when unset, or the request's default lane; see resolveDisclosureRequest). */
   lane: Lane;
+  /** Set when lane "unlinkable" was asked for with an identity-bearing credential and the caller allowed a downgrade. */
+  downgradedFrom?: Lane;
 };
+
+export const LANE_DOWNGRADE_VALUES = ["none", "attested"] as const;
+export type LaneDowngrade = (typeof LANE_DOWNGRADE_VALUES)[number];
 
 function parseOption<T extends string>(values: readonly T[], raw: unknown, name: string): T | null {
   if (raw == null || raw === "") return null;
@@ -138,6 +143,8 @@ export const unlinkableUnavailable = () =>
 export type LaneOptions = {
   /** True when this router runs the Oblivious HTTP gateway and blind tokens (OHTTP_ENABLED). Otherwise `unlinkable` is a 501. */
   unlinkable?: boolean;
+  /** The lane a request that names none is served on (ohttp/lane.ts: "unlinkable" for a relayed blind-token request). Default "public". */
+  defaultLane?: Lane;
 };
 
 /** A lane from a body field, header or query string: null when unset, 400 when unrecognised, 501 for `unlinkable` unless it is served. */
@@ -162,19 +169,36 @@ export function resolveDisclosureRequest(
   const disclosures = [parseOption(DISCLOSURE_MAX_VALUES, prefs?.disclosure, "`provider.disclosure`"), parseOption(DISCLOSURE_MAX_VALUES, headers.disclosureMax, "X-Anyroute-Disclosure-Max")];
   const lanes = [parseLane(prefs?.lane, "`provider.lane`", opts), parseLane(headers.lane, "X-Anyroute-Lane", opts)];
   const strictest = <T extends string>(xs: (T | null)[], rank: Record<T, number>, base: T): T => xs.reduce<T>((a, x) => (x && rank[x] > rank[a] ? x : a), base);
-  const lane = strictest(lanes, LANE_RANK, "public");
+  // A request that names no lane anywhere is served on the default lane; one that names any lane, even "public", is not.
+  const named = lanes.some((l) => l !== null);
+  const lane = named ? strictest(lanes, LANE_RANK, "public") : (opts.defaultLane ?? "public");
   const max = strictest(disclosures, DISCLOSURE_RANK, "any");
   return { max: lane !== "public" ? "none" : max, lane };
+}
+
+/** `provider.lane_downgrade` / `X-Anyroute-Lane-Downgrade`: "attested" allows it, anything unset is "none". 400 when unrecognised. */
+export function parseLaneDowngrade(raw: unknown, header: string | null | undefined): LaneDowngrade {
+  const vals = [parseOption(LANE_DOWNGRADE_VALUES, raw, "`provider.lane_downgrade`"), parseOption(LANE_DOWNGRADE_VALUES, header, "X-Anyroute-Lane-Downgrade")];
+  // Either setting may refuse the downgrade; it is allowed only when one allows it and none refuses it.
+  return vals.includes("none") ? "none" : vals.includes("attested") ? "attested" : "none";
 }
 
 /** The exclusion reason select.ts records for a provider that is in an outage (it is checked after the disclosure filter). */
 export const OUTAGE_REASON = "outage in the last 30s";
 
+/** The error code for a lane request (attested or unlinkable) that no attested endpoint can serve right now. */
+export const NO_ATTESTED_ENDPOINT = "no_attested_endpoint";
+
 /**
  * The refusal for a request that carries a disclosure ceiling or a lane and found no provider, or null when
  * the ceiling was not what blocked it. Never a downgrade: nothing was sent to any provider and nothing was charged.
- *   503  a provider meets the ceiling but every one of them is in an outage right now (retry later)
- *   409  no provider meets the ceiling, though the model has providers that would otherwise serve the request
+ * On lanes "attested" and "unlinkable":
+ *   503 no_attested_endpoint  no endpoint with a fresh, verified attestation can serve it now; `metadata.reason` is
+ *                             "attested_endpoints_down" (some exist but are in an outage; Retry-After is set) or
+ *                             "none_attested" (the model has endpoints, none of them attested)
+ * With only `provider.disclosure`:
+ *   503 disclosure_provider_unavailable  a provider meets the ceiling but every one of them is in an outage (retry later)
+ *   409 disclosure_unavailable           no provider meets the ceiling, though the model has providers that would otherwise serve it
  * `otherwiseServable` answers whether the same request, without the ceiling, would have found a provider.
  */
 export function disclosureRefusal(
@@ -186,6 +210,19 @@ export function disclosureRefusal(
   if (req.max === "any") return null;
   const wanted = req.lane !== "public" ? `lane "${req.lane}"` : `provider.disclosure "${req.max}"`;
   const requested = { disclosure: req.max, lane: req.lane };
+  if (req.lane !== "public") {
+    const down = excluded.some((e) => e.reason === OUTAGE_REASON);
+    if (!down && !otherwiseServable()) return null;
+    return new ApiError(
+      503,
+      down
+        ? `Attested endpoints for ${models.join(", ")} are temporarily unavailable, so ${wanted} cannot be served right now. The request was not routed to any endpoint without a fresh, verified attestation, and nothing was charged. Retry shortly.`
+        : `No endpoint for ${models.join(", ")} that fits this request has a fresh, verified attestation, so ${wanted} cannot be served. Nothing was sent to any provider and nothing was charged. See GET /api/v1/models?lane=attested for models that have one.`,
+      NO_ATTESTED_ENDPOINT,
+      { lane: req.lane, reason: down ? "attested_endpoints_down" : "none_attested", requested, excluded: excluded.slice(0, 50) },
+      down ? { "retry-after": "30" } : undefined,
+    );
+  }
   if (excluded.some((e) => e.reason === OUTAGE_REASON))
     return new ApiError(
       503,
@@ -199,7 +236,7 @@ export function disclosureRefusal(
   return new ApiError(
     409,
     `No provider for ${models.join(", ")} meets ${wanted}: it needs ${needs}. Nothing was sent to any provider and nothing was charged. Relax the option, or see GET /api/v1/models?lane=attested and GET /api/v1/disclosure/{providerId}.`,
-    req.lane !== "public" ? "lane_unavailable" : "disclosure_unavailable",
+    "disclosure_unavailable",
     { requested, excluded: excluded.slice(0, 50) },
   );
 }

@@ -1,7 +1,8 @@
 // Disclosure ceiling and lane. These map onto the router's request options (see the docs, "Route by what a provider
 // discloses"): `provider.disclosure` / `provider.lane` in the body and the X-Anyroute-Disclosure-Max / X-Anyroute-Lane
 // headers. The router applies the stricter of body and header, and never sends a request to a provider that does not
-// qualify. The "unlinkable" lane is not available and the router answers 501; the client passes it through unchanged.
+// qualify. The "unlinkable" lane is served only through an Oblivious HTTP relay with a blind token (501 where the
+// router does not run it); the client passes it through unchanged.
 
 export type DisclosureMax = "none" | "policy" | "any";
 export type Lane = "public" | "attested" | "unlinkable";

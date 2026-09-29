@@ -620,10 +620,10 @@ describe("the unlinkable lane", () => {
     const emb = await h.request("/api/v1/embeddings", { method: "POST", headers: { authorization: authorizationHeader(decodeBase64(token)!) }, json: { model: EMBED, input: "hi", provider: { lane: "unlinkable" } } });
     expect(emb.status).toBe(403);
     expect((await emb.json()).error.type).toBe("unlinkable_requires_relay");
-    // A key holder asking directly gets the same answer, and is told nothing about tokens it did not present.
+    // A key holder asking directly is told the lane takes anonymous payment only: a key names the payer.
     const keyed = await h.request("/api/v1/chat/completions", { method: "POST", headers: api.auth, json: { ...chat, provider: { lane: "unlinkable" } } });
     expect(keyed.status).toBe(403);
-    expect((await keyed.json()).error.type).toBe("unlinkable_requires_relay");
+    expect((await keyed.json()).error.type).toBe("lane_requires_anonymous_auth");
     expect(await spent()).toBe(before.spent);
     expect(await gens()).toBe(before.gens);
     expect(h.mocks.enclave.stats.requests + h.mocks.vendor.stats.requests).toBe(providerCalls); // nothing reached a provider
@@ -652,7 +652,7 @@ describe("the unlinkable lane", () => {
     const providerCalls = h.mocks.enclave.stats.requests + h.mocks.vendor.stats.requests;
     const withKey = await viaRelay(alpha, null, use(0), "/api/v1/chat/completions", [["authorization", `Bearer ${api.secret}`]]);
     expect(withKey.status).toBe(403);
-    expect(withKey.json<{ error: { type: string } }>().error.type).toBe("unlinkable_requires_token");
+    expect(withKey.json<{ error: { type: string } }>().error.type).toBe("lane_requires_anonymous_auth");
     const nothing = await viaRelay(alpha, null, use(0));
     expect(nothing.status).toBe(401);
     expect(nothing.json<{ error: { type: string } }>().error.type).toBe("unlinkable_requires_token");
@@ -660,13 +660,13 @@ describe("the unlinkable lane", () => {
     expect(h.mocks.enclave.stats.requests + h.mocks.vendor.stats.requests).toBe(providerCalls);
   });
 
-  test("with no attested provider the lane is refused (409) and the token is kept", async () => {
+  test("with no attested provider the lane is refused (503 no_attested_endpoint) and the token is kept", async () => {
     const before = { spent: await spent(), gens: await gens() };
     const providerCalls = h.mocks.vendor.stats.requests + h.mocks.enclave.stats.requests;
     const r = await viaRelay(alpha, tokens[0], use(0));
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(503);
     const e = r.json<{ error: { type: string; message: string } }>().error;
-    expect(e.type).toBe("lane_unavailable");
+    expect(e.type).toBe("no_attested_endpoint");
     expect(e.message).toMatch(/lane "unlinkable"/);
     expect(e.message).toMatch(/Nothing was sent to any provider and nothing was charged/);
     expect(await spent()).toBe(before.spent);
@@ -716,10 +716,42 @@ describe("the unlinkable lane", () => {
     expect(viaBeta.status).toBe(200);
   });
 
-  test("a token request through a relay that does not ask for the lane is an ordinary blind request", async () => {
+  test("a token request through an independent relay that names no lane is served on the unlinkable lane; naming public opts out", async () => {
+    const before = { vendor: h.mocks.vendor.stats.requests, enclave: h.mocks.enclave.stats.requests };
     const r = await viaRelay(alpha, tokens[4], { ...chat });
     expect(r.status).toBe(200);
-    expect(r.json<any>().receipt.payload.lane).toBe("public");
+    expect(r.headers.get("x-anyroute-lane")).toBe("unlinkable");
+    expect(r.json<any>().receipt.payload).toMatchObject({ lane: "unlinkable", disclosure: "attested", provider: "enclave", payer: null });
+    expect(h.mocks.vendor.stats.requests).toBe(before.vendor);
+    // Naming a lane, even public, is what the request gets: the default applies only when none is named.
+    const pub = await viaRelay(alpha, tokens[8], { ...chat, provider: { lane: "public", only: ["vendor"] } });
+    expect(pub.status).toBe(200);
+    expect(pub.json<any>().receipt.payload).toMatchObject({ lane: "public", provider: "vendor" });
+    // A request that could not qualify keeps the public default: through the gateway operator's own relay, or with a key.
+    const own = await viaRelay(self, tokens[9], { ...chat, provider: { only: ["vendor"] } });
+    expect(own.status).toBe(200);
+    expect(own.json<any>().receipt.payload.lane).toBe("public");
+    const keyed = await viaRelay(alpha, null, { ...chat, provider: { only: ["vendor"] } }, "/api/v1/chat/completions", [["authorization", `Bearer ${api.secret}`]]);
+    expect(keyed.status).toBe(200);
+    expect(keyed.json<any>().receipt.payload.lane).toBe("public");
+  });
+
+  test("an API key on the unlinkable lane is served on the attested lane only when the request allows the downgrade", async () => {
+    const before = h.mocks.vendor.stats.requests;
+    const asKey = (extra: Record<string, unknown>, headers: HeaderList = []) =>
+      viaRelay(alpha, null, { ...chat, provider: { lane: "unlinkable", ...extra } }, "/api/v1/chat/completions", [["authorization", `Bearer ${api.secret}`], ...headers]);
+    const refused = await asKey({});
+    expect(refused.status).toBe(403);
+    expect(refused.json<{ error: { type: string; metadata: Record<string, unknown> } }>().error).toMatchObject({ type: "lane_requires_anonymous_auth", metadata: { downgrade: "attested" } });
+    for (const r of [await asKey({ lane_downgrade: "attested" }), await asKey({}, [["x-anyroute-lane-downgrade", "attested"]])]) {
+      expect(r.status).toBe(200);
+      expect(r.headers.get("x-anyroute-lane")).toBe("attested");
+      expect(r.json<any>().receipt.payload).toMatchObject({ lane: "attested", disclosure: "attested", provider: "enclave" });
+    }
+    // Either setting may refuse it; an unknown value is a 400.
+    expect((await asKey({ lane_downgrade: "attested" }, [["x-anyroute-lane-downgrade", "none"]])).status).toBe(403);
+    expect((await asKey({ lane_downgrade: "public" })).status).toBe(400);
+    expect(h.mocks.vendor.stats.requests).toBe(before); // never the public provider
   });
 
   test("streaming, council and dual verification are refused without spending the token", async () => {

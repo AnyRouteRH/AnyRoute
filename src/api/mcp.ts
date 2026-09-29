@@ -353,6 +353,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
   const chatFailure = (e: ApiError): Json => {
     const receipt = typeof e.metadata?.receipt_id === "string" ? { receipt_id: e.metadata.receipt_id } : {};
     switch (e.type) {
+      case "no_attested_endpoint":
       case "lane_unavailable":
       case "disclosure_unavailable":
         return { hint: "Call list_attested_models to see which models have a proven enclave right now, or leave lane and disclosure unset (and drop ?lane=attested from the server URL) to allow any provider." };
