@@ -448,3 +448,81 @@ describe("a day-zero candidate's repository holds a model back until it is serva
     expect((await chat(PLAIN.slug)).status).toBe(200);
   });
 });
+
+// ---- council and dual verification reach providers through the same rule -----------------------------------
+
+describe("council and dual verification", () => {
+  const A = { id: "a-up", slug: "lanetest/council-a-abliterated", prompt: "0.0000001", completion: "0.0000004" };
+  const B = { id: "b-up", slug: "lanetest/council-b", prompt: "0.0000001", completion: "0.0000004" };
+  const J = { id: "j-up", slug: "lanetest/council-judge", prompt: "0.0000002", completion: "0.0000008" };
+  const verdict = (prompt: string) => (prompt.includes("Valid winners") ? '{"winner":"A","reason":"first"}' : "answer");
+  let c: Harness;
+  let key: Record<string, string>;
+  const ask = (body: Record<string, unknown>) => c.request("/api/v1/chat/completions", { method: "POST", headers: key, json: { messages: [{ role: "user", content: "which one?" }], max_tokens: 60, ...body } });
+  const served = (id: string) => c.mocks[id].stats.requests;
+
+  beforeAll(async () => {
+    c = await startRouter({
+      env: { ANYROUTE_FEATURE_COUNCIL: "true" },
+      providers: [
+        { id: "vendor", name: "Vendor", models: [A, B, J], reply: verdict },
+        { id: "enc1", name: "Enc1", models: [A, B], tee: "dev", classifier: true, reply: verdict },
+        { id: "enc2", name: "Enc2", models: [A, B], tee: "dev", classifier: true, reply: verdict },
+      ],
+    });
+    key = (await c.fundedKey(20n)).auth;
+    for (const id of ["enc1", "enc2"]) {
+      const r = await c.request(`/api/v1/disclosure/${id}`, { method: "PUT", headers: admin, json: { retention: { value: "attested", ...claim }, legal_hold: { active: false, ...claim } } });
+      expect(r.status).toBe(200);
+    }
+    // B carries no hint in its name: it is declared.
+    expect((await c.request(`/api/v1/models/${B.slug}/lane`, { method: "PUT", headers: admin, json: { variant: "native_low_refusal", license: "mit", base_model: "lab/base" } })).status).toBe(200);
+    await runAttestor(c.ctx);
+    await c.ctx.catalog.refresh();
+  });
+  afterAll(async () => c.close());
+
+  test("council members that are restricted variants are served by qualifying providers only", async () => {
+    const vendorBefore = served("vendor");
+    const r = await ask({ model: "anyroute/council", council: { models: [A.slug, B.slug], judge: J.slug } });
+    expect(r.status).toBe(200);
+    const j = await r.json();
+    expect(j.council.members.map((m: any) => [m.model, m.status])).toEqual([[A.slug, "ok"], [B.slug, "ok"]]);
+    for (const m of j.council.members) expect(["enc1", "enc2"]).toContain(m.provider);
+    expect(served("vendor") - vendorBefore).toBe(1); // the judge, an ordinary model, and nothing else
+  });
+
+  test("with no qualifying provider a council is refused before any member is called", async () => {
+    await c.ctx.db.update(providers).set({ classifierEnabled: false }).where(eq(providers.id, "enc1"));
+    await c.ctx.db.update(providers).set({ classifierEnabled: false }).where(eq(providers.id, "enc2"));
+    await c.ctx.catalog.refresh();
+    const before = [served("vendor"), served("enc1"), served("enc2")];
+    const r = await ask({ model: "anyroute/council", council: { models: [A.slug, B.slug], judge: J.slug } });
+    expect(r.status).toBe(404);
+    expect((await r.json()).error.type).toBe("no_providers");
+    expect([served("vendor"), served("enc1"), served("enc2")]).toEqual(before);
+    await attestAll();
+  });
+
+  const attestAll = async () => {
+    await runAttestor(c.ctx);
+    await c.ctx.catalog.refresh();
+  };
+
+  test("dual verification runs both legs on qualifying providers, and needs two of them", async () => {
+    const vendorBefore = served("vendor");
+    const ok = await ask({ model: A.slug, verify: "dual" });
+    expect(ok.status).toBe(200);
+    expect([...(await ok.json()).verification.providers].sort()).toEqual(["enc1", "enc2"]);
+    expect(served("vendor")).toBe(vendorBefore);
+
+    // One qualifying provider is not two: 409, and the vendor is not used to make up the pair.
+    await c.ctx.db.update(providers).set({ classifierEnabled: false }).where(eq(providers.id, "enc2"));
+    await c.ctx.catalog.refresh();
+    const before = [served("vendor"), served("enc1"), served("enc2")];
+    const one = await ask({ model: A.slug, verify: "dual" });
+    expect(one.status).toBe(409);
+    expect((await one.json()).error.type).toBe("verification_unavailable");
+    expect([served("vendor"), served("enc1"), served("enc2")]).toEqual(before);
+  });
+});

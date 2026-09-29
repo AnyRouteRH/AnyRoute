@@ -456,6 +456,29 @@ describe("linking, evaluating, approving, promoting", () => {
     expect((await api(`/api/v1/lane/candidates/${id}/promote`, { method: "POST" })).status).toBe(200);
   });
 
+  test("the uploader of a promoted model can claim its royalty with a published challenge", async () => {
+    const files: Record<string, string> = {};
+    h.ctx.hfFetch = fakeHub([{ ...REPOS[0], files }]).f;
+    const issued = await h.request("/api/v1/creators/claims", { method: "POST", json: { model: DZ.slug, address: "0x00000000000000000000000000000000000a11ce" } });
+    expect(issued.status).toBe(201);
+    const c = (await issued.json()).data;
+    expect(c).toMatchObject({ hugging_face_id: "alice/base-abliterated", handle: "alice", royalty_bps: 500 });
+    expect((await h.request(`/api/v1/creators/claims/${c.id}/verify`, { method: "POST" })).status).toBe(400); // not published yet
+    files["anyroute-claim.txt"] = `${c.challenge}\n`;
+    const done = await h.request(`/api/v1/creators/claims/${c.id}/verify`, { method: "POST" });
+    expect(done.status).toBe(200);
+    const [m] = await h.ctx.db.select().from(models).where(eq(models.id, DZ.slug));
+    expect(m).toMatchObject({ creator: "0x00000000000000000000000000000000000a11ce", royaltyBps: 500 });
+    const listed = ((await (await h.request("/api/v1/models?variant=abliterated")).json()) as { data: any[] }).data[0];
+    expect(listed).toMatchObject({ creator: "0x00000000000000000000000000000000000a11ce", royalty_bps: 500, creator_handle: "alice" });
+    // Calls to the model still go to the attested provider only, and now carry the royalty.
+    const r = await chat(DZ.slug);
+    expect(r.status).toBe(200);
+    const j = await r.json();
+    expect(j.provider).toBe("Enclave");
+    expect(Number(j.usage.cost_details.royalty)).toBeGreaterThan(0);
+  });
+
   test("a candidate that stops passing loses its approval and stops being served", async () => {
     setBehaviour("refusing");
     const c = (await (await api(`/api/v1/lane/candidates/${id}/evaluate`, { method: "POST" })).json()).data;
