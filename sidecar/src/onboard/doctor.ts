@@ -10,7 +10,7 @@ import {
   type RouterAttestation,
 } from "../../../packages/client/src/index.ts";
 import { nodeAttestFetcher } from "../../../packages/client/src/node.ts";
-import { sha256Hex } from "../util.ts";
+import { canonicalJson, sha256Hex } from "../util.ts";
 import { endpointOrigin } from "./spec.ts";
 
 // `doctor`: checks a running sidecar the way a router or a user's client would, using the client SDK's own checks, and says
@@ -131,7 +131,15 @@ export async function runDoctor(o: DoctorOptions): Promise<DoctorReport> {
       expected: { modelDigest: o.expected?.modelDigest, imageDigest: o.expected?.imageDigest, composeHash: o.expected?.composeHash },
     },
   );
-  for (const c of ev.checks) {
+  // Simulated evidence the caller chose to accept: the SDK cannot parse a quote that is not there, so its verdict on these three
+  // checks is replaced by doctor's own layout check (see simulatedLayoutChecks).
+  const devBoot = boot.dev === true || boot.evidence?.dev === true || boot.evidence?.format === "dev-simulated";
+  const simulatedOverride = devBoot && o.allowSimulated ? simulatedLayoutChecks(boot, fresh) : new Map<string, { status: DoctorStatus; detail: string }>();
+  const evChecks = ev.checks.map((c) => {
+    const over = simulatedOverride.get(c.id);
+    return over ? { ...c, status: over.status === "pass" ? ("pass" as const) : ("fail" as const), detail: over.detail } : c;
+  });
+  for (const c of evChecks) {
     if (c.id.startsWith("router.") && !routerRecord) continue; // nothing to judge without a record
     if (c.id === "expected.model" && c.status === "pass") {
       add(c.id, "pass", TITLES[c.id], `${short(ev.bound?.modelDigest ?? "")} equals the digest of ${o.expected?.modelDigestSource ?? "the weights you hashed"}`);
@@ -168,7 +176,7 @@ export async function runDoctor(o: DoctorOptions): Promise<DoctorReport> {
 
   // 5. Everything below talks to the sidecar over the certificate it presented. A request that carries the router key goes
   //    out only when the evidence proves that certificate belongs to the attested instance.
-  const transportOk = !!pem && TRANSPORT_CHECKS.every((id) => ev.checks.find((c) => c.id === id)?.status === "pass") && (ev.simulated ? o.allowSimulated === true : true);
+  const transportOk = !!pem && TRANSPORT_CHECKS.every((id) => evChecks.find((c) => c.id === id)?.status === "pass") && (ev.simulated ? o.allowSimulated === true : true);
   const call = (path: string, init: RequestInit = {}) =>
     fetch(`${origin}${path}`, { ...init, signal: init.signal ?? AbortSignal.timeout(30_000), redirect: "error", tls: { ca: pem!, checkServerIdentity: () => undefined } } as RequestInit);
 
@@ -257,15 +265,66 @@ export async function runDoctor(o: DoctorOptions): Promise<DoctorReport> {
       }
       const envelope = JSON.parse(Buffer.from(header, "base64url").toString("utf8")) as ReceiptEnvelope;
       const v = await verifySidecarReceipt(envelope, bound!);
-      const problems = v.checks.filter((c) => c.status === "fail").map((c) => c.detail);
+      // A receipt from a simulated deployment says so (dev: true). When the caller accepted simulated evidence, that is what it
+      // must say: the SDK's "not marked simulated" check is then inverted, and every other check stands.
+      const simulatedOk = devBoot && o.allowSimulated === true;
+      const problems = v.checks.filter((c) => c.status === "fail" && !(simulatedOk && c.id === "sidecar.not_dev")).map((c) => c.detail);
+      if (simulatedOk && envelope.payload.dev !== true) problems.push("the evidence is simulated but the receipt is not marked simulated");
+      const signed = v.checks.some((c) => c.id === "signature" && c.status === "pass");
       if (envelope.payload.req_hash !== `sha256:${sha256Hex(body)}`) problems.push("req_hash is not the SHA-256 of the request we sent");
       if (envelope.payload.resp_hash !== `sha256:${sha256Hex(bytes)}`) problems.push("resp_hash is not the SHA-256 of the response we received");
-      if (problems.length || !v.valid) add("receipt", "fail", "a response carries a valid signed receipt", problems.join("; ") || "the signature does not verify");
-      else add("receipt", "pass", "a response carries a valid signed receipt", `signed by the attested key ${envelope.key_id}; it names this attestation and model digest, and its request and response hashes match the bytes exchanged`);
+      if (problems.length || !signed) add("receipt", "fail", "a response carries a valid signed receipt", problems.join("; ") || "the signature does not verify");
+      else add("receipt", "pass", "a response carries a valid signed receipt", `${simulatedOk ? "SIMULATED (the receipt is marked simulated, as the evidence is): " : ""}signed by the attested key ${envelope.key_id}; it names this attestation and model digest, and its request and response hashes match the bytes exchanged`);
     } catch (e) {
       add("receipt", "fail", "a response carries a valid signed receipt", fromDetail(e));
     }
   }
+}
+
+/**
+ * Simulated (development) evidence has no hardware quote for the client SDK to parse, so the SDK cannot judge its report data
+ * or its fresh quote, and reports them as not applicable or failed. The development provider does follow the real layout
+ * (report_data = sha256(canonical_json(bindings)) || nonce, with a zero nonce at boot), so with --allow-simulated doctor
+ * checks that layout itself. What passes here shows the sidecar binds our nonce the way a real one does. It does not show that
+ * any enclave is live: nothing is behind it, and every detail says so.
+ */
+export function simulatedLayoutChecks(boot: AttestDocument, fresh: { doc: AttestDocument; nonceHex: string } | null): Map<string, { status: DoctorStatus; detail: string }> {
+  const out = new Map<string, { status: DoctorStatus; detail: string }>();
+  const NOTE = "SIMULATED: no hardware is behind this evidence. ";
+  const digestOf = (d: AttestDocument) => sha256Hex(canonicalJson(d.bindings ?? {}));
+  const bodyOf = (d: AttestDocument) => {
+    try {
+      return Buffer.from(String(d.evidence?.quote ?? ""), "hex").toString("utf8");
+    } catch {
+      return "";
+    }
+  };
+  const consistent = (d: AttestDocument, nonceHex: string) => d.evidence?.dev === true && String(d.evidence.report_data ?? "").toLowerCase() === digestOf(d) + nonceHex && bodyOf(d) === `dev-simulated:${d.evidence.report_data}`;
+
+  const zero = "0".repeat(64);
+  out.set(
+    "provider.report_data",
+    consistent(boot, zero)
+      ? { status: "pass", detail: `${NOTE}The report data is SHA-256(bindings) followed by a zero nonce, the layout a real quote carries, so it names these keys and digests.` }
+      : { status: "fail", detail: `${NOTE}The report data is not SHA-256(bindings) followed by a zero nonce, or the simulated quote does not carry it.` },
+  );
+  const ref = String(boot.attestation_ref ?? "").toLowerCase();
+  const quoteHash = sha256Hex(Buffer.from(String(boot.evidence?.quote ?? ""), "hex"));
+  out.set("provider.ref_is_quote_hash", quoteHash === ref ? { status: "pass", detail: `${NOTE}attestation_ref equals SHA-256 of the simulated quote.` } : { status: "fail", detail: "attestation_ref is not the SHA-256 of the quote in the document." });
+
+  if (fresh) {
+    const { doc: f, nonceHex } = fresh;
+    const n = nonceHex.toLowerCase();
+    const echoed = String(f.evidence?.nonce ?? "").replace(/^0x/, "").toLowerCase() === n;
+    const same = canonicalJson(f.bindings ?? {}) === canonicalJson(boot.bindings ?? {}) && f.attestation_ref === boot.attestation_ref;
+    out.set(
+      "provider.fresh_quote",
+      echoed && same && consistent(f, n)
+        ? { status: "pass", detail: `${NOTE}A fresh document for a nonce this tool chose echoes it, with report data SHA-256(bindings) followed by that nonce and the same bindings as at boot. This shows the sidecar binds a caller's nonce like a real one; it does not show an enclave is live.` }
+        : { status: "fail", detail: `${NOTE}The fresh document does not carry our nonce in the report data, or its bindings differ from the boot document's.` },
+    );
+  }
+  return out;
 }
 
 const MARK: Record<DoctorStatus, string> = { pass: "PASS", fail: "FAIL", warn: "WARN", skip: "SKIP" };

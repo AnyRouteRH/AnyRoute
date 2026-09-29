@@ -178,10 +178,46 @@ describe("simulated evidence", () => {
   });
 
   test("is accepted only when asked for, and then labelled", async () => {
-    const s = await sidecar({ dev: true });
+    const s = await sidecar({ dev: true, raw: { compose: { hash: COMPOSE } } });
     const r = await runDoctor(opts(s, { allowSimulated: true }));
     expect(status(r, "provider.simulated")).toBe("pass");
     expect(r.checks.find((c) => c.id === "provider.simulated")!.detail).toMatch(/SIMULATED/);
+    // the key is sent over the proven certificate, and a receipt that says it is simulated is accepted as such
+    expect(r.checks.filter((c) => c.status === "fail")).toEqual([]);
+    expect(r.ok).toBe(true);
+    for (const id of ["provider.report_data", "provider.fresh_quote", "auth.key", "receipt"]) expect({ id, status: status(r, id) }).toEqual({ id, status: "pass" });
+    expect(r.checks.find((c) => c.id === "receipt")!.detail).toMatch(/^SIMULATED/);
+  });
+
+  test("a simulated fresh document that does not carry our nonce fails", async () => {
+    const s = await sidecar({ dev: true, raw: { compose: { hash: COMPOSE } } });
+    const { nodeAttestFetcher } = await import("../../packages/client/src/node.ts");
+    const real = nodeAttestFetcher();
+    const boot = (await real(`${s.base}/attest`)).json;
+    // answers a nonce request with the boot document, as a sidecar that ignores nonces would
+    const replay = async (url: string) => ({ ...(await real(url.replace(/\?nonce=.*/, ""))), json: boot });
+    const r = await runDoctor(opts(s, { allowSimulated: true, attestFetcher: replay as never }));
+    expect(status(r, "provider.fresh_quote")).toBe("fail");
+    expect(r.ok).toBe(false);
+    expect(r.checks.find((c) => c.id === "provider.fresh_quote")!.detail).toMatch(/does not carry our nonce/);
+  });
+
+  test("a simulated report_data that is not SHA-256(bindings) fails", async () => {
+    const s = await sidecar({ dev: true, raw: { compose: { hash: COMPOSE } } });
+    const { nodeAttestFetcher } = await import("../../packages/client/src/node.ts");
+    const real = nodeAttestFetcher();
+    const tamper = async (url: string) => {
+      const r = await real(url);
+      const doc = JSON.parse(JSON.stringify(r.json));
+      if (!doc.evidence.nonce) {
+        doc.evidence.report_data = "00".repeat(64);
+        doc.evidence.quote = Buffer.from(`dev-simulated:${doc.evidence.report_data}`).toString("hex");
+      }
+      return { ...r, json: doc };
+    };
+    const r = await runDoctor(opts(s, { allowSimulated: true, attestFetcher: tamper as never }));
+    expect(status(r, "provider.report_data")).toBe("fail");
+    expect(r.ok).toBe(false);
   });
 });
 

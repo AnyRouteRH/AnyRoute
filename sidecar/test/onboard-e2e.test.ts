@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { DevAttestationProvider } from "../src/attestation/dev.ts";
 import { boot } from "../src/boot.ts";
 import { parseConfig } from "../src/config.ts";
 import { main } from "../src/cli.ts";
@@ -8,7 +9,7 @@ import { FILES } from "../src/onboard/state.ts";
 import { startServer } from "../src/server.ts";
 import { silentLogger } from "../src/util.ts";
 import { cleanup, dstackProvider, startUpstream, tmpDir } from "./helpers.ts";
-import { gpuFlags, scriptedIo, weightsDir } from "./onboard-helpers.ts";
+import { gpuFlags, scriptedIo, weightsDir, weightsFile } from "./onboard-helpers.ts";
 
 afterEach(cleanup);
 const servers: { stop(force?: boolean): unknown }[] = [];
@@ -171,5 +172,86 @@ describe("apply", () => {
     expect(code).toBe(0);
     expect(stub.calls).toHaveLength(1);
     expect(stub.calls[0].body).toMatchObject({ id: "demo-model", base_url: "https://abc-8443s.gw.example/v1", contact: "ops@example.org", datacenters: ["US"], tee: { kind: "tdx", attestation_url: "https://abc-8443s.gw.example/attest" } });
+  });
+});
+
+describe("a development sidecar started from a generated configuration", () => {
+  /**
+   * The flow a model host follows on a machine with no TDX: `init` for a TDX host, then the generated sidecar.yaml run in
+   * development mode (simulated evidence, a mock model server), then `doctor --allow-simulated`. Everything doctor can
+   * establish about simulated evidence must pass, labelled simulated; nothing may be skipped except what simulated
+   * evidence cannot have (a hardware quote, Intel's signature), registers nobody supplied, and the router.
+   */
+  async function devDeployment() {
+    const weights = weightsFile("tiny-q4.gguf");
+    const out = join(tmpDir(), "provider");
+    const tarball = new TextEncoder().encode("a tarball");
+    const fetchImpl = (async () => new Response(tarball)) as unknown as typeof fetch;
+    const io = scriptedIo();
+    expect(await main(["init", "--target", "tdx-host", "--server", "llamacpp", "--fetch-source-hash", "--yes", "--weights", weights, "--hostname", "localhost", "--id", "dev-demo", "--out", out], { io, fetchImpl })).toBe(0);
+
+    const generated = Bun.YAML.parse(readFileSync(join(out, FILES.yaml), "utf8")) as Record<string, any>;
+    expect(generated.attestation.provider).toBe("tdx");
+    const upstream = startUpstream();
+    const cfg = parseConfig(
+      {
+        ...generated,
+        model: { ...generated.model, path: weights },
+        upstream: { ...generated.upstream, base_url: upstream.url },
+        server: { ...generated.server, hostnames: ["localhost", "127.0.0.1"] },
+        // the container path of the mounted compose file becomes the file init wrote
+        compose: { file: join(out, FILES.compose) },
+        attestation: { provider: "dev" },
+      },
+      { SIDECAR_DEV_ATTESTATION: "true" },
+    );
+    const rt = await boot(cfg, { env: { SIDECAR_DEV_ATTESTATION: "true" }, logger: silentLogger, provider: new DevAttestationProvider() });
+    const server = startServer({ ...rt, cfg: { ...rt.cfg, server: { ...rt.cfg.server, host: "127.0.0.1", port: 0 } } });
+    servers.push(server);
+    return { out, base: `https://localhost:${server.port}` };
+  }
+
+  test("doctor --allow-simulated passes every check simulated evidence can pass, labelled simulated, and uses the key", async () => {
+    const d = await devDeployment();
+    const io = scriptedIo();
+    const code = await main(["doctor", "--dir", d.out, "--url", d.base, "--key-file", join(d.out, FILES.key), "--allow-simulated"], { io });
+    const text = io.outText();
+    expect(text).not.toMatch(/^FAIL/m);
+    expect(code).toBe(0);
+    for (const line of ["PASS  a fresh quote for our nonce (the enclave is live)", "PASS  the router key is accepted", "PASS  a response carries a valid signed receipt", "PASS  the quote commits to the keys and digests", "PASS  compose hash is the one you expect"]) expect(text).toContain(line);
+    // labelled: what passed is the layout, and the text says there is no hardware behind it
+    const json = scriptedIo();
+    expect(await main(["doctor", "--dir", d.out, "--url", d.base, "--key-file", join(d.out, FILES.key), "--allow-simulated", "--json"], { io: json })).toBe(0);
+    const report = JSON.parse(json.outText()) as { ok: boolean; checks: { id: string; status: string; detail: string }[] };
+    const by = Object.fromEntries(report.checks.map((c) => [c.id, c]));
+    for (const id of ["provider.simulated", "provider.report_data", "provider.ref_is_quote_hash", "provider.fresh_quote"]) {
+      expect({ id, status: by[id].status }).toEqual({ id, status: "pass" });
+      expect(by[id].detail).toMatch(/SIMULATED/);
+    }
+    expect(report.checks.filter((c) => c.status === "skip").map((c) => c.id).sort()).toEqual(["expected.mrtd", "expected.rtmr3", "provider.quote", "quote.signature", "router.record"]);
+  });
+
+  test("without --allow-simulated it fails, says why, and the key is never sent", async () => {
+    const d = await devDeployment();
+    const io = scriptedIo();
+    expect(await main(["doctor", "--dir", d.out, "--url", d.base, "--key-file", join(d.out, FILES.key)], { io })).toBe(1);
+    expect(io.outText()).toMatch(/FAIL  evidence is from real hardware/);
+    expect(io.outText()).toMatch(/SKIP  the router key is accepted\n\s+not sent/);
+  });
+
+  test("simulated evidence whose fresh document does not bind our nonce still fails", async () => {
+    const d = await devDeployment();
+    const boot = (await (await fetch(`${d.base}/attest`, { tls: { rejectUnauthorized: false } } as never)).json()) as any;
+    const { runDoctor } = await import("../src/onboard/doctor.ts");
+    const { nodeAttestFetcher } = await import("../../packages/client/src/node.ts");
+    const real = nodeAttestFetcher();
+    // A sidecar that answers a nonce request with the boot document unchanged.
+    const replay = async (url: string) => {
+      const r = await real(url.replace(/\?nonce=.*/, ""));
+      return { ...r, json: boot };
+    };
+    const r = await runDoctor({ url: d.base, allowSimulated: true, attestFetcher: replay as never });
+    expect(r.checks.find((c) => c.id === "provider.fresh_quote")?.status).toBe("fail");
+    expect(r.ok).toBe(false);
   });
 });

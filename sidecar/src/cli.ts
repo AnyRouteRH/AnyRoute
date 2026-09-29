@@ -176,7 +176,7 @@ export async function cmdDoctor(argv: string[], s: Streams): Promise<number> {
   const report = await runDoctor({
     url,
     key,
-    expected: { modelDigest, modelDigestSource: source, imageDigest: m ? m.sidecar.runtime_image_digest : undefined, composeHash: flags.str("compose-hash") },
+    expected: { modelDigest, modelDigestSource: source, imageDigest: m ? m.sidecar.runtime_image_digest : undefined, composeHash: flags.str("compose-hash") ?? (m?.target === "tdx-host" ? `sha256:${m.compose_sha256}` : undefined) },
     allowlist,
     keySha256: m?.router_key_sha256,
     model: flags.str("model") ?? m?.model.served_name,

@@ -120,8 +120,13 @@ Checks a running sidecar as a client would, with the checks in `packages/client`
   attestation and model digest, whose request and response hashes are those of the bytes exchanged.
 * With `--router` and `--id`: the router's own record of the provider, when it has one.
 
+On a `tdx-host` the compose hash the sidecar bound must equal the SHA-256 of the compose file `init` wrote.
+
 The router key is sent only over a certificate the evidence proves belongs to the attested instance. Simulated evidence
-is refused unless you pass `--allow-simulated`. `doctor` does not repeat Intel's signature check on the quote (the router
+is refused unless you pass `--allow-simulated`. Then a development sidecar's evidence is checked by layout only (report
+data is SHA-256(bindings) followed by the nonce, the attestation reference is the simulated quote's hash, the fresh
+document echoes the nonce, receipts are marked simulated), and every such pass says SIMULATED: it shows the layout, not
+that any enclave is live. `doctor` does not repeat Intel's signature check on the quote (the router
 does; it reports that as skipped), and exits 1 if anything failed.
 
 ### `apply`
