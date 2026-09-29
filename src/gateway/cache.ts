@@ -6,7 +6,10 @@ import { canonicalJson, decrypt, encrypt, sha256 } from "../lib/util.ts";
 // "semantic" is a lexical near-duplicate match (hashed unigram+bigram cosine), not an LLM embedding.
 
 const DIMS = 1024;
-const IGNORED = new Set(["stream", "stream_options", "user", "cache", "provider", "usage", "debug", "models", "route"]);
+// Only fields that never reach the provider (or are folded into the caller's scope) may be ignored.
+// `user` is forwarded upstream as the end-user identity, so it stays in the key; the caller's
+// scope also carries it, which keeps semantic matches within one end user.
+const IGNORED = new Set(["stream", "stream_options", "cache", "provider", "usage", "debug", "models", "route"]);
 
 export type CacheMode = "exact" | "semantic";
 type Entry = { scope: string; model: string; vector?: Float32Array; payload: string; expires: number; upstream: string };

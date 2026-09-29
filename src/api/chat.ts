@@ -179,10 +179,12 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     billing = { mode: "per_call", accountId: wallet.accountId, payer: wallet.wallet };
   }
 
-  // ---- 4. Cache (opt-in, never across accounts) ---------------------------------------------------
+  // ---- 4. Cache (opt-in, never across accounts, keys, policies or end users) ----------------------
   const cacheSpec = (body.cache as { mode?: CacheMode; ttl?: number } | undefined) ?? (c.req.header("x-anyroute-cache") ? { mode: c.req.header("x-anyroute-cache") as CacheMode } : undefined);
   const cacheMode: CacheMode | null = cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic" ? cacheSpec.mode : null;
-  const cacheScope = billing ? `${billing.accountId}:policy-v2:${sha256(canonicalJson({ key: key?.keyHash ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })) }))}` : "";
+  // `user` is forwarded to the provider as the end-user identity; a response made for one end user
+  // must never be replayed to another behind the same key (exact or semantic).
+  const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })) }))}` : "";
   if (cacheMode && billing && !stream) {
     const hit = await ctx.cache.get(cacheMode, cacheScope, body, ctx.cfg.gateway.semanticThreshold);
     if (hit) return cachedResponse(ctx, c, { body, hit, billing, model: primary, t0, bodySha });
