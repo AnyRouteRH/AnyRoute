@@ -2,11 +2,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
 import { NVDA, fakeTx, sse, startRouter, type Harness } from "./helpers.ts";
-import { balanceOf, verifyInvariants } from "../src/ledger/ledger.ts";
-import { accounts, keys, paywithDebts, paywithSessions, quotes, spentRoots } from "../src/db/schema.ts";
+import { decodeFunctionData } from "viem";
+import { balanceOf, post, verifyInvariants } from "../src/ledger/ledger.ts";
+import { accounts, keys, kv, paywithDebts, paywithSessions, quotes, spentRoots } from "../src/db/schema.ts";
 import { runPaywithAggregator, clearFairCache } from "../src/pay/paywith.ts";
-import { postSpentRoot, computeSpentLeaves } from "../src/services/settlement.ts";
-import { MerkleTree, spentLeaf } from "../src/receipts/merkle.ts";
+import { postSpentRoot, computeSpentLeaves, withdrawableFor } from "../src/services/settlement.ts";
+import { SpentTree } from "../src/receipts/merkle.ts";
+import { CreditsAbi } from "../src/chain/abis.ts";
+import { reconcileSpentRoots } from "../src/services/root-completeness.ts";
 import { recordEvents, processEvents } from "../src/chain/indexer.ts";
 import { requestHash } from "../src/api/chat.ts";
 import { picoToUsdg, usdgToPico } from "../src/lib/money.ts";
@@ -213,11 +216,20 @@ describe("self-custodial withdrawals: spent roots", () => {
     expect(h.chain.spentRoots.at(-1)!.root).toBe(r1.root as `0x${string}`);
     // The proof endpoint yields the inputs to Credits.finalizeWithdrawal.
     const p = await (await h.request("/api/v1/credits/withdrawal-proof", { headers: a.auth })).json();
+    expect(p.data.kind).toBe("inclusion");
     expect(BigInt(p.data.cumulative_spent_usdg)).toBe(spentA);
-    expect(MerkleTree.verify(spentLeaf(a.chainKeyHash as `0x${string}`, spentA), p.data.proof, p.data.root)).toBe(true);
+    const inclusion = { kind: "inclusion", keyHash: a.chainKeyHash as `0x${string}`, cumulativeSpent: spentA, index: p.data.index, leafCount: p.data.leaf_count, proof: p.data.proof } as const;
+    expect(SpentTree.verify(p.data.root, inclusion)).toBe(true);
+    const call = decodeFunctionData({ abi: CreditsAbi, data: p.data.transactions[0].data });
+    expect(call.functionName).toBe("finalizeWithdrawal");
+    expect(call.args).toEqual([a.chainKeyHash, spentA, BigInt(p.data.index), BigInt(p.data.leaf_count), p.data.proof]);
+    // The stored leaves are the sorted tree the posted root commits to.
+    const [stored] = await h.ctx.db.select().from(spentRoots).where(eq(spentRoots.epoch, r1.epoch!));
+    const storedLeaves = stored.leaves as [string, string][];
+    for (let i = 1; i < storedLeaves.length; i++) expect(BigInt(storedLeaves[i - 1][0]) < BigInt(storedLeaves[i][0])).toBe(true);
+    expect(new SpentTree(storedLeaves.map(([k, s]) => [k, BigInt(s)] as const)).root).toBe(stored.root as `0x${string}`);
     // An off-chain refund must not make on-chain funds withdrawable twice (ratchet keeps U_on).
     const [key] = await h.ctx.db.select().from(keys).where(eq(keys.keyHash, a.hash));
-    const { post } = await import("../src/ledger/ledger.ts");
     await post(h.ctx.db, { accountId: key.accountId, amount: usdgToPico(1_000_000n), kind: "refund", ref: "test-refund" });
     await h.request("/api/v1/chat/completions", { method: "POST", headers: a.auth, json: { model: LLAMA, messages: [{ role: "user", content: "more" }] } });
     const r2 = await postSpentRoot(h.ctx);
@@ -284,6 +296,76 @@ describe("self-custodial withdrawals: spent roots", () => {
       expect(posted.root).toBe(candidate.root);
       expect(posted.epoch).toBe(candidate.epoch);
     } finally { h.chain.approveSpentRoots = true; }
+  });
+
+  test("a key without a leaf gets an absence proof: its adjacent leaves and finalizeWithdrawalAbsent calldata", async () => {
+    await h.fundedKey(1n);
+    await Bun.sleep(1100);
+    const posted = await postSpentRoot(h.ctx);
+    expect(posted.posted).toBe(true);
+    const fresh = await h.newKey(); // registered, never funded: the root has no leaf for it
+    const p = (await (await h.request("/api/v1/credits/withdrawal-proof", { headers: fresh.auth })).json()).data;
+    expect(p).toMatchObject({ kind: "absence", root: posted.root, cumulative_spent_usdg: "0", proof: null, index: null });
+    const [row] = await h.ctx.db.select().from(spentRoots).where(eq(spentRoots.epoch, posted.epoch!));
+    expect(p.leaf_count).toBe((row.leaves as unknown[]).length);
+    type Nb = { key_hash: `0x${string}`; cumulative_spent_usdg: string; proof: `0x${string}`[] } | null;
+    const nb = (n: Nb) => (n ? { keyHash: n.key_hash, cumulativeSpent: BigInt(n.cumulative_spent_usdg), proof: n.proof } : null);
+    expect(SpentTree.verify(p.root, { kind: "absence", keyHash: fresh.chainKeyHash as `0x${string}`, cumulativeSpent: 0n, leafCount: p.leaf_count, gap: p.gap, below: nb(p.below), above: nb(p.above) })).toBe(true);
+    expect(p.below || p.above).toBeTruthy();
+    if (p.below) expect(BigInt(p.below.key_hash) < BigInt(fresh.chainKeyHash)).toBe(true);
+    if (p.above) expect(BigInt(fresh.chainKeyHash) < BigInt(p.above.key_hash)).toBe(true);
+    const call = decodeFunctionData({ abi: CreditsAbi, data: p.transactions[0].data });
+    expect(call.functionName).toBe("finalizeWithdrawalAbsent");
+    expect(call.args.slice(0, 3)).toEqual([fresh.chainKeyHash, BigInt(p.leaf_count), BigInt(p.gap)]);
+  });
+
+  test("a leaf never exceeds its key's deposits minus withdrawals; usage beyond them is uncovered, never settled", async () => {
+    const k = await h.fundedKey(2n);
+    const [key] = await h.ctx.db.select().from(keys).where(eq(keys.keyHash, k.hash));
+    const before = await computeSpentLeaves(h.ctx);
+    // usage the on-chain deposit does not cover (an off-chain credit line)
+    await post(h.ctx.db, { accountId: key.accountId, amount: -usdgToPico(5_000_000n), kind: "usage", ref: "test-overuse" });
+    const after = await computeSpentLeaves(h.ctx);
+    expect(after.leaves.find(([x]) => x === k.chainKeyHash)![1]).toBe(2_000_000n); // not 5 USDG pinned on this key
+    expect(after.uncovered.get(key.accountId)).toBe(3_000_000n);
+    expect(after.settledTotal - before.settledTotal).toBe(2_000_000n);
+    expect(await withdrawableFor(h.ctx, key.accountId, k.chainKeyHash)).toBe(0n);
+    await Bun.sleep(1100);
+    const r = await postSpentRoot(h.ctx);
+    expect(r.posted).toBe(true);
+    const [row] = await h.ctx.db.select().from(spentRoots).where(eq(spentRoots.epoch, r.epoch!));
+    expect((row.leaves as [string, string][]).find(([x]) => x === k.chainKeyHash)![1]).toBe("2000000");
+    const [uncovered] = await h.ctx.db.select().from(kv).where(eq(kv.key, `spent_uncovered:${r.epoch}`));
+    expect(BigInt(uncovered.value as string)).toBeGreaterThanOrEqual(3_000_000n);
+    const [settled] = await h.ctx.db.select().from(kv).where(eq(kv.key, `spent_settled:${r.epoch}`));
+    expect(BigInt(settled.value as string)).toBeLessThanOrEqual(row.totalSpentUsdg);
+  });
+
+  test("after an exit with an absence proof, the next root counts that withdrawal: no leaf claims the usage twice", async () => {
+    const k = await h.fundedKey(5n);
+    await h.request("/api/v1/chat/completions", { method: "POST", headers: k.auth, json: { model: LLAMA, messages: [{ role: "user", content: "spend before the exit" }] } });
+    const [key] = await h.ctx.db.select().from(keys).where(eq(keys.keyHash, k.hash));
+    const used = (await computeSpentLeaves(h.ctx)).leaves.find(([x]) => x === k.chainKeyHash)![1];
+    expect(used).toBeGreaterThan(0n);
+    // A root left the key out, so Credits paid it all 5 USDG as if it had spent nothing.
+    const tx = fakeTx();
+    await recordEvents(h.ctx, [
+      { contract: "credits", event: "AbsenceProven", args: { keyHash: k.chainKeyHash, epoch: 1n }, txHash: tx, logIndex: 0, blockNumber: 90n },
+      { contract: "credits", event: "Withdrawn", args: { keyHash: k.chainKeyHash, to: "0x0000000000000000000000000000000000000abc", amount: 5_000_000n }, txHash: tx, logIndex: 1, blockNumber: 90n },
+    ]);
+    await processEvents(h.ctx);
+    const after = await computeSpentLeaves(h.ctx);
+    expect(after.leaves.find(([x]) => x === k.chainKeyHash)![1]).toBe(0n);
+    expect(after.uncovered.get(key.accountId)).toBe(used); // the operator's loss
+    expect(await withdrawableFor(h.ctx, key.accountId, k.chainKeyHash)).toBe(0n);
+    expect((await reconcileSpentRoots(h.ctx.db, { graceMs: 3_600_000 })).totals.absence_exits).toBeGreaterThanOrEqual(1);
+    // Funding the key again covers the old usage first; only the rest is withdrawable.
+    await h.chain.deposit(h.ctx, k.chainKeyHash, 3_000_000n);
+    const refunded = await computeSpentLeaves(h.ctx);
+    expect(refunded.leaves.find(([x]) => x === k.chainKeyHash)![1]).toBe(used);
+    expect(refunded.uncovered.has(key.accountId)).toBe(false);
+    expect(await withdrawableFor(h.ctx, key.accountId, k.chainKeyHash)).toBe(3_000_000n - used);
+    expect((await verifyInvariants(h.ctx.db)).ok).toBe(true);
   });
 
   test("withdrawal requests lock the balance off-chain; completion reconciles; cancellation releases", async () => {

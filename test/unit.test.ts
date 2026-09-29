@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { allocate, mulBps, picoToUsd, picoToUsdString, picoToUsdg, usdToPico } from "../src/lib/money.ts";
-import { MerkleTree, spentLeaf } from "../src/receipts/merkle.ts";
+import { MerkleTree, SENTINEL_NEIGHBOUR, SpentTree, spentCommitment, spentLeaf, type SpentProof } from "../src/receipts/merkle.ts";
+import { CreditsAbi } from "../src/chain/abis.ts";
+import { sponsorable } from "../src/api/paymaster.ts";
+import type { Ctx } from "../src/context.ts";
 import { attestationFresh, selectProviders, weightedShuffle, type HealthView } from "../src/router/select.ts";
 import type { Candidate } from "../src/catalog/catalog.ts";
 import { applyGuardrails, findPii } from "../src/gateway/guardrails.ts";
@@ -11,7 +14,7 @@ import { nonceBound, parseTdxQuote } from "../src/services/attestor.ts";
 import { lexicalVector } from "../src/gateway/cache.ts";
 import { isEmptyCompletion, meaningfulDelta } from "../src/router/execute.ts";
 import { deriveKey, generateApiKey, KEY_RE } from "../src/chain/keys.ts";
-import { keccak256, encodePacked } from "viem";
+import { keccak256, encodeFunctionData, encodePacked, parseAbi } from "viem";
 import { HealthTracker } from "../src/services/health.ts";
 
 describe("money", () => {
@@ -53,6 +56,86 @@ describe("merkle (OpenZeppelin-compatible)", () => {
       for (let i = 0; i < n; i++) expect(MerkleTree.verify(leaves[i], t.proof(i), t.root)).toBe(true);
       expect(MerkleTree.verify(spentLeaf(keccak256("0x01"), 1n), t.proof(0), t.root)).toBe(false);
     }
+  });
+});
+
+describe("spent tree (Credits SPENT_TREE_VERSION 2)", () => {
+  const key = (i: number) => keccak256(encodePacked(["uint256"], [BigInt(i)]));
+  const word = (i: number) => `0x${i.toString(16).padStart(64, "0")}` as `0x${string}`;
+  const absence = (t: SpentTree, keyHash: `0x${string}`, gap: number): SpentProof => ({
+    kind: "absence",
+    keyHash,
+    cumulativeSpent: 0n,
+    leafCount: t.leafCount,
+    gap,
+    below: gap > 0 ? { keyHash: t.keys[gap - 1], cumulativeSpent: t.spent[gap - 1], proof: t.proof(gap - 1) } : null,
+    above: gap < t.leafCount ? { keyHash: t.keys[gap], cumulativeSpent: t.spent[gap], proof: t.proof(gap) } : null,
+  });
+
+  test("matches the contract: the pinned vector of contracts/test/Credits.t.sol", () => {
+    const t = new SpentTree([[word(3), 30n], [word(1), 10n], [word(2), 20n]]);
+    expect(t.keys).toEqual([word(1), word(2), word(3)]);
+    // pinned by their leading 8 bytes, as in the Solidity test
+    expect(t.treeRoot.slice(0, 18)).toBe("0xab31475d858a5d6f");
+    expect(t.root.slice(0, 18)).toBe("0x0d848344e8b11cf4");
+    expect(t.root).toBe(spentCommitment(t.treeRoot, 3));
+    expect(t.proof(2)).toHaveLength(1);
+    expect(new SpentTree([]).root).toBe(`0x${"00".repeat(32)}`);
+    expect(spentCommitment(t.treeRoot, 0)).toBe(`0x${"00".repeat(32)}`);
+  });
+
+  test("every key proves inclusion, every absent key exactly one gap, and no key both", () => {
+    for (const n of [0, 1, 2, 3, 5, 8, 13]) {
+      const entries = Array.from({ length: n }, (_, i) => [key(i), BigInt(i * 1000)] as const);
+      const t = new SpentTree([...entries].reverse());
+      for (let i = 1; i < n; i++) expect(BigInt(t.keys[i - 1]) < BigInt(t.keys[i])).toBe(true);
+      for (const [h, s] of entries) {
+        const p = t.prove(h);
+        expect(p).toMatchObject({ kind: "inclusion", cumulativeSpent: s, leafCount: n });
+        expect(SpentTree.verify(t.root, p)).toBe(true);
+        expect(SpentTree.verify(t.root, { ...p, cumulativeSpent: s + 1n } as SpentProof)).toBe(false);
+        for (let gap = 0; gap <= n; gap++) expect(SpentTree.verify(t.root, absence(t, h, gap))).toBe(false);
+      }
+      for (let j = 0; j < 16; j++) {
+        const probe = key(10_000 + j);
+        const p = t.prove(probe);
+        expect(p.kind).toBe("absence");
+        expect(SpentTree.verify(t.root, p)).toBe(true);
+        let gaps = 0;
+        for (let gap = 0; gap <= n; gap++) if (SpentTree.verify(t.root, absence(t, probe, gap))) gaps++;
+        expect(gaps).toBe(1);
+        for (let i = 0; i < n; i++) expect(SpentTree.verify(t.root, { kind: "inclusion", keyHash: probe, cumulativeSpent: t.spent[i], index: i, leafCount: n, proof: t.proof(i) })).toBe(false);
+      }
+    }
+  });
+
+  test("sentinels bound both ends; the leaf count cannot be misstated", () => {
+    const t = new SpentTree([[word(10), 1n], [word(20), 2n], [word(30), 3n]]);
+    expect(t.prove(word(5))).toMatchObject({ kind: "absence", gap: 0, below: null, above: { keyHash: word(10) } });
+    expect(t.prove(word(40))).toMatchObject({ kind: "absence", gap: 3, below: { keyHash: word(30) }, above: null });
+    expect(SpentTree.verify(t.root, t.prove(word(0)))).toBe(true);
+    expect(SpentTree.verify(t.root, t.prove(`0x${"ff".repeat(32)}`))).toBe(true);
+    // pretending the tree ends before its last leaf
+    expect(SpentTree.verify(t.root, { ...absence(t, word(40), 3), leafCount: 2, gap: 2 } as SpentProof)).toBe(false);
+    const inc = t.prove(word(20));
+    expect(SpentTree.verify(t.root, { ...inc, leafCount: 4 } as SpentProof)).toBe(false);
+    expect(SpentTree.verify(t.root, { ...inc, index: 0 } as SpentProof)).toBe(false);
+  });
+
+  test("the paymaster sponsors both finalize paths (its ABI matches Credits)", () => {
+    const credits = "0x00000000000000000000000000000000000c0001" as const;
+    const ctx = { cfg: { chain: { credits, usdg: "0x00000000000000000000000000000000000000d1" }, paywith: { tokens: [] } } } as unknown as Ctx;
+    const kh = key(1);
+    const execute = (data: `0x${string}`) => encodeFunctionData({ abi: parseAbi(["function execute(address dest, uint256 value, bytes func)"]), functionName: "execute", args: [credits, 0n, data] });
+    const inclusion = encodeFunctionData({ abi: CreditsAbi, functionName: "finalizeWithdrawal", args: [kh, 1n, 0n, 1n, []] });
+    const absent = encodeFunctionData({ abi: CreditsAbi, functionName: "finalizeWithdrawalAbsent", args: [kh, 0n, 0n, SENTINEL_NEIGHBOUR, SENTINEL_NEIGHBOUR] });
+    expect(sponsorable(ctx, execute(inclusion))).toEqual({ ok: true });
+    expect(sponsorable(ctx, execute(absent))).toEqual({ ok: true });
+  });
+
+  test("rejects duplicate or malformed key hashes", () => {
+    expect(() => new SpentTree([[word(1), 1n], [word(1).toUpperCase().replace("0X", "0x"), 2n]])).toThrow("duplicate");
+    expect(() => new SpentTree([["0x1234", 1n]])).toThrow("invalid key hash");
   });
 });
 

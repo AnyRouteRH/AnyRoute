@@ -17,7 +17,7 @@ import { readJson, clientIp } from "./common.ts";
 // ERC-7677 paymaster web service for AnyrPaymaster (ERC-4337 v0.7 VerifyingPaymaster).
 // Sponsors gas only for user operations whose every call is an Anyroute action:
 //   CallPay.pay/payWithPermit, Credits.deposit/depositWithPermit/requestWithdrawal/finalizeWithdrawal/
-//   cancelWithdrawal, PayWithStock.openSession/openSessionWithPermit/closeSession, and ERC20.approve
+//   finalizeWithdrawalAbsent/cancelWithdrawal, PayWithStock.openSession/openSessionWithPermit/closeSession, and ERC20.approve
 //   where the spender is one of those contracts. On-chain, AnyrPaymaster also caps each sender daily.
 
 const ENTRY_POINT_V07 = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
@@ -34,7 +34,8 @@ const targetAbi = parseAbi([
   "function deposit(bytes32 keyHash, uint256 amount)",
   "function depositWithPermit(bytes32 keyHash, uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s)",
   "function requestWithdrawal(address keyAddress, uint256 amount, address to, uint256 deadline, bytes sig)",
-  "function finalizeWithdrawal(bytes32 keyHash, uint256 cumulativeSpent, bytes32[] proof)",
+  "function finalizeWithdrawal(bytes32 keyHash, uint256 cumulativeSpent, uint256 index, uint256 leafCount, bytes32[] proof)",
+  "function finalizeWithdrawalAbsent(bytes32 keyHash, uint256 leafCount, uint256 gap, (bytes32 keyHash, uint256 cumulativeSpent, bytes32[] proof) below, (bytes32 keyHash, uint256 cumulativeSpent, bytes32[] proof) above)",
   "function cancelWithdrawal(address keyAddress, uint256 deadline, bytes sig)",
   "function openSession(bytes32 keyHash, address token, uint256 capRawPerDay)",
   "function closeSession(bytes32 keyHash)",
@@ -122,7 +123,7 @@ export function sponsorable(ctx: Ctx, callData: Hex): { ok: boolean; reason?: st
     const target = allowedTargets.get(to);
     const allowed: Record<string, string[]> = {
       callPay: ["pay", "payWithPermit"],
-      credits: ["deposit", "depositWithPermit", "requestWithdrawal", "finalizeWithdrawal", "cancelWithdrawal"],
+      credits: ["deposit", "depositWithPermit", "requestWithdrawal", "finalizeWithdrawal", "finalizeWithdrawalAbsent", "cancelWithdrawal"],
       payWithStock: ["openSession", "closeSession"],
     };
     if (!target || !allowed[target].includes(fn)) return { ok: false, reason: `${fn} on ${c.to} is not sponsored` };

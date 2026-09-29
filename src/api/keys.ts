@@ -11,7 +11,7 @@ import { fail } from "../lib/errors.ts";
 import { picoToUsd, usdToPico } from "../lib/money.ts";
 import { balanceOf, ensureAccount } from "../ledger/ledger.ts";
 import { encrypt, uid, randomHex } from "../lib/util.ts";
-import { MerkleTree, spentLeaf } from "../receipts/merkle.ts";
+import { SENTINEL_NEIGHBOUR, SpentTree, type SpentNeighbour } from "../receipts/merkle.ts";
 import { clientIp, readJson } from "./common.ts";
 import { bearer, registerRootKey, requireKey, requireRole, walletAccountId, type KeyRow } from "./auth.ts";
 
@@ -230,17 +230,23 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     });
   });
 
-  // Merkle proof of this key's cumulative spend in the latest posted root: the input to
-  // Credits.finalizeWithdrawal(keyHash, cumulativeSpent, proof).
+  // This key's spend in the latest posted root, proven either way: its leaf (inclusion) for
+  // Credits.finalizeWithdrawal, or the adjacent leaves around it (absence: spend 0) for
+  // Credits.finalizeWithdrawalAbsent. A root can never leave a funded key without a proof.
   app.get("/api/v1/credits/withdrawal-proof", async (c) => {
     const k = await sub(ctx, c);
     // Only roots that landed on-chain (or local-only roots without a chain) can back a proof.
     const [root] = await ctx.db.select().from(spentRoots).where(inArray(spentRoots.status, ["confirmed", "local"])).orderBy(desc(spentRoots.epoch)).limit(1);
     if (!root) fail(404, "No spent root has been posted yet.", "not_found");
-    const leaves = root.leaves as [string, string][];
-    const idx = leaves.findIndex(([h]) => h === k.chainKeyHash);
-    const cumulative = idx >= 0 ? BigInt(leaves[idx][1]) : 0n;
-    const tree = new MerkleTree(leaves.map(([h, s]) => spentLeaf(h as Hex, BigInt(s))));
+    const tree = new SpentTree((root.leaves as [string, string][]).map(([h, s]) => [h, BigInt(s)] as const));
+    if (tree.root.toLowerCase() !== root.root.toLowerCase()) fail(503, "The latest spent root cannot be reproduced from its stored leaves; proofs are unavailable until it is reconciled.", "root_mismatch");
+    const p = tree.prove(k.chainKeyHash);
+    const credits = ctx.chain.address("credits");
+    const neighbour = (n: SpentNeighbour | null) => (n ? { key_hash: n.keyHash, cumulative_spent_usdg: n.cumulativeSpent.toString(), proof: n.proof } : null);
+    const call =
+      p.kind === "inclusion"
+        ? encodeFunctionData({ abi: CreditsAbi, functionName: "finalizeWithdrawal", args: [p.keyHash, p.cumulativeSpent, BigInt(p.index), BigInt(p.leafCount), p.proof] })
+        : encodeFunctionData({ abi: CreditsAbi, functionName: "finalizeWithdrawalAbsent", args: [p.keyHash, BigInt(p.leafCount), BigInt(p.gap), p.below ?? SENTINEL_NEIGHBOUR, p.above ?? SENTINEL_NEIGHBOUR] });
     return c.json({
       data: {
         epoch: root.epoch,
@@ -248,14 +254,17 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
         as_of: root.asOf.toISOString(),
         status: root.status,
         key_hash: k.chainKeyHash,
-        cumulative_spent_usdg: cumulative.toString(),
-        proof: idx >= 0 ? tree.proof(idx) : null,
+        kind: p.kind,
+        cumulative_spent_usdg: p.cumulativeSpent.toString(),
+        leaf_count: p.leafCount,
+        index: p.kind === "inclusion" ? p.index : null,
+        proof: p.kind === "inclusion" ? p.proof : null,
+        gap: p.kind === "absence" ? p.gap : null,
+        below: p.kind === "absence" ? neighbour(p.below) : null,
+        above: p.kind === "absence" ? neighbour(p.above) : null,
         pending: await pendingWithdrawal(ctx, k.chainKeyHash),
-        transactions:
-          idx >= 0 && ctx.chain.address("credits")
-            ? [{ to: ctx.chain.address("credits"), data: encodeFunctionData({ abi: CreditsAbi, functionName: "finalizeWithdrawal", args: [k.chainKeyHash as Hex, cumulative, tree.proof(idx)] }), description: "Finalize the pending withdrawal" }]
-            : [],
-        note: idx >= 0 ? null : "This key has no recorded spend; any leaf-less key cannot finalize until included in a root.",
+        transactions: credits ? [{ to: credits, data: call, description: p.kind === "inclusion" ? "Finalize the pending withdrawal" : "Finalize the pending withdrawal (this key has no leaf in the latest root, so it counts as unspent)" }] : [],
+        note: p.kind === "inclusion" ? null : "The latest root has no leaf for this key; the adjacent leaves prove it, and Credits counts its spend for that root as 0.",
       },
     });
   });

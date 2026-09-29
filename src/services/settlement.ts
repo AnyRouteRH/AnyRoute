@@ -4,14 +4,15 @@ import type { Ctx } from "../context.ts";
 import { accounts, chainEvents, generations, keys, kv, ledger, models, payouts, providers, royalties, settlements, spentRoots } from "../db/schema.ts";
 import { mulBps, picoToUsdg, PICO_PER_USDG_UNIT } from "../lib/money.ts";
 import { log, uid } from "../lib/util.ts";
-import { MerkleTree, spentLeaf } from "../receipts/merkle.ts";
+import { SpentTree } from "../receipts/merkle.ts";
 
 // settlement (hourly):
 //  1. provider invoices from receipts (per provider per hour): upstream cost, 2% provider-side fee
 //  2. weekly USDG payouts to providers that opted into on-chain payout
 //  3. creator royalty streams per model per hour
-//  4. prepaid spent roots: every funded key's cumulative on-chain spend, merkle-rooted and posted to
-//     Credits so self-custodial withdrawals are provably bounded
+//  4. prepaid spent roots: every funded key's cumulative on-chain spend in a tree sorted by key hash,
+//     posted to Credits so self-custodial withdrawals are provably bounded. A key the root leaves out
+//     withdraws as if it spent nothing, so completeness is the operator's own money, not a trust ask.
 //  5. protocol margin -> AnyrStaking.notifyMargin (50% buyback to stakers / 50% attestor+canary ops)
 
 const hourKey = (d: Date) => d.toISOString().slice(0, 13);
@@ -102,21 +103,27 @@ export async function settleHours(ctx: Ctx, now = new Date()) {
  *   U_on = max(previous U_on, usage - offchainCredits),   spent_k filled in deposit order.
  * Then sum_k(withdrawable_k) = D - W - U_on <= off-chain balance, so withdrawals can never exceed
  * what the account really has, and totalSpent (sum of U_on) is monotonic as Credits requires.
+ *
+ * No leaf ever exceeds its key's deposits minus withdrawals (Credits' rule), withdrawals made with an
+ * absence proof included. Usage beyond the account's net on-chain funding (a credit line, or spend a
+ * root omitted before the key exited) is `uncovered`: the operator's loss unless the account funds it
+ * later, and never part of `settledTotal`, the usage settlement may sweep.
  */
 export async function computeSpentLeaves(ctx: Ctx, only?: { accountId: string }) {
+  const keyHashArg = sql<string>`lower(${chainEvents.args}->>'keyHash')`;
   const deposits = await ctx.db
-    .select({ keyHash: sql<string>`${chainEvents.args}->>'keyHash'`, amount: sql<string>`sum((${chainEvents.args}->>'amount')::numeric)`, first: sql<string>`min(${chainEvents.blockNumber})` })
+    .select({ keyHash: keyHashArg, amount: sql<string>`sum((${chainEvents.args}->>'amount')::numeric)`, first: sql<string>`min(${chainEvents.blockNumber})` })
     .from(chainEvents)
     .where(and(eq(chainEvents.contract, "credits"), inArray(chainEvents.event, ["Deposited", "Credited"])))
-    .groupBy(sql`${chainEvents.args}->>'keyHash'`);
+    .groupBy(keyHashArg);
   const withdrawnRows = await ctx.db
-    .select({ keyHash: sql<string>`${chainEvents.args}->>'keyHash'`, amount: sql<string>`sum((${chainEvents.args}->>'amount')::numeric)` })
+    .select({ keyHash: keyHashArg, amount: sql<string>`sum((${chainEvents.args}->>'amount')::numeric)` })
     .from(chainEvents)
     .where(and(eq(chainEvents.contract, "credits"), eq(chainEvents.event, "Withdrawn")))
-    .groupBy(sql`${chainEvents.args}->>'keyHash'`);
+    .groupBy(keyHashArg);
   const withdrawn = new Map(withdrawnRows.map((r) => [r.keyHash, BigInt(r.amount)]));
   const keyRows = await ctx.db.select({ chainKeyHash: keys.chainKeyHash, accountId: keys.accountId }).from(keys);
-  const accountOf = new Map(keyRows.map((k) => [k.chainKeyHash, k.accountId]));
+  const accountOf = new Map(keyRows.map((k) => [k.chainKeyHash.toLowerCase(), k.accountId]));
   if (only) for (const [h, a] of accountOf) if (a !== only.accountId) accountOf.delete(h);
   const byAccount = new Map<string, { keyHash: string; deposited: bigint; withdrawn: bigint; first: bigint }[]>();
   const orphan: string[] = [];
@@ -131,10 +138,11 @@ export async function computeSpentLeaves(ctx: Ctx, only?: { accountId: string })
     byAccount.set(acct, list);
   }
   const ratchet = (await getKv<Record<string, string>>(ctx, "spent_ratchet")) ?? {};
-  let settledTotal = 0n; // settled on-chain usage: the most settlement may ever sweep
+  let settledTotal = 0n; // settled on-chain usage that deposits cover: the most settlement may ever sweep
+  const uncovered = new Map<string, bigint>(); // account -> settled usage beyond its keys' net funding (USDG)
   const leaves: [string, bigint][] = orphan.map((h) => [h, 0n]); // funded but unclaimed keys: nothing spent
   for (const [acct, list] of byAccount) {
-    list.sort((a, b) => (a.first < b.first ? -1 : a.first > b.first ? 1 : a.keyHash.localeCompare(b.keyHash)));
+    list.sort((a, b) => (a.first < b.first ? -1 : a.first > b.first ? 1 : a.keyHash < b.keyHash ? -1 : a.keyHash > b.keyHash ? 1 : 0));
     const rows = await ctx.db
       .select({ kind: ledger.kind, pos: sql<string>`coalesce(sum(case when ${ledger.amount} > 0 then ${ledger.amount} else 0 end), 0)`, neg: sql<string>`coalesce(sum(case when ${ledger.amount} < 0 then -${ledger.amount} else 0 end), 0)` })
       .from(ledger)
@@ -153,7 +161,11 @@ export async function computeSpentLeaves(ctx: Ctx, only?: { accountId: string })
     // never cover money an open request may still charge. Not ratcheted: released holds come back.
     const [{ held }] = await ctx.db.select({ held: accounts.held }).from(accounts).where(eq(accounts.id, acct));
     const onchain = settledOnchain + picoToUsdg(held > 0n ? held : 0n, "ceil");
-    settledTotal += settledOnchain;
+    const funded = list.reduce((a, k) => a + (k.deposited - k.withdrawn > 0n ? k.deposited - k.withdrawn : 0n), 0n);
+    settledTotal += settledOnchain < funded ? settledOnchain : funded;
+    if (settledOnchain > funded) uncovered.set(acct, settledOnchain - funded);
+    // Each leaf is capped at its key's deposits minus withdrawals, so every key of an account whose
+    // usage outruns its funding is already at zero withdrawable; the excess is on no leaf at all.
     let remaining = onchain;
     for (const k of list) {
       const capacity = k.deposited - k.withdrawn > 0n ? k.deposited - k.withdrawn : 0n;
@@ -161,23 +173,19 @@ export async function computeSpentLeaves(ctx: Ctx, only?: { accountId: string })
       remaining -= spent;
       leaves.push([k.keyHash, spent]);
     }
-    if (remaining > 0n && list.length) {
-      // Usage beyond on-chain funds (off-chain credit lines): pin it to the first key so it is never withdrawable.
-      const i = leaves.findIndex(([h]) => h === list[0].keyHash);
-      leaves[i] = [leaves[i][0], leaves[i][1] + remaining];
-    }
   }
-  leaves.sort((a, b) => a[0].localeCompare(b[0]));
-  return { leaves, ratchet, settledTotal, capacity: byAccount };
+  leaves.sort((a, b) => (BigInt(a[0]) < BigInt(b[0]) ? -1 : BigInt(a[0]) > BigInt(b[0]) ? 1 : 0));
+  return { leaves, ratchet, settledTotal, uncovered, capacity: byAccount };
 }
 
 /** What `chainKeyHash` could withdraw on-chain right now (USDG base units): its own deposits minus
  *  what it already withdrew minus the usage (incl. open holds) allocated to it. */
 export async function withdrawableFor(ctx: Ctx, accountId: string, chainKeyHash: string) {
   const { leaves, capacity } = await computeSpentLeaves(ctx, { accountId });
-  const k = capacity.get(accountId)?.find((x) => x.keyHash === chainKeyHash);
+  const kh = chainKeyHash.toLowerCase();
+  const k = capacity.get(accountId)?.find((x) => x.keyHash === kh);
   if (!k) return 0n;
-  const spent = leaves.find(([h]) => h === chainKeyHash)?.[1] ?? 0n;
+  const spent = leaves.find(([h]) => h === kh)?.[1] ?? 0n;
   const w = k.deposited - k.withdrawn - spent;
   return w > 0n ? w : 0n;
 }
@@ -217,9 +225,9 @@ export async function postSpentRoot(ctx: Ctx) {
     if (landed.epoch !== BigInt(last?.epoch ?? 0) || (last && (landed.root !== last.root || landed.totalSpent !== last.totalSpentUsdg || landed.asOf !== Math.floor(last.asOf.getTime() / 1000))))
       throw new Error("Spent-root chain/database mismatch; reconcile before proposing another root");
   }
-  const { leaves, ratchet, settledTotal } = await computeSpentLeaves(ctx);
+  const { leaves, ratchet, settledTotal, uncovered } = await computeSpentLeaves(ctx);
   if (!leaves.length) return { posted: false, reason: "no funded keys" };
-  const tree = new MerkleTree(leaves.map(([h, s]) => spentLeaf(h as Hex, s)));
+  const tree = new SpentTree(leaves);
   const lastTotal = last ? last.totalSpentUsdg : 0n;
   const total = leaves.reduce((a, [, s]) => a + s, 0n);
   const totalSpent = total > lastTotal ? total : lastTotal;
@@ -228,10 +236,14 @@ export async function postSpentRoot(ctx: Ctx) {
   let asOfSec = Math.floor(Date.now() / 1000);
   if (onChain) asOfSec = Math.min(asOfSec, await ctx.chain.latestBlockTime());
   if (last && asOfSec <= Math.floor(last.asOf.getTime() / 1000)) return { posted: false, reason: "chain time has not advanced past the last root", epoch: last.epoch };
-  const [row] = await ctx.db.insert(spentRoots).values({ epoch, root: tree.root, asOf: new Date(asOfSec * 1000), totalSpentUsdg: totalSpent, leaves: leaves.map(([h, s]) => [h, s.toString()]), status: "pending" }).returning();
+  const [row] = await ctx.db.insert(spentRoots).values({ epoch, root: tree.root, asOf: new Date(asOfSec * 1000), totalSpentUsdg: totalSpent, leaves: tree.entries().map(([h, s]) => [h, s.toString()]), status: "pending" }).returning();
   await setKv(ctx, "spent_ratchet", ratchet);
-  // Holds can be included in the root. Approvers must cap transfers at independently verified settled usage.
+  // Holds can be included in the root. Approvers must cap transfers at independently verified settled
+  // usage that deposits cover; usage beyond them is the operator's loss, recorded per root.
   await setKv(ctx, `spent_settled:${epoch}`, settledTotal.toString());
+  const uncoveredTotal = [...uncovered.values()].reduce((a, b) => a + b, 0n);
+  await setKv(ctx, `spent_uncovered:${epoch}`, uncoveredTotal.toString());
+  if (uncoveredTotal > 0n) log.warn("usage exceeds on-chain funds; uncovered amount absorbed by operator unless the accounts fund it", { epoch, accounts: uncovered.size, uncovered_usdg: uncoveredTotal.toString() });
   if (onChain) return submitSpentRoot(ctx, row);
   await ctx.db.update(spentRoots).set({ status: "local" }).where(eq(spentRoots.epoch, epoch));
   return { posted: true, epoch, root: tree.root, keys: leaves.length, total_spent_usdg: totalSpent.toString(), tx: null };

@@ -257,12 +257,70 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
     const root = await postSpentRoot(app.ctx);
     expect(root.posted).toBe(true);
     const proof = (await (await req("/api/v1/credits/withdrawal-proof", { headers: k.auth })).json()).data;
+    expect(proof.kind).toBe("inclusion");
     const before = (await pub.readContract({ address: C.usdg, abi: erc20Abi, functionName: "balanceOf", args: [to] })) as bigint;
-    await send(PK.userC, C.credits, CreditsAbi, "finalizeWithdrawal", [k.chainKeyHash, BigInt(proof.cumulative_spent_usdg), proof.proof]);
+    await send(PK.userC, C.credits, CreditsAbi, "finalizeWithdrawal", [k.chainKeyHash, BigInt(proof.cumulative_spent_usdg), BigInt(proof.index), BigInt(proof.leaf_count), proof.proof]);
     const after = (await pub.readContract({ address: C.usdg, abi: erc20Abi, functionName: "balanceOf", args: [to] })) as bigint;
     expect(after - before).toBe(amount);
     await pollChain(app.ctx);
     expect((await verifyInvariants(app.ctx.db)).ok).toBe(true);
+  }, 90_000);
+
+  test("absence exit: a funded key the latest root leaves out proves it with the adjacent leaves and gets everything back", async () => {
+    const k = await newKey();
+    const other = await newKey();
+    const C = dep.contracts;
+    // Another key's indexed deposit changes the next root; this key's deposit lands after that indexing,
+    // so settlement computes the root without it: no leaf for this key.
+    await send(PK.userA, C.credits, CreditsAbi, "deposit", [other.chainKeyHash, parseUnits("1", 6)]);
+    await pollChain(app.ctx);
+    await send(PK.userA, C.credits, CreditsAbi, "deposit", [k.chainKeyHash, parseUnits("5", 6)]);
+    const d = deriveKey(k.secret);
+    const to = "0x000000000000000000000000000000000000bEEF" as Hex;
+    const nonce = (await pub.readContract({ address: C.credits, abi: CreditsAbi, functionName: "nonces", args: [k.chainKeyHash] })) as bigint;
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+    const amount = parseUnits("5", 6);
+    const sig = await d.account.signTypedData({
+      domain: { name: "Anyroute Credits", version: "1", chainId: 4663, verifyingContract: C.credits },
+      types: { WithdrawRequest: [{ name: "keyHash", type: "bytes32" }, { name: "amount", type: "uint256" }, { name: "to", type: "address" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+      primaryType: "WithdrawRequest",
+      message: { keyHash: k.chainKeyHash, amount, to, nonce, deadline },
+    });
+    const requestTx = await send(PK.userC, C.credits, CreditsAbi, "requestWithdrawal", [d.keyAddress, amount, to, deadline, sig]);
+    // Roots are dated min(wall clock, chain clock); earlier tests moved anvil's clock ahead of the wall.
+    const requestedAt = Number((await pub.getBlock({ blockNumber: (await pub.getTransactionReceipt({ hash: requestTx })).blockNumber })).timestamp);
+    while (Math.floor(Date.now() / 1000) <= requestedAt) await Bun.sleep(250);
+    const postApprovedRoot = async () => {
+      await pub.request({ method: "evm_increaseTime" as never, params: [5] as never });
+      await pub.request({ method: "evm_mine" as never, params: [] as never });
+      await Bun.sleep(1100);
+      const candidate = await postSpentRoot(app.ctx);
+      if (!("approval" in candidate) || !candidate.approval) throw new Error("missing independent approval request");
+      const approvalHash = await wallet(PK.deployer).sendTransaction({ to: candidate.approval.to, data: candidate.approval.data });
+      expect((await pub.waitForTransactionReceipt({ hash: approvalHash })).status).toBe("success");
+      const root = await postSpentRoot(app.ctx);
+      expect(root.posted).toBe(true);
+      return root;
+    };
+    const root = await postApprovedRoot();
+    const proof = (await (await req("/api/v1/credits/withdrawal-proof", { headers: k.auth })).json()).data;
+    expect(proof).toMatchObject({ kind: "absence", root: root.root, cumulative_spent_usdg: "0" });
+    expect(proof.leaf_count).toBeGreaterThan(0);
+    // The contract's own verifier agrees before anything is sent.
+    const nb = (n: any) => (n ? { keyHash: n.key_hash, cumulativeSpent: BigInt(n.cumulative_spent_usdg), proof: n.proof } : { keyHash: `0x${"00".repeat(32)}`, cumulativeSpent: 0n, proof: [] });
+    const verified = await pub.readContract({ address: C.credits, abi: CreditsAbi, functionName: "verifySpentAbsence", args: [root.root as Hex, k.chainKeyHash, BigInt(proof.leaf_count), BigInt(proof.gap), nb(proof.below), nb(proof.above)] });
+    expect(verified).toBe(true);
+    const before = (await pub.readContract({ address: C.usdg, abi: erc20Abi, functionName: "balanceOf", args: [to] })) as bigint;
+    const hash = await wallet(PK.userC).sendTransaction({ to: proof.transactions[0].to, data: proof.transactions[0].data });
+    expect((await pub.waitForTransactionReceipt({ hash })).status).toBe("success");
+    const after = (await pub.readContract({ address: C.usdg, abi: erc20Abi, functionName: "balanceOf", args: [to] })) as bigint;
+    expect(after - before).toBe(amount);
+    await pollChain(app.ctx);
+    expect((await verifyInvariants(app.ctx.db)).ok).toBe(true);
+    // The next root counts the withdrawal: the key's leaf is capped at deposited - withdrawn = 0.
+    const next = await postApprovedRoot();
+    const again = (await (await req("/api/v1/credits/withdrawal-proof", { headers: k.auth })).json()).data;
+    expect(again).toMatchObject({ kind: "inclusion", root: next.root, cumulative_spent_usdg: "0" });
   }, 90_000);
 
   test("local faucet deposits test USDG; a pending withdrawal can be cancelled and the lock is released", async () => {

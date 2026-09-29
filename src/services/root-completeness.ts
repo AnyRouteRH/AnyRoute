@@ -1,14 +1,16 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import type { Hex } from "viem";
 import type { Db } from "../db/client.ts";
 import { chainEvents, kv, spentRoots } from "../db/schema.ts";
-import { MerkleTree, spentLeaf } from "../receipts/merkle.ts";
+import { SpentTree } from "../receipts/merkle.ts";
 
-// Credits.sol cannot check two settlement duties itself: every spent root must carry a leaf for
-// every key hash with a deposit, and no key's cumulative spend may exceed its deposits minus its
-// withdrawals. A root that omits a funded key blocks that key's withdrawal; a leaf above a key's net
-// funding lets settlement sweep other customers' deposits. This reconciles the latest root (a
-// candidate under review or a posted one) against the indexed Credits events and the ledger.
+// Credits.sol enforces that no root can block an exit: spent trees are sorted by key hash, and a key
+// with no leaf proves it sits between two adjacent leaves and withdraws as if it spent nothing. Two
+// settlement duties remain for the independent approver: every spent root must carry a leaf for every
+// key hash with a deposit (an omitted key exits with its usage unpaid, at the operator's cost and, if
+// that usage was already swept, out of other customers' deposits until the operator covers it), and no
+// key's cumulative spend may exceed its deposits minus its withdrawals (a leaf above a key's net funding
+// lets settlement sweep other customers' deposits). This reconciles the latest root (a candidate under
+// review or a posted one) against the indexed Credits events and the ledger.
 
 /** A root is computed from the events indexed before its row was written; allow for clock skew. */
 const INDEX_SKEW_MS = 5 * 60_000;
@@ -17,7 +19,8 @@ const LIST_LIMIT = 100;
 export type RootReconciliation = {
   ok: boolean;
   failures: string[];
-  root: { epoch: number; status: string; created_at: string; as_of: string; total_spent_usdg: string; leaves: number; merkle_matches: boolean | null } | null;
+  /** merkle_matches: the stored leaves rebuild the stored root; sorted: they are strictly ascending by key hash. */
+  root: { epoch: number; status: string; created_at: string; as_of: string; total_spent_usdg: string; leaves: number; sorted: boolean; merkle_matches: boolean | null } | null;
   funded_keys: number;
   covered_keys: number;
   /** Funded before the root was computed, yet absent from it. */
@@ -43,6 +46,8 @@ export type RootReconciliation = {
     processed_without_credit: number;
     credit_amount_mismatches: number;
     credits_without_event: number;
+    /** Withdrawals finalized with an absence proof (Credits.AbsenceProven): usage a root left out is the operator's loss. */
+    absence_exits: number;
   };
 };
 
@@ -53,7 +58,7 @@ export async function reconcileSpentRoots(db: Db, opts: { graceMs: number; now?:
   const now = (opts.now ?? new Date()).getTime();
   const keyHash = sql<string>`lower(${chainEvents.args}->>'keyHash')`;
   const amount = sql<string>`coalesce(sum((${chainEvents.args}->>'amount')::numeric), 0)::text`;
-  const [funded, withdrawnRows, [latest], [ledgerCheck], [orphanCredits]] = await Promise.all([
+  const [funded, withdrawnRows, [latest], [ledgerCheck], [orphanCredits], [absenceExits]] = await Promise.all([
     db
       .select({ keyHash, amount, firstSeenMs: sql<string>`(extract(epoch from min(${chainEvents.createdAt})) * 1000)::text` })
       .from(chainEvents)
@@ -78,6 +83,7 @@ export async function reconcileSpentRoots(db: Db, opts: { graceMs: number; now?:
       WHERE (l.ref LIKE 'dep:%' OR l.ref LIKE 'cred:%') AND NOT EXISTS (
         SELECT 1 FROM chain_events e WHERE e.contract = 'credits'
           AND l.ref = (CASE WHEN e.event = 'Deposited' THEN 'dep:' ELSE 'cred:' END) || e.tx_hash || ':' || e.log_index)`).then((r) => rowsOf<{ n: number }>(r)),
+    db.select({ n: sql<number>`count(*)::int` }).from(chainEvents).where(and(eq(chainEvents.contract, "credits"), eq(chainEvents.event, "AbsenceProven"))),
   ]);
 
   const deposited = new Map(funded.map((f) => [f.keyHash, BigInt(f.amount)]));
@@ -85,6 +91,10 @@ export async function reconcileSpentRoots(db: Db, opts: { graceMs: number; now?:
   const failures: string[] = [];
   const leaves = ((latest?.leaves ?? []) as [string, string][]).map(([h, s]) => [String(h).toLowerCase(), BigInt(s)] as const);
   const leafMap = new Map(leaves);
+  // In an unsorted or duplicated tree a key may prove several spends and its holder picks the lowest,
+  // so that is settlement's loss; it is still a malformed root the approver must reject.
+  const sorted = leaves.every(([h], i) => /^0x[0-9a-f]{64}$/.test(h) && (i === 0 || BigInt(leaves[i - 1][0]) < BigInt(h)));
+  if (latest && !sorted) failures.push("stored leaves are not strictly sorted by key hash");
   const rootCreated = latest ? latest.createdAt.getTime() : null;
 
   const missing: string[] = [], pending: string[] = [], overdue: string[] = [];
@@ -122,7 +132,13 @@ export async function reconcileSpentRoots(db: Db, opts: { graceMs: number; now?:
     ]);
     previousTotal = previous?.total ?? 0n;
     if (settledRow && /^\d+$/.test(String(settledRow.value))) settled = BigInt(String(settledRow.value));
-    if (opts.verifyMerkle) merkleMatches = leaves.length > 0 && new MerkleTree(leaves.map(([h, s]) => spentLeaf(h as Hex, s))).root.toLowerCase() === latest.root.toLowerCase();
+    if (opts.verifyMerkle) {
+      try {
+        merkleMatches = leaves.length > 0 && new SpentTree(leaves).root === latest.root.toLowerCase();
+      } catch {
+        merkleMatches = false; // a malformed key hash or a duplicated leaf
+      }
+    }
   }
   const expectedTotal = leavesSum > previousTotal ? leavesSum : previousTotal;
   const totalMatches = !latest || latest.totalSpentUsdg === expectedTotal;
@@ -143,7 +159,7 @@ export async function reconcileSpentRoots(db: Db, opts: { graceMs: number; now?:
     ok: failures.length === 0,
     failures,
     root: latest
-      ? { epoch: latest.epoch, status: latest.status, created_at: latest.createdAt.toISOString(), as_of: latest.asOf.toISOString(), total_spent_usdg: latest.totalSpentUsdg.toString(), leaves: leaves.length, merkle_matches: merkleMatches }
+      ? { epoch: latest.epoch, status: latest.status, created_at: latest.createdAt.toISOString(), as_of: latest.asOf.toISOString(), total_spent_usdg: latest.totalSpentUsdg.toString(), leaves: leaves.length, sorted, merkle_matches: merkleMatches }
       : null,
     funded_keys: funded.length,
     covered_keys: funded.length - missing.length - pending.length - overdue.length,
@@ -164,6 +180,7 @@ export async function reconcileSpentRoots(db: Db, opts: { graceMs: number; now?:
       processed_without_credit: processedWithoutCredit,
       credit_amount_mismatches: amountMismatches,
       credits_without_event: creditsWithoutEvent,
+      absence_exits: Number(absenceExits?.n ?? 0),
     },
   };
 }

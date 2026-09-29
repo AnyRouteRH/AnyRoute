@@ -15,6 +15,7 @@ import {Credits} from "../src/Credits.sol";
 import {ICredits} from "../src/interfaces/ICredits.sol";
 import {MockUSDG} from "../src/mocks/MockUSDG.sol";
 import {Merkle} from "./utils/Merkle.sol";
+import {SpentTree} from "./utils/SpentTree.sol";
 
 contract MockERC1271Wallet is IERC1271 {
     address public immutable signer;
@@ -147,15 +148,47 @@ abstract contract CreditsBase is Test {
         else if (mode == VmSafe.CallerMode.Prank) vm.prank(sender, origin);
     }
 
-    /// Posts a single-leaf root for (kh, spent); proof is empty.
+    /// Posts a single-leaf root for (kh, spent); the leaf is at index 0 of 1 and its proof is empty.
     function _postSingle(bytes32 kh, uint256 spent, uint256 totalSpent) internal {
+        _postRoot(SpentTree.commitment(Merkle.creditsLeaf(kh, spent), 1), totalSpent);
+    }
+
+    function _postRoot(bytes32 root, uint256 totalSpent) internal {
         vm.prank(settlement);
-        _approveRoot(Merkle.creditsLeaf(kh, spent), uint64(block.timestamp), totalSpent);
-        credits.postSpentRoot(Merkle.creditsLeaf(kh, spent), uint64(block.timestamp), totalSpent);
+        _approveRoot(root, uint64(block.timestamp), totalSpent);
+        credits.postSpentRoot(root, uint64(block.timestamp), totalSpent);
+    }
+
+    /// Posts the root of the tree of (keys[i], spents[i]) in the order given.
+    function _postTree(bytes32[] memory keys, uint256[] memory spents, uint256 totalSpent) internal {
+        _postRoot(SpentTree.root(keys, spents), totalSpent);
     }
 
     function _empty() internal pure returns (bytes32[] memory p) {
         p = new bytes32[](0);
+    }
+
+    function _finalizeAbsent(bytes32 kh, bytes32[] memory keys, uint256[] memory spents) internal {
+        uint256 gap = SpentTree.gapOf(keys, kh);
+        credits.finalizeWithdrawalAbsent(
+            kh, keys.length, gap, _below(keys, spents, gap), _above(keys, spents, gap)
+        );
+    }
+
+    function _below(bytes32[] memory keys, uint256[] memory spents, uint256 gap)
+        internal
+        pure
+        returns (ICredits.SpentLeafProof memory)
+    {
+        return gap == 0 ? SpentTree.sentinel() : SpentTree.neighbour(keys, spents, gap - 1);
+    }
+
+    function _above(bytes32[] memory keys, uint256[] memory spents, uint256 gap)
+        internal
+        pure
+        returns (ICredits.SpentLeafProof memory)
+    {
+        return gap == keys.length ? SpentTree.sentinel() : SpentTree.neighbour(keys, spents, gap);
     }
 
     function _permitSig(uint256 pk, address ownerAddr, address spender, uint256 value, uint256 deadline)
@@ -233,6 +266,29 @@ contract CreditsTest is CreditsBase {
     function testFuzz_spentLeaf_matchesHelper(bytes32 kh, uint256 spent) public view {
         assertEq(credits.spentLeaf(kh, spent), Merkle.creditsLeaf(kh, spent));
         assertEq(credits.spentLeaf(kh, spent), keccak256(bytes.concat(keccak256(abi.encode(kh, spent)))));
+    }
+
+    /// Pinned vector shared with test/unit.test.ts (the TypeScript SpentTree): keys 1, 2, 3 spending 10, 20, 30.
+    function test_spentTree_pinnedVector() public view {
+        bytes32[] memory keys = new bytes32[](3);
+        uint256[] memory spents = new uint256[](3);
+        (keys[0], keys[1], keys[2]) = (bytes32(uint256(1)), bytes32(uint256(2)), bytes32(uint256(3)));
+        (spents[0], spents[1], spents[2]) = (10, 20, 30);
+        // pinned by their leading 8 bytes (computed independently with viem)
+        bytes32 treeRoot = SpentTree.treeRoot(SpentTree.leaves(keys, spents));
+        bytes32 root = credits.spentCommitment(treeRoot, 3);
+        assertEq(bytes8(treeRoot), bytes8(0xab31475d858a5d6f));
+        assertEq(bytes8(root), bytes8(0x0d848344e8b11cf4));
+        assertEq(SpentTree.root(keys, spents), root);
+        assertEq(credits.spentCommitment(treeRoot, 0), bytes32(0));
+        bytes32[] memory leaves = SpentTree.leaves(keys, spents);
+        for (uint256 i; i < 3; ++i) {
+            assertTrue(
+                credits.verifySpentInclusion(root, keys[i], spents[i], i, 3, SpentTree.proof(leaves, i))
+            );
+        }
+        // the odd last leaf is promoted past the first level, so its path has a single sibling
+        assertEq(SpentTree.proof(leaves, 2).length, 1);
     }
 
     function test_availableFor() public {
@@ -597,7 +653,7 @@ contract CreditsTest is CreditsBase {
         bytes memory sig = _signRequest(keyPk, 1e6, recipient, block.timestamp);
         credits.requestWithdrawal(keyAddr, 1e6, recipient, block.timestamp, sig);
         _postSingle(keyHash, 0, 0);
-        credits.finalizeWithdrawal(keyHash, 0, _empty());
+        credits.finalizeWithdrawal(keyHash, 0, 0, 1, _empty());
         vm.expectRevert(ICredits.BadSignature.selector);
         credits.requestWithdrawal(keyAddr, 1e6, recipient, block.timestamp, sig);
     }
@@ -720,14 +776,14 @@ contract CreditsTest is CreditsBase {
 
     function test_finalize_revertsNoPending() public {
         vm.expectRevert(ICredits.NoPendingWithdrawal.selector);
-        credits.finalizeWithdrawal(keyHash, 0, _empty());
+        credits.finalizeWithdrawal(keyHash, 0, 0, 1, _empty());
     }
 
     function test_finalize_revertsRootTooOld_noRoot() public {
         _deposit(keyHash, 100e6);
         _request(10e6);
         vm.expectRevert(ICredits.RootTooOld.selector);
-        credits.finalizeWithdrawal(keyHash, 0, _empty());
+        credits.finalizeWithdrawal(keyHash, 0, 0, 1, _empty());
     }
 
     function test_finalize_revertsRootTooOld_olderRoot() public {
@@ -736,14 +792,14 @@ contract CreditsTest is CreditsBase {
         vm.warp(block.timestamp + 1);
         _request(10e6);
         vm.expectRevert(ICredits.RootTooOld.selector);
-        credits.finalizeWithdrawal(keyHash, 0, _empty());
+        credits.finalizeWithdrawal(keyHash, 0, 0, 1, _empty());
     }
 
     function test_finalize_rootAtRequestTimestampOk() public {
         _deposit(keyHash, 100e6);
         _request(10e6);
         _postSingle(keyHash, 0, 0);
-        credits.finalizeWithdrawal(keyHash, 0, _empty());
+        credits.finalizeWithdrawal(keyHash, 0, 0, 1, _empty());
         assertEq(usdg.balanceOf(recipient), 10e6);
     }
 
@@ -756,7 +812,7 @@ contract CreditsTest is CreditsBase {
         vm.expectEmit(true, true, true, true, address(credits));
         emit ICredits.Withdrawn(keyHash, recipient, 50e6);
         vm.prank(relayer); // anyone may finalize; funds go to `to`
-        credits.finalizeWithdrawal(keyHash, 30e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 30e6, 0, 1, _empty());
 
         assertEq(usdg.balanceOf(recipient), 50e6);
         assertEq(usdg.balanceOf(relayer), 0);
@@ -773,7 +829,7 @@ contract CreditsTest is CreditsBase {
         _postSingle(keyHash, 30e6, 30e6);
         vm.expectEmit(true, true, true, true, address(credits));
         emit ICredits.Withdrawn(keyHash, recipient, 70e6);
-        credits.finalizeWithdrawal(keyHash, 30e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 30e6, 0, 1, _empty());
         assertEq(usdg.balanceOf(recipient), 70e6);
         assertEq(credits.withdrawn(keyHash), 70e6);
     }
@@ -784,7 +840,7 @@ contract CreditsTest is CreditsBase {
         _postSingle(keyHash, 100e6, 100e6);
         vm.expectEmit(true, true, true, true, address(credits));
         emit ICredits.Withdrawn(keyHash, recipient, 0);
-        credits.finalizeWithdrawal(keyHash, 100e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 100e6, 0, 1, _empty());
         assertEq(usdg.balanceOf(recipient), 0);
         assertEq(credits.withdrawn(keyHash), 0);
         (uint256 amt,,) = credits.pendingWithdrawal(keyHash);
@@ -795,7 +851,7 @@ contract CreditsTest is CreditsBase {
         _deposit(keyHash, 100e6);
         _request(10e6);
         _postSingle(keyHash, 150e6, 150e6);
-        credits.finalizeWithdrawal(keyHash, 150e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 150e6, 0, 1, _empty());
         assertEq(usdg.balanceOf(recipient), 0);
     }
 
@@ -803,14 +859,14 @@ contract CreditsTest is CreditsBase {
         _deposit(keyHash, 100e6);
         _request(60e6);
         _postSingle(keyHash, 10e6, 10e6);
-        credits.finalizeWithdrawal(keyHash, 10e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 10e6, 0, 1, _empty());
         assertEq(usdg.balanceOf(recipient), 60e6);
 
         vm.warp(block.timestamp + 1);
         _request(60e6);
         vm.warp(block.timestamp + 1);
         _postSingle(keyHash, 20e6, 20e6);
-        credits.finalizeWithdrawal(keyHash, 20e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 20e6, 0, 1, _empty());
         // 100 - 20 - 60 = 20
         assertEq(usdg.balanceOf(recipient), 80e6);
         assertEq(credits.withdrawn(keyHash), 80e6);
@@ -822,32 +878,29 @@ contract CreditsTest is CreditsBase {
         _request(30e6);
         _postSingle(keyHash, 5e6, 5e6);
         _deposit(keyHash, 20e6); // on-chain deposits are always current
-        credits.finalizeWithdrawal(keyHash, 5e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 5e6, 0, 1, _empty());
         assertEq(usdg.balanceOf(recipient), 25e6);
     }
 
     function test_finalize_multiKeyTree() public {
         uint256 n = 7;
-        uint256[] memory pks = new uint256[](n);
         bytes32[] memory khs = new bytes32[](n);
         uint256[] memory spents = new uint256[](n);
-        bytes32[] memory leaves = new bytes32[](n);
         for (uint256 i; i < n; ++i) {
-            pks[i] = 0x1000 + i;
-            khs[i] = keccak256(abi.encodePacked(vm.addr(pks[i])));
+            uint256 pk = 0x1000 + i;
+            khs[i] = keccak256(abi.encodePacked(vm.addr(pk)));
             spents[i] = (i + 1) * 3e6;
             _deposit(khs[i], 100e6);
-            leaves[i] = Merkle.creditsLeaf(khs[i], spents[i]);
-            bytes memory sig = _signRequest(pks[i], 200e6, recipient, block.timestamp);
-            credits.requestWithdrawal(vm.addr(pks[i]), 200e6, recipient, block.timestamp, sig);
+            bytes memory sig = _signRequest(pk, 200e6, recipient, block.timestamp);
+            credits.requestWithdrawal(vm.addr(pk), 200e6, recipient, block.timestamp, sig);
         }
+        SpentTree.sort(khs, spents);
+        bytes32[] memory leaves = SpentTree.leaves(khs, spents);
         vm.warp(block.timestamp + 1 hours);
-        vm.prank(settlement);
-        _approveRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 84e6);
-        credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 84e6);
+        _postTree(khs, spents, 84e6);
         uint256 expected;
         for (uint256 i; i < n; ++i) {
-            credits.finalizeWithdrawal(khs[i], spents[i], Merkle.getProof(leaves, i));
+            credits.finalizeWithdrawal(khs[i], spents[i], i, n, SpentTree.proof(leaves, i));
             expected += 100e6 - spents[i];
         }
         assertEq(usdg.balanceOf(recipient), expected);
@@ -859,41 +912,79 @@ contract CreditsTest is CreditsBase {
         _request(10e6);
         _postSingle(keyHash, 30e6, 30e6);
         vm.expectRevert(ICredits.InvalidProof.selector);
-        credits.finalizeWithdrawal(keyHash, 29e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 29e6, 0, 1, _empty());
     }
 
     function test_finalize_revertsInvalidProof_otherKeysLeaf() public {
-        bytes32 other = keccak256("other");
+        bytes32[] memory keys = new bytes32[](2);
+        uint256[] memory spents = new uint256[](2);
+        (keys[0], spents[0]) = (keyHash, 90e6);
+        (keys[1], spents[1]) = (keccak256("other"), 0);
+        SpentTree.sort(keys, spents);
+        uint256 mine = keys[0] == keyHash ? 0 : 1;
+        bytes32[] memory leaves = SpentTree.leaves(keys, spents);
         _deposit(keyHash, 100e6);
         _request(10e6);
-        bytes32[] memory leaves = new bytes32[](2);
-        leaves[0] = Merkle.creditsLeaf(keyHash, 90e6);
-        leaves[1] = Merkle.creditsLeaf(other, 0);
-        vm.prank(settlement);
-        _approveRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 90e6);
-        credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 90e6);
+        _postTree(keys, spents, 90e6);
         // try using other key's leaf/proof for our key
         vm.expectRevert(ICredits.InvalidProof.selector);
-        credits.finalizeWithdrawal(keyHash, 0, Merkle.getProof(leaves, 1));
+        credits.finalizeWithdrawal(keyHash, 0, 1 - mine, 2, SpentTree.proof(leaves, 1 - mine));
+        // our leaf proven at the other key's position
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 90e6, 1 - mine, 2, SpentTree.proof(leaves, mine));
         // the correct proof works
-        credits.finalizeWithdrawal(keyHash, 90e6, Merkle.getProof(leaves, 0));
+        credits.finalizeWithdrawal(keyHash, 90e6, mine, 2, SpentTree.proof(leaves, mine));
         assertEq(usdg.balanceOf(recipient), 10e6);
     }
 
     function test_finalize_revertsInvalidProof_innerNodeAsLeaf() public {
-        bytes32[] memory leaves = new bytes32[](4);
+        bytes32[] memory keys = new bytes32[](4);
+        uint256[] memory spents = new uint256[](4);
         for (uint256 i; i < 4; ++i) {
-            leaves[i] = Merkle.creditsLeaf(bytes32(i), i);
+            (keys[i], spents[i]) = (bytes32(i), i);
         }
+        bytes32[] memory leaves = SpentTree.leaves(keys, spents);
         _deposit(keyHash, 100e6);
         _request(10e6);
-        vm.prank(settlement);
-        _approveRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 6);
-        credits.postSpentRoot(Merkle.getRoot(leaves), uint64(block.timestamp), 6);
+        _postTree(keys, spents, 6);
         bytes32[] memory proof = new bytes32[](1);
-        proof[0] = Merkle.hashPair(leaves[2], leaves[3]);
+        proof[0] = SpentTree.node(leaves[2], leaves[3]);
+        // a one-level path only fits a tree of two leaves, which the root does not commit to
         vm.expectRevert(ICredits.InvalidProof.selector);
-        credits.finalizeWithdrawal(keyHash, 0, proof);
+        credits.finalizeWithdrawal(keyHash, 0, 0, 2, proof);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 0, 0, 4, proof);
+    }
+
+    function test_finalize_revertsInvalidProof_wrongShape() public {
+        bytes32[] memory keys = new bytes32[](3);
+        uint256[] memory spents = new uint256[](3);
+        (keys[0], keys[1], keys[2]) = (bytes32(uint256(1)), keyHash, bytes32(type(uint256).max));
+        (spents[0], spents[1], spents[2]) = (5, 7e6, 9);
+        bytes32[] memory leaves = SpentTree.leaves(keys, spents);
+        bytes32[] memory proof = SpentTree.proof(leaves, 1);
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        _postTree(keys, spents, 7e6 + 14);
+        // wrong leaf count, wrong index, out-of-range index, truncated and padded paths
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 7e6, 1, 2, proof);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 7e6, 1, 4, proof);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 7e6, 0, 3, proof);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 7e6, 3, 3, proof);
+        bytes32[] memory shortProof = new bytes32[](1);
+        shortProof[0] = proof[0];
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 7e6, 1, 3, shortProof);
+        bytes32[] memory longProof = new bytes32[](3);
+        (longProof[0], longProof[1]) = (proof[0], proof[1]);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawal(keyHash, 7e6, 1, 3, longProof);
+        credits.finalizeWithdrawal(keyHash, 7e6, 1, 3, proof);
+        assertEq(usdg.balanceOf(recipient), 93e6);
     }
 
     function test_finalize_usesLatestRootOnly() public {
@@ -903,8 +994,8 @@ contract CreditsTest is CreditsBase {
         vm.warp(block.timestamp + 1);
         _postSingle(keyHash, 40e6, 40e6);
         vm.expectRevert(ICredits.InvalidProof.selector);
-        credits.finalizeWithdrawal(keyHash, 10e6, _empty());
-        credits.finalizeWithdrawal(keyHash, 40e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 10e6, 0, 1, _empty());
+        credits.finalizeWithdrawal(keyHash, 40e6, 0, 1, _empty());
         assertEq(usdg.balanceOf(recipient), 60e6);
     }
 
@@ -917,10 +1008,10 @@ contract CreditsTest is CreditsBase {
 
         vm.warp(requestedAt + 7 days - 1);
         vm.expectRevert(ICredits.RootTooOld.selector);
-        credits.finalizeWithdrawal(keyHash, 20e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 20e6, 0, 1, _empty());
 
         vm.warp(requestedAt + 7 days);
-        credits.finalizeWithdrawal(keyHash, 20e6, _empty());
+        credits.finalizeWithdrawal(keyHash, 20e6, 0, 1, _empty());
         assertEq(usdg.balanceOf(recipient), 80e6);
     }
 
@@ -928,9 +1019,29 @@ contract CreditsTest is CreditsBase {
         _deposit(keyHash, 100e6);
         _request(100e6);
         vm.warp(block.timestamp + 7 days);
-        // no root ever posted
+        // no root ever posted: the genesis root is the empty tree, which has no leaves to include
         vm.expectRevert(ICredits.InvalidProof.selector);
-        credits.finalizeWithdrawal(keyHash, 0, _empty());
+        credits.finalizeWithdrawal(keyHash, 0, 0, 1, _empty());
+    }
+
+    function test_finalize_escapeHatch_genesisIsEmptyTree() public {
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        ICredits.SpentLeafProof memory s = SpentTree.sentinel();
+        // settlement never posted: after the escape delay the key is provably absent from the empty tree
+        vm.warp(block.timestamp + 7 days - 1);
+        vm.expectRevert(ICredits.RootTooOld.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 0, 0, s, s);
+        vm.warp(block.timestamp + 1);
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 0, 1, s, s);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 1, 1, s, s);
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.AbsenceProven(keyHash, 0);
+        credits.finalizeWithdrawalAbsent(keyHash, 0, 0, s, s);
+        assertEq(usdg.balanceOf(recipient), 100e6);
+        assertEq(credits.withdrawn(keyHash), 100e6);
     }
 
     function testFuzz_finalize(uint256 dep, uint256 spent, uint256 req) public {
@@ -940,12 +1051,392 @@ contract CreditsTest is CreditsBase {
         _deposit(keyHash, dep);
         _request(req);
         _postSingle(keyHash, spent, spent);
-        credits.finalizeWithdrawal(keyHash, spent, _empty());
+        credits.finalizeWithdrawal(keyHash, spent, 0, 1, _empty());
         uint256 avail = dep > spent ? dep - spent : 0;
         uint256 expected = req < avail ? req : avail;
         assertEq(usdg.balanceOf(recipient), expected);
         assertEq(credits.withdrawn(keyHash), expected);
         assertEq(usdg.balanceOf(address(credits)), dep - expected);
+    }
+
+    // =============================================================================================
+    // finalizeWithdrawalAbsent: non-inclusion proofs
+    // =============================================================================================
+
+    /// Four other keys around keyHash (two below, two above), sorted, with some spend. keyHash is gap 2.
+    function _others() internal view returns (bytes32[] memory keys, uint256[] memory spents) {
+        uint256 k = uint256(keyHash);
+        keys = new bytes32[](4);
+        spents = new uint256[](4);
+        (keys[0], keys[1], keys[2], keys[3]) =
+        (bytes32(k - 7), bytes32(k - 1), bytes32(k + 1), bytes32(k + 9));
+        (spents[0], spents[1], spents[2], spents[3]) = (1e6, 2e6, 3e6, 4e6);
+    }
+
+    /// The same four keys plus keyHash itself (index 2) with `spent`.
+    function _othersWithKey(uint256 spent)
+        internal
+        view
+        returns (bytes32[] memory keys, uint256[] memory spents)
+    {
+        (bytes32[] memory o, uint256[] memory os) = _others();
+        keys = new bytes32[](5);
+        spents = new uint256[](5);
+        (keys[0], keys[1], keys[2], keys[3], keys[4]) = (o[0], o[1], keyHash, o[2], o[3]);
+        (spents[0], spents[1], spents[2], spents[3], spents[4]) = (os[0], os[1], spent, os[2], os[3]);
+    }
+
+    function test_absent_paysDepositMinusWithdrawn() public {
+        (bytes32[] memory keys, uint256[] memory spents) = _others();
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        _postTree(keys, spents, 10e6);
+        ICredits.SpentLeafProof memory below = SpentTree.neighbour(keys, spents, 1);
+        ICredits.SpentLeafProof memory above = SpentTree.neighbour(keys, spents, 2);
+        assertTrue(credits.verifySpentAbsence(SpentTree.root(keys, spents), keyHash, 4, 2, below, above));
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.AbsenceProven(keyHash, 1);
+        vm.expectEmit(true, true, true, true, address(credits));
+        emit ICredits.Withdrawn(keyHash, recipient, 100e6);
+        vm.prank(relayer); // permissionless; funds go to the requested `to`
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 2, below, above);
+        assertEq(usdg.balanceOf(recipient), 100e6);
+        assertEq(usdg.balanceOf(relayer), 0);
+        assertEq(credits.withdrawn(keyHash), 100e6);
+        (uint256 amt,,) = credits.pendingWithdrawal(keyHash);
+        assertEq(amt, 0);
+        vm.expectRevert(ICredits.NoPendingWithdrawal.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 2, below, above);
+    }
+
+    function test_absent_capsAtRequestAndCountsPriorWithdrawals() public {
+        (bytes32[] memory keys, uint256[] memory spents) = _others();
+        _deposit(keyHash, 100e6);
+        _request(30e6);
+        _postSingle(keyHash, 0, 0);
+        credits.finalizeWithdrawal(keyHash, 0, 0, 1, _empty());
+        // later roots omit the key: spend 0, but the 30 already withdrawn still counts
+        vm.warp(block.timestamp + 1 hours);
+        _request(50e6);
+        _postTree(keys, spents, 10e6);
+        _finalizeAbsent(keyHash, keys, spents);
+        assertEq(usdg.balanceOf(recipient), 80e6);
+        vm.warp(block.timestamp + 1 hours);
+        _request(100e6);
+        _postTree(keys, spents, 10e6);
+        _finalizeAbsent(keyHash, keys, spents);
+        assertEq(usdg.balanceOf(recipient), 100e6);
+        vm.warp(block.timestamp + 1 hours);
+        _request(1e6);
+        _postTree(keys, spents, 10e6);
+        _finalizeAbsent(keyHash, keys, spents);
+        assertEq(usdg.balanceOf(recipient), 100e6);
+        assertEq(credits.withdrawn(keyHash), 100e6);
+    }
+
+    function test_absent_sentinels() public {
+        uint256 k = uint256(keyHash);
+        bytes32[] memory keys = new bytes32[](3);
+        uint256[] memory spents = new uint256[](3);
+        ICredits.SpentLeafProof memory junk;
+        junk.keyHash = keyHash; // a sentinel's argument is ignored, whatever it holds
+        junk.cumulativeSpent = 1;
+        junk.proof = new bytes32[](2);
+        _deposit(keyHash, 100e6);
+
+        // every key is above keyHash: it sits between the low sentinel and leaf 0 (gap 0)
+        (keys[0], keys[1], keys[2]) = (bytes32(k + 1), bytes32(k + 2), bytes32(k + 3));
+        _request(10e6);
+        _postTree(keys, spents, 0);
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 3, 3, SpentTree.neighbour(keys, spents, 2), junk);
+        credits.finalizeWithdrawalAbsent(keyHash, 3, 0, junk, SpentTree.neighbour(keys, spents, 0));
+        assertEq(usdg.balanceOf(recipient), 10e6);
+
+        // every key is below keyHash: it sits between leaf 2 and the high sentinel (gap = leafCount)
+        (keys[0], keys[1], keys[2]) = (bytes32(k - 3), bytes32(k - 2), bytes32(k - 1));
+        vm.warp(block.timestamp + 1);
+        _request(10e6);
+        _postTree(keys, spents, 0);
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 3, 0, junk, SpentTree.neighbour(keys, spents, 0));
+        // the high sentinel cannot be moved down: claiming two leaves does not match the commitment
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 2, 2, SpentTree.neighbour(keys, spents, 1), junk);
+        credits.finalizeWithdrawalAbsent(keyHash, 3, 3, SpentTree.neighbour(keys, spents, 2), junk);
+        assertEq(usdg.balanceOf(recipient), 20e6);
+
+        // a one-leaf tree, and the extreme key hashes as leaves
+        bytes32[] memory one = new bytes32[](1);
+        uint256[] memory oneSpent = new uint256[](1);
+        one[0] = bytes32(type(uint256).max);
+        vm.warp(block.timestamp + 1);
+        _request(10e6);
+        _postTree(one, oneSpent, 0);
+        credits.finalizeWithdrawalAbsent(keyHash, 1, 0, junk, SpentTree.neighbour(one, oneSpent, 0));
+        one[0] = bytes32(0);
+        vm.warp(block.timestamp + 1);
+        _request(10e6);
+        _postTree(one, oneSpent, 0);
+        credits.finalizeWithdrawalAbsent(keyHash, 1, 1, SpentTree.neighbour(one, oneSpent, 0), junk);
+        assertEq(usdg.balanceOf(recipient), 40e6);
+    }
+
+    function test_absent_revertsWhenNeighboursDoNotBracket() public {
+        (bytes32[] memory keys, uint256[] memory spents) = _others();
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        _postTree(keys, spents, 10e6);
+        ICredits.SpentLeafProof[] memory nb = new ICredits.SpentLeafProof[](4);
+        for (uint256 i; i < 4; ++i) {
+            nb[i] = SpentTree.neighbour(keys, spents, i);
+        }
+        // adjacent leaves that are both below, or both above, the key
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 1, nb[0], nb[1]);
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 3, nb[2], nb[3]);
+        // swapped neighbours, sentinel gaps on the wrong side, and a gap past the high sentinel
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 2, nb[2], nb[1]);
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 0, nb[0], nb[0]);
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 4, nb[3], nb[3]);
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 5, nb[3], nb[3]);
+        // bracketing keys that are not adjacent in the tree
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 2, nb[0], nb[2]);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 2, nb[1], nb[3]);
+        // a neighbour with an edited spend or a stale path, or the wrong leaf count
+        ICredits.SpentLeafProof memory edited = SpentTree.neighbour(keys, spents, 1);
+        edited.cumulativeSpent += 1;
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 2, edited, nb[2]);
+        edited = SpentTree.neighbour(keys, spents, 1);
+        edited.proof = nb[2].proof;
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 2, edited, nb[2]);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 5, 2, nb[1], nb[2]);
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 0, 0, nb[1], nb[2]);
+        // the adjacent bracketing pair works
+        credits.finalizeWithdrawalAbsent(keyHash, 4, 2, nb[1], nb[2]);
+        assertEq(usdg.balanceOf(recipient), 100e6);
+    }
+
+    function test_absent_impossibleForIncludedKey() public {
+        (bytes32[] memory keys, uint256[] memory spents) = _othersWithKey(40e6);
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        _postTree(keys, spents, 50e6);
+        // no gap of a sorted tree brackets a key it contains
+        for (uint256 gap; gap <= keys.length; ++gap) {
+            vm.expectRevert(ICredits.NotBracketed.selector);
+            credits.finalizeWithdrawalAbsent(
+                keyHash, 5, gap, _below(keys, spents, gap), _above(keys, spents, gap)
+            );
+        }
+        // and the neighbours of the key's own leaf cannot be passed off as adjacent
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(
+            keyHash, 5, 2, SpentTree.neighbour(keys, spents, 1), SpentTree.neighbour(keys, spents, 3)
+        );
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(
+            keyHash, 5, 3, SpentTree.neighbour(keys, spents, 1), SpentTree.neighbour(keys, spents, 3)
+        );
+        // nor can the key hide behind a moved high sentinel
+        vm.expectRevert(ICredits.InvalidProof.selector);
+        credits.finalizeWithdrawalAbsent(
+            keyHash, 2, 2, SpentTree.neighbour(keys, spents, 1), SpentTree.sentinel()
+        );
+        credits.finalizeWithdrawal(keyHash, 40e6, 2, 5, SpentTree.proof(SpentTree.leaves(keys, spents), 2));
+        assertEq(usdg.balanceOf(recipient), 60e6);
+    }
+
+    function test_absent_timingFollowsTheWithdrawalDelay() public {
+        (bytes32[] memory keys, uint256[] memory spents) = _others();
+        _deposit(keyHash, 100e6);
+        _postTree(keys, spents, 10e6);
+        vm.warp(block.timestamp + 1 hours);
+        _request(100e6);
+        uint256 requestedAt = block.timestamp;
+        vm.expectRevert(ICredits.RootTooOld.selector);
+        _finalizeAbsent(keyHash, keys, spents);
+        vm.warp(requestedAt + 7 days - 1);
+        vm.expectRevert(ICredits.RootTooOld.selector);
+        _finalizeAbsent(keyHash, keys, spents);
+        vm.warp(requestedAt + 7 days);
+        _finalizeAbsent(keyHash, keys, spents);
+        assertEq(usdg.balanceOf(recipient), 100e6);
+    }
+
+    function test_absent_nextRootAccountsForAbsenceWithdrawal_noDoubleSpend() public {
+        (bytes32[] memory others, uint256[] memory otherSpents) = _others();
+        _deposit(keyHash, 100e6);
+        // the router served 30 of usage, then its root omitted the key: the key exits with all 100
+        _request(100e6);
+        _postTree(others, otherSpents, 10e6);
+        _finalizeAbsent(keyHash, others, otherSpents);
+        assertEq(credits.withdrawn(keyHash), 100e6);
+
+        // settlement's next root caps the key at deposited - withdrawn = 0 (the 30 is its loss)
+        (bytes32[] memory keys, uint256[] memory spents) = _othersWithKey(0);
+        vm.warp(block.timestamp + 1 hours);
+        _request(1e6);
+        _postTree(keys, spents, 10e6);
+        credits.finalizeWithdrawal(keyHash, 0, 2, 5, SpentTree.proof(SpentTree.leaves(keys, spents), 2));
+        assertEq(credits.withdrawn(keyHash), 100e6);
+
+        // a root that re-counts the old usage cannot pay twice either, and absence no longer applies
+        (keys, spents) = _othersWithKey(30e6);
+        vm.warp(block.timestamp + 1 hours);
+        _request(1e6);
+        _postTree(keys, spents, 40e6);
+        vm.expectRevert(ICredits.NotBracketed.selector);
+        credits.finalizeWithdrawalAbsent(keyHash, 5, 2, _below(keys, spents, 2), _above(keys, spents, 2));
+        credits.finalizeWithdrawal(keyHash, 30e6, 2, 5, SpentTree.proof(SpentTree.leaves(keys, spents), 2));
+        assertEq(credits.withdrawn(keyHash), 100e6);
+
+        // a new deposit: the later root's spend nets against every earlier withdrawal
+        _deposit(keyHash, 50e6);
+        (keys, spents) = _othersWithKey(20e6);
+        vm.warp(block.timestamp + 1 hours);
+        _request(100e6);
+        _postTree(keys, spents, 40e6);
+        credits.finalizeWithdrawal(keyHash, 20e6, 2, 5, SpentTree.proof(SpentTree.leaves(keys, spents), 2));
+        assertEq(credits.withdrawn(keyHash), 130e6);
+        assertEq(usdg.balanceOf(recipient), 130e6);
+        assertEq(usdg.balanceOf(address(credits)), 20e6);
+        assertLe(credits.withdrawn(keyHash), credits.deposited(keyHash));
+    }
+
+    function test_absent_laterOmissionIsSettlementsLoss() public {
+        _deposit(keyHash, 100e6);
+        _request(10e6);
+        _postSingle(keyHash, 30e6, 30e6);
+        credits.finalizeWithdrawal(keyHash, 30e6, 0, 1, _empty());
+        // the key was in the last root with 30 spent; a root that drops it releases that spend
+        (bytes32[] memory keys, uint256[] memory spents) = _others();
+        vm.warp(block.timestamp + 1 hours);
+        _request(100e6);
+        _postTree(keys, spents, 30e6);
+        _finalizeAbsent(keyHash, keys, spents);
+        assertEq(usdg.balanceOf(recipient), 100e6);
+        assertEq(credits.withdrawn(keyHash), credits.deposited(keyHash));
+    }
+
+    function test_malformedTree_keyFinalizesWithLowestProvableSpend() public {
+        uint256 k = uint256(keyHash);
+        _deposit(keyHash, 100e6);
+        // duplicated leaves: either verifies, and the key picks the lower spend
+        bytes32[] memory keys = new bytes32[](3);
+        uint256[] memory spents = new uint256[](3);
+        (keys[0], keys[1], keys[2]) = (keyHash, bytes32(k + 5), keyHash);
+        (spents[0], spents[1], spents[2]) = (50e6, 0, 10e6);
+        bytes32[] memory leaves = SpentTree.leaves(keys, spents);
+        _request(100e6);
+        _postTree(keys, spents, 60e6);
+        assertTrue(
+            credits.verifySpentInclusion(
+                SpentTree.root(keys, spents), keyHash, 50e6, 0, 3, SpentTree.proof(leaves, 0)
+            )
+        );
+        credits.finalizeWithdrawal(keyHash, 10e6, 2, 3, SpentTree.proof(leaves, 2));
+        assertEq(usdg.balanceOf(recipient), 90e6);
+
+        // unsorted: the key has a leaf, yet an adjacent pair still brackets it; the lower (0) wins
+        (keys[0], keys[1], keys[2]) = (bytes32(k + 5), keyHash, bytes32(k - 5));
+        (spents[0], spents[1], spents[2]) = (0, 10e6, 0);
+        _deposit(keyHash, 10e6);
+        vm.warp(block.timestamp + 1);
+        _request(100e6);
+        _postTree(keys, spents, 60e6);
+        credits.finalizeWithdrawalAbsent(
+            keyHash, 3, 0, SpentTree.sentinel(), SpentTree.neighbour(keys, spents, 0)
+        );
+        assertEq(usdg.balanceOf(recipient), 110e6);
+    }
+
+    /// In a sorted tree, a key either has exactly one provable leaf or exactly one bracketing gap.
+    function testFuzz_inclusionXorAbsence(uint256 seed, uint256 n, uint256 pick, bool present) public view {
+        n = bound(n, 0, 17);
+        bytes32[] memory keys = new bytes32[](n);
+        uint256[] memory spents = new uint256[](n);
+        for (uint256 i; i < n; ++i) {
+            keys[i] = keccak256(abi.encode(seed, i));
+            spents[i] = uint256(keccak256(abi.encode(seed, i, "spent"))) % 1e15;
+        }
+        SpentTree.sort(keys, spents);
+        bytes32 root = SpentTree.root(keys, spents);
+        bytes32[] memory leaves = SpentTree.leaves(keys, spents);
+        bytes32 probe = present && n != 0 ? keys[pick % n] : keccak256(abi.encode(seed, pick, "absent"));
+
+        uint256 inclusions;
+        for (uint256 i; i < n; ++i) {
+            if (credits.verifySpentInclusion(root, probe, spents[i], i, n, SpentTree.proof(leaves, i))) {
+                ++inclusions;
+            }
+        }
+        uint256 absences;
+        for (uint256 gap; gap <= n; ++gap) {
+            if (credits.verifySpentAbsence(
+                    root, probe, n, gap, _below(keys, spents, gap), _above(keys, spents, gap)
+                )) {
+                ++absences;
+            }
+        }
+        assertEq(inclusions, present && n != 0 ? 1 : 0);
+        assertEq(absences, present && n != 0 ? 0 : 1);
+    }
+
+    /// Completeness needs no honest sorting: in any tree (unsorted, duplicated) an absent key is bracketed.
+    function testFuzz_absentKeyIsBracketedInAnyTree(uint256 seed, uint256 n, uint256 probeSeed) public view {
+        n = bound(n, 0, 12);
+        uint256 probe = bound(probeSeed, 8, type(uint256).max - 8);
+        bytes32[] memory keys = new bytes32[](n);
+        uint256[] memory spents = new uint256[](n);
+        for (uint256 i; i < n; ++i) {
+            uint256 offset = 1 + uint256(keccak256(abi.encode(seed, i))) % 4;
+            keys[i] = bytes32(
+                uint256(keccak256(abi.encode(seed, i, "side"))) % 2 == 0 ? probe - offset : probe + offset
+            );
+            spents[i] = i;
+        }
+        bytes32 root = SpentTree.root(keys, spents);
+        bool found;
+        for (uint256 gap; gap <= n && !found; ++gap) {
+            found = credits.verifySpentAbsence(
+                root, bytes32(probe), n, gap, _below(keys, spents, gap), _above(keys, spents, gap)
+            );
+        }
+        assertTrue(found);
+    }
+
+    function testFuzz_absentWithdrawal(uint256 dep, uint256 prior, uint256 req) public {
+        dep = bound(dep, 1, 5_000_000e6);
+        prior = bound(prior, 0, dep);
+        req = bound(req, 1, 10_000_000e6);
+        (bytes32[] memory keys, uint256[] memory spents) = _others();
+        _deposit(keyHash, dep);
+        if (prior != 0) {
+            _request(prior);
+            _postSingle(keyHash, 0, 0);
+            credits.finalizeWithdrawal(keyHash, 0, 0, 1, _empty());
+            vm.warp(block.timestamp + 1);
+        }
+        _request(req);
+        _postTree(keys, spents, 10e6);
+        _finalizeAbsent(keyHash, keys, spents);
+        uint256 expected = req < dep - prior ? req : dep - prior;
+        assertEq(usdg.balanceOf(recipient), prior + expected);
+        assertEq(credits.withdrawn(keyHash), prior + expected);
+        assertLe(credits.withdrawn(keyHash), dep);
+        assertEq(usdg.balanceOf(address(credits)), dep - prior - expected);
     }
 
     // =============================================================================================
@@ -1068,8 +1559,59 @@ contract CreditsTest is CreditsBase {
     }
 }
 
+/// Production-sized trees (also the gas benchmark: forge test --match-contract CreditsLargeTreeTest --gas-report).
+contract CreditsLargeTreeTest is CreditsBase {
+    uint256 internal constant N = 1024;
+
+    /// N keys evenly spread over the key space (already sorted); keyHash falls between keys[pos] and
+    /// keys[pos + 1], or replaces keys[pos] when `withKey`.
+    function _spread(bool withKey)
+        internal
+        view
+        returns (bytes32[] memory keys, uint256[] memory spents, uint256 pos)
+    {
+        uint256 step = type(uint256).max / N;
+        pos = uint256(keyHash) / step;
+        require(pos + 1 < N && uint256(keyHash) % step != 0, "keyHash placement");
+        keys = new bytes32[](N);
+        spents = new uint256[](N);
+        for (uint256 i; i < N; ++i) {
+            (keys[i], spents[i]) = (bytes32(i * step), 1e6);
+        }
+        if (withKey) (keys[pos], spents[pos]) = (keyHash, 10e6);
+    }
+
+    function test_largeTree_inclusion() public {
+        (bytes32[] memory keys, uint256[] memory spents, uint256 pos) = _spread(true);
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        _postTree(keys, spents, N * 1e6 + 9e6);
+        bytes32[] memory proof = SpentTree.proof(SpentTree.leaves(keys, spents), pos);
+        assertEq(proof.length, 10);
+        credits.finalizeWithdrawal(keyHash, 10e6, pos, N, proof);
+        assertEq(usdg.balanceOf(recipient), 90e6);
+    }
+
+    function test_largeTree_absence() public {
+        (bytes32[] memory keys, uint256[] memory spents, uint256 pos) = _spread(false);
+        _deposit(keyHash, 100e6);
+        _request(100e6);
+        _postTree(keys, spents, N * 1e6);
+        credits.finalizeWithdrawalAbsent(
+            keyHash,
+            N,
+            pos + 1,
+            SpentTree.neighbour(keys, spents, pos),
+            SpentTree.neighbour(keys, spents, pos + 1)
+        );
+        assertEq(usdg.balanceOf(recipient), 100e6);
+    }
+}
+
 // =================================================================================================
-// Invariant: sum_k (deposited - spent - withdrawn) + totalSpent - totalSwept == USDG balance
+// Invariants. Honest settlement: sum_k (deposited - spent - withdrawn) + totalSpent - totalSwept ==
+// USDG balance. Omitting settlement: every exit still finalizes, pays exactly what the latest root
+// proves, and the only shortfall is usage settlement lost to its own omissions.
 // =================================================================================================
 
 contract CreditsHandler is CommonBase, StdCheats, StdUtils {
@@ -1081,26 +1623,35 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
     address public immutable creditor;
     address public immutable depositor;
     address public immutable sink;
+    /// Settlement leaves funded keys out of its roots at random (a buggy or malicious router).
+    bool public immutable omitting;
 
     uint256[N] public pks;
     address[N] public keyAddrs;
     bytes32[N] public keyHashes;
 
-    // off-chain router state
+    // off-chain router state: usage served (never above the key's net funding)
     uint256[N] public liveSpent;
-    // spent as of the latest posted root
+    // provable spend in the latest root; 0 for a key the root leaves out
     uint256[N] public rootSpent;
-    bytes32[] internal latestLeaves;
+    bool[N] public inRoot;
+    // the latest root's leaves, sorted by key hash
+    bytes32[] internal rootKeys;
+    uint256[] internal rootSpents;
 
+    // served usage that an exit left uncovered (omitted key or stale escape root): settlement's loss
+    uint256 public settlementLoss;
     uint256 public calls;
     uint256 public finalizations;
     uint256 public escapes;
+    uint256 public absences;
 
-    constructor(Credits credits_, MockUSDG usdg_, address settlement_, address creditor_) {
+    constructor(Credits credits_, MockUSDG usdg_, address settlement_, address creditor_, bool omitting_) {
         credits = credits_;
         usdg = usdg_;
         settlement = settlement_;
         creditor = creditor_;
+        omitting = omitting_;
         depositor = makeAddr("depositor");
         sink = makeAddr("sink");
         for (uint256 i; i < N; ++i) {
@@ -1139,6 +1690,10 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
         (amt,, at) = credits.pendingWithdrawal(keyHashes[i]);
     }
 
+    function _net(uint256 i) internal view returns (uint256) {
+        return credits.deposited(keyHashes[i]) - credits.withdrawn(keyHashes[i]);
+    }
+
     function deposit(uint256 seed, uint256 amount) external {
         uint256 i = seed % N;
         amount = bound(amount, 1, 1_000_000e6);
@@ -1157,35 +1712,49 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
         ++calls;
     }
 
-    /// Router serves usage (off-chain). An honest router never serves a key with a pending withdrawal
-    /// and never lets spend exceed the key's balance.
+    /// Router serves usage (off-chain). It never serves a key with a pending withdrawal and never lets
+    /// spend exceed the key's balance.
     function spend(uint256 seed, uint256 amount) external {
         uint256 i = seed % N;
         (uint256 p,) = _pending(i);
         if (p != 0) return;
-        uint256 dep = credits.deposited(keyHashes[i]);
-        uint256 used = credits.withdrawn(keyHashes[i]) + liveSpent[i];
-        if (dep <= used) return;
-        liveSpent[i] += bound(amount, 0, dep - used);
+        uint256 net = _net(i);
+        if (net <= liveSpent[i]) return;
+        liveSpent[i] += bound(amount, 0, net - liveSpent[i]);
         ++calls;
     }
 
-    /// Settlement posts an honest root: each key's spent is capped at what the key can still back.
-    function postRoot(uint256 gap) external {
+    /// Settlement posts a root: each included key's spend is capped at what the key can still back.
+    /// An omitting router drops about a quarter of the keys from each root.
+    function postRoot(uint256 gap, uint256 omitSeed) external {
         vm.warp(block.timestamp + bound(gap, 1, 2 hours));
-        delete latestLeaves;
-        uint256 total;
+        uint256 sum;
+        uint256 n;
         for (uint256 i; i < N; ++i) {
-            uint256 cap = credits.deposited(keyHashes[i]) - credits.withdrawn(keyHashes[i]);
-            uint256 s = liveSpent[i] < cap ? liveSpent[i] : cap;
-            if (s < rootSpent[i]) s = rootSpent[i];
-            rootSpent[i] = s;
-            total += s;
-            latestLeaves.push(Merkle.creditsLeaf(keyHashes[i], s));
+            uint256 net = _net(i);
+            uint256 s = liveSpent[i] < net ? liveSpent[i] : net;
+            inRoot[i] = !omitting || (omitSeed >> (2 * i)) % 4 != 0;
+            rootSpent[i] = inRoot[i] ? s : 0;
+            sum += rootSpent[i];
+            if (inRoot[i]) ++n;
         }
+        bytes32[] memory ks = new bytes32[](n);
+        uint256[] memory ss = new uint256[](n);
+        n = 0;
+        for (uint256 i; i < N; ++i) {
+            if (!inRoot[i]) continue;
+            (ks[n], ss[n]) = (keyHashes[i], rootSpent[i]);
+            ++n;
+        }
+        SpentTree.sort(ks, ss);
+        rootKeys = ks;
+        rootSpents = ss;
+        (,, uint256 prevTotal) = credits.spentRoot(credits.latestEpoch());
+        uint256 total = sum > prevTotal ? sum : prevTotal;
+        bytes32 root = SpentTree.root(rootKeys, rootSpents);
         vm.prank(settlement);
-        _approveRoot(Merkle.getRoot(latestLeaves), uint64(block.timestamp), total);
-        credits.postSpentRoot(Merkle.getRoot(latestLeaves), uint64(block.timestamp), total);
+        _approveRoot(root, uint64(block.timestamp), total);
+        credits.postSpentRoot(root, uint64(block.timestamp), total);
         ++calls;
     }
 
@@ -1212,24 +1781,60 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
         ++calls;
     }
 
+    /// Any pending key can always finalize once timing allows: with an inclusion proof when the latest
+    /// root has its leaf, else with an absence proof (the genesis root is the empty tree).
     function finalizeWithdrawal(uint256 seed) external {
         uint256 i = seed % N;
+        bytes32 kh = keyHashes[i];
         (uint256 p, uint64 at) = _pending(i);
-        if (p == 0 || latestLeaves.length == 0) return;
+        if (p == 0) return;
         (, uint64 asOf,) = credits.spentRoot(credits.latestEpoch());
         bool escape = asOf < at;
         if (escape && block.timestamp < uint256(at) + credits.ESCAPE_DELAY()) return;
-        credits.finalizeWithdrawal(keyHashes[i], rootSpent[i], Merkle.getProof(latestLeaves, i));
+        bool included = inRoot[i] && credits.latestEpoch() != 0;
+        uint256 provable = included ? rootSpent[i] : 0;
+        uint256 before = credits.withdrawn(kh);
+        uint256 net = _net(i);
+        if (included) {
+            uint256 idx;
+            while (rootKeys[idx] != kh) ++idx;
+            bytes32[] memory proof = SpentTree.proof(SpentTree.leaves(rootKeys, rootSpents), idx);
+            credits.finalizeWithdrawal(kh, provable, idx, rootKeys.length, proof);
+        } else {
+            uint256 n = rootKeys.length;
+            uint256 gap = SpentTree.gapOf(rootKeys, kh);
+            ICredits.SpentLeafProof memory below =
+                gap == 0 ? SpentTree.sentinel() : SpentTree.neighbour(rootKeys, rootSpents, gap - 1);
+            ICredits.SpentLeafProof memory above =
+                gap == n ? SpentTree.sentinel() : SpentTree.neighbour(rootKeys, rootSpents, gap);
+            credits.finalizeWithdrawalAbsent(kh, n, gap, below, above);
+            ++absences;
+        }
+        // exactly min(requested, deposited - withdrawn - provable spend): never more
+        uint256 avail = net > provable ? net - provable : 0;
+        require(credits.withdrawn(kh) - before == (p < avail ? p : avail), "payout");
+        // usage the exit left without funding is settlement's loss; the next root is capped below it
+        uint256 netAfter = _net(i);
+        if (liveSpent[i] > netAfter) {
+            settlementLoss += liveSpent[i] - netAfter;
+            liveSpent[i] = netAfter;
+        }
         ++finalizations;
         if (escape) ++escapes;
         ++calls;
     }
 
+    /// The approver keeps sweeps within the latest total and, for an omitting router, within the
+    /// usage deposits still cover (so spend an exit released is never swept).
     function sweep(uint256 amount) external {
-        (,, uint256 totalSpent) = credits.spentRoot(credits.latestEpoch());
-        uint256 room = totalSpent - credits.totalSwept();
-        if (room == 0) return;
-        amount = bound(amount, 1, room);
+        (,, uint256 cap) = credits.spentRoot(credits.latestEpoch());
+        if (omitting) {
+            uint256 covered = sumLiveSpent();
+            if (covered < cap) cap = covered;
+        }
+        uint256 swept = credits.totalSwept();
+        if (cap <= swept) return;
+        amount = bound(amount, 1, cap - swept);
         vm.prank(settlement);
         _approveSweep(sink, amount);
         credits.sweep(sink, amount);
@@ -1252,7 +1857,20 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
 
     function sumDepositedMinusWithdrawn() external view returns (uint256 s) {
         for (uint256 i; i < N; ++i) {
-            s += credits.deposited(keyHashes[i]) - credits.withdrawn(keyHashes[i]);
+            s += _net(i);
+        }
+    }
+
+    function sumLiveSpent() public view returns (uint256 s) {
+        for (uint256 i; i < N; ++i) {
+            s += liveSpent[i];
+        }
+    }
+
+    /// What keys are owed by the router's own ledger: deposited - withdrawn - usage served.
+    function fairOwed() external view returns (uint256 s) {
+        for (uint256 i; i < N; ++i) {
+            s += _net(i) - liveSpent[i];
         }
     }
 
@@ -1261,12 +1879,12 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
     }
 }
 
-contract CreditsInvariantTest is Test {
+abstract contract CreditsInvariantBase is Test {
     MockUSDG internal usdg;
     Credits internal credits;
     CreditsHandler internal handler;
 
-    function setUp() public {
+    function _setUp(bool omitting) internal {
         vm.chainId(4663);
         vm.warp(1_750_000_000);
         address owner = makeAddr("owner");
@@ -1276,7 +1894,7 @@ contract CreditsInvariantTest is Test {
         credits = new Credits(IERC20(address(usdg)), owner, settlement);
         vm.prank(owner);
         credits.setCreditor(creditor, true);
-        handler = new CreditsHandler(credits, usdg, settlement, creditor);
+        handler = new CreditsHandler(credits, usdg, settlement, creditor, omitting);
 
         bytes4[] memory selectors = new bytes4[](9);
         selectors[0] = CreditsHandler.deposit.selector;
@@ -1290,6 +1908,24 @@ contract CreditsInvariantTest is Test {
         selectors[8] = CreditsHandler.warp.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
+    }
+
+    function _assertBoundedAndIdentity() internal view {
+        uint256 bal = usdg.balanceOf(address(credits));
+        (,, uint256 totalSpent) = credits.spentRoot(credits.latestEpoch());
+        assertLe(credits.totalSwept(), totalSpent);
+        assertEq(bal, handler.sumDepositedMinusWithdrawn() - credits.totalSwept());
+        for (uint256 i; i < 5; ++i) {
+            bytes32 kh = handler.keyHashAt(i);
+            assertLe(credits.withdrawn(kh), credits.deposited(kh));
+            assertLe(handler.liveSpent(i), credits.deposited(kh) - credits.withdrawn(kh));
+        }
+    }
+}
+
+contract CreditsInvariantTest is CreditsInvariantBase {
+    function setUp() public {
+        _setUp(false);
     }
 
     /// forge-config: default.invariant.runs = 128
@@ -1307,15 +1943,54 @@ contract CreditsInvariantTest is Test {
     /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_solventAndBounded() public view {
-        uint256 bal = usdg.balanceOf(address(credits));
-        (,, uint256 totalSpent) = credits.spentRoot(credits.latestEpoch());
-        assertLe(credits.totalSwept(), totalSpent);
-        assertEq(bal, handler.sumDepositedMinusWithdrawn() - credits.totalSwept());
+        _assertBoundedAndIdentity();
         (, uint256 owed) = handler.sumTerms();
-        assertGe(bal, owed);
-        for (uint256 i; i < 5; ++i) {
-            bytes32 kh = handler.keyHashAt(i);
-            assertLe(credits.withdrawn(kh), credits.deposited(kh));
-        }
+        assertGe(usdg.balanceOf(address(credits)), owed);
+    }
+}
+
+/// Settlement omits funded keys from its roots. No exit is ever blocked (fail-on-revert: every
+/// finalization succeeds), each pays exactly what the latest root proves (checked in the handler), and
+/// what keys are owed by the router's own ledger is covered by the balance plus settlement's losses.
+contract CreditsOmissionInvariantTest is CreditsInvariantBase {
+    function setUp() public {
+        _setUp(true);
+    }
+
+    /// forge-config: default.invariant.runs = 256
+    /// forge-config: default.invariant.depth = 64
+    /// forge-config: default.invariant.fail-on-revert = true
+    function invariant_exitsBoundedAndIdentity() public view {
+        _assertBoundedAndIdentity();
+    }
+
+    /// forge-config: default.invariant.runs = 256
+    /// forge-config: default.invariant.depth = 64
+    /// forge-config: default.invariant.fail-on-revert = true
+    function invariant_settlementBearsOmissions() public view {
+        assertGe(usdg.balanceOf(address(credits)) + handler.settlementLoss(), handler.fairOwed());
+    }
+
+    /// The path the fuzzer reaches only sometimes: spend is swept, then a root omits the key and it exits
+    /// with everything. The pool is short by exactly the loss settlement must make good.
+    function test_omittedKeyExitsAfterSweep_lossIsSettlements() public {
+        handler.deposit(0, 100e6);
+        handler.deposit(1, 50e6);
+        handler.spend(0, 30e6);
+        handler.postRoot(1, type(uint256).max); // includes every key
+        handler.sweep(30e6);
+        assertEq(credits.totalSwept(), 30e6);
+        handler.requestWithdrawal(0, 2_000_000e6);
+        handler.postRoot(1, 0); // omits every key
+        assertFalse(handler.inRoot(0));
+        handler.finalizeWithdrawal(0);
+        assertEq(handler.absences(), 1);
+        assertEq(credits.withdrawn(handler.keyHashAt(0)), 100e6);
+        assertEq(handler.settlementLoss(), 30e6);
+        // key 1 is owed its 50; the pool holds 20 until settlement covers its 30 loss
+        assertEq(handler.fairOwed(), 50e6);
+        assertEq(usdg.balanceOf(address(credits)), 20e6);
+        invariant_exitsBoundedAndIdentity();
+        invariant_settlementBearsOmissions();
     }
 }

@@ -9,19 +9,37 @@ import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
-import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import {Hashes} from "@openzeppelin/contracts/utils/cryptography/Hashes.sol";
 import {ICredits} from "./interfaces/ICredits.sol";
 
 /// @title Credits
 /// @notice Prepaid USDG balances keyed by an API key's hash (0% fee). The router debits usage
-/// off-chain; settlement posts merkle roots of every key's cumulative spend so withdrawals are
+/// off-chain; settlement posts a commitment to every key's cumulative spend so withdrawals are
 /// bounded by the independently approved ledger snapshot (not an on-chain proof of usage).
-/// @dev Trust model / operational requirements for settlement:
-///  - Every root MUST contain a leaf for every key with a non-zero deposit (cumulativeSpent may be 0),
-///    otherwise that key cannot finalize a withdrawal against that root.
-///  - A key's cumulativeSpent MUST never exceed deposited - withdrawn for that key.
+/// @dev Spent tree. Leaves are spentLeaf(keyHash, cumulativeSpent), sorted strictly ascending by keyHash
+/// and hashed pairwise in position order (keccak256(left || right), the pair is not sorted); the odd
+/// last node of a level is promoted unchanged. The posted root binds the leaf count,
+/// spentCommitment(treeRoot, leafCount), and bytes32(0) is the empty tree, which is also the genesis
+/// root before settlement posts anything. Positions -1 and leafCount are virtual sentinels below and
+/// above every key hash, so the contract enforces them instead of trusting them to be in the tree.
+///
+/// Completeness is enforced, not trusted. In any committed tree, positions -1..leafCount start below
+/// and end above every key hash, so a key hash with no leaf lies strictly between two adjacent
+/// positions. finalizeWithdrawalAbsent accepts that non-inclusion proof as cumulativeSpent = 0 for the
+/// latest root, so a root that omits a funded key cannot block its exit; the omitted spend is
+/// settlement's loss. This holds for any root whose leaves are available, sorted or not. In a sorted
+/// tree each key has exactly one provable spend. An unsorted or duplicated tree can give a key several;
+/// its holder can finalize with the lowest (settlement's loss), and a third party finalizing with a
+/// higher one only delays the rest, which stays withdrawable against a later root.
+///
+/// Settlement duties that remain trusted (the independent approver checks them before approving):
+///  - A key's cumulativeSpent MUST never exceed deposited - withdrawn for that key, counting
+///    withdrawals made with an absence proof; usage beyond that is settlement's loss. Sweep approvals
+///    stay within covered settled usage, so spend an absence exit released is never swept.
 ///  - Once WithdrawalRequested is observed, the router MUST stop serving the key (or reserve the
 ///    pending amount) until the withdrawal is finalized or cancelled.
+///  - The leaves of every posted root MUST stay available (settlement and the approver both hold
+///    them): anyone holding them can build the inclusion or absence proof for any key.
 contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
     using SafeERC20 for IERC20;
 
@@ -70,6 +88,8 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
 
     /// @notice Version 2 requires independent owner authorization of roots and transfers.
     uint256 public constant CONTROL_VERSION = 2;
+    /// @notice Version 2: sorted positional spent tree, leaf-count commitment and absence proofs.
+    uint256 public constant SPENT_TREE_VERSION = 2;
     bytes32 public rootApproval;
     bytes32 public sweepApproval;
 
@@ -218,28 +238,37 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
     /// @inheritdoc ICredits
     /// @dev Permissionless: funds always go to the `to` fixed at request time. The payout may be 0
     /// (e.g. everything was spent); the pending request is cleared either way.
-    function finalizeWithdrawal(bytes32 keyHash, uint256 cumulativeSpent, bytes32[] calldata proof)
-        external
-        nonReentrant
-    {
-        Pending memory p = pendingWithdrawal[keyHash];
-        if (p.amount == 0) revert NoPendingWithdrawal();
-
-        SpentRoot storage r = spentRoot[latestEpoch];
-        if (r.asOf < p.requestedAt && block.timestamp < uint256(p.requestedAt) + ESCAPE_DELAY) {
-            revert RootTooOld();
-        }
-        if (!MerkleProof.verifyCalldata(proof, r.root, spentLeaf(keyHash, cumulativeSpent))) {
+    function finalizeWithdrawal(
+        bytes32 keyHash,
+        uint256 cumulativeSpent,
+        uint256 index,
+        uint256 leafCount,
+        bytes32[] calldata proof
+    ) external nonReentrant {
+        Pending memory p = _pendingOf(keyHash);
+        bytes32 root = _finalizableRoot(p.requestedAt);
+        if (!verifySpentInclusion(root, keyHash, cumulativeSpent, index, leafCount, proof)) {
             revert InvalidProof();
         }
+        _payOut(keyHash, p, cumulativeSpent);
+    }
 
-        uint256 pay = _available(keyHash, cumulativeSpent);
-        if (p.amount < pay) pay = p.amount;
-
-        delete pendingWithdrawal[keyHash];
-        if (pay != 0) withdrawn[keyHash] += pay;
-        emit Withdrawn(keyHash, p.to, pay);
-        if (pay != 0) _usdg.safeTransfer(p.to, pay);
+    /// @inheritdoc ICredits
+    /// @dev Permissionless, like finalizeWithdrawal. The key's spend in the latest root is 0, so it is
+    /// paid min(requested, deposited - withdrawn); spend the root left out is settlement's loss.
+    function finalizeWithdrawalAbsent(
+        bytes32 keyHash,
+        uint256 leafCount,
+        uint256 gap,
+        SpentLeafProof calldata below,
+        SpentLeafProof calldata above
+    ) external nonReentrant {
+        Pending memory p = _pendingOf(keyHash);
+        bytes32 root = _finalizableRoot(p.requestedAt);
+        if (!_brackets(keyHash, leafCount, gap, below.keyHash, above.keyHash)) revert NotBracketed();
+        if (!_neighboursProven(root, leafCount, gap, below, above)) revert InvalidProof();
+        emit AbsenceProven(keyHash, latestEpoch);
+        _payOut(keyHash, p, 0);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -323,6 +352,41 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         return _available(keyHash, cumulativeSpent);
     }
 
+    /// @notice The posted root of a spent tree: bytes32(0) for no leaves, else
+    /// keccak256(abi.encode(treeRoot, leafCount)).
+    function spentCommitment(bytes32 treeRoot, uint256 leafCount) public pure returns (bytes32) {
+        return leafCount == 0 ? bytes32(0) : keccak256(abi.encode(treeRoot, leafCount));
+    }
+
+    /// @notice Whether `root` commits to a tree of `leafCount` leaves holding (keyHash, cumulativeSpent)
+    /// at position `index`. `proof` lists the siblings bottom-up; a promoted odd node consumes none.
+    function verifySpentInclusion(
+        bytes32 root,
+        bytes32 keyHash,
+        uint256 cumulativeSpent,
+        uint256 index,
+        uint256 leafCount,
+        bytes32[] calldata proof
+    ) public pure returns (bool) {
+        (bool ok, bytes32 treeRoot) = _treeRoot(spentLeaf(keyHash, cumulativeSpent), index, leafCount, proof);
+        return ok && spentCommitment(treeRoot, leafCount) == root;
+    }
+
+    /// @notice Whether `root` commits to a tree of `leafCount` leaves in which `keyHash` lies strictly
+    /// between the leaves at positions gap - 1 (`below`) and gap (`above`). Positions -1 and leafCount
+    /// are the sentinels; the argument standing for a sentinel is ignored.
+    function verifySpentAbsence(
+        bytes32 root,
+        bytes32 keyHash,
+        uint256 leafCount,
+        uint256 gap,
+        SpentLeafProof calldata below,
+        SpentLeafProof calldata above
+    ) external pure returns (bool) {
+        return _brackets(keyHash, leafCount, gap, below.keyHash, above.keyHash)
+            && _neighboursProven(root, leafCount, gap, below, above);
+    }
+
     /// @notice The EIP-712 domain separator.
     // solhint-disable-next-line func-name-mixedcase
     function DOMAIN_SEPARATOR() external view returns (bytes32) {
@@ -363,6 +427,96 @@ contract Credits is ICredits, Ownable2Step, ReentrancyGuardTransient, EIP712 {
         bytes32 digest = withdrawDigest(keyHash, amount, to, nonce, deadline);
         if (!SignatureChecker.isValidSignatureNowCalldata(keyAddress, digest, sig)) revert BadSignature();
         nonces[keyHash] = nonce + 1;
+    }
+
+    function _pendingOf(bytes32 keyHash) private view returns (Pending memory p) {
+        p = pendingWithdrawal[keyHash];
+        if (p.amount == 0) revert NoPendingWithdrawal();
+    }
+
+    /// @dev The latest root, once it is at least as new as the request or the escape delay has passed.
+    function _finalizableRoot(uint64 requestedAt) private view returns (bytes32) {
+        SpentRoot storage r = spentRoot[latestEpoch];
+        if (r.asOf < requestedAt && block.timestamp < uint256(requestedAt) + ESCAPE_DELAY) {
+            revert RootTooOld();
+        }
+        return r.root;
+    }
+
+    function _payOut(bytes32 keyHash, Pending memory p, uint256 cumulativeSpent) private {
+        uint256 pay = _available(keyHash, cumulativeSpent);
+        if (p.amount < pay) pay = p.amount;
+
+        delete pendingWithdrawal[keyHash];
+        if (pay != 0) withdrawn[keyHash] += pay;
+        emit Withdrawn(keyHash, p.to, pay);
+        if (pay != 0) _usdg.safeTransfer(p.to, pay);
+    }
+
+    /// @dev keyHash lies strictly between the keys at positions gap - 1 and gap. The sentinels at -1 and
+    /// leafCount sit below and above every key hash.
+    function _brackets(bytes32 keyHash, uint256 leafCount, uint256 gap, bytes32 belowKey, bytes32 aboveKey)
+        private
+        pure
+        returns (bool)
+    {
+        if (gap > leafCount) return false;
+        if (gap != 0 && belowKey >= keyHash) return false;
+        if (gap != leafCount && aboveKey <= keyHash) return false;
+        return true;
+    }
+
+    /// @dev The real (non-sentinel) neighbours sit at positions gap - 1 and gap of the tree `root` commits to.
+    function _neighboursProven(
+        bytes32 root,
+        uint256 leafCount,
+        uint256 gap,
+        SpentLeafProof calldata below,
+        SpentLeafProof calldata above
+    ) private pure returns (bool) {
+        if (leafCount == 0) return root == bytes32(0);
+        bytes32 treeRoot;
+        bool ok;
+        if (gap != 0) {
+            (ok, treeRoot) =
+                _treeRoot(spentLeaf(below.keyHash, below.cumulativeSpent), gap - 1, leafCount, below.proof);
+            if (!ok) return false;
+        }
+        if (gap != leafCount) {
+            (bool aboveOk, bytes32 aboveRoot) =
+                _treeRoot(spentLeaf(above.keyHash, above.cumulativeSpent), gap, leafCount, above.proof);
+            if (!aboveOk || (gap != 0 && aboveRoot != treeRoot)) return false;
+            treeRoot = aboveRoot;
+        }
+        return spentCommitment(treeRoot, leafCount) == root;
+    }
+
+    /// @dev Root of a positional tree of `leafCount` leaves, from the leaf at `index` and its siblings
+    /// bottom-up. The odd last node of a level is promoted and consumes no sibling. `ok` is false for an
+    /// index outside the tree or a proof of the wrong length.
+    function _treeRoot(bytes32 leaf, uint256 index, uint256 leafCount, bytes32[] calldata proof)
+        private
+        pure
+        returns (bool ok, bytes32 node)
+    {
+        if (index >= leafCount) return (false, bytes32(0));
+        node = leaf;
+        uint256 used;
+        uint256 width = leafCount;
+        unchecked {
+            while (width > 1) {
+                if (index & 1 == 1) {
+                    if (used == proof.length) return (false, bytes32(0));
+                    node = Hashes.efficientKeccak256(proof[used++], node);
+                } else if (index + 1 < width) {
+                    if (used == proof.length) return (false, bytes32(0));
+                    node = Hashes.efficientKeccak256(node, proof[used++]);
+                }
+                index >>= 1;
+                width = (width >> 1) + (width & 1);
+            }
+        }
+        ok = used == proof.length;
     }
 
     function _available(bytes32 keyHash, uint256 cumulativeSpent) private view returns (uint256) {
