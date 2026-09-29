@@ -687,18 +687,18 @@ describe("the attested lane", () => {
     expect((await ask(PLAIN.slug)).status).toBe(200);
     const sentBefore = fx.state.requests.length;
     const refused = await ask(PLAIN.slug, { "x-anyroute-lane": "attested" });
-    expect(refused.status).toBe(409);
+    expect(refused.status).toBe(503);
     const j = (await refused.json()) as any;
-    expect(j).toMatchObject({ type: "error", error: { type: "invalid_request_error" }, anyroute: { type: "lane_unavailable" } });
+    expect(j).toMatchObject({ type: "error", error: { type: "api_error" }, anyroute: { type: "no_attested_endpoint", metadata: { reason: "none_attested" } } });
     expect(j.error.message).toContain("Nothing was sent to any provider and nothing was charged");
-    // Not an Anthropic status, so an SDK is told not to retry a lane the router will refuse again.
+    // The router will refuse this lane again, so an SDK is told not to retry it.
     expect(refused.headers.get("x-should-retry")).toBe("false");
     expect(fx.state.requests.length).toBe(sentBefore);
     // Streamed, it is the same refusal as an HTTP error, not a stream.
     const streamed = await ask(PLAIN.slug, { "x-anyroute-lane": "attested" }, { stream: true });
-    expect(streamed.status).toBe(409);
+    expect(streamed.status).toBe(503);
     expect(streamed.headers.get("content-type")).toContain("application/json");
-    expect(((await streamed.json()) as any).anyroute.type).toBe("lane_unavailable");
+    expect(((await streamed.json()) as any).anyroute.type).toBe("no_attested_endpoint");
   });
 
   test("a lane the router does not run is a 501 that is not retried", async () => {

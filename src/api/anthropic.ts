@@ -44,6 +44,10 @@ function refusal(c: Context, status: number, message: string, requestId: string,
   // Anthropic SDKs retry 408, 409, 429 and 5xx. A refusal the router will repeat (a lane that cannot be served, a lane
   // it does not run) is not worth retrying; x-should-retry says so.
   if ((status >= 400 && status < 500 && !ANTHROPIC_STATUSES.has(status) && status !== 408) || status === 501) headers["x-should-retry"] = "false";
+  // A lane with no attested endpoint at all (503 no_attested_endpoint, reason none_attested) is refused again on retry;
+  // only an outage of attested endpoints (reason attested_endpoints_down, with Retry-After) is worth retrying.
+  const meta = isObj(o.router?.metadata) ? o.router.metadata : {};
+  if (o.router?.type === "no_attested_endpoint" && meta.reason === "none_attested") headers["x-should-retry"] = "false";
   return c.json(errorBody(status, message, requestId, o.router), status as never, headers);
 }
 
