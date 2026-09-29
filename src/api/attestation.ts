@@ -28,6 +28,8 @@ const NOT_CHECKED_BUNDLE = [
   "That the source commit, source tarball hash and model weights hash in the bundle are what they say: the router compares only the compose hash, image and model digests (and the MRTD and RTMR3 allow-lists) with the quote. Anyone can reproduce the rest from the public repository (scripts/check-reproducible.ts).",
   NOT_CHECKED[3],
 ];
+const GATEWAY_NOT_CHECKED =
+  "The model servers behind an attested gateway: the router attests the gateway itself, and each response's receipt carries the gateway's signed record of whether the upstream that answered was verified (receipt.upstream_attestation), which the router checks before accepting it for an attested request.";
 
 export function attestationRoutes(app: Hono, ctx: Ctx) {
   app.get("/api/v1/attestation/:providerId", async (c) => {
@@ -51,6 +53,9 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
     // The certificate the router's connections to this provider are pinned to, when it attested through a
     // self-signed certificate (providers/tls-pin.ts).
     const pin = simulatedEvidence ? null : await loadTlsPin(ctx.db, p.id);
+
+    // An aci/1 gateway (providers/aci.ts): what its verified report established.
+    const aci = status === "attested" ? ((okRow?.detail as { aci?: Record<string, unknown> } | null)?.aci ?? null) : null;
 
     const rekorFound = !!m && m.rekorInclusionVerified;
     // Whether the recorded log entry is a signed measurement bundle (verified by the router) or an entry for the image digest.
@@ -103,7 +108,22 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
           transparency_log_checkpoint_signature: !!m?.rekorCheckpointVerified,
           registered_on_chain: m?.status === "registered",
         },
-        not_checked: bundle ? NOT_CHECKED_BUNDLE : NOT_CHECKED,
+        ...(aci
+          ? {
+              gateway: {
+                protocol: "aci/1",
+                keyset_digest: aci.keyset_digest ?? null,
+                workload_id: aci.workload_id ?? null,
+                compose_hash: aci.compose_hash ?? null,
+                os_image_hash: aci.os_image_hash ?? null,
+                source_provenance: aci.source_provenance ?? null,
+                tls_spki_sha256: aci.tls_spki_sha256 ?? null,
+                keyset_not_after: aci.not_after ?? null,
+                keyset_endorsement: aci.keyset_endorsement ?? null,
+              },
+            }
+          : {}),
+        not_checked: [...(bundle ? NOT_CHECKED_BUNDLE : NOT_CHECKED), ...(aci ? [GATEWAY_NOT_CHECKED] : [])],
       },
     });
   });

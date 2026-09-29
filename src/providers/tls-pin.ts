@@ -1,4 +1,5 @@
 import { X509Certificate, createHash } from "node:crypto";
+import { checkServerIdentity } from "node:tls";
 import { eq, like } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.ts";
 import { kv } from "../db/schema.ts";
@@ -9,15 +10,21 @@ import { kv } from "../db/schema.ts";
 // only after proving all three (services/attestor.ts), and then stores it here as the provider's pin. Every later
 // call to that provider (inference, probes, discovery, the next attestation) accepts exactly that certificate and
 // nothing else, so requests only ever reach the attested key.
+//
+// An attested gateway with a publicly issued certificate (providers/aci.ts) is pinned by key instead: its keyset,
+// bound into its quote, lists the sha256 of the SubjectPublicKeyInfo it serves. Such a pin (`spkiOnly`) keeps the
+// ordinary CA and host-name checks and additionally accepts only that key.
 
 export type TlsPin = {
-  /** The attested certificate, used as the only trust anchor for the provider's connections. */
+  /** The attested certificate, used as the only trust anchor for the provider's connections ("" for a key pin). */
   certPem: string;
   /** sha256 (hex) of the certificate's SubjectPublicKeyInfo DER. */
   spkiSha256: string;
   /** sha256 (hex) of the quote the certificate names. */
   attestationRef: string;
   pinnedAt: string;
+  /** Pin the key only: public CAs and the host name are still checked, and the key must be spkiSha256. */
+  spkiOnly?: boolean;
 };
 
 export type PeerCertificate = {
@@ -60,7 +67,16 @@ export function describePeerCertificate(der: Uint8Array): PeerCertificate {
  * any other key fails the handshake before a byte of the request is sent. The host name is not checked: the
  * endpoint's identity is its attested key. Where the runtime honours checkServerIdentity it re-checks the key.
  */
-export function pinnedTlsOptions(pin: Pick<TlsPin, "certPem" | "spkiSha256">) {
+export function pinnedTlsOptions(pin: Pick<TlsPin, "certPem" | "spkiSha256" | "spkiOnly">) {
+  if (pin.spkiOnly) {
+    return {
+      checkServerIdentity: (host: string, cert: Parameters<typeof checkServerIdentity>[1]) => {
+        const err = checkServerIdentity(host, cert);
+        if (err) return err;
+        return cert?.raw && spkiSha256Of(cert.raw) === pin.spkiSha256 ? undefined : new Error("The provider's TLS key is not the attested key.");
+      },
+    };
+  }
   return {
     ca: pin.certPem,
     checkServerIdentity: (_host: string, cert: { raw?: Uint8Array }) => {
@@ -73,7 +89,8 @@ export function pinnedTlsOptions(pin: Pick<TlsPin, "certPem" | "spkiSha256">) {
 function parsePin(value: unknown): TlsPin | null {
   const v = value as Partial<TlsPin> | null;
   if (!v || typeof v.certPem !== "string" || typeof v.spkiSha256 !== "string" || !/^[0-9a-f]{64}$/.test(v.spkiSha256)) return null;
-  return { certPem: v.certPem, spkiSha256: v.spkiSha256, attestationRef: String(v.attestationRef ?? ""), pinnedAt: String(v.pinnedAt ?? "") };
+  if (!v.certPem && v.spkiOnly !== true) return null;
+  return { certPem: v.certPem, spkiSha256: v.spkiSha256, attestationRef: String(v.attestationRef ?? ""), pinnedAt: String(v.pinnedAt ?? ""), ...(v.spkiOnly === true ? { spkiOnly: true } : {}) };
 }
 
 export async function loadTlsPins(db: Db | Tx): Promise<Map<string, TlsPin>> {

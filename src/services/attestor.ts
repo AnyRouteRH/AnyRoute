@@ -9,6 +9,7 @@ import { createVerifiers, verifyWithAll, type VerifierInput, type VerifyOutcome 
 import { bindingsCommittedIn, digestsFromBindings, recordMeasurement, type Digests } from "./measurements.ts";
 import { classifierFromReport } from "../router/lane.ts";
 import { pruneAttestationEvents, recordAttestorRun } from "./attestation-events.ts";
+import { checkAciReport, clearAciGateway, isAciReport, saveAciGateway } from "../providers/aci.ts";
 
 // attestor: every 10 minutes, for each provider with a TEE, fetch a fresh attestation bound to our
 // nonce and verify it. Fail closed: anything unverifiable leaves the provider un-attested, and the
@@ -113,9 +114,12 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   // A certificate that names an attestation reference is only as trustworthy as the quote it names: every fetch
   // below accepts exactly that certificate, and the checks further down must prove it.
   let peer: PeerCertificate | null = null;
+  // The certificate the endpoint presented, whatever it names (an aci/1 gateway's key must be in its keyset).
+  let presented: PeerCertificate | null = null;
   if (url.protocol === "https:") {
     try {
       const described = describePeerCertificate(await peekProviderCertificate(url, policy, AbortSignal.timeout(20_000)));
+      presented = described;
       if (described.attestationRef) peer = described;
     } catch {
       peer = null; // an ordinary endpoint (or an unreachable one): the fetch below checks it against public CAs
@@ -140,6 +144,10 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   let quoteHex: string | null = null;
   let bindingsCommitted = false;
 
+  if (isAciReport(report) && p.teeKind !== "dev") {
+    if (peer) return fail("an aci/1 gateway is pinned by the key its keyset lists, not by a self-signed attestation certificate");
+    return attestAciGateway(ctx, p, { url, nonce, report, presented, allowlist, fail });
+  }
   if (peer && (p.teeKind === "dev" || report.kind === "dev" || !report.intel_quote)) return fail("a self-signed endpoint must prove its certificate with a hardware TDX quote");
   if (p.teeKind === "dev" || report.kind === "dev") {
     if (!ctx.cfg.attestation.allowDev) return fail("dev attestation is disabled");
@@ -210,9 +218,84 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   // attested through public CAs has no pin.
   if (peer) await saveTlsPin(ctx.db, p.id, { certPem: peer.certPem, spkiSha256: peer.spkiSha256, attestationRef: peer.attestationRef!, pinnedAt: new Date().toISOString() });
   else await clearTlsPin(ctx.db, p.id);
+  // Not (or no longer) an aci/1 gateway: its responses carry no gateway receipt to check.
+  await clearAciGateway(ctx.db, p.id);
   await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), updatedAt: new Date() }).where(eq(providers.id, p.id));
   await ctx.db.update(providers).set({ classifierEnabled }).where(eq(providers.id, p.id));
   return { provider: p.id, ok: true, hash: reportHash, ...(peer ? { tls_pin: { spki_sha256: peer.spkiSha256, attestation_ref: peer.attestationRef } } : {}) };
+}
+
+/** Verify an aci/1 gateway report (see the header comment and providers/aci.ts) and record what it established. */
+async function attestAciGateway(
+  ctx: Ctx,
+  p: typeof providers.$inferSelect,
+  o: {
+    url: URL;
+    nonce: string;
+    report: Record<string, any>;
+    presented: PeerCertificate | null;
+    allowlist: { mrtd?: string[]; rtmr3?: string[] } | null;
+    fail: (reason: string, extra?: Record<string, unknown>) => Promise<{ provider: string; ok: boolean; reason: string }>;
+  },
+) {
+  const quoteHex = typeof o.report.attestation?.evidence?.quote === "string" ? o.report.attestation.evidence.quote : "";
+  let f: TdxFields;
+  try {
+    f = parseTdxQuote(quoteHex);
+  } catch (e) {
+    return o.fail(`unparseable TDX quote: ${(e as Error).message}`);
+  }
+  const measurements = { mrtd: f.mrtd, rtmr0: f.rtmr0, rtmr1: f.rtmr1, rtmr2: f.rtmr2, rtmr3: f.rtmr3 };
+  const checked = checkAciReport(o.report, { nonce: o.nonce, nowS: Math.floor(Date.now() / 1000), host: o.url.hostname, quoteReportData: f.reportData, quoteRtmr3: f.rtmr3 });
+  if (!checked.ok) return o.fail(checked.reason, measurements);
+  const q = await verifyQuote(ctx, { kind: "tdx", quoteHex: checked.quoteHex, registers: f, eventLog: checked.eventLog, vmConfig: checked.vmConfig });
+  if (!q.ok) return o.fail(q.reason!, measurements);
+  const g = checked.gateway;
+  if (q.composeHash && g.composeHash && q.composeHash !== g.composeHash) return o.fail("the compose hash the verifiers report is not the one the event log measured", measurements);
+  if (o.allowlist?.mrtd?.length && !o.allowlist.mrtd.includes(f.mrtd)) return o.fail("MRTD not in allowlist", measurements);
+  if (o.allowlist?.rtmr3?.length && !o.allowlist.rtmr3.includes(f.rtmr3)) return o.fail("RTMR3 not in allowlist", measurements);
+  const https = o.url.protocol === "https:";
+  if (https) {
+    if (!o.presented) return o.fail("the endpoint's TLS certificate could not be read", measurements);
+    if (!g.tlsSpki.includes(o.presented.spkiSha256)) return o.fail("the endpoint's TLS key is not one its attested keyset lists for this host", measurements);
+  } else if (ctx.cfg.production) return o.fail("an attested gateway must be reached over https", measurements);
+
+  const reportHash = "0x" + sha256(canonicalJson({ report: o.report, nonce: o.nonce }));
+  await ctx.db.insert(attestations).values({
+    providerId: p.id,
+    ok: true,
+    teeKind: p.teeKind ?? "tdx",
+    reportHash,
+    nonce: o.nonce,
+    measurements,
+    detail: {
+      signing_address: null,
+      verifiers: q.verifiers,
+      simulated: false,
+      classifier_enabled: false,
+      aci: {
+        keyset_digest: g.keysetDigest,
+        workload_id: g.workloadId,
+        receipt_keys: g.receiptKeys.map((k) => k.key_id),
+        tls_spki_sha256: https ? o.presented!.spkiSha256 : null,
+        compose_hash: g.composeHash,
+        os_image_hash: g.osImageHash,
+        app_id: g.appId,
+        source_provenance: g.sourceProvenance,
+        not_after: g.notAfter,
+        stale_after: g.staleAfter,
+        serving: g.serving,
+        keyset_endorsement: g.keysetEndorsement,
+      },
+    },
+  });
+  await saveAciGateway(ctx.db, p.id, g);
+  const pin = https ? { certPem: "", spkiSha256: o.presented!.spkiSha256, attestationRef: g.keysetDigest.slice("sha256:".length), pinnedAt: new Date().toISOString(), spkiOnly: true } : null;
+  if (pin) await saveTlsPin(ctx.db, p.id, pin);
+  else await clearTlsPin(ctx.db, p.id);
+  // No in-enclave classifier is bound here, so restricted variants never route to a gateway (router/lane.ts).
+  await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), classifierEnabled: false, updatedAt: new Date() }).where(eq(providers.id, p.id));
+  return { provider: p.id, ok: true, hash: reportHash, aci: { keyset_digest: g.keysetDigest }, ...(pin ? { tls_pin: { spki_sha256: pin.spkiSha256, attestation_ref: pin.attestationRef } } : {}) };
 }
 
 /**

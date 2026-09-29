@@ -2,13 +2,15 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { laneCandidates, models, modelsLane, offers, providerDisclosure, providers } from "../db/schema.ts";
 import { loadTlsPin, loadTlsPins, type TlsPin } from "../providers/tls-pin.ts";
+import { loadAciGateway, loadAciGateways, loadGpuAttested, type AciGateway, type GpuAttestedRecord } from "../providers/aci.ts";
 import { laneOf } from "../router/lane.ts";
 
 export type ModelRow = typeof models.$inferSelect;
 export type OfferRow = typeof offers.$inferSelect;
 /** A provider row, plus the certificate its connections are pinned to once it attested through a self-signed
- *  certificate (providers/tls-pin.ts). */
-export type ProviderRow = typeof providers.$inferSelect & { tlsPin?: TlsPin | null };
+ *  certificate (providers/tls-pin.ts), and for an attested aci/1 gateway what its attestation established
+ *  (providers/aci.ts). */
+export type ProviderRow = typeof providers.$inferSelect & { tlsPin?: TlsPin | null; aci?: AciGateway | null };
 export type DisclosureRow = typeof providerDisclosure.$inferSelect;
 export type ModelLaneRow = typeof modelsLane.$inferSelect;
 export type Candidate = OfferRow & { provider: ProviderRow };
@@ -28,6 +30,8 @@ export class Catalog {
   lane = new Map<string, ModelLaneRow>();
   /** Day-zero candidates by lower-cased Hugging Face repository: a model listed for one is held back until it is servable. */
   candidates = new Map<string, { variant: string; status: string }>();
+  /** Per model, what the latest verified gateway receipt said about GPU attestation (providers/aci.ts). */
+  gpuAttested = new Map<string, GpuAttestedRecord>();
   loadedAt = 0;
   private loading: Promise<void> | null = null;
 
@@ -36,7 +40,7 @@ export class Catalog {
   async refresh() {
     this.loading ??= (async () => {
       try {
-        const [m, p, o, d, pins, l, cand] = await Promise.all([
+        const [m, p, o, d, pins, l, cand, gateways, gpu] = await Promise.all([
           this.db.select().from(models),
           this.db.select().from(providers),
           this.db.select().from(offers),
@@ -44,8 +48,10 @@ export class Catalog {
           loadTlsPins(this.db),
           this.db.select().from(modelsLane),
           this.db.select({ hfRepo: laneCandidates.hfRepo, variant: laneCandidates.variant, status: laneCandidates.status }).from(laneCandidates),
+          loadAciGateways(this.db),
+          loadGpuAttested(this.db),
         ]);
-        const pm = new Map<string, ProviderRow>(p.map((x) => [x.id, { ...x, tlsPin: pins.get(x.id) ?? null }]));
+        const pm = new Map<string, ProviderRow>(p.map((x) => [x.id, { ...x, tlsPin: pins.get(x.id) ?? null, aci: gateways.get(x.id) ?? null }]));
         const byModel = new Map<string, Candidate[]>();
         for (const offer of o) {
           const provider = pm.get(offer.providerId);
@@ -60,6 +66,7 @@ export class Catalog {
         this.lane = new Map(l.map((x) => [x.modelId, x]));
         this.candidates = new Map(cand.map((x) => [x.hfRepo.toLowerCase(), { variant: x.variant, status: x.status }]));
         this.offersByModel = byModel;
+        this.gpuAttested = gpu;
         this.loadedAt = Date.now();
       } finally {
         this.loading = null;
@@ -101,6 +108,6 @@ export class Catalog {
     const cached = this.providers.get(id);
     if (cached) return cached;
     const [row] = await this.db.select().from(providers).where(eq(providers.id, id));
-    return row ? { ...row, tlsPin: await loadTlsPin(this.db, id) } : null;
+    return row ? { ...row, tlsPin: await loadTlsPin(this.db, id), aci: await loadAciGateway(this.db, id) } : null;
   }
 }

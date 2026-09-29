@@ -38,7 +38,7 @@ type NetworkPolicy = {
   allowDevelopmentLoopbackHostnames?: string[];
   resolve?: (hostname: string) => Promise<Address[]>;
   /** An attested provider's pinned certificate (providers/tls-pin.ts): the only certificate its connections accept. */
-  tlsPin?: Pick<TlsPin, "certPem" | "spkiSha256"> | null;
+  tlsPin?: Pick<TlsPin, "certPem" | "spkiSha256" | "spkiOnly"> | null;
 };
 
 function ipv4Number(address: string): number | null {
