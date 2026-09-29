@@ -32,7 +32,9 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
     const status = fresh && !simulatedEvidence ? "attested" : simulatedEvidence && !ctx.cfg.production ? "simulated" : "unverified";
     const unverifiedReason = !last ? "no_attestation" : !last.ok ? "last_attempt_failed" : simulatedEvidence ? "simulated_evidence_refused" : "attestation_stale";
     const verifiers = status === "attested" ? (((okRow?.detail as { verifiers?: unknown } | null)?.verifiers as string[] | undefined) ?? []) : [];
-    const m = status === "attested" ? await currentMeasurement(ctx, p.id) : null;
+    // The last measurement recorded stays visible while the attestation is stale or failing (attested_now says which),
+    // so an operator restarting an endpoint can still compare what it serves with what the router last verified.
+    const m = simulatedEvidence ? null : await currentMeasurement(ctx, p.id);
     const registry = ctx.cfg.measurements.registry;
 
     const rekorFound = !!m && m.rekorInclusionVerified;
@@ -53,6 +55,7 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
               compose_hash: m.composeHash,
               model_digest: m.modelDigest,
               status: m.status,
+              attested_now: status === "attested",
               first_attested_at: m.attestedAt.toISOString(),
               last_seen_at: m.lastSeenAt.toISOString(),
               transparency_log: {
@@ -71,7 +74,7 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
           : null,
         checks: {
           quote_verified: status === "attested",
-          digests_bound_to_quote: !!m,
+          digests_bound_to_quote: !!m && status === "attested",
           transparency_log_entry: rekorFound,
           transparency_log_checkpoint_signature: !!m?.rekorCheckpointVerified,
           registered_on_chain: m?.status === "registered",

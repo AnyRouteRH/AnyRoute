@@ -182,6 +182,19 @@ describe("router record cross-check", () => {
     expect(asked).toBe("https://router.example/api/v1/attestation/p1");
   });
 
+  test("reads the router's own response envelope ({ data: { measurement: {...} } })", async () => {
+    const model = await makeModel();
+    const fetchImpl = (async () =>
+      Response.json({ data: { provider: "p1", status: "attested", measurement: { image_digest: `0x${"11".repeat(32)}`, model_digest: `0x${model.digest.replace(/^sha256:/, "")}`, status: "ready" } } })) as unknown as typeof fetch;
+    const raw = { router: { url: "https://router.example", provider_id: "p1" } };
+    const h = await harness({ model, fetchImpl, raw });
+    expect(h.rt.routerChecked).toBe(true);
+    const other = (async () => Response.json({ data: { measurement: { model_digest: `0x${"ee".repeat(32)}` } } })) as unknown as typeof fetch;
+    expect(await bootFails(harness({ model, raw, fetchImpl: other }))).toBe("ROUTER_DIGEST_MISMATCH");
+    const none = (async () => Response.json({ data: { status: "unverified", measurement: null } })) as unknown as typeof fetch;
+    expect(await bootFails(harness({ model, raw, fetchImpl: none }))).toBe("ROUTER_RECORD_UNRECOGNISED");
+  });
+
   test("refuses on a mismatch, an unrecognised record, and (fail closed) an unreachable router", async () => {
     const model = await makeModel();
     const raw = { router: { url: "https://router.example", provider_id: "p1" } };

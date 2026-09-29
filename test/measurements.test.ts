@@ -25,6 +25,7 @@ import {
   watchRekor,
   type RekorEntry,
 } from "../src/services/measurements.ts";
+import { verifyAgainstRouter } from "../sidecar/src/router-check.ts";
 import { MODELS, startRouter, type Harness } from "./helpers.ts";
 import { DIGESTS, REGS, bindingsFor, auditPath, mth, rekorEntryFor, sha, sidecarDocument } from "./measurement-fixtures.ts";
 
@@ -395,7 +396,10 @@ describe("attestation to registry calldata", () => {
     await attest();
     expect((await (await publicView()).json()).data.status).toBe("attested");
     await h.ctx.db.update(providers).set({ attestedAt: new Date(Date.now() - h.ctx.cfg.attestation.intervalMs * 10) }).where(eq(providers.id, "alpha"));
-    expect((await (await publicView()).json()).data).toMatchObject({ status: "unverified", reason: "attestation_stale", measurement: null });
+    // the last recorded measurement stays visible, marked as not currently attested
+    const stale = (await (await publicView()).json()).data;
+    expect(stale).toMatchObject({ status: "unverified", reason: "attestation_stale", attested_at: null, verifiers: [], measurement: { image_digest: "0x" + "11".repeat(32), attested_now: false } });
+    expect(stale.checks).toMatchObject({ quote_verified: false, digests_bound_to_quote: false });
   });
   test("an attested provider reports what was verified and what is still missing, at each stage", async () => {
     await attest();
@@ -416,6 +420,20 @@ describe("attestation to registry calldata", () => {
     d = (await (await publicView()).json()).data;
     expect(d.measurement.registry.state).toBe("registered");
     expect(d.checks.registered_on_chain).toBe(true);
+  });
+  test("the sidecar's router cross-check reads this endpoint's response", async () => {
+    // the sidecar calls GET <router>/api/v1/attestation/<provider> and looks for the served model digest in it
+    const viaRouter = (async (url: URL | string) => h.request(new URL(String(url)).pathname)) as unknown as typeof fetch;
+    const cfg = { url: "https://router.example", providerId: "alpha", failClosed: true };
+    const served = "sha256:" + "33".repeat(32);
+    await expect(verifyAgainstRouter(cfg, { modelDigest: served }, viaRouter)).rejects.toMatchObject({ code: "ROUTER_RECORD_UNRECOGNISED" }); // nothing recorded yet
+    await attest();
+    expect(await verifyAgainstRouter(cfg, { modelDigest: served }, viaRouter)).toEqual({ checked: true, registeredDigests: [served] });
+    await expect(verifyAgainstRouter(cfg, { modelDigest: "sha256:" + "44".repeat(32) }, viaRouter)).rejects.toMatchObject({ code: "ROUTER_DIGEST_MISMATCH" });
+    // a restart after the attestation went stale can still be checked against the last record
+    await h.ctx.db.update(providers).set({ attested: false }).where(eq(providers.id, "alpha"));
+    expect(await verifyAgainstRouter(cfg, { modelDigest: served }, viaRouter)).toMatchObject({ checked: true });
+    await expect(verifyAgainstRouter({ ...cfg, providerId: "nobody" }, { modelDigest: served }, viaRouter)).rejects.toMatchObject({ code: "ROUTER_UNREACHABLE" });
   });
   test("simulated attestation shows as simulated outside production and as unverified in production", async () => {
     state.doc = { dev: true };

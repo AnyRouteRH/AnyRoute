@@ -2,14 +2,15 @@ import { normalizeDigest, SidecarError } from "./util.ts";
 
 // Optional cross-check of the served model digest against the router's record for this provider:
 //   GET <router>/api/v1/attestation/<providerId>
-// The record is read tolerantly: any of the fields below that hold digests are collected, and the served digest
-// must be among them. A record that names no model digest at all cannot confirm anything and refuses the start.
+// The record is read tolerantly: any of the fields below that hold digests are collected (also inside the
+// router's `data` envelope), and the served digest must be among them. A record that names no model digest at all
+// cannot confirm anything and refuses the start.
 
 export type RouterCheckConfig = { url: string; providerId: string; apiKey?: string; failClosed: boolean };
 
 const SINGLE_FIELDS = ["model_digest", "modelDigest"];
 const LIST_FIELDS = ["allowed_model_digests", "model_digests", "modelDigests"];
-const NESTED = ["measurements", "measurement", "registered", "record", "attestation"];
+const NESTED = ["data", "measurements", "measurement", "registered", "record", "attestation"];
 
 function collectDigests(node: unknown, out: Set<string>, depth = 0) {
   if (!node || typeof node !== "object" || depth > 3) return;
