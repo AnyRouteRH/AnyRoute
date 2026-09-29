@@ -12,7 +12,7 @@ export type Usage = {
   estimated: boolean;
 };
 
-export type Mode = "prepaid" | "per_call" | "paywith" | "byok" | "cache";
+export type Mode = "prepaid" | "per_call" | "paywith" | "byok" | "cache" | "blind";
 
 export type Cost = {
   upstream: Pico; // what the provider charges (0 for BYOK: the caller pays the provider directly)

@@ -253,7 +253,7 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
   const guardCfg = mergeGuardrails(key?.guardrails as GuardrailConfig | null, key ? (body.guardrails as GuardrailConfig | undefined) : undefined);
   const guard = applyGuardrails(body, guardCfg);
 
-  const { billing: resolvedBilling, paywithNote } = await tk.resolveBilling(ctx, c, key, wallet);
+  const { billing: resolvedBilling, paywithNote } = await tk.resolveBilling(ctx, c, key, wallet, null); // blind tokens are refused before council mode
   let billing = resolvedBilling;
   const byok = await tk.byokFor(ctx, billing?.accountId);
   const modeForPrice: Mode = billing?.mode ?? "per_call";

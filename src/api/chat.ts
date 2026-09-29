@@ -25,12 +25,15 @@ import { payPerCall } from "../pay/percall.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import type { HolderTier } from "../config.ts";
 import { COUNCIL_MODEL, applyDualDecoding, runCouncil, runDual, validateMulti } from "./council.ts";
+import { BLIND_POOL, claimToken, confirmToken, presentBlindToken, redemptionSummary, requireValue, unclaimToken, type BlindPass } from "../blind/redeem.ts";
 
 export type Kind = "chat" | "completion";
 export type Billing =
   | { mode: "prepaid"; accountId: string; key: KeyRow }
   | { mode: "paywith"; accountId: string; key: KeyRow; grant: PaywithGrant }
-  | { mode: "per_call"; accountId: string; payer: string; paymentTx?: string; paymentResponse?: string; key?: undefined };
+  | { mode: "per_call"; accountId: string; payer: string; paymentTx?: string; paymentResponse?: string; key?: undefined }
+  // A Privacy Pass token, charged to the pooled internal account: no key, no wallet, no buyer. `hold` is set once known.
+  | { mode: "blind"; accountId: string; pass: BlindPass; hold: Pico; key?: undefined };
 
 const ROLES = new Set(["system", "developer", "user", "assistant", "tool", "function"]);
 // Parameters that change what a provider must be able to do; never silently dropped.
@@ -94,7 +97,7 @@ async function byokFor(ctx: Ctx, accountId: string | undefined) {
 }
 
 /** Who pays: the key's prepaid balance, a Stock Token pay-with grant, or (no key) a wallet / per-call payment. */
-async function resolveBilling(ctx: Ctx, c: Context, key: KeyRow | null, wallet: { accountId: string; wallet: string } | null): Promise<{ billing: Billing | null; paywithNote?: string }> {
+async function resolveBilling(ctx: Ctx, c: Context, key: KeyRow | null, wallet: { accountId: string; wallet: string } | null, pass: BlindPass | null): Promise<{ billing: Billing | null; paywithNote?: string }> {
   const paySymbol = c.req.header("x-pay-with") ?? (key?.payWithDefault || undefined);
   let billing: Billing | null = null;
   let paywithNote: string | undefined;
@@ -105,6 +108,8 @@ async function resolveBilling(ctx: Ctx, c: Context, key: KeyRow | null, wallet: 
       if (grant) billing = { mode: "paywith", accountId: key.accountId, key, grant };
       else paywithNote = reason; // falls back to prepaid USDG (then 402 if empty)
     }
+  } else if (pass) {
+    billing = { mode: "blind", accountId: BLIND_POOL, pass, hold: 0n };
   } else if (wallet) {
     billing = { mode: "per_call", accountId: wallet.accountId, payer: wallet.wallet };
   }
@@ -169,6 +174,12 @@ function selectTargets(
   return { targets, excluded };
 }
 
+/** Undo a hold whose request was not served. A blind token is given back with it, so a failed request does not cost the token. */
+async function giveBack(ctx: Ctx, billing: Billing, holdId: string) {
+  await release(ctx.db, holdId);
+  if (billing.mode === "blind") await unclaimToken(ctx, billing.pass);
+}
+
 /** x402: the settlement receipt rides on the served response. */
 const paymentHeaders = (b: Billing): Record<string, string> => (b.mode === "per_call" && b.paymentResponse ? { "x-payment-response": b.paymentResponse } : {});
 
@@ -197,6 +208,8 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const secret = bearer(c.req.header("authorization"));
   let key: KeyRow | null = null;
   let wallet: { accountId: string; wallet: string; exists: boolean } | null = null;
+  // A verified Privacy Pass token (Authorization: PrivateToken), when ANYROUTE_FEATURE_BLIND is on.
+  let pass: BlindPass | null = null;
   // $ANYR holder tier of the wallet behind this request (null unless HOLDER_TIERS is live).
   let tier: HolderTier | null = null;
   if (secret) {
@@ -207,8 +220,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     await limitOrThrow(ctx, `k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), "requests");
   } else {
     await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
+    pass = await presentBlindToken(ctx, c.req.header("authorization"));
     const wa = c.req.header("x-wallet-auth");
-    if (wa) wallet = await walletAuth(ctx, wa, bodySha);
+    if (wa && !pass) wallet = await walletAuth(ctx, wa, bodySha);
   }
 
   // ---- 2. Key presets, model resolution, guardrails, transforms --------------------------------
@@ -229,6 +243,10 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") });
   const strict = disc.max !== "any";
   const prefs: ProviderPrefs = { ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) };
+
+  // A blind token pays for one provider call. Council mode and dual verification make several, each with its own hold.
+  if (pass && ((ctx.cfg.features.council && body.model === COUNCIL_MODEL) || body.verify != null))
+    fail(400, "Council mode and dual verification make several provider calls, so they cannot be paid with a blind token. Use an API key.", "blind_unsupported");
 
   // Council mode (`model: "anyroute/council"`): several member calls plus a judge call, each billed and receipted.
   if (ctx.cfg.features.council && body.model === COUNCIL_MODEL) return runCouncil(toolkit, { ctx, c, kind, body, bodySha, t0, key, wallet, tier, prefs, disc });
@@ -274,14 +292,15 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const promptTokens = estimatePromptTokens(body);
 
   // ---- 3. Accounts: key, pay-with, wallet change, per-call payment -------------------------------
-  const { billing: resolvedBilling, paywithNote } = await resolveBilling(ctx, c, key, wallet);
+  const { billing: resolvedBilling, paywithNote } = await resolveBilling(ctx, c, key, wallet, pass);
   let billing: Billing | null = resolvedBilling;
 
   // ---- 4. Cache (opt-in, never across accounts, keys, policies or end users) ----------------------
   const cacheSpec = (body.cache as { mode?: CacheMode; ttl?: number } | undefined) ?? (c.req.header("x-anyroute-cache") ? { mode: c.req.header("x-anyroute-cache") as CacheMode } : undefined);
   // The response cache keeps prompts and answers in the router, and a hit is served without any provider, so a
   // request with a disclosure ceiling never reads or writes it.
-  const cacheMode: CacheMode | null = !strict && (cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic") ? cacheSpec.mode : null;
+  // Blind-token callers all share one internal account, so a cached answer would cross between strangers: never cache.
+  const cacheMode: CacheMode | null = !strict && billing?.mode !== "blind" && (cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic") ? cacheSpec.mode : null;
   // `user` is forwarded to the provider as the end-user identity; a response made for one end user
   // must never be replayed to another behind the same key (exact or semantic).
   const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })), ...(savedRoute ? { route: savedRoute } : {}) }))}` : "";
@@ -312,6 +331,11 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     billing = { mode: "per_call", accountId: r.accountId, payer: r.payer, paymentTx: r.txHash, paymentResponse: r.paymentResponse };
   }
   if (billing.mode === "per_call") tier = await holderTier(ctx, billing.payer);
+  if (billing.mode === "blind") {
+    requireValue(ctx, billing.pass, hold); // the token pays for at most its face value
+    billing.hold = hold;
+    await claimToken(ctx, billing.pass); // spends once: a second claim of the same token fails; undone if nothing is served
+  }
   if (billing.key?.tpm) await limitOrThrow(ctx, `kt:${billing.key.keyHash}`, promptTokens, scaleLimit(billing.key.tpm, tier), "tokens");
 
   const holdId = genId();
@@ -326,6 +350,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
       creditLine: billing.mode === "paywith" ? billing.grant.creditLine : 0n,
     });
   } catch (e) {
+    if (billing.mode === "blind") await unclaimToken(ctx, billing.pass);
     if (isApiError(e) && e.type === "insufficient_credits" && paywithNote) e.metadata = { ...e.metadata, pay_with: paywithNote };
     throw e;
   }
@@ -348,11 +373,11 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   try {
     result = await route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: false, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, production: ctx.cfg.production, caller: sha256(billing.accountId).slice(0, 16) });
   } catch (e) {
-    await release(ctx.db, holdId);
+    await giveBack(ctx, billing, holdId);
     throw e;
   }
   if (!result.ok) {
-    await release(ctx.db, holdId);
+    await giveBack(ctx, billing, holdId);
     throw allFailed(result.attempts, result.last);
   }
   const r = result as Extract<RouteSuccess, { kind: "json" }>;
@@ -439,7 +464,9 @@ async function finalize(p: FinalizeInput) {
   const id = p.holdId;
   const budget = p.extra?.budget;
   const overBudget = budget != null && cost.total > budget;
-  const settled = await settle(ctx.db, p.holdId, overBudget ? budget : cost.total, {
+  // A blind token pays for at most its face value: anything above the hold would come out of the pool's other tokens.
+  const settleAmount = billing.mode === "blind" && cost.total > billing.hold ? billing.hold : cost.total;
+  const settled = await settle(ctx.db, p.holdId, overBudget ? budget : settleAmount, {
     description: `${r.model.id} via ${r.candidate.providerId}`,
     generationId: id,
     creditLine: billing.mode === "paywith" ? billing.grant.creditLine : 0n,
@@ -479,6 +506,8 @@ async function finalize(p: FinalizeInput) {
     ...(served.simulated ? { attestation_simulated: true } : {}),
     payer,
     payment_tx: billing.mode === "per_call" ? (billing.paymentTx ?? null) : null,
+    // A blind redemption names no account: the receipt carries the hash of the spent token (its nullifier) and the key that signed it.
+    ...(billing.mode === "blind" ? { nullifier: billing.pass.nullifier, token_key_id: billing.pass.keyId } : {}),
     request_sha256: p.bodySha,
     response_sha256: sha256(p.responseText),
     ...(p.extra?.payload ?? {}),
@@ -537,6 +566,7 @@ async function finalize(p: FinalizeInput) {
     requestSha256: p.bodySha,
     responseSha256: payload.response_sha256,
   });
+  if (billing.mode === "blind") await confirmToken(ctx, billing.pass, id);
 
   ctx.telemetry.span("chat " + r.model.id, p.t0, Date.now(), {
     "gen_ai.system": r.candidate.providerId,
@@ -592,6 +622,7 @@ async function finalize(p: FinalizeInput) {
       if (p.meta.guard || redactions) x.guardrails = { ...(p.meta.guard ?? {}), output_redactions: redactions };
       if (p.meta.middle && (p.meta.middle.removed || p.meta.middle.truncated)) x.transforms = { "middle-out": p.meta.middle };
       if (p.meta.paywithNote) x.pay_with_fallback = p.meta.paywithNote;
+      if (p.billing.mode === "blind") x.blind = redemptionSummary(p.billing.pass, charged);
       if (p.tier) x.holder = { tier: p.tier.name, rpm_multiplier: p.tier.rpmMultiplier, discount_bps: p.tier.discountBps };
       if (r.dropped.length) x.dropped_parameters = r.dropped;
       return Object.keys(x).length ? x : null;
@@ -617,7 +648,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
         result = await p.run();
       } catch (e) {
         clearInterval(keepalive);
-        await release(ctx.db, p.holdId);
+        await giveBack(ctx, p.billing, p.holdId);
         if (!p.abort.signal.aborted) event({ error: { code: 502, message: (e as Error).message, type: "router_error" } });
         send("data: [DONE]\n\n");
         closed = true;
@@ -626,7 +657,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
       }
       clearInterval(keepalive);
       if (!result.ok) {
-        await release(ctx.db, p.holdId);
+        await giveBack(ctx, p.billing, p.holdId);
         const err = allFailed(result.attempts, result.last);
         event(err.toJSON());
         send("data: [DONE]\n\n");

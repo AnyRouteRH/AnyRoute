@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { usdToPico } from "./lib/money.ts";
 
 // Every setting comes from the environment. Missing optional services produce
 // an explicit "unavailable" state at runtime; they never fake success.
@@ -223,6 +224,16 @@ const schema = z.object({
   IPX_THIN_USDG: z.string().regex(/^\d+(\.\d{1,6})?$/, "must be a USDG amount like \"50000\"").default("50000"), // trailing-24h volume below which a class is THIN
   IPX_MAX_ACCOUNT_SHARE_BPS: int(10_000), // cap on one account's share of a window's volume; 10000 = no cap
   IPX_ATTESTED_ONLY: bool.default(true), // count only fills served by providers with a stored attestation
+
+  // ---- Blind tokens: unlinkable paid access with Privacy Pass tokens (RFC 9578 type 0x0002). Off by default;
+  // when off no route is registered and a PrivateToken Authorization header is not looked at.
+  ANYROUTE_FEATURE_BLIND: bool.default(false),
+  BLIND_UNIT_PRICE_USD: z.string().default("0.000002"), // value of one token-unit; a token is 1000, 10000 or 100000 units
+  BLIND_EPOCH_SECONDS: int(604_800), // issuer keys rotate every epoch (one week)
+  BLIND_REDEEM_GRACE_SECONDS: int(604_800), // tokens stay redeemable this long after their epoch stops issuing
+  BLIND_MAX_BATCH: int(32), // most tokens one purchase request may ask for
+  BLIND_PURCHASE_RPM: int(10), // purchase requests per key per minute
+  BLIND_MAX_USD_PER_DAY: num(100), // most one account may convert into tokens per rolling day
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -280,7 +291,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (escrowMode && Object.values(roleKeys).some(Boolean)) throw new Error("PAYMENTS_MODE=escrow must not receive settlement, anchoring, slashing or keeper signing keys.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -498,6 +509,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     backup: { required: e.BACKUP_REQUIRED, maxAgeHours: e.BACKUP_MAX_AGE_HOURS },
     holders,
     ipx: ipxSettings(e),
+    blind: blindSettings(e),
   };
 }
 
@@ -536,6 +548,41 @@ function ipxSettings(e: Env) {
     thinUsdg: BigInt(whole) * 1_000_000n + BigInt(frac.padEnd(6, "0")),
     maxAccountShareBps: e.IPX_MAX_ACCOUNT_SHARE_BPS,
     attestedOnly: e.IPX_ATTESTED_ONLY,
+  };
+}
+
+// ---- Blind tokens --------------------------------------------------------------------------------
+export const BLIND_DENOMINATIONS = [1_000, 10_000, 100_000] as const;
+
+function blindSettings(e: Env) {
+  let unitPricePico: bigint;
+  try {
+    unitPricePico = usdToPico(e.BLIND_UNIT_PRICE_USD);
+  } catch {
+    throw new Error("BLIND_UNIT_PRICE_USD must be a decimal USD amount.");
+  }
+  if (unitPricePico <= 0n) throw new Error("BLIND_UNIT_PRICE_USD must be positive.");
+  if (e.BLIND_EPOCH_SECONDS < 60) throw new Error("BLIND_EPOCH_SECONDS must be at least 60.");
+  if (e.BLIND_REDEEM_GRACE_SECONDS < 0) throw new Error("BLIND_REDEEM_GRACE_SECONDS must not be negative.");
+  if (e.BLIND_MAX_BATCH < 1 || e.BLIND_MAX_BATCH > 256) throw new Error("BLIND_MAX_BATCH must be between 1 and 256.");
+  if (e.BLIND_PURCHASE_RPM < 1) throw new Error("BLIND_PURCHASE_RPM must be at least 1.");
+  if (!(e.BLIND_MAX_USD_PER_DAY > 0)) throw new Error("BLIND_MAX_USD_PER_DAY must be positive.");
+  let issuerName = "localhost";
+  try {
+    issuerName = new URL(e.PUBLIC_BASE_URL).hostname || issuerName;
+  } catch {
+    /* PUBLIC_BASE_URL is only advisory outside production; the default host name stands */
+  }
+  return {
+    enabled: e.ANYROUTE_FEATURE_BLIND,
+    unitPricePico,
+    denominations: BLIND_DENOMINATIONS,
+    epochSeconds: e.BLIND_EPOCH_SECONDS,
+    redeemGraceSeconds: e.BLIND_REDEEM_GRACE_SECONDS,
+    maxBatch: e.BLIND_MAX_BATCH,
+    purchaseRpm: e.BLIND_PURCHASE_RPM,
+    maxUsdPerDay: e.BLIND_MAX_USD_PER_DAY,
+    issuerName,
   };
 }
 

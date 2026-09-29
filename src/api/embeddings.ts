@@ -17,6 +17,7 @@ import { requestHash } from "./chat.ts";
 import { payPerCall } from "../pay/percall.ts";
 import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
+import { BLIND_POOL, claimToken, confirmToken, presentBlindToken, redemptionSummary, requireValue, unclaimToken } from "../blind/redeem.ts";
 
 // POST /api/v1/embeddings — prepaid keys, or no key at all: an unpaid call gets the same 402 as chat
 // (CallPay and/or x402, whichever this router has configured) and the paid retry is served.
@@ -28,6 +29,8 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null; // $ANYR holders get a higher rpm
     const lim = key ? await ctx.limiter.take(`k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), 60_000) : await ctx.limiter.take(`ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, 60_000);
     if (!lim.ok) fail(429, "Rate limit exceeded.", "rate_limited", undefined, { "retry-after": String(Math.ceil(lim.retryAfterMs / 1000)) });
+    // A Privacy Pass token (Authorization: PrivateToken) instead of a key, when ANYROUTE_FEATURE_BLIND is on.
+    const pass = key ? null : await presentBlindToken(ctx, c.req.header("authorization"));
     const body = await readJson(c);
     const input = body.input;
     if (!(typeof input === "string" || (Array.isArray(input) && input.length > 0 && input.length <= 2048))) fail(400, "`input` must be a string or an array (max 2048 items).", "invalid_request");
@@ -62,17 +65,26 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
       if (refusal) throw refusal;
       fail(404, "No providers match this request.", "no_providers", { excluded: sel.excluded });
     }
-    const mode = key ? "prepaid" : "per_call";
-    const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: key ? 0 : ctx.cfg.fees.perCallMarginBps, byokFeeBps: 0 };
+    const mode = key ? "prepaid" : pass ? "blind" : "per_call";
+    const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: key || pass ? 0 : ctx.cfg.fees.perCallMarginBps, byokFeeBps: 0 };
     const worst = (cand: (typeof sel.ordered)[number]) =>
       priceUsage(cand, r.model, { prompt: promptTokens, completion: 0, reasoning: 0, cachedRead: 0, cacheWrite: 0, webSearch: 0, images: 0, estimated: true }, mode, fees, false).total;
     const hold = maxPico(...sel.ordered.slice(0, ctx.cfg.routing.maxAttempts).map(worst));
     // No key: the caller pays this call up front (402 quote, or the X-Payment retry); the payment funds the hold.
-    const paid = key ? null : await payPerCall(ctx, c, { pricePico: hold * 2n + 1n, bodySha: requestHash(body), modelId: r.model.id });
-    const accountId = key?.accountId ?? paid!.accountId;
+    const paid = key || pass ? null : await payPerCall(ctx, c, { pricePico: hold * 2n + 1n, bodySha: requestHash(body), modelId: r.model.id });
+    const accountId = key?.accountId ?? (pass ? BLIND_POOL : paid!.accountId);
     if (paid) tier = await holderTier(ctx, paid.payer); // a wallet paying per call: its $ANYR tier lowers the margin
     const id = genId();
-    await reserve(ctx.db, { id, accountId, keyHash: key?.keyHash ?? null, amount: hold * 2n + 1n, ttlMs: ctx.cfg.routing.providerTimeoutMs * 2 });
+    if (pass) {
+      requireValue(ctx, pass, hold * 2n + 1n); // the token pays for at most its face value
+      await claimToken(ctx, pass); // spends once; given back below if nothing is served
+    }
+    try {
+      await reserve(ctx.db, { id, accountId, keyHash: key?.keyHash ?? null, amount: hold * 2n + 1n, ttlMs: ctx.cfg.routing.providerTimeoutMs * 2 });
+    } catch (e) {
+      if (pass) await unclaimToken(ctx, pass);
+      throw e;
+    }
     const attempts: Attempt[] = [];
     try {
       for (const cand of sel.ordered.slice(0, ctx.cfg.routing.maxAttempts)) {
@@ -119,8 +131,9 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           disclosure: served.class,
           lane: disc.lane,
           ...(served.simulated ? { attestation_simulated: true } : {}),
-          payer: key?.chainKeyHash ?? paid!.payer,
+          payer: key?.chainKeyHash ?? paid?.payer ?? null,
           payment_tx: paid?.txHash ?? null,
+          ...(pass ? { nullifier: pass.nullifier, token_key_id: pass.keyId } : {}), // no account: the receipt names the spent token by its hash
           request_sha256: sha256(JSON.stringify(body)),
           response_sha256: sha256(JSON.stringify(res.json.data)),
         };
@@ -150,6 +163,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           requestSha256: payload.request_sha256,
           responseSha256: payload.response_sha256,
         });
+        if (pass) await confirmToken(ctx, pass, id);
         return c.json({
           ...res.json,
           id,
@@ -157,14 +171,17 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           provider: cand.provider.name,
           usage: { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) } },
           ...(tier ? { holder: { tier: tier.name, rpm_multiplier: tier.rpmMultiplier, discount_bps: tier.discountBps } } : {}),
+          ...(pass ? { blind: redemptionSummary(pass, charged) } : {}),
           receipt: { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload },
         }, 200, { "x-anyroute-disclosure": served.class, "x-anyroute-lane": disc.lane, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) });
       }
     } catch (e) {
       await release(ctx.db, id);
+      if (pass) await unclaimToken(ctx, pass);
       throw e;
     }
     await release(ctx.db, id);
+    if (pass) await unclaimToken(ctx, pass); // nothing was served: the token is not spent
     fail(502, "All providers for this request failed. Nothing was charged.", "providers_unavailable", { attempts });
   };
   app.post("/api/v1/embeddings", handler);

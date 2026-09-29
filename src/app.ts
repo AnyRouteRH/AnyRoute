@@ -38,6 +38,9 @@ import { paymasterRoutes } from "./api/paymaster.ts";
 import { registerJobs } from "./services/register.ts";
 import { mcpRoutes } from "./api/mcp.ts";
 import { siteRoutes } from "./api/site.ts";
+import { BlindIssuer } from "./blind/issuer.ts";
+import { ensurePool } from "./blind/redeem.ts";
+import { blindRoutes } from "./blind/routes.ts";
 
 export type AppOptions = {
   env?: Record<string, unknown>;
@@ -75,7 +78,9 @@ export async function createApp(opts: AppOptions = {}) {
       await handle.db.insert(kv).values({ key: `job-health:${state.name}`, value }).onConflictDoUpdate({ target: kv.key, set: { value, updatedAt: new Date() } });
     }, cfg.runtimeRole === "worker" ? cfg.workerJobs : undefined),
     rand: opts.rand,
+    blind: cfg.blind.enabled ? new BlindIssuer(handle.db, cfg) : undefined,
   };
+  if (ctx.blind) await ensurePool(ctx);
 
   const webDir = resolve(cfg.webDir ?? resolve(import.meta.dir, "../web/out"));
   const webBuilt = existsSync(resolve(webDir, "index.html"));
@@ -104,6 +109,7 @@ export async function createApp(opts: AppOptions = {}) {
   disclosureRoutes(app, ctx);
   ipxRoutes(app, ctx);
   attestationRoutes(app, ctx);
+  if (ctx.blind) blindRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   paymasterRoutes(app, ctx);

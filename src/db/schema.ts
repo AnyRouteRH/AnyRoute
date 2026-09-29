@@ -268,7 +268,7 @@ export const generations = pgTable(
     royalty: money("royalty").notNull().default(sql`0`),
     margin: money("margin").notNull().default(sql`0`),
     cacheDiscount: money("cache_discount").notNull().default(sql`0`),
-    mode: text("mode").notNull(), // prepaid | per_call | paywith | byok | cache
+    mode: text("mode").notNull(), // prepaid | per_call | paywith | byok | cache | blind
     latencyMs: integer("latency_ms"),
     generationTimeMs: integer("generation_time_ms"),
     finishReason: text("finish_reason"),
@@ -663,3 +663,43 @@ export const providerDisclosure = pgTable("provider_disclosure", {
   claims: jsonb("claims").notNull().default({}),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+// ---- Blind tokens (Privacy Pass type 0x0002; ANYROUTE_FEATURE_BLIND) ----------------------------------
+// Nothing here links a buyer to a token: purchases store per-key counts only, and the nullifier table holds
+// only a hash of a token, which the issuer cannot connect to the blinded request it signed.
+
+// Issuer keys, one per (epoch, denomination). The private half is AES-GCM encrypted with APP_SECRET and is
+// wiped when the epoch stops issuing; the public half stays so old tokens remain verifiable.
+export const blindKeys = pgTable(
+  "blind_keys",
+  {
+    keyId: text("key_id").primaryKey(), // token_key_id: hex SHA-256 of the RFC 9578 SPKI
+    epoch: integer("epoch").notNull(),
+    denomination: integer("denomination").notNull(), // token-units the key's tokens are worth: 1000 | 10000 | 100000
+    spki: text("spki").notNull(), // base64url RFC 9578 SubjectPublicKeyInfo
+    privateEnc: text("private_enc"), // PKCS#8, encrypted; null once the key no longer issues
+    validFrom: ts("valid_from").notNull(),
+    issueUntil: ts("issue_until").notNull(),
+    redeemUntil: ts("redeem_until").notNull(),
+    revokedAt: ts("revoked_at"),
+    issued: bigint("issued", { mode: "number" }).notNull().default(0), // tokens signed: a count, nothing else
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("blind_keys_epoch_denomination_uq").on(t.epoch, t.denomination)],
+);
+
+// Spent tokens. The primary key is the unique constraint that stops a double spend: a token is reserved by
+// inserting its nullifier (SHA-256 of the token) before the request runs, and confirmed after it is served.
+// A request that fails before anything is served deletes its reservation so the token can be used again.
+export const blindNullifiers = pgTable(
+  "blind_nullifiers",
+  {
+    nullifier: text("nullifier").primaryKey(),
+    keyId: text("key_id").notNull(),
+    status: text("status").notNull().default("reserved"), // reserved | spent
+    reservedAt: ts("reserved_at").notNull().defaultNow(),
+    spentAt: ts("spent_at"),
+    generationId: text("generation_id"),
+  },
+  (t) => [index("blind_nullifiers_key_idx").on(t.keyId)],
+);

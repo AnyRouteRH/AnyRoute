@@ -8,6 +8,7 @@ import type { ChainService } from "./chain/service.ts";
 import type { ResponseCache } from "./gateway/cache.ts";
 import type { Telemetry } from "./gateway/otel.ts";
 import type { Jobs } from "./services/jobs.ts";
+import type { BlindIssuer } from "./blind/issuer.ts";
 
 export type Ctx = {
   cfg: Config;
@@ -23,6 +24,8 @@ export type Ctx = {
   jobs: Jobs;
   /** Set only when TELEGRAM_BOT_TOKEN is configured; stopped before the jobs on shutdown. */
   telegram?: { stop(): Promise<void> };
+  /** Set only when ANYROUTE_FEATURE_BLIND is on: the blind-token issuer keys and verifier. */
+  blind?: BlindIssuer;
   /** Test hook: deterministic provider shuffle. */
   rand?: () => number;
 };
