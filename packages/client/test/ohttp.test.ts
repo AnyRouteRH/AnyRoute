@@ -1,7 +1,12 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { AEAD_AES_128_GCM, AEAD_AES_256_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_X25519_HKDF_SHA256 } from "hpke";
 import { ChunkedOHTTPServer, KeyConfig, type KeyConfigWithPrivate } from "ohttp-ts";
-import { obliviousFetch } from "../src/ohttp.js";
+import { obliviousFetch, type ObliviousOptions } from "../src/ohttp.js";
+import type { TransparencyLog } from "../src/tlog.js";
+
+// The package's own transparency log fits the option as it is (a compile-time check).
+const fitsTransparency = (t: TransparencyLog): ObliviousOptions["transparency"] => t;
+void fitsTransparency;
 
 // The SDK's chunked Oblivious HTTP against a gateway built from the same library the router uses: the inner messages
 // are written out byte by byte here, so the decoder meets the forms a gateway may send (known and indeterminate length,
@@ -128,6 +133,19 @@ describe("obliviousFetch", () => {
     // A refusal before the request was unwrapped is plain JSON with a status: it is an error, never a response.
     const refusing = (async () => new Response(JSON.stringify({ error: { type: "unsupported_media_type" } }), { status: 415, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
     await expect(client(refusing)("https://router.example/x")).rejects.toMatchObject({ code: "ohttp_refused", status: 415, details: { error: { type: "unsupported_media_type" } } });
+    // With a transparency log, a configuration the log does not include is refused before anything is sent.
+    let sent = 0;
+    const counting = (async () => (sent++, new Response(null, { status: 500 }))) as unknown as typeof fetch;
+    const refusingLog = { requireLogged: async () => Promise.reject(Object.assign(new Error("not in the log"), { code: "not_logged" })) };
+    await expect(obliviousFetch({ relayUrl: "https://relay.example/relay", keyConfig: config, fetch: counting, transparency: refusingLog })("https://router.example/x")).rejects.toMatchObject({ code: "not_logged" });
+    expect(sent).toBe(0);
+    const asked: [string, Uint8Array][] = [];
+    const log = { requireLogged: async (kind: string, material: Uint8Array) => void asked.push([kind, material]) };
+    const logged = obliviousFetch({ relayUrl: "https://relay.example/relay", keyConfig: config, fetch: gateway(() => cat([1], vi(200), lp(new Uint8Array(0)), lp(enc.encode("ok")))), transparency: log });
+    expect(await (await logged("https://router.example/x")).text()).toBe("ok");
+    expect(await (await logged("https://router.example/x")).text()).toBe("ok");
+    expect(asked).toEqual([["ohttp_key_config", config]]); // checked once, for the configuration in use
+
     // The relay's gateway choice goes in its query, never to the gateway.
     let url = "";
     const recording = (async (u: string) => ((url = u), new Response(null, { status: 403 }))) as unknown as typeof fetch;

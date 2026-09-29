@@ -52,6 +52,12 @@ export type ObliviousOptions = {
   keyConfig: Uint8Array;
   /** The gateway the relay should forward to, when it serves several (`?gateway=<name>`). */
   gateway?: string;
+  /**
+   * Check `keyConfig` against the witnessed transparency log before the first request: a `TransparencyLog` from this
+   * package (or anything with its `requireLogged`). A configuration the log does not include is refused with the log's
+   * error and nothing is sent. The log is read with the log's own fetch, not through the relay.
+   */
+  transparency?: { requireLogged(kind: "ohttp_key_config", material: Uint8Array): Promise<unknown> };
   fetch?: Fetch;
   /** Most bytes of decrypted response to accept. Default 64 MiB. */
   maxResponseBytes?: number;
@@ -434,6 +440,7 @@ export function obliviousFetch(o: ObliviousOptions): Fetch {
     }
     const offers = config.kemId === SUITE_IDS.kem && config.symmetricAlgorithms.some((a) => a.kdfId === SUITE_IDS.kdf && a.aeadId === SUITE_IDS.aead);
     if (!offers) throw new AnyRouteError("The key configuration does not offer DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-128-GCM.", "ohttp_bad_key_config");
+    if (o.transparency) await o.transparency.requireLogged("ohttp_key_config", o.keyConfig);
     const suite = new hpke.CipherSuite(hpke.KEM_DHKEM_X25519_HKDF_SHA256, hpke.KDF_HKDF_SHA256, hpke.AEAD_AES_128_GCM);
     return new ohttp.ChunkedOHTTPClient(suite, config, { padding: 0, maxMessageSize: maxResponseBytes });
   };
