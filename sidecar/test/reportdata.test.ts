@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { bindingsDigest, parseNonce, reportData, reportDataHex, ZERO_NONCE, type Bindings } from "../src/reportdata.ts";
+import { bindingsDigest, bindingsObject, parseNonce, reportData, reportDataHex, ZERO_NONCE, type Bindings } from "../src/reportdata.ts";
+
 import { canonicalJson, normalizeDigest, sha256Hex } from "../src/util.ts";
+
+const rd = (b: Bindings) => reportData(b);
 
 const base: Bindings = {
   tlsPubkey: "aa".repeat(91),
@@ -17,6 +20,34 @@ describe("report data", () => {
     const expected = sha256Hex(canonicalJson({ compose_hash: base.composeHash, image_digest: base.imageDigest, model_digest: base.modelDigest, receipt_pubkey: base.receiptPubkey, tls_pubkey: base.tlsPubkey }));
     expect(Buffer.from(rd.subarray(0, 32)).toString("hex")).toBe(expected);
     expect(Buffer.from(rd.subarray(32)).toString("hex")).toBe("00".repeat(32));
+  });
+
+  test("a deployment with neither the classifier nor encryption derives the same report data as before they existed", () => {
+    // Pinned from the derivation as it was when only the five keys existed.
+    expect(reportDataHex(base)).toBe("fcef800632aeee291db94b84cdd8edc9bbabd796b240d06912e54f73c8c7d759" + "00".repeat(32));
+    expect(Object.keys(bindingsObject(base)).sort()).toEqual(["compose_hash", "image_digest", "model_digest", "receipt_pubkey", "tls_pubkey"]);
+  });
+
+  test("the classifier and the encryption key are bound only when present, and each binding changes the digest", () => {
+    const d0 = Buffer.from(bindingsDigest(base)).toString("hex");
+    const withClassifier: Bindings = { ...base, classifier: { digest: `sha256:${"44".repeat(32)}`, policy: `sha256:${"55".repeat(32)}` } };
+    const withHpke: Bindings = { ...base, hpkePubkey: "66".repeat(32) };
+    expect(bindingsObject(withClassifier)).toMatchObject({ classifier_enabled: true, classifier_digest: `sha256:${"44".repeat(32)}`, classifier_policy: `sha256:${"55".repeat(32)}` });
+    expect(bindingsObject(withHpke)).toMatchObject({ hpke_pubkey: "66".repeat(32) });
+    expect("hpke_pubkey" in bindingsObject(withClassifier)).toBe(false);
+    expect("classifier_enabled" in bindingsObject(withHpke)).toBe(false);
+    const both: Bindings = { ...withClassifier, hpkePubkey: "66".repeat(32) };
+    const digests = [withClassifier, withHpke, both].map((b) => Buffer.from(bindingsDigest(b)).toString("hex"));
+    expect(new Set([d0, ...digests]).size).toBe(4);
+    // Changing the classifier's digest or policy, or the key, changes the derivation.
+    const change = (b: Bindings): string[] => [
+      Buffer.from(bindingsDigest({ ...b, classifier: { ...b.classifier!, digest: `sha256:${"77".repeat(32)}` } })).toString("hex"),
+      Buffer.from(bindingsDigest({ ...b, classifier: { ...b.classifier!, policy: `sha256:${"88".repeat(32)}` } })).toString("hex"),
+      Buffer.from(bindingsDigest({ ...b, hpkePubkey: "99".repeat(32) })).toString("hex"),
+    ];
+    expect(new Set([...change(both), Buffer.from(bindingsDigest(both)).toString("hex")]).size).toBe(4);
+    // The canonical form is what a verifier rebuilds from /attest.
+    expect(Buffer.from(rd(both).subarray(0, 32)).toString("hex")).toBe(sha256Hex(canonicalJson(bindingsObject(both))));
   });
 
   test("every binding changes the digest", () => {
