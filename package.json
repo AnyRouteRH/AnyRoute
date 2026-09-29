@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@account-abstraction/contracts": "0.7.0",
+    "@cloudflare/blindrsa-ts": "0.4.6",
     "@electric-sql/pglite": "0.5.8",
     "@hono/trpc-server": "0.4.2",
     "@noble/hashes": "2.4.0",
