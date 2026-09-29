@@ -18,6 +18,20 @@
     "v3SwapRouter02": "0xcaf681a66d020601342297493863e78c959e5cb2",
     "v3QuoterV2": "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7"
   },
+  "anyr": {
+    "_note": "$ANYR and the v4 pools that price it in USDG for escrow payments (ANYR_POOL_LEGS), verified on-chain 2026-09-29: pool keys recovered from the PoolManager's Initialize events (idPrefix: the first bytes of each poolId, keccak256 of its key). The ANYR/ETH pool is thin (~$24k): keep ANYR_ESCROW_MAX_USD_PER_DEPOSIT at $250 or lower. minLiquidity is about half its in-range liquidity that day. ETH/USDG is the most-traded hookless pool; hooked pools were left out.",
+    "address": "0xa4dDF89A40A35264E9D7F896a1ef01C59b1e977a",
+    "symbol": "ANYR",
+    "decimals": 18,
+    "v4Pools": {
+      "anyrEth": { "idPrefix": "0x5237546c", "key": { "currency0": "0x0000000000000000000000000000000000000000", "currency1": "0xa4dDF89A40A35264E9D7F896a1ef01C59b1e977a", "fee": 0, "tickSpacing": 200, "hooks": "0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044" } },
+      "ethUsdg": { "idPrefix": "0x24107d15", "key": { "currency0": "0x0000000000000000000000000000000000000000", "currency1": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", "fee": 100, "tickSpacing": 1, "hooks": "0x0000000000000000000000000000000000000000" } }
+    },
+    "escrowPoolLegs": [
+      { "key": { "currency0": "0x0000000000000000000000000000000000000000", "currency1": "0xa4dDF89A40A35264E9D7F896a1ef01C59b1e977a", "fee": 0, "tickSpacing": 200, "hooks": "0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044" }, "sign": -1, "minLiquidity": "15000000000000000000000" },
+      { "key": { "currency0": "0x0000000000000000000000000000000000000000", "currency1": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168", "fee": 100, "tickSpacing": 1, "hooks": "0x0000000000000000000000000000000000000000" }, "sign": 1 }
+    ]
+  },
   "stockTokens": [
     { "symbol": "NVDA", "address": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC", "decimals": 18, "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15", "v3Pool": { "pair": "USDG", "fee": 500, "address": "0xd4EB21209C4D6093f80B5b84f5C45cc093EA14a3" } },
     { "symbol": "TSLA", "address": "0x322F0929c4625eD5bAd873c95208D54E1c003b2d", "decimals": 18, "feed": "0x4A1166a659A55625345e9515b32adECea5547C38", "v3Pool": { "pair": "USDG", "fee": 3000, "address": "0xf4ACdAEEB7022862A763C9B1B885e11191c889E3" } },

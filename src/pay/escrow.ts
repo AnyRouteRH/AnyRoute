@@ -103,7 +103,7 @@ export const anyrPricing = { twap: v4Twap };
 /**
  * USD per whole ANYR (18 decimals): the lower of spot and the BUYBACK_TWAP_MINUTES average through
  * ANYR_POOL_LEGS, in USDG. Null when a pool is unreadable or too thin, or spot is more than
- * BUYBACK_MAX_DEVIATION from the average.
+ * ANYR_ESCROW_MAX_DEVIATION (default BUYBACK_MAX_DEVIATION) from the average.
  */
 export async function anyrEscrowPrice(ctx: Ctx, a: AnyrEscrow): Promise<EscrowPrice | null> {
   const key = `anyr:${a.address}`;
@@ -116,7 +116,7 @@ export async function anyrEscrowPrice(ctx: Ctx, a: AnyrEscrow): Promise<EscrowPr
       try {
         const r = await anyrPricing.twap(ctx.chain.client, ctx.cfg.chain.poolManager, a.legs, {
           windowSeconds: ctx.cfg.buyback.twapMinutes * 60,
-          maxDeviation: ctx.cfg.buyback.maxDeviation,
+          maxDeviation: a.maxDeviation,
           decimalsAdjust: 10 ** (a.decimals - USDG_DECIMALS),
           state: twapState,
         });

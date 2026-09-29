@@ -8,6 +8,7 @@ import { poolId, v4Twap, type PoolKey } from "../src/chain/twap.ts";
 import { escrowDeposits, ledger } from "../src/db/schema.ts";
 import { balanceOf, verifyInvariants } from "../src/ledger/ledger.ts";
 import { anyrPricing, clearEscrowPriceCache, escrowAccountId, escrowReviewsOpen, pollEscrow } from "../src/pay/escrow.ts";
+import mainnet from "../config/rhc-mainnet.json";
 
 // Pay with $ANYR through the escrow wallet: same watcher as Stock Tokens, priced by the pool TWAP.
 const ESCROW = "0x00000000000000000000000000000000000e5c20";
@@ -191,7 +192,11 @@ describe("$ANYR escrow configuration", () => {
   test("defaults, and a refusal for anything that could misprice or double-list ANYR", () => {
     expect(loadConfig({}).anyrEscrow).toBeNull();
     expect(loadConfig({ ANYR_TOKEN_ADDRESS: "" }).anyrEscrow).toBeNull();
-    expect(loadConfig(anyrEnv).anyrEscrow).toEqual({ address: ANYR, symbol: "ANYR", decimals: 18, haircutBps: 0, maxUsdPerDeposit: 250, legs: JSON.parse(LEGS) });
+    expect(loadConfig(anyrEnv).anyrEscrow).toEqual({ address: ANYR, symbol: "ANYR", decimals: 18, haircutBps: 0, maxUsdPerDeposit: 250, maxDeviation: 0.05, legs: JSON.parse(LEGS) });
+    // Its own deviation guard, defaulting to the buyback keeper's.
+    expect(loadConfig({ ...anyrEnv, BUYBACK_MAX_DEVIATION: "0.08" }).anyrEscrow?.maxDeviation).toBe(0.08);
+    expect(loadConfig({ ...anyrEnv, ANYR_ESCROW_MAX_DEVIATION: "0.15" }).anyrEscrow?.maxDeviation).toBe(0.15);
+    expect(() => loadConfig({ ...anyrEnv, ANYR_ESCROW_MAX_DEVIATION: "0" })).toThrow(/ANYR_ESCROW_MAX_DEVIATION/);
     expect(loadConfig({ ...anyrEnv, ANYR_ESCROW_HAIRCUT_BPS: "100", ANYR_ESCROW_MAX_USD_PER_DEPOSIT: "50" }).anyrEscrow).toMatchObject({ haircutBps: 100, maxUsdPerDeposit: 50 });
     // Two legs through ETH (currency 0x0), the second inverted: ANYR -> ETH -> USDG.
     const viaEth = JSON.stringify([{ key: key(ZERO, ANYR), sign: -1, minLiquidity: "1000000" }, { key: key(ZERO, USDG), sign: 1 }]);
@@ -205,6 +210,19 @@ describe("$ANYR escrow configuration", () => {
     expect(() => loadConfig({ ...anyrEnv, ANYR_ESCROW_MAX_USD_PER_DEPOSIT: "0" })).toThrow(/ANYR_ESCROW_MAX_USD_PER_DEPOSIT/);
     expect(() => loadConfig({ ...anyrEnv, ANYR_TOKEN_SYMBOL: "" })).toThrow(/ANYR_TOKEN_SYMBOL/);
     expect(() => loadConfig({ ...anyrEnv, ESCROW_TOKENS: JSON.stringify([{ symbol: "X", address: ANYR, decimals: 18, feed: FEED }]) })).toThrow(/also listed in ESCROW_TOKENS/);
+  });
+});
+
+describe("recorded mainnet $ANYR pools", () => {
+  test("config/rhc-mainnet.json keys hash to their pool ids, and its legs price ANYR in USDG", () => {
+    const anyr = mainnet.anyr;
+    for (const pool of Object.values(anyr.v4Pools)) expect(poolId(pool.key as PoolKey).startsWith(pool.idPrefix)).toBe(true);
+    const legs = anyr.escrowPoolLegs;
+    expect(legs.map((l) => l.key)).toEqual([anyr.v4Pools.anyrEth.key, anyr.v4Pools.ethUsdg.key]);
+    const cfg = loadConfig({ ANYR_TOKEN_ADDRESS: anyr.address, ANYR_POOL_LEGS: JSON.stringify(legs) });
+    expect(cfg.anyrEscrow).toMatchObject({ address: anyr.address.toLowerCase(), symbol: anyr.symbol, decimals: anyr.decimals });
+    expect(mainnet.usdg.address.toLowerCase()).toBe(cfg.chain.usdg.toLowerCase());
+    expect(mainnet.uniswap.v4PoolManager).toBe(cfg.chain.poolManager);
   });
 });
 

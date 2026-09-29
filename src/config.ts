@@ -128,6 +128,7 @@ const schema = z.object({
   ANYR_TOKEN_DECIMALS: int(18), // checked against the token contract before anything is credited
   ANYR_ESCROW_HAIRCUT_BPS: int(0),
   ANYR_ESCROW_MAX_USD_PER_DEPOSIT: num(250),
+  ANYR_ESCROW_MAX_DEVIATION: opt, // no price while spot is further than this from the average; default BUYBACK_MAX_DEVIATION
 
   // Routing / health
   OUTAGE_WINDOW_MS: int(30_000),
@@ -448,6 +449,7 @@ export type AnyrEscrow = {
   decimals: number;
   haircutBps: number;
   maxUsdPerDeposit: number;
+  maxDeviation: number;
   legs: import("./chain/twap.ts").Leg[];
 };
 
@@ -458,6 +460,8 @@ function anyrEscrowConfig(e: Env, stockAddresses: string[]): AnyrEscrow | null {
   if (e.ANYR_TOKEN_DECIMALS < 0 || e.ANYR_TOKEN_DECIMALS > 36) throw new Error("ANYR_TOKEN_DECIMALS must be between 0 and 36.");
   if (e.ANYR_ESCROW_HAIRCUT_BPS < 0 || e.ANYR_ESCROW_HAIRCUT_BPS >= 10_000) throw new Error("ANYR_ESCROW_HAIRCUT_BPS must be between 0 and 9999.");
   if (!(e.ANYR_ESCROW_MAX_USD_PER_DEPOSIT > 0) || !Number.isFinite(e.ANYR_ESCROW_MAX_USD_PER_DEPOSIT)) throw new Error("ANYR_ESCROW_MAX_USD_PER_DEPOSIT must be a positive USD amount.");
+  const maxDeviation = e.ANYR_ESCROW_MAX_DEVIATION === undefined ? e.BUYBACK_MAX_DEVIATION : Number(e.ANYR_ESCROW_MAX_DEVIATION);
+  if (!(maxDeviation > 0 && maxDeviation <= 1)) throw new Error("ANYR_ESCROW_MAX_DEVIATION must be above 0 and at most 1 (100%).");
   if (stockAddresses.includes(address)) throw new Error("ANYR_TOKEN_ADDRESS is also listed in ESCROW_TOKENS.");
   if (!e.ANYR_POOL_LEGS) throw new Error("ANYR_TOKEN_ADDRESS needs ANYR_POOL_LEGS: ANYR deposits are priced from its pools.");
   const hex = /^0x[0-9a-fA-F]{40}$/;
@@ -481,7 +485,7 @@ function anyrEscrowConfig(e: Env, stockAddresses: string[]): AnyrEscrow | null {
     at = quote.toLowerCase();
   }
   if (at !== e.USDG_ADDRESS?.toLowerCase()) throw new Error("ANYR_POOL_LEGS must end in USDG (USDG_ADDRESS).");
-  return { address, symbol: e.ANYR_TOKEN_SYMBOL, decimals: e.ANYR_TOKEN_DECIMALS, haircutBps: e.ANYR_ESCROW_HAIRCUT_BPS, maxUsdPerDeposit: e.ANYR_ESCROW_MAX_USD_PER_DEPOSIT, legs };
+  return { address, symbol: e.ANYR_TOKEN_SYMBOL, decimals: e.ANYR_TOKEN_DECIMALS, haircutBps: e.ANYR_ESCROW_HAIRCUT_BPS, maxUsdPerDeposit: e.ANYR_ESCROW_MAX_USD_PER_DEPOSIT, maxDeviation, legs };
 }
 
 // ---- Contract-path launch guards ---------------------------------------------------------------
