@@ -54,6 +54,8 @@ import { blindRoutes } from "./blind/routes.ts";
 import { OhttpKeys } from "./ohttp/keys.ts";
 import { ohttpRoutes } from "./ohttp/gateway.ts";
 import { hostAnchorRoutes } from "./api/host-anchor.ts";
+import { TransparencyLog } from "./tlog/log.ts";
+import { tlogRoutes } from "./tlog/routes.ts";
 
 export type AppOptions = {
   env?: Record<string, unknown>;
@@ -93,6 +95,7 @@ export async function createApp(opts: AppOptions = {}) {
     rand: opts.rand,
     blind: cfg.blind.enabled ? new BlindIssuer(handle.db, cfg) : undefined,
     ohttp: cfg.ohttp.enabled ? new OhttpKeys(handle.db, cfg) : undefined,
+    tlog: cfg.tlog.enabled ? new TransparencyLog(handle.db, cfg.tlog).start() : undefined,
   };
   if (ctx.blind) await ensurePool(ctx);
 
@@ -142,6 +145,7 @@ export async function createApp(opts: AppOptions = {}) {
   if (ctx.blind) blindRoutes(app, ctx);
   if (ctx.ohttp) ohttpRoutes(app, ctx);
   if (ctx.cfg.hostAnchor.enabled) hostAnchorRoutes(app, ctx);
+  if (ctx.tlog) tlogRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);
@@ -200,6 +204,7 @@ export async function createApp(opts: AppOptions = {}) {
     if (healthTimer) clearInterval(healthTimer);
     await ctx.telegram?.stop();
     await ctx.jobs.stop();
+    await ctx.tlog?.stop();
     await ctx.health.flush(ctx.db).catch(() => undefined);
     await ctx.telemetry.close();
     await limiter.close();

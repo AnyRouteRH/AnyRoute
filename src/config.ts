@@ -1,10 +1,11 @@
-import { createHash, createPublicKey } from "node:crypto";
+import { createHash, createHmac, createPrivateKey, createPublicKey } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { usdToPico } from "./lib/money.ts";
 import { parseOnionAddress, parseOnionSecrets } from "./lib/onion.ts";
 import { parseModelMap } from "./anthropic/models.ts";
+import { parseSignerKey, parseVerifierKey, SIG_COSIGNATURE_V1, validKeyName, type NoteVerifier } from "./tlog/note.ts";
 
 // Every setting comes from the environment. Missing optional services produce
 // an explicit "unavailable" state at runtime; they never fake success.
@@ -335,6 +336,16 @@ const schema = z.object({
   ONION_ADDRESS: opt,
   ONION_PROXY_SECRET: opt,
   ONION_POOL_MULTIPLIER: int(10),
+
+  // ---- Transparency log of keys and configurations (C2SP tlog-tiles with signed-note checkpoints and tlog-cosignature
+  // witnesses; src/tlog). Off by default: no route is registered and nothing is appended.
+  TLOG_ENABLED: bool.default(false),
+  TLOG_ORIGIN: opt, // checkpoint origin and the log's key name; default "<host of PUBLIC_BASE_URL>/tlog"
+  TLOG_SIGNING_KEY: opt, // the log's Ed25519 key: base64 PKCS#8, or PRIVATE+KEY+<origin>+<id>+<key>; required in production
+  TLOG_WITNESSES: opt, // witness verifier keys "<name>+<id>+<base64 0x04 key>", comma or newline separated
+  TLOG_WITNESS_QUORUM: int(2), // cosignatures a checkpoint needs to count as witnessed
+  TLOG_INTERVAL_MS: int(60_000), // how often the log job picks up new keys and signs a checkpoint
+  TLOG_COSIGN_RPM: int(60), // cosignature submissions per minute per client address
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -396,7 +407,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.IPX_KEEPER_PRIVATE_KEY && (escrowMode || Object.values(roleKeys).some(Boolean))) throw new Error("IPX_KEEPER_PRIVATE_KEY must be isolated from every other signing role.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -629,6 +640,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     ohttp: ohttpSettings(e, production),
     onion: onionSettings(e),
     hostAnchor: hostAnchorSettings(e),
+    tlog: tlogSettings(e, production),
   };
 }
 
@@ -656,6 +668,79 @@ function hostAnchorSettings(e: Env) {
     tokens = parsed as Record<string, string>;
   }
   return { enabled: e.HOST_ANCHOR_ENABLED, intervalMs: e.HOST_ANCHOR_INTERVAL_MS, tokens };
+}
+
+// ---- Transparency log --------------------------------------------------------------------------------------------
+function tlogSettings(e: Env, production: boolean) {
+  if (!e.TLOG_ENABLED) return { enabled: false as boolean, origin: "", signingKey: Buffer.alloc(0), witnesses: [] as NoteVerifier[], quorum: e.TLOG_WITNESS_QUORUM, intervalMs: e.TLOG_INTERVAL_MS, cosignRpm: e.TLOG_COSIGN_RPM };
+  let origin = e.TLOG_ORIGIN?.trim() ?? "";
+  let seed: Buffer | null = null;
+  let pkcs8: Buffer | null = null;
+  if (e.TLOG_SIGNING_KEY) {
+    const raw = e.TLOG_SIGNING_KEY.trim();
+    if (raw.startsWith("PRIVATE+KEY+")) {
+      let parsed: { name: string; seed: Buffer };
+      try {
+        parsed = parseSignerKey(raw);
+      } catch (err) {
+        throw new Error(`TLOG_SIGNING_KEY: ${(err as Error).message}.`);
+      }
+      if (origin && parsed.name !== origin) throw new Error("TLOG_SIGNING_KEY names a different log than TLOG_ORIGIN.");
+      origin = parsed.name;
+      seed = parsed.seed;
+    } else {
+      pkcs8 = Buffer.from(raw, "base64");
+      try {
+        if (createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" }).asymmetricKeyType !== "ed25519") throw new Error("not Ed25519");
+      } catch {
+        throw new Error("TLOG_SIGNING_KEY must be an Ed25519 key: base64 PKCS#8 or PRIVATE+KEY+<origin>+<id>+<key>.");
+      }
+    }
+  }
+  if (!origin) {
+    let host = "localhost";
+    try {
+      host = new URL(e.PUBLIC_BASE_URL).host || host;
+    } catch {
+      /* the default stands outside production */
+    }
+    origin = `${host}/tlog`;
+  }
+  if (!validKeyName(origin)) throw new Error("TLOG_ORIGIN must be non-empty and contain no spaces or '+'.");
+  const witnesses: NoteVerifier[] = [];
+  for (const v of (e.TLOG_WITNESSES ?? "").split(/[,\n]/).map((x) => x.trim()).filter(Boolean)) {
+    let w: NoteVerifier;
+    try {
+      w = parseVerifierKey(v);
+    } catch (err) {
+      throw new Error(`TLOG_WITNESSES: ${(err as Error).message}.`);
+    }
+    if (w.type !== SIG_COSIGNATURE_V1) throw new Error(`TLOG_WITNESSES: the key of ${w.name} must be a cosignature/v1 (0x04) key.`);
+    if (witnesses.some((x) => x.name === w.name || x.publicKey.equals(w.publicKey))) throw new Error("TLOG_WITNESSES lists a witness twice.");
+    if (w.name === origin) throw new Error("TLOG_WITNESSES must not list the log itself.");
+    witnesses.push(w);
+  }
+  if (witnesses.length > 32) throw new Error("TLOG_WITNESSES lists more than 32 witnesses.");
+  if (e.TLOG_WITNESS_QUORUM < 1 || e.TLOG_WITNESS_QUORUM > 32) throw new Error("TLOG_WITNESS_QUORUM must be between 1 and 32.");
+  if (e.TLOG_INTERVAL_MS < 1_000) throw new Error("TLOG_INTERVAL_MS must be at least 1000.");
+  if (e.TLOG_COSIGN_RPM < 1) throw new Error("TLOG_COSIGN_RPM must be at least 1.");
+  if (production) {
+    if (!e.TLOG_SIGNING_KEY) throw new Error("TLOG_ENABLED requires TLOG_SIGNING_KEY in production: the log's key is its identity and must not change.");
+    if (witnesses.length < e.TLOG_WITNESS_QUORUM) throw new Error("TLOG_ENABLED requires at least TLOG_WITNESS_QUORUM witnesses in TLOG_WITNESSES in production.");
+  }
+  // Outside production a log with no configured key signs with one derived from APP_SECRET, so it keeps its identity
+  // across restarts. Production refuses to start without TLOG_SIGNING_KEY (above).
+  if (!seed && !pkcs8) seed = createHmac("sha256", e.APP_SECRET ?? "dev-insecure-secret-change-me-dev-insecure").update("anyroute-tlog-signing-key/v1").digest();
+  return {
+    enabled: true as boolean,
+    origin,
+    /** A 32-byte Ed25519 seed or a PKCS#8 key. */
+    signingKey: (seed ?? pkcs8)!,
+    witnesses,
+    quorum: e.TLOG_WITNESS_QUORUM,
+    intervalMs: e.TLOG_INTERVAL_MS,
+    cosignRpm: e.TLOG_COSIGN_RPM,
+  };
 }
 
 // ---- The Lane -------------------------------------------------------------------------------------------

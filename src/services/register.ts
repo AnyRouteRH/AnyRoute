@@ -52,6 +52,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall) {
   if (ctx.blind) jobs.register("blind-key-rotation", 3_600_000, () => ctx.blind!.rotate(), { atStart: true });
   // Oblivious HTTP gateway key rotation (one key per epoch, a day by default): the next epoch's key is created ahead, expired keys lose their private half.
   if (ctx.ohttp) jobs.register("ohttp-key-rotation", 3_600_000, () => ctx.ohttp!.rotate(), { atStart: true });
+  // Transparency log (TLOG_ENABLED): log keys published since the last run and sign a checkpoint for the newest tree.
+  if (ctx.tlog) jobs.register("tlog", cfg.tlog.intervalMs, () => ctx.tlog!.run(), { atStart: true });
   jobs.register("alert-notifier", ALERT_INTERVAL_MS, () => runAlertNotifier(ctx), { atStart: true });
   // Long-polls Telegram: one getUpdates cycle per run, re-run every second (Jobs never overlaps a job with itself).
   if (cfg.telegram.botToken && router) {

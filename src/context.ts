@@ -10,6 +10,7 @@ import type { Telemetry } from "./gateway/otel.ts";
 import type { Jobs } from "./services/jobs.ts";
 import type { BlindIssuer } from "./blind/issuer.ts";
 import type { OhttpKeys } from "./ohttp/keys.ts";
+import type { TransparencyLog } from "./tlog/log.ts";
 
 export type Ctx = {
   cfg: Config;
@@ -31,6 +32,8 @@ export type Ctx = {
   hfFetch?: typeof fetch;
   /** Set only when OHTTP_ENABLED is on: the Oblivious HTTP gateway keys. */
   ohttp?: OhttpKeys;
+  /** Set only when TLOG_ENABLED is on: the transparency log of keys and configurations. */
+  tlog?: TransparencyLog;
   /** Test hook: deterministic provider shuffle. */
   rand?: () => number;
 };
