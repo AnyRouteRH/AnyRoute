@@ -332,7 +332,7 @@ describe("receipts and attestation", () => {
     expect(r.status).toBe(502);
     const j = (await r.json()) as any;
     expect(j.error).toMatchObject({ code: 502, type: "upstream_not_attested", metadata: { step: "embeddings" } });
-    expect(j.error.message).toContain("Private RAG stopped at the embeddings step");
+    expect(j.error.message).toContain("RAG stopped at the embeddings step");
     expect(j.error.message).toContain("the upstream was not verified");
     expect(j.error.metadata.receipts).toHaveLength(1);
     expect(j.error.metadata.receipts[0]).toMatchObject({ step: "embeddings", withheld: true, lane: "attested", upstream_attestation: { attested: false } });
@@ -347,7 +347,7 @@ describe("receipts and attestation", () => {
     expect(r.status).toBe(502);
     const j = (await r.json()) as any;
     expect(j.error).toMatchObject({ type: "upstream_not_attested", metadata: { step: "chat" } });
-    expect(j.error.message).toContain("Private RAG stopped at the chat step");
+    expect(j.error.message).toContain("RAG stopped at the chat step");
     expect(j.error.metadata.receipts.map((x: any) => [x.step, x.withheld ?? false])).toEqual([["embeddings", false], ["chat", true]]);
     expect(JSON.stringify(j)).not.toContain("Per [1]");
   });
@@ -399,7 +399,7 @@ describe("lane defaulting, and no downgrade", () => {
     expect(r.status).toBe(409);
     const j = (await r.json()) as any;
     expect(j.error).toMatchObject({ code: 409, type: "lane_unavailable", metadata: { step: "chat" } });
-    expect(j.error.message).toContain("Private RAG stopped at the chat step");
+    expect(j.error.message).toContain("RAG stopped at the chat step");
     expect(j.error.message).toContain('lane "attested"');
     expect(j.error.message).toContain("Nothing was sent to any provider and nothing was charged");
     expect(j.error.metadata.receipts.map((x: any) => x.step)).toEqual(["embeddings"]);

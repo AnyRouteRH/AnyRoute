@@ -427,7 +427,7 @@ const ragRefusal = JSON.stringify(
     error: {
       code: 409,
       type: "lane_unavailable",
-      message: 'Private RAG stopped at the chat step: No provider for <chat model> meets lane "attested": … Nothing was sent to any provider and nothing was charged. …',
+      message: 'RAG stopped at the chat step: No provider for <chat model> meets lane "attested": … Nothing was sent to any provider and nothing was charged. …',
       metadata: { step: "chat", receipts: [{ step: "embeddings", receipt_id: "<embeddings receipt id>", lane: "attested", "…": "the call that was made, and billed" }] },
     },
   },

@@ -19,8 +19,8 @@ import { modelJson } from "./models.ts";
 // receipt.
 //
 // What is kept: nothing of the documents, the question or the answer. The chunks and their vectors live in this request's
-// memory and are dropped when it ends; no route here writes to the database, the cache or a log. The calls it makes leave
-// the records every call leaves: a generation row and a signed receipt with ids, model, provider, token counts, cost, timing
+// memory and are dropped when it ends; this endpoint itself writes nothing to the database, the cache or a log. The calls it
+// makes leave the records every call leaves: a generation row and a signed receipt with ids, model, provider, token counts, cost, timing
 // and the SHA-256 of the request and of the response, never their text. The response cache is never used: this endpoint
 // sends neither `cache` nor X-Anyroute-Cache.
 //
@@ -184,7 +184,7 @@ function refusal(step: Call["step"], status: number, body: Json | null, headers:
   const retry = headers.get("retry-after");
   return new ApiError(
     status,
-    `Private RAG stopped at the ${step} step: ${err.message ?? `the router answered ${status}.`}`,
+    `RAG stopped at the ${step} step: ${err.message ?? `the router answered ${status}.`}`,
     err.type ?? "upstream_error",
     { ...err.metadata, step, receipts: calls.map(publicCall) },
     retry ? { "retry-after": retry } : undefined,
@@ -361,7 +361,7 @@ export function ragRoutes(app: Hono, ctx: Ctx) {
       for (const r of wave) if (r.ok) r.batch.forEach((inputIndex, j) => (vectors[inputIndex] = r.vecs[j]!));
     }
     const dims = vectors[0]!.length;
-    if (vectors.some((v) => v.length !== dims)) throw new ApiError(502, "Private RAG stopped at the embeddings step: the embedding model returned vectors of different sizes.", "invalid_embedding_response", { step: "embeddings", receipts: calls.map(publicCall) });
+    if (vectors.some((v) => v.length !== dims)) throw new ApiError(502, "RAG stopped at the embeddings step: the embedding model returned vectors of different sizes.", "invalid_embedding_response", { step: "embeddings", receipts: calls.map(publicCall) });
 
     // ---- ranking, in memory ----------------------------------------------------------------------
     const scores = cosineScores(vectors[0]!, vectors.slice(1));
