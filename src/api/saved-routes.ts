@@ -84,11 +84,11 @@ function assertRouteLane(ctx: Ctx, config: RouteConfig) {
   if (!off.length) return;
   const { lane, max } = routeCeiling(config.provider);
   const wanted = lane === "attested" ? 'lane "attested"' : `disclosure "${max}"`;
-  const needs = max === "none" ? 'a provider whose retention is declared "attested" and whose TEE attestation is fresh' : "a provider with attested retention or a documented no-retention policy and no legal hold";
+  const needs = max === "none" ? "a provider with declared attested retention and a fresh TEE attestation" : "a provider with attested retention or a documented no-retention policy and no legal hold";
   const them = off.length === 1 ? "it" : "them";
   fail(
     409,
-    `Not saved: ${off.join(", ")} cannot be served under ${wanted} right now. ${off.length === 1 ? "It needs" : "They need"} ${needs}, and none of ${them} has one. Remove ${them} from the fallback list, or relax the setting. GET /api/v1/models?lane=attested lists the models available on the attested lane.`,
+    `Not saved: ${off.join(", ")} cannot be served under ${wanted} right now, because ${off.length === 1 ? "it has" : "they have"} no live endpoint from ${needs}. Remove ${them} from the fallback list, or relax the setting. GET /api/v1/models?lane=attested lists the models available on the attested lane.`,
     "route_lane_unavailable",
     { lane, disclosure: max, unavailable_models: off },
   );
