@@ -1641,6 +1641,9 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
 
     // served usage that an exit left uncovered (omitted key or stale escape root): settlement's loss
     uint256 public settlementLoss;
+    // USDG settlement paid into the pool because an exit would otherwise have found it short; the
+    // pool's balance is always deposited - withdrawn - swept + madeGood
+    uint256 public madeGood;
     uint256 public calls;
     uint256 public finalizations;
     uint256 public escapes;
@@ -1795,6 +1798,7 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
         uint256 provable = included ? rootSpent[i] : 0;
         uint256 before = credits.withdrawn(kh);
         uint256 net = _net(i);
+        _makeGoodIfShort(min(p, net > provable ? net - provable : 0));
         if (included) {
             uint256 idx;
             while (rootKeys[idx] != kh) ++idx;
@@ -1819,9 +1823,27 @@ contract CreditsHandler is CommonBase, StdCheats, StdUtils {
             settlementLoss += liveSpent[i] - netAfter;
             liveSpent[i] = netAfter;
         }
+        // settlement only ever tops the pool up by usage it lost; honest settlement never has to
+        require(madeGood <= settlementLoss, "top-up beyond loss");
         ++finalizations;
         if (escape) ++escapes;
         ++calls;
+    }
+
+    /// An exit pays what the latest root proves. When a root left out a key whose usage was already swept,
+    /// that key can still take its whole deposit and the pool holds less than that (the doc's "settlement's
+    /// loss"): the transfer reverts, the request stays pending, and the exit goes through once settlement
+    /// pays the shortfall in. Only an omitting router can cause this.
+    function _makeGoodIfShort(uint256 pay) internal {
+        uint256 bal = usdg.balanceOf(address(credits));
+        if (pay <= bal) return;
+        require(omitting, "honest pool short");
+        usdg.mint(address(credits), pay - bal);
+        madeGood += pay - bal;
+    }
+
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
     }
 
     /// The approver keeps sweeps within the latest total and, for an omitting router, within the
@@ -1914,7 +1936,7 @@ abstract contract CreditsInvariantBase is Test {
         uint256 bal = usdg.balanceOf(address(credits));
         (,, uint256 totalSpent) = credits.spentRoot(credits.latestEpoch());
         assertLe(credits.totalSwept(), totalSpent);
-        assertEq(bal, handler.sumDepositedMinusWithdrawn() - credits.totalSwept());
+        assertEq(bal, handler.sumDepositedMinusWithdrawn() + handler.madeGood() - credits.totalSwept());
         for (uint256 i; i < 5; ++i) {
             bytes32 kh = handler.keyHashAt(i);
             assertLe(credits.withdrawn(kh), credits.deposited(kh));
@@ -1944,6 +1966,7 @@ contract CreditsInvariantTest is CreditsInvariantBase {
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_solventAndBounded() public view {
         _assertBoundedAndIdentity();
+        assertEq(handler.madeGood(), 0);
         (, uint256 owed) = handler.sumTerms();
         assertGe(usdg.balanceOf(address(credits)), owed);
     }
@@ -1971,6 +1994,15 @@ contract CreditsOmissionInvariantTest is CreditsInvariantBase {
         assertGe(usdg.balanceOf(address(credits)) + handler.settlementLoss(), handler.fairOwed());
     }
 
+    /// Without a top-up the pool is exactly deposits - withdrawals - sweeps, and a top-up never exceeds
+    /// the usage settlement lost: the contract itself never pays out of thin air.
+    /// forge-config: default.invariant.runs = 256
+    /// forge-config: default.invariant.depth = 64
+    /// forge-config: default.invariant.fail-on-revert = true
+    function invariant_topUpsBoundedByLoss() public view {
+        assertLe(handler.madeGood(), handler.settlementLoss());
+    }
+
     /// The path the fuzzer reaches only sometimes: spend is swept, then a root omits the key and it exits
     /// with everything. The pool is short by exactly the loss settlement must make good.
     function test_omittedKeyExitsAfterSweep_lossIsSettlements() public {
@@ -1992,5 +2024,43 @@ contract CreditsOmissionInvariantTest is CreditsInvariantBase {
         assertEq(usdg.balanceOf(address(credits)), 20e6);
         invariant_exitsBoundedAndIdentity();
         invariant_settlementBearsOmissions();
+    }
+
+    /// The sequence the fuzzer shrinks to: one funded key, its spend swept, then a later root drops the
+    /// key. The absence exit is owed the whole deposit but the pool only holds deposit - swept, so it
+    /// reverts and the request stays pending until settlement pays in what it lost. This is the contract
+    /// working as documented (the omitted spend is settlement's loss), not a solvency bug: sweeps only
+    /// ever moved spend an earlier root proved.
+    function test_omittedKeyExitWaitsForSettlementToCoverLoss() public {
+        handler.deposit(0, 17_293);
+        handler.spend(0, 13_226);
+        handler.postRoot(1, type(uint256).max); // includes the key: 13_226 settled
+        handler.sweep(4_067);
+        handler.requestWithdrawal(0, 2_000_000e6);
+        handler.postRoot(1, 0); // omits the key
+        assertFalse(handler.inRoot(0));
+        bytes32 kh = handler.keyHashAt(0);
+        assertEq(usdg.balanceOf(address(credits)), 17_293 - 4_067);
+
+        // the root is the empty tree, so the key exits by absence: sentinels stand for both neighbours
+        ICredits.SpentLeafProof memory none = SpentTree.sentinel();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientBalance.selector, address(credits), 17_293 - 4_067, 17_293
+            )
+        );
+        credits.finalizeWithdrawalAbsent(kh, 0, 0, none, none);
+        (uint256 amt,,) = credits.pendingWithdrawal(kh);
+        assertEq(amt, 2_000_000e6, "request survives the failed exit");
+        assertEq(credits.withdrawn(kh), 0);
+
+        // settlement covers the 4_067 it swept and then left out: the same exit now completes in full
+        usdg.mint(address(credits), 4_067);
+        credits.finalizeWithdrawalAbsent(kh, 0, 0, none, none);
+        assertEq(credits.withdrawn(kh), 17_293);
+        assertEq(usdg.balanceOf(handler.sink()), 4_067 + 17_293);
+        assertEq(usdg.balanceOf(address(credits)), 0);
+        (amt,,) = credits.pendingWithdrawal(kh);
+        assertEq(amt, 0);
     }
 }
