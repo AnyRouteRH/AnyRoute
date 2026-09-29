@@ -8,6 +8,7 @@ import { parseLane } from "../router/disclosure.ts";
 import { VARIANTS, isVariant, type Variant } from "../router/lane.ts";
 import { servedDisclosure } from "./disclosure.ts";
 import { laneJson, offerEligible } from "./lane.ts";
+import { latestAttempts, summarizeAttestation } from "./provider-attestation.ts";
 
 export function offerPricing(o: Candidate) {
   return {
@@ -144,8 +145,9 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
 
   app.get("/api/v1/providers", async (c) => {
     await ctx.catalog.ensureFresh();
-    const data = [...ctx.catalog.providers.values()]
-      .filter((p) => p.status !== "applied")
+    const visible = [...ctx.catalog.providers.values()].filter((p) => p.status !== "applied");
+    const attempts = await latestAttempts(ctx, visible.map((p) => p.id));
+    const data = visible
       .map((p) => {
         const live = [...ctx.catalog.offersByModel.values()].flat().filter((o) => o.providerId === p.id && o.status === "live");
         const snaps = live.map((o) => ctx.health.snapshot(o.modelId, o.providerId));
@@ -171,6 +173,8 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
         attested: p.attested,
         tee: p.teeKind,
         attested_at: p.attestedAt?.toISOString() ?? null,
+        // The router's own three-way status, as GET /api/v1/attestation/:providerId reports it (never the provider's claim).
+        attestation: summarizeAttestation(ctx, p, attempts.get(p.id)),
         bond_usdg: p.bondUsdg.toString(),
         anyr_stake: p.anyrStake.toString(),
         models: live.length,
