@@ -28,6 +28,35 @@ const receipt = {
     paid_with: { token: "NVDA", raw_units: "<units>", fair_price: "<18-decimal USD>", swap_tx: "<tx once swapped>" },
   },
 };
+const councilRequest = JSON.stringify(
+  {
+    model: "anyroute/council",
+    messages: [{ role: "user", content: "Your prompt" }],
+    max_tokens: 400,
+    council: { models: ["<model-a>", "<model-b>", "<model-c>"], judge: "<judge-model>", mode: "judge", max_cost_usd: 0.05 },
+  },
+  null,
+  2,
+);
+const councilResponse = JSON.stringify(
+  {
+    id: "<judge receipt id>",
+    model: "anyroute/council",
+    choices: [{ message: { role: "assistant", content: "<the chosen member's answer>" } }],
+    usage: { prompt_tokens: 1180, completion_tokens: 402, cost: 0.0021, calls: 4 },
+    receipt: { id: "<judge receipt id>", sig: "…", payload: { council: { members: [{ receipt_id: "<member receipt id>" }], judge: { receipt_id: "<judge receipt id>" } } } },
+    council: {
+      mode: "judge",
+      members: [{ label: "A", model: "<model-a>", provider: "…", receipt_id: "<member receipt id>", cost: "0.00041", latency_ms: 812, status: "ok" }],
+      judge: { model: "<judge-model>", receipt_id: "<judge receipt id>", cost: "0.00062", latency_ms: 390 },
+      selected: { label: "A", receipt_id: "<member receipt id>" },
+      total_cost: "0.0021",
+    },
+  },
+  null,
+  2,
+);
+const verifyRequest = JSON.stringify({ model: "meta-llama/llama-3.3-70b-instruct", messages: [{ role: "user", content: "Your prompt" }], verify: "dual" }, null, 2);
 const BASE = API_BASE || "<your router>";
 const claudeCode = `claude mcp add --transport http anyroute ${BASE}/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY"`;
 const cursorConfig = JSON.stringify({ mcpServers: { anyroute: { url: `${BASE}/mcp`, headers: { Authorization: "Bearer sk-ar-v1-…" } } } }, null, 2);
@@ -124,6 +153,7 @@ export default function Docs() {
             <a href="#payments">Payments</a>
             <a href="#x402">x402</a>
             <a href="#receipts">Receipts</a>
+            <a href="#council">Council</a>
             <a href="#mcp">MCP</a>
             <a href="#endpoints">Endpoints</a>
             <a href="#limits">Limits</a>
@@ -243,6 +273,24 @@ export default function Docs() {
             are published on-chain. Signed is not the same as anchored: the dashboard and /api/v1/receipts/verify report each separately.
           </p>
           <Code label="Response shape">{JSON.stringify(receipt, null, 2)}</Code>
+          <h2 id="council">Ask several models, or the same one twice.</h2>
+          <p>
+            Two opt-in modes, available when the router enables them (the ANYROUTE_FEATURE_COUNCIL setting, off by default). Neither streams. Every call they make is routed, billed and receipted like a request of its own, and the worst case of all of
+            them is held before anything is sent, so your balance and key budget bound the whole request. Your provider preferences, including a disclosure ceiling or lane, apply to every call, the judge included: a member with no provider that meets them refuses the request with a 409 instead of being dropped or downgraded. The disclosure header and the top-level receipt show the weakest class among the calls; each member’s receipt shows its own.
+          </p>
+          <p>
+            <b>Council.</b> Set model to anyroute/council and list 2 to 5 members and a judge. The members run in parallel; the judge either picks one answer, returned unchanged (mode judge), or writes a final one (mode fuse, text only). A member
+            that fails is not billed and the council goes on with the rest, as long as at least two answered. The response carries a council field listing each member (model, receipt id, cost, latency) and the judge; the top-level receipt is the
+            judge’s call and its signed payload lists the member receipt ids. Set council.max_cost_usd to refuse the request unless its worst case fits; lower max_tokens to make it fit. A judge is a model’s opinion, not a proof.
+          </p>
+          <Code label="Council request">{councilRequest}</Code>
+          <Code label="Council response (abridged)">{councilResponse}</Code>
+          <p>
+            <b>Dual verification.</b> Add verify: "dual" to a request for one model. It goes to two different providers of that model at temperature 0 with a fixed seed (yours, if you send seed), and both outputs are compared. The response has a
+            verification field with the two provider ids, agree (true when the outputs match exactly or differ only in whitespace), the two receipt ids and the seed; each receipt carries the same agreement bit. Both calls are billed, and the body
+            is the first provider’s output. If fewer than two providers of the model support temperature and seed under your routing preferences, the answer is 409. Agreement shows two providers gave the same text; it does not show that either is attested, and providers running different quantizations may legitimately differ.
+          </p>
+          <Code label="Dual verification request">{verifyRequest}</Code>
           <h2 id="mcp">Use every model as a tool.</h2>
           <p>
             The router hosts a remote MCP server at /mcp (Streamable HTTP, stateless, JSON replies). Connect it to Claude, Cursor or any MCP client with your Anyroute key. Four tools: list_models (live models, context length and price per 1M
