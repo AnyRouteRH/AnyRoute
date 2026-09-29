@@ -198,3 +198,23 @@ describe("configuration", () => {
     expect(c.attestation.verifiers).toEqual(["dcap", "intel-ta", "dstack"]);
   });
 });
+
+describe("production configuration", () => {
+  const address = "0x" + "1".repeat(40);
+  const prod = { ANYROUTE_ENV: "production", RUNTIME_ROLE: "api", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/test", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: address, CALLPAY_ADDRESS: address, PROVIDER_BOND_ADDRESS: address, RECEIPT_ANCHOR_ADDRESS: address, ROUTER_PRIVATE_KEY: "0x" + "3".repeat(64) };
+  test("measurements and the extra verifiers are off by default and need https endpoints when used", () => {
+    const c = loadConfig(prod);
+    expect(c.measurements.enabled).toBe(false);
+    expect(c.attestation.verifiers).toEqual(["dcap"]);
+    expect(loadConfig({ ...prod, MEASUREMENTS_ENABLED: "true" }).measurements.rekorUrl).toBe("https://rekor.sigstore.dev");
+    expect(() => loadConfig({ ...prod, MEASUREMENTS_ENABLED: "true", REKOR_URL: "http://rekor.example" })).toThrow("REKOR_URL must be https");
+    const ita = { ...prod, ATTESTATION_VERIFIERS: "intel-ta", INTEL_TA_API_KEY: "k" };
+    expect(loadConfig(ita).attestation.verifiers).toEqual(["intel-ta"]);
+    expect(() => loadConfig({ ...ita, INTEL_TA_URL: "http://ita.example/attest" })).toThrow("must be https");
+    expect(() => loadConfig({ ...ita, INTEL_TA_JWKS_URL: "http://ita.example/certs" })).toThrow("must be https");
+  });
+  test("the measurement job is a valid worker job and needs no signing key", () => {
+    const worker = { ...prod, RUNTIME_ROLE: "worker", WORKER_JOBS: "measurements", ROUTER_PRIVATE_KEY: "", MEASUREMENTS_ENABLED: "true" };
+    expect(loadConfig(worker).workerJobs).toEqual(["measurements"]);
+  });
+});
