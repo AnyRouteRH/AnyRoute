@@ -3,6 +3,7 @@ import { keccak256 as viemKeccak, type Hex } from "viem";
 import { randomBytes } from "node:crypto";
 import { AnyRoute, AttestationRefused, canonicalJson as sdkCanonicalJson, keccak256Hex, receiptLeaf as sdkLeaf, verifyMerkleProof, verifySidecarReceipt, verifyProvider, canonicalBytes as sdkCanonicalBytes } from "../packages/client/src/index.ts";
 import { nodeAttestFetcher } from "../packages/client/src/node.ts";
+import { buyTokens } from "../packages/client/src/blind.ts";
 import { tokenNullifier as sdkNullifier } from "../packages/client/src/blind.ts";
 import { canonicalJson } from "../src/lib/util.ts";
 import * as webVerify from "../web/lib/verify.js";
@@ -167,7 +168,7 @@ describe("against a running router", () => {
   test("blind tokens: buy with the SDK, spend with the SDK, and the receipt shows the nullifier the SDK computes", async () => {
     const k = await h.fundedKey(5n);
     const c = new AnyRoute({ baseUrl: "http://router.test", apiKey: k.secret, fetch: shim(h) });
-    const bought = await c.buyTokens({ denomination: 1_000, count: 1 });
+    const bought = await buyTokens({ baseUrl: "http://router.test", apiKey: k.secret, denomination: 1_000, count: 1, fetch: shim(h) });
     expect(bought.tokens).toHaveLength(1);
     const token = bought.tokens[0];
     const res = await c.withPrivateToken(token).chat.completions.create(chat);

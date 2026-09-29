@@ -423,7 +423,7 @@ export default function Docs() {
           <Code label="Python">{sdkPython}</Code>
           <h3>Blind tokens and end-to-end encryption</h3>
           <p>
-            Where the router has blind tokens enabled, client.buyTokens() blinds, buys and unblinds tokens with your key, and client.withPrivateToken(token) spends one; this needs the optional package @cloudflare/blindrsa-ts. For end-to-end encryption to an enclave, sealedPost() encrypts
+            Where the router has blind tokens enabled, buyTokens() from @anyroute/client/blind blinds, buys and unblinds tokens with your key, and client.withPrivateToken(token) makes a client that spends one; the blind-token module needs the optional package @cloudflare/blindrsa-ts, and the main entry point never loads it. For end-to-end encryption to an enclave, sealedPost() encrypts
             a request with an HPKE implementation you supply, sends it as application/anyroute-hpke and opens the reply. It seals only to an HPKE key the provider’s verified quote commits to, and refuses if the provider did not verify or the quote commits to no such key. The SDK ships no HPKE cipher: the
             implementation and wire format must match the provider’s sidecar. The Python package covers receipts, provider verification, and disclosure and lane options, and can spend a blind token you already hold; it cannot buy tokens and has no streaming or HPKE support.
           </p>

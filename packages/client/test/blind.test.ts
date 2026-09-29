@@ -93,7 +93,7 @@ describe("blind tokens", () => {
     expect(() => tokenInput(new Uint8Array(31), new Uint8Array(32), new Uint8Array(32))).toThrow();
   });
 
-  test("the client class buys with its own key and returns a client that spends", async () => {
+  test("a client made with a token spends it instead of the API key", async () => {
     const iss = await issuer();
     const { fetch, calls } = stubFetch({
       "/api/v1/blind/keys": () => json({ data: iss.dir }),
@@ -104,11 +104,10 @@ describe("blind tokens", () => {
       "POST /api/v1/chat/completions": ({ init }) => json({ auth: (init!.headers as Record<string, string>).authorization, choices: [] }),
     });
     const c = new AnyRoute({ baseUrl: "https://router.test", apiKey: "sk-key", fetch });
-    const { tokens } = await c.buyTokens({ denomination: 1000, count: 1 });
+    const { tokens } = await buyTokens({ baseUrl: "https://router.test", apiKey: "sk-key", denomination: 1000, count: 1, fetch });
     const spender = c.withPrivateToken(tokens[0]);
     const res: any = await spender.chat.completions.create({ model: "m", messages: [] }, { verifyReceipt: false });
     expect(res.auth).toBe(`PrivateToken token=${tokens[0]}`);
     expect(calls.filter((x) => x.init?.method === "POST").map((x) => new URL(x.url).pathname)).toEqual(["/api/v1/blind/purchase", "/api/v1/chat/completions"]);
-    await expect(new AnyRoute({ baseUrl: "https://router.test", fetch }).buyTokens({ denomination: 1000, count: 1 })).rejects.toThrow(/API key/);
   });
 });

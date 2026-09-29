@@ -89,7 +89,7 @@ export class AnyRoute {
     this.keys = opts.receiptKeys ?? null;
   }
 
-  /** A copy that authenticates with a blind token (see buyTokens) instead of an API key. */
+  /** A copy that authenticates with a blind token (see buyTokens in @anyroute/client/blind) instead of an API key. */
   withPrivateToken(token: string): AnyRoute {
     return new AnyRoute({ ...this.opts, apiKey: undefined, privateToken: token });
   }
@@ -224,13 +224,6 @@ export class AnyRoute {
     const res = await this.f(`${this.baseUrl}/api/v1/models`, { signal, headers: { ...this.authHeaders(), accept: "application/json" } });
     if (!res.ok) throw new AnyRouteError(`models request failed with ${res.status}`, "request_failed", res.status);
     return (await res.json()) as { data: Array<Record<string, unknown>> };
-  }
-
-  /** Buy blind tokens with this client's API key and return them. Needs @cloudflare/blindrsa-ts (see @anyroute/client/blind). */
-  async buyTokens(o: { denomination: number; count: number }) {
-    if (!this.opts.apiKey) throw new AnyRouteError("Buying tokens needs an API key.", "bad_options");
-    const blind = await import("./blind.js");
-    return blind.buyTokens({ baseUrl: this.baseUrl, apiKey: this.opts.apiKey, fetch: this.f, ...o });
   }
 }
 
