@@ -32,6 +32,7 @@ import { disclosureRoutes } from "./api/disclosure.ts";
 import { ipxRoutes } from "./api/ipx.ts";
 import { attestationRoutes } from "./api/attestation.ts";
 import { laneRoutes } from "./api/lane.ts";
+import { dayzeroRoutes } from "./api/dayzero.ts";
 import { publicRoutes } from "./api/public.ts";
 import { embeddingsRoutes } from "./api/embeddings.ts";
 import { adminRoutes } from "./admin/trpc.ts";
@@ -111,6 +112,7 @@ export async function createApp(opts: AppOptions = {}) {
   ipxRoutes(app, ctx);
   attestationRoutes(app, ctx);
   laneRoutes(app, ctx);
+  dayzeroRoutes(app, ctx);
   if (ctx.blind) blindRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);

@@ -26,6 +26,8 @@ export type Ctx = {
   telegram?: { stop(): Promise<void> };
   /** Set only when ANYROUTE_FEATURE_BLIND is on: the blind-token issuer keys and verifier. */
   blind?: BlindIssuer;
+  /** The fetch used for Hugging Face API calls (day-zero discovery, creator claims); the global fetch when unset. Tests inject one. */
+  hfFetch?: typeof fetch;
   /** Test hook: deterministic provider shuffle. */
   rand?: () => number;
 };

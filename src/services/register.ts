@@ -8,6 +8,7 @@ import { retryAnchors, runAnchor, runKeyRotation } from "./anchor.ts";
 import { runAttestor } from "./attestor.ts";
 import { runMeasurements } from "./measurements.ts";
 import { runIpxOracle } from "./ipx-oracle.ts";
+import { runDayzero } from "./dayzero.ts";
 import { runCanaries } from "./canaries.ts";
 import { runProbes } from "./probes.ts";
 import { runRegistry } from "./registry.ts";
@@ -31,6 +32,9 @@ export function registerJobs(ctx: Ctx, router?: RouterCall) {
   if (cfg.measurements.enabled) jobs.register("measurements", cfg.measurements.intervalMs, () => runMeasurements(ctx));
   // Off unless IPX_ENABLED and IPX_ORACLE_ENABLED: signs IPX index price updates and hands them to the configured sinks.
   if (cfg.ipx.enabled && cfg.ipx.oracle.enabled) jobs.register("ipx-oracle", cfg.ipx.oracle.intervalS * 1000, () => runIpxOracle(ctx));
+  // Off unless DAYZERO_ENABLED: watch Hugging Face for new fine-tunes of the configured permissive base models, and
+  // evaluate and promote candidates an operator has linked and approved. Serving anything still needs an approval.
+  if (cfg.lane.dayzero.enabled) jobs.register("dayzero", cfg.lane.dayzero.intervalMs, () => runDayzero(ctx));
   jobs.register("receipts-anchor", cfg.receipts.anchorIntervalMs, async () => ({ anchor: await runAnchor(ctx), retry: await retryAnchors(ctx) }), { atStart: true });
   jobs.register("receipt-key-rotation", 3_600_000, () => runKeyRotation(ctx), { atStart: true });
   jobs.register("settlement", cfg.workers.settlementIntervalMs, () => runSettlement(ctx), { atStart: true });

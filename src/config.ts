@@ -171,6 +171,22 @@ const schema = z.object({
   REKOR_PUBLIC_KEY: opt, // PEM (ECDSA P-256) that signs Rekor checkpoints; without it checkpoints are not verified
   MEASUREMENT_REGISTRY_ADDRESS: addr,
 
+  // The Lane. Day-zero pipeline (off by default): watch Hugging Face for new fine-tunes of the listed permissive
+  // base models, check their license, and create candidates for evaluation. Nothing is served without an
+  // operator approval and an attested provider.
+  DAYZERO_ENABLED: bool.default(false),
+  DAYZERO_INTERVAL_MS: int(900_000),
+  DAYZERO_BASE_MODELS: z.string().default(""), // comma list of Hugging Face repo ids (owner/name) whose derivatives are watched
+  DAYZERO_LICENSES: z.string().default("mit,apache-2.0"), // license ids (model card metadata) a base model and a derivative may carry
+  DAYZERO_KEYWORDS: z.string().default("abliterated,uncensored,decensored,unfiltered"), // a repository is a candidate only if its id or tags contain one
+  DAYZERO_MAX_PER_RUN: int(25), // most repositories examined in one run
+  DAYZERO_MAX_REFUSAL_RATE: num(0.25), // largest share of the benign probe set a candidate may refuse
+  DAYZERO_MIN_CAPABILITY: num(0.8), // smallest share of the exact-check set a candidate must answer correctly
+  DAYZERO_MIN_CANARY: num(0.75), // smallest share of the canary exact-match set
+  // Creator claims: how long an issued challenge stays valid, and the file the uploader publishes it in.
+  LANE_CLAIM_TTL_S: int(86_400),
+  LANE_CLAIM_FILE: z.string().default("anyroute-claim.txt"),
+
   // Workers
   WORKERS: bool.default(true),
   SETTLEMENT_INTERVAL_MS: int(3_600_000),
@@ -314,7 +330,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.IPX_KEEPER_PRIVATE_KEY && (escrowMode || Object.values(roleKeys).some(Boolean))) throw new Error("IPX_KEEPER_PRIVATE_KEY must be isolated from every other signing role.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -514,6 +530,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       rekorPublicKey: e.REKOR_PUBLIC_KEY,
       registry: e.MEASUREMENT_REGISTRY_ADDRESS && !/^0x0{40}$/.test(e.MEASUREMENT_REGISTRY_ADDRESS) ? (e.MEASUREMENT_REGISTRY_ADDRESS.toLowerCase() as `0x${string}`) : null,
     },
+    lane: laneSettings(e),
     workers: {
       enabled: e.WORKERS && e.RUNTIME_ROLE !== "api",
       settlementIntervalMs: e.SETTLEMENT_INTERVAL_MS,
@@ -537,6 +554,41 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     holders,
     ipx: ipxSettings(e),
     blind: blindSettings(e),
+  };
+}
+
+// ---- The Lane -------------------------------------------------------------------------------------------
+const REPO_ID = /^[A-Za-z0-9][\w.-]{0,95}\/[A-Za-z0-9][\w.-]{0,95}$/;
+const csv = (v: string) => v.split(",").map((x) => x.trim()).filter(Boolean);
+
+function laneSettings(e: Env) {
+  const baseModels = [...new Set(csv(e.DAYZERO_BASE_MODELS))];
+  const bad = baseModels.find((b) => !REPO_ID.test(b));
+  if (bad) throw new Error("DAYZERO_BASE_MODELS must be a comma list of Hugging Face repository ids (owner/name).");
+  if (e.DAYZERO_ENABLED && !baseModels.length) throw new Error("DAYZERO_ENABLED needs DAYZERO_BASE_MODELS: the base models whose derivatives are watched.");
+  const licenses = [...new Set(csv(e.DAYZERO_LICENSES).map((l) => l.toLowerCase()))];
+  if (!licenses.length) throw new Error("DAYZERO_LICENSES must list at least one license.");
+  const keywords = [...new Set(csv(e.DAYZERO_KEYWORDS).map((k) => k.toLowerCase()))];
+  if (!keywords.length) throw new Error("DAYZERO_KEYWORDS must list at least one keyword.");
+  for (const [name, v] of Object.entries({ DAYZERO_MAX_REFUSAL_RATE: e.DAYZERO_MAX_REFUSAL_RATE, DAYZERO_MIN_CAPABILITY: e.DAYZERO_MIN_CAPABILITY, DAYZERO_MIN_CANARY: e.DAYZERO_MIN_CANARY }))
+    if (!(v >= 0 && v <= 1)) throw new Error(`${name} must be between 0 and 1.`);
+  if (e.DAYZERO_INTERVAL_MS < 60_000) throw new Error("DAYZERO_INTERVAL_MS must be at least 60000.");
+  if (e.DAYZERO_MAX_PER_RUN < 1 || e.DAYZERO_MAX_PER_RUN > 200) throw new Error("DAYZERO_MAX_PER_RUN must be between 1 and 200.");
+  if (e.LANE_CLAIM_TTL_S < 60) throw new Error("LANE_CLAIM_TTL_S must be at least 60.");
+  if (!/^[\w.-][\w.-]{0,127}$/.test(e.LANE_CLAIM_FILE)) throw new Error("LANE_CLAIM_FILE must be a plain file name.");
+  return {
+    dayzero: {
+      enabled: e.DAYZERO_ENABLED,
+      intervalMs: e.DAYZERO_INTERVAL_MS,
+      baseModels,
+      licenses,
+      keywords,
+      maxPerRun: e.DAYZERO_MAX_PER_RUN,
+      maxRefusalRate: e.DAYZERO_MAX_REFUSAL_RATE,
+      minCapability: e.DAYZERO_MIN_CAPABILITY,
+      minCanary: e.DAYZERO_MIN_CANARY,
+    },
+    claim: { ttlS: e.LANE_CLAIM_TTL_S, file: e.LANE_CLAIM_FILE },
   };
 }
 
