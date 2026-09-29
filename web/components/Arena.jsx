@@ -2,9 +2,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { api, loadKey, toCatalogModel, validKey } from "../lib/api";
 import {
-  DEFAULT_MAX_TOKENS, MAX_LANES, MAX_PROMPT, MIN_LANES, TOKEN_CAPS, blankLane, chatModels, decodeArena, encodeArena, estimateCeiling, filterModels,
-  formatMs, formatUsd, pickWinners, raceLane, receiptHref, shortId, tokensPerSecond,
+  DEFAULT_MAX_TOKENS, MAX_LANES, MAX_PROMPT, MIN_LANES, PRESETS, TOKEN_CAPS, attestedCatalog, blankLane, chatModels, decodeArena, encodeArena, estimateCeiling, filterModels,
+  formatMs, formatUsd, isFailClosed, pickWinners, presetLanes, raceLane, receiptHref, shortId, tokensPerSecond,
 } from "../lib/arena";
+import { verifyHref } from "../lib/verify";
 import { Button } from "./UI";
 import styles from "./Arena.module.css";
 
@@ -72,6 +73,11 @@ function ModelPicker({ index, models, ready, value, taken, disabled, onPick }) {
                 <button type="button" disabled={taken.has(m.id)} aria-current={m.id === value ? "true" : undefined} onClick={() => choose(m)}>
                   <span>{m.name}</span>
                   <small>{taken.has(m.id) && m.id !== value ? "in another lane" : m.id}</small>
+                  {m.gpuAttested === true && (
+                    <em className={styles.tag} title="The router’s most recent verified receipt for this model asserted GPU attestation.">
+                      GPU attested
+                    </em>
+                  )}
                 </button>
               </li>
             ))}
@@ -80,6 +86,35 @@ function ModelPicker({ index, models, ready, value, taken, disabled, onPick }) {
           {total > items.length && <p className={styles.more}>Showing {items.length} of {total}. Keep typing to narrow the list.</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+const MARKS = { yes: "✓", no: "×", unknown: "?" };
+
+/** What the signed receipt records about the hardware behind one answer, with links to check it. */
+function Proof({ proof, receiptId }) {
+  const verify = proof.provider ? verifyHref(proof.provider) : null;
+  return (
+    <div className={styles.proof} data-attested={proof.attested ? "yes" : "no"} role="group" aria-label="Proof from the signed receipt">
+      <ul className={styles.checks}>
+        {proof.checks.map((c) => (
+          <li key={c.key} data-state={c.state}>
+            <span aria-hidden="true">{MARKS[c.state]}</span>
+            {c.text}
+          </li>
+        ))}
+      </ul>
+      {proof.reason && <p className={styles.why}>{proof.reason}.</p>}
+      <p className={styles.proofLinks}>
+        {verify && <a href={verify}>Verify provider →</a>}
+        {receiptId && (
+          <a href={receiptHref(receiptId)} target="_blank" rel="noopener noreferrer">
+            Signed receipt ↗
+          </a>
+        )}
+      </p>
+      <p className={styles.fine}>{proof.gateway ? "Read from the receipt’s gateway record." : "This provider is attested directly; its receipt has no gateway record, so GPU and TCB status are not part of it."}</p>
     </div>
   );
 }
@@ -127,6 +162,7 @@ function Lane({ lane, index, elapsed, winners, reserve, picker, canRemove, onRem
         {lane.text ? lane.text : lane.status === "waiting" ? <span className={styles.wait}>Routing…</span> : lane.status === "idle" ? <span className={styles.hint}>The answer streams here.</span> : null}
         {lane.error && (
           <p className={styles.laneError} role={lane.status === "error" ? "alert" : undefined}>
+            {isFailClosed(lane.errorType) && <b className={styles.closed}>Failed closed </b>}
             {lane.error}{" "}
             {lane.errorType === "insufficient_credits" && (
               <a href="/dashboard/">Add funds in the dashboard →</a>
@@ -134,6 +170,7 @@ function Lane({ lane, index, elapsed, winners, reserve, picker, canRemove, onRem
           </p>
         )}
       </div>
+      {lane.proof && <Proof proof={lane.proof} receiptId={lane.receiptId} />}
       <dl className={styles.stats}>
         <div>
           <dt>First token</dt>
@@ -177,13 +214,16 @@ export default function Arena() {
   const [maxTokens, setMaxTokens] = useState(DEFAULT_MAX_TOKENS);
   const [catalog, setCatalog] = useState(null);
   const [catalogError, setCatalogError] = useState("");
+  const [attested, setAttested] = useState(false); // attested only: pickers list the attested models, every lane asks for the attested lane
+  const [attestedList, setAttestedList] = useState(null);
+  const [attestedError, setAttestedError] = useState("");
   const [keyState, setKeyState] = useState("checking"); // checking | none | rejected | ready
   const [secret, setSecret] = useState("");
   const [balance, setBalance] = useState(null);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [linkNote, setLinkNote] = useState("");
-  const [droppedFromLink, setDroppedFromLink] = useState(0);
+  const [notice, setNotice] = useState("");
   const [announce, setAnnounce] = useState("");
   const ctl = useRef(null);
   const started = useRef(0);
@@ -196,6 +236,7 @@ export default function Arena() {
   useEffect(() => {
     const linked = decodeArena(location.search);
     fromLink.current = linked.models;
+    if (linked.attested) setAttested(true);
     if (linked.prompt) setPrompt(linked.prompt);
     if (linked.models.length) setLanes(pad(linked.models));
     const stored = loadKey();
@@ -217,16 +258,33 @@ export default function Arena() {
   };
   useEffect(loadCatalog, []);
 
-  // Models named by a link that the catalog no longer lists are dropped, and the visitor is told.
+  // The attested list is what attested-only mode and the presets draw on; it is read once at load, whatever the switch says.
+  const loadAttested = () => {
+    setAttestedError("");
+    api("/api/v1/models?lane=attested")
+      .then((r) => setAttestedList(attestedCatalog(r.data)))
+      .catch((e) => setAttestedError(e.message));
+  };
+  useEffect(loadAttested, []);
+
+  const active = attested ? attestedList : catalog;
+  // A lane whose model the active list does not carry (a shared link, or the switch turned on) is cleared, and the visitor is told.
   useEffect(() => {
-    if (!catalog) return;
-    const known = new Set(catalog.map((m) => m.id));
-    const gone = fromLink.current.filter((id) => !known.has(id));
+    if (!active) return;
+    const known = new Set(active.map((m) => m.id));
+    const gone = lanes.filter((l) => l.model && !known.has(l.model)).map((l) => l.model);
+    const linked = fromLink.current.some((id) => gone.includes(id));
     fromLink.current = [];
     if (!gone.length) return;
-    setDroppedFromLink(gone.length);
+    const n = gone.length;
+    const from = linked ? " from this link" : "";
+    setNotice(
+      attested
+        ? `${n} model${n === 1 ? "" : "s"}${from} ${n === 1 ? "has" : "have"} no attested endpoint right now, so ${n === 1 ? "its lane was" : "their lanes were"} cleared. Choose from the attested models.`
+        : `${n} model${n === 1 ? "" : "s"} from this link ${n === 1 ? "is" : "are"} not in the live catalog right now. Choose another to fill ${n === 1 ? "its" : "their"} lane.`,
+    );
     setLanes((ls) => ls.map((l) => (l.model && gone.includes(l.model) ? blankLane(null) : l)));
-  }, [catalog]);
+  }, [active, attested]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The key's balance, so an empty key is called out before a race is paid for.
   useEffect(() => {
@@ -249,7 +307,7 @@ export default function Arena() {
     return () => clearInterval(timer);
   }, [running]);
 
-  const models = catalog || [];
+  const models = active || [];
   const chosen = lanes.filter((l) => l.model);
   const metas = chosen.map((l) => models.find((m) => m.id === l.model)).filter(Boolean);
   const winners = useMemo(() => (running ? { first: [], fastest: [], cheapest: [] } : pickWinners(lanes)), [running, lanes]);
@@ -290,12 +348,12 @@ export default function Arena() {
     started.current = t0;
     raced.current = true;
     setElapsed(0);
-    setAnnounce("Race started with " + chosen.length + " models.");
+    setAnnounce("Race started with " + chosen.length + " models" + (attested ? " on the attested lane." : "."));
     setLinkNote("");
     setLanes((ls) => ls.map((l) => (l.model ? { ...blankLane(l.model), status: "waiting" } : l)));
     setRunning(true);
     await Promise.all(
-      lanes.map((l, i) => (l.model ? raceLane({ model: l.model, prompt: prompt.trim(), maxTokens, key: secret, signal: controller.signal, t0, onUpdate: (patch) => push(i, patch) }) : null)),
+      lanes.map((l, i) => (l.model ? raceLane({ model: l.model, prompt: prompt.trim(), maxTokens, key: secret, signal: controller.signal, attested, t0, onUpdate: (patch) => push(i, patch) }) : null)),
     );
     setRunning(false);
   }
@@ -305,8 +363,33 @@ export default function Arena() {
   const addLane = () => setLanes((ls) => (ls.length < MAX_LANES ? [...ls, blankLane(null)] : ls));
   const removeLane = (i) => setLanes((ls) => (ls.length > MIN_LANES ? ls.filter((_, k) => k !== i) : ls));
 
+  // Turning the switch clears old results: a result belongs to the lane it was asked on.
+  function toggleAttested() {
+    if (running) return;
+    const next = !attested;
+    setAttested(next);
+    setNotice("");
+    setLinkNote("");
+    setLanes((ls) => ls.map((l) => blankLane(l.model)));
+    setAnnounce(next ? "Attested only is on. Model lists show models with an attested endpoint." : "Attested only is off.");
+  }
+  function applyPreset(preset) {
+    if (running || !attestedList) return;
+    const { models: ids, missing } = presetLanes(preset, attestedList);
+    if (!ids.length) {
+      setNotice(`None of the ${preset.label} models has an attested endpoint right now.`);
+      return;
+    }
+    const name = (id) => attestedList.find((m) => m.id === id)?.name || id;
+    setAttested(preset.attested === true);
+    setLanes(pad(ids));
+    setLinkNote("");
+    setNotice(missing.length ? `${ids.length} of ${preset.models.length} ${preset.label} models have an attested endpoint right now. Without one: ${missing.join(", ")}.` : "");
+    setAnnounce(`${preset.label}: ${ids.map(name).join(", ")}.`);
+  }
+
   async function copyLink() {
-    const { query, trimmed } = encodeArena({ prompt, models: chosen.map((l) => l.model) });
+    const { query, trimmed } = encodeArena({ prompt, models: chosen.map((l) => l.model), attested });
     const url = location.origin + location.pathname + query;
     try {
       history.replaceState(null, "", location.pathname + query);
@@ -322,7 +405,8 @@ export default function Arena() {
     setLinkNote(query ? note : "Nothing to share yet: write a prompt or choose models.");
   }
 
-  const pickerFor = (i) => ({ models, ready: !!catalog, taken, onPick: (id) => setModel(i, id), index: i });
+  const pickerFor = (i) => ({ models, ready: !!active, taken, onPick: (id) => setModel(i, id), index: i });
+  const listError = attested ? attestedError : catalogError;
   const noKey = keyState === "none" || keyState === "rejected";
 
   return (
@@ -366,22 +450,19 @@ export default function Arena() {
             </Button>
           </div>
         )}
-        {catalogError && (
+        {listError && (
           <div className={styles.cta} role="alert">
             <div>
-              <strong>The model list could not load.</strong>
-              <p>{catalogError}</p>
+              <strong>{attested ? "The attested model list could not load." : "The model list could not load."}</strong>
+              <p>{listError}</p>
             </div>
-            <Button secondary onClick={loadCatalog}>
+            <Button secondary onClick={attested ? loadAttested : loadCatalog}>
               Retry
             </Button>
           </div>
         )}
-        {droppedFromLink > 0 && (
-          <p className={styles.notice}>
-            {droppedFromLink} model{droppedFromLink === 1 ? "" : "s"} from this link {droppedFromLink === 1 ? "is" : "are"} not in the live catalog right now. Choose another to fill {droppedFromLink === 1 ? "its" : "their"} lane.
-          </p>
-        )}
+        {notice && <p className={styles.notice}>{notice}</p>}
+        {attested && attestedList && !attestedList.length && <p className={styles.notice}>No model has an attested endpoint right now, so there is nothing to race in this mode.</p>}
 
         <div className={styles.prompt}>
           <label htmlFor="arena-prompt">Prompt</label>
@@ -400,6 +481,21 @@ export default function Arena() {
           <span className={styles.count}>
             {prompt.length.toLocaleString("en-US")} / {MAX_PROMPT.toLocaleString("en-US")} · Ctrl/⌘ + Enter races
           </span>
+        </div>
+
+        <div className={styles.mode}>
+          <button type="button" role="switch" aria-checked={attested} aria-describedby="arena-attested-note" className={styles.switchBtn} disabled={running} onClick={toggleAttested}>
+            <span className={styles.switch} aria-hidden="true" />
+            <span className={styles.switchText}>
+              <b>Attested only</b>
+              <small id="arena-attested-note">Models with an attested endpoint. Every lane asks for the attested lane and fails rather than fall back.</small>
+            </span>
+          </button>
+          {PRESETS.map((preset) => (
+            <button key={preset.id} type="button" className={styles.ghost} disabled={running || !attestedList} onClick={() => applyPreset(preset)}>
+              {preset.label}
+            </button>
+          ))}
         </div>
 
         <div className={styles.lanes} data-lanes={lanes.length}>
@@ -449,6 +545,7 @@ export default function Arena() {
           </div>
           <p className={styles.hintLine} id="arena-hint">
             {running ? "Racing…" : blocker || (ceiling > 0 ? `Worst case about ${formatUsd(ceiling)} if every answer hits its cap. Billed per call from your key’s balance.` : "Billed per call from your key’s balance.")}
+            {attested && !running && !blocker && " A withheld answer is still billed."}
             {linkNote && <span className={styles.linkNote}> {linkNote}</span>}
           </p>
         </div>

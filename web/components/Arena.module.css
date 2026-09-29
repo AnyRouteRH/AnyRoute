@@ -48,6 +48,24 @@
 .prompt textarea:disabled { opacity: .6; }
 .count { font: 500 11px/1.4 var(--mono); letter-spacing: .02em; color: var(--muted-dark); }
 
+/* ---------- attested-only switch and presets ---------- */
+.mode { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px 14px; margin: 0 0 20px; }
+.switchBtn {
+  display: flex; flex: 1 1 320px; align-items: center; gap: 14px; max-width: 620px; min-height: 56px; padding: 10px 14px; text-align: left;
+  border: 1px solid var(--line-dark-strong); background: rgba(245, 245, 240, .04); color: var(--paper); transition: border-color .2s, background .2s;
+}
+.switchBtn:hover:not(:disabled) { background: rgba(245, 245, 240, .08); }
+.switchBtn[aria-checked="true"] { border-color: var(--signal); background: rgba(31, 225, 90, .07); }
+.switchBtn:disabled { opacity: .6; }
+.switch { position: relative; flex: none; width: 34px; height: 20px; background: rgba(245, 245, 240, .18); transition: background .3s var(--ease); }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: var(--paper); transition: transform .35s var(--ease-out), background .2s; }
+.switchBtn[aria-checked="true"] .switch { background: rgba(31, 225, 90, .3); }
+.switchBtn[aria-checked="true"] .switch::after { transform: translateX(14px); background: var(--signal); }
+.switchText { display: grid; gap: 4px; min-width: 0; }
+.switchText b { font-size: 15px; font-weight: 620; letter-spacing: -.01em; }
+.switchText small { font-size: 12.5px; line-height: 1.45; color: var(--muted-dark); }
+.mode .ghost { align-self: stretch; }
+
 /* ---------- lanes ---------- */
 .lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 268px), 1fr)); gap: 16px; align-items: stretch; }
 .lane {
@@ -83,6 +101,7 @@
 .list button:hover:not(:disabled), .list button:focus-visible { background: rgba(31, 225, 90, .12); outline-offset: -2px; }
 .list button[aria-current="true"] { box-shadow: inset 2px 0 0 var(--signal); }
 .list button:disabled { opacity: .4; }
+.list button .tag { font: 600 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; font-style: normal; color: var(--signal); }
 .none { padding: 10px; font-size: 14px; color: var(--muted-dark); }
 .more { margin: 6px 2px 0; font: 500 10.5px/1.4 var(--mono); color: var(--muted-dark); }
 .remove { flex: none; width: 40px; height: 56px; border: 1px solid var(--line-dark); background: none; font: 400 20px/1 var(--mono); color: var(--muted-dark); }
@@ -109,6 +128,25 @@
 .wait { font: 500 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--signal); }
 .laneError { margin: 10px 0 0; font-size: 13.5px; line-height: 1.5; color: #ff8f93; white-space: normal; }
 .laneError a { color: var(--paper); }
+.closed { font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--paper); padding: 2px 6px; border: 1px solid var(--danger); margin-right: 4px; white-space: nowrap; }
+
+/* ---------- proof from the signed receipt ---------- */
+.proof { display: grid; gap: 8px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line-dark); border-left: 3px solid var(--muted-dark); background: rgba(245, 245, 240, .03); }
+.proof[data-attested="yes"] { border-left-color: var(--signal); }
+.proof[data-attested="no"] { border-left-color: var(--danger); }
+.checks { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.checks li { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid var(--line-dark-strong); font: 500 10.5px/1.2 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--paper); }
+.checks li span { font-weight: 700; }
+.checks li[data-state="yes"] { border-color: var(--signal); }
+.checks li[data-state="yes"] span { color: var(--signal); }
+.checks li[data-state="no"] { border-color: var(--danger); }
+.checks li[data-state="no"] span { color: #ff8f93; }
+.checks li[data-state="unknown"] { border-style: dashed; color: var(--muted-dark); }
+.why { margin: 0; font-size: 12.5px; line-height: 1.5; color: #ff8f93; overflow-wrap: anywhere; }
+.why::first-letter { text-transform: uppercase; }
+.proofLinks { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font: 500 12px/1.4 var(--mono); }
+.proofLinks a { color: var(--signal); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.fine { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted-dark); }
 
 /* ---------- stats ---------- */
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--line-dark); border: 1px solid var(--line-dark); }
@@ -139,12 +177,14 @@
   .cap { margin-left: 0; width: 100%; justify-content: space-between; }
   .actions > button, .actions > :global(.ar-button) { flex: 1 1 auto; justify-content: center; }
   .output { min-height: 160px; max-height: 280px; }
+  .switchBtn { flex-basis: 100%; }
+  .mode .ghost { flex: 1 1 100%; }
 }
 
 /* Motion off: keep the state cues, drop the movement. */
 @media (prefers-reduced-motion: reduce) {
   .glow, .badges li { animation: none; }
-  .lane, .lane::before, .pick, .ghost { transition: none; }
+  .lane, .lane::before, .pick, .ghost, .switchBtn, .switch, .switch::after { transition: none; }
   .lane[data-status="waiting"]::before { animation: none; background: var(--signal); opacity: .5; }
   .caret::after { animation: none; }
 }
