@@ -59,8 +59,8 @@ services:
     entrypoint: ["/bin/sh", "-euc"]
     command:
       - |
-        rev=f868ac620df5ba796db8621fe5b8ab9d918e3dab
-        sum=23233f8586eeb5c07fcc82cd723202e18022dd46fda85eeffc23ec6fd0eca8b6
+        rev=dcfc2deeacd8f3d89ea61d7e7045259e173e8050
+        sum=5b297e38e0cbea6e7784e496458ca5b4b930cf2421094b282feeb3947f979027
         mkdir -p /opt/anyroute "$$(dirname "$$SIDECAR_CONFIG")"
         cd /opt/anyroute
         bun -e "const r = await fetch('https://codeload.github.com/AnyRouteRH/AnyRoute/tar.gz/$$rev'); if (!r.ok) throw new Error('source download failed: HTTP ' + r.status); await Bun.write('src.tar.gz', r);"
@@ -117,21 +117,28 @@ services:
             endpoint: /var/run/dstack.sock
           fresh_quotes_per_minute: 10
 
-        # A public demo: no API keys, one shared quota for every caller.
+        # One key, for the router that sends this provider its traffic. Only its SHA-256 is here; the key itself goes to the
+        # router when the provider is approved. For your own deployment, make a key with `openssl rand -hex 32` and put the
+        # SHA-256 of that text here (`printf %s <key> | sha256sum`).
         auth:
-          allow_anonymous: true
+          keys:
+            - id: router
+              sha256: "eb78debff11d668b1939c83c974ffd8397319d460989b6e7fce095ed12402c27"
+              quota:
+                requests_per_minute: 120
+                burst: 30
+                tokens_per_minute: 120000
+                token_burst: 120000
 
         quota:
           default:
             requests_per_minute: 30
             burst: 10
-            tokens_per_minute: 20000
-            token_burst: 20000
           global:
-            requests_per_minute: 60
-            burst: 20
-            tokens_per_minute: 40000
-            token_burst: 40000
+            requests_per_minute: 150
+            burst: 40
+            tokens_per_minute: 150000
+            token_burst: 150000
 
         receipts:
           queue_capacity: 10000

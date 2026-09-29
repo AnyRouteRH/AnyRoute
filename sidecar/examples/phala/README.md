@@ -15,15 +15,15 @@ source are fetched by pinned hashes, so the compose hash dstack measures covers 
 | --- | --- | --- |
 | `model-fetch` | `ghcr.io/ggml-org/llama.cpp:server-b11243@sha256:f9115c95…c283` | Downloads `qwen2.5-0.5b-instruct-q4_k_m.gguf` from `Qwen/Qwen2.5-0.5B-Instruct-GGUF` at revision `9217f5db79a29953eb74d5343926648285ec7e67` (Apache-2.0), checks sha256 `74a4da8c…a9db`, exits. |
 | `llama` | same | `llama-server` on an internal network with no route out, alias `qwen2.5-0.5b-instruct`, 4096 context, at most 512 generated tokens. |
-| `sidecar` | `oven/bun:1.3.14@sha256:e10577f0…e5c4` | Downloads the GitHub tarball of commit `f868ac620df5ba796db8621fe5b8ab9d918e3dab`, checks sha256 `23233f85…a8b6`, runs `bun install --frozen-lockfile --production --ignore-scripts` in `sidecar/`, then serves TLS on 8443 with `attestation.provider: dstack` through `/var/run/dstack.sock`. |
+| `sidecar` | `oven/bun:1.3.14@sha256:e10577f0…e5c4` | Downloads the GitHub tarball of commit `dcfc2deeacd8f3d89ea61d7e7045259e173e8050`, checks sha256 `5b297e38…9027`, runs `bun install --frozen-lockfile --production --ignore-scripts` in `sidecar/`, then serves TLS on 8443 with `attestation.provider: dstack` through `/var/run/dstack.sock`. |
 
 The sidecar hashes the GGUF at boot and refuses to start unless the digest,
-`sha256:1144b5db331424ae40213378a83575a5cf67090b0ce1ad49cf66ec75f17e2095`, is on its allow-list. It serves anonymous
-callers under one shared quota (30 requests and 20k tokens a minute, 60 and 40k across everyone). `image_digest` is
+`sha256:1144b5db331424ae40213378a83575a5cf67090b0ce1ad49cf66ec75f17e2095`, is on its allow-list. It serves one API key,
+the router's, listed by its SHA-256 (120 requests and 120k tokens a minute; 150 and 150k across all callers). `image_digest` is
 declared as the `oven/bun` digest, the image the sidecar process runs in; the sidecar's own code is pinned by the
 tarball hash in the compose file instead.
 
-It fits a `tdx.medium` instance (2 vCPU, 4 GB) with a 20 GB disk. It needs no secrets and no environment variables.
+It fits a `tdx.medium` instance (2 vCPU, 4 GB) with a 20 GB disk. It needs no secrets and no environment variables: the router's key is not in it, only the key's SHA-256. Replace that hash with your own key's.
 
 ## Deploy
 
@@ -78,7 +78,9 @@ Then check, as the sidecar README's "Verifying an endpoint" describes:
   received:
 
 ```sh
-curl -s --cacert sidecar.pem -D headers.txt https://$H/v1/chat/completions -H 'content-type: application/json' \
+curl -s --cacert sidecar.pem -H "authorization: Bearer $KEY" https://$H/v1/models
+curl -s --cacert sidecar.pem -D headers.txt https://$H/v1/chat/completions -H "authorization: Bearer $KEY" \
+  -H 'content-type: application/json' \
   -d '{"model":"qwen2.5-0.5b-instruct","messages":[{"role":"user","content":"hi"}],"max_tokens":32}'
 ```
 
@@ -114,7 +116,6 @@ To serve other weights, change the URL, revision and sha256 in `model-fetch`, th
   it names verifies and binds its key, and then sends that provider's traffic only to that certificate
   (`src/providers/tls-pin.ts`).
 * Keys and the certificate are regenerated on every start, so a restart changes the attestation reference.
-* CPU only: there is no GPU evidence to collect. The quota and the 512-token cap are for a public demo; list API
-  keys in `auth.keys` for anything else.
+* CPU only: there is no GPU evidence to collect. The 512-token cap and the quota are sized for a demo provider.
 * Phala makes container logs public by default (`--no-public-logs` turns that off). The sidecar logs no request
   content or addresses.
