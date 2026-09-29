@@ -384,6 +384,15 @@ const responsesResult = JSON.stringify(
     metadata: { anyroute_receipt_id: "gen-…", anyroute_lane: "attested", anyroute_disclosure: "attested" },
     store: false,
     "…": "instructions, tools, tool_choice, temperature, top_p and the other fields Responses clients read",
+  },
+  null,
+  2,
+);
+const responsesRefusal = JSON.stringify(
+  { error: { code: 400, type: "previous_response_id_not_supported", param: "previous_response_id", message: "`previous_response_id` is not supported. AnyRoute stores no responses, so there is no earlier turn to continue from. Send the whole conversation in `input` on every request…" } },
+  null,
+  2,
+);
 const ragCurl = `curl ${BASE}/api/v1/rag \\
   -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
   -d '{"documents":[{"id":"handbook","text":"Refunds are issued within 14 days of the return arriving. …"},{"id":"faq","text":"…"}],"question":"How long do refunds take?","model":"<chat model>","provider":{"lane":"attested"}}'`;
@@ -420,8 +429,6 @@ const ragResponse = JSON.stringify(
   null,
   2,
 );
-const responsesRefusal = JSON.stringify(
-  { error: { code: 400, type: "previous_response_id_not_supported", param: "previous_response_id", message: "`previous_response_id` is not supported. AnyRoute stores no responses, so there is no earlier turn to continue from. Send the whole conversation in `input` on every request…" } },
 const ragRefusal = JSON.stringify(
   {
     error: {
