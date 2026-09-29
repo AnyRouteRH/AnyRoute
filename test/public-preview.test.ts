@@ -25,6 +25,7 @@ test("dashboard always enters sample mode and HTML carries the preview notice an
   const r = request("/");
   expect(await r.text()).toContain("No live inference or payments");
   expect(r.headers.get("content-security-policy")).toContain("connect-src 'self';");
+  expect(r.headers.get("content-security-policy")).toContain("img-src 'self';");
   expect(r.headers.get("content-security-policy")).toContain("'sha256-");
   expect(request("/.env").status).toBe(404);
   expect(await request("/", "HEAD").text()).toBe("");

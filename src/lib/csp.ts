@@ -1,7 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-/** Hash the exact inline scripts in the static export; never allow arbitrary inline JS. */
+/** Hash the exact inline scripts in the static export; never allow arbitrary inline JS.
+ *  The site served by the router needs no other origin: the dashboard calls this router's API on the
+ *  same origin, wallets are reached through the injected `window.ethereum` provider (the wallet, not
+ *  the page, talks to the chain), and fonts, icons and scripts are self-hosted. A site built with
+ *  NEXT_PUBLIC_ANYROUTE_API_URL is hosted apart from the router and needs its own policy. */
 export function siteCsp(root: string) {
   const hashes = new Set<string>();
   const visit = (dir: string) => {
@@ -17,5 +21,5 @@ export function siteCsp(root: string) {
     }
   };
   visit(root);
-  return `default-src 'self'; script-src 'self' ${[...hashes].join(" ")}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https: wss:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`;
+  return `default-src 'self'; script-src 'self' ${[...hashes].join(" ")}; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`;
 }
