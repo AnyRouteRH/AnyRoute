@@ -62,6 +62,8 @@ type State = {
   report: ReportOptions;
   upstream: { embeddings: Verdict; chat: Verdict };
   claims: Claims;
+  /** Milliseconds the gateway sits on a call before it records and answers it, so a test can make calls finish out of order. */
+  delay?: (path: string, body: Record<string, any>) => number;
   requests: { path: string; body: Record<string, any>; authorization: string | null }[];
 };
 const fresh = (): State => ({ report: {}, upstream: { embeddings: "verified", chat: "verified" }, claims: CLAIMS_OK, requests: [] });
@@ -124,6 +126,8 @@ beforeAll(async () => {
       if ((embeddings || u.pathname === "/v1/chat/completions") && req.method === "POST") {
         const reqBytes = new Uint8Array(await req.arrayBuffer());
         const body = JSON.parse(new TextDecoder().decode(reqBytes));
+        const wait = state.delay?.(u.pathname, body) ?? 0;
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
         state.requests.push({ path: u.pathname, body, authorization: req.headers.get("authorization") });
         const bytes = embeddings ? embeddingAnswer(body) : chatAnswer(body);
         const id = `rcpt-${++seq}`;
@@ -250,7 +254,10 @@ describe("ranking and the answer", () => {
     expect(calls.length).toBe(j.retrieval.embedding_calls);
     expect(calls.length).toBeGreaterThan(1);
     for (const c of calls) expect(c.body.input.join("").length).toBeLessThanOrEqual(3 * (512 - 8));
-    expect(calls[0]!.body.input[0]).toBe(QUESTION);
+    // The calls run side by side, so they reach the gateway in any order: the question is in exactly one, at its head.
+    const asking = calls.filter((c) => c.body.input.includes(QUESTION));
+    expect(asking).toHaveLength(1);
+    expect(asking[0]!.body.input[0]).toBe(QUESTION);
     expect(calls.flatMap((c) => c.body.input).length).toBe(6);
     expect(j.receipts.filter((x: any) => x.step === "embeddings")).toHaveLength(calls.length);
   });
@@ -259,13 +266,30 @@ describe("ranking and the answer", () => {
     const docs = Array.from({ length: 70 }, (_, i) => ({ id: `n${i}`, text: `Entry ${i}: ${DOCS[i % 3]!.text}` }));
     const j = (await (await rag({ documents: docs, top_k: 2 })).json()) as any;
     const calls = sent("/v1/embeddings");
-    expect(calls.map((c) => c.body.input.length)).toEqual([64, 7]);
-    expect(calls[0]!.body.input[0]).toBe(QUESTION);
+    // The two calls run side by side and may reach the gateway in either order.
+    expect(calls.map((c) => c.body.input.length).sort((a, b) => b - a)).toEqual([64, 7]);
+    const asking = calls.filter((c) => c.body.input.includes(QUESTION));
+    expect(asking).toHaveLength(1);
+    expect(asking[0]!.body.input).toHaveLength(64);
+    expect(asking[0]!.body.input[0]).toBe(QUESTION);
     expect(j.retrieval).toMatchObject({ documents: 70, chunks: 70, embedding_calls: 2 });
-    expect(j.receipts.map((x: any) => x.step)).toEqual(["embeddings", "embeddings", "chat"]);
-    expect(j.receipts.filter((x: any) => x.step === "embeddings").map((x: any) => x.inputs).sort((a: number, b: number) => a - b)).toEqual([7, 64]);
+    // The receipts follow the batches, question first, not the order the calls arrived in.
+    expect(j.receipts.map((x: any) => [x.step, x.inputs])).toEqual([["embeddings", 64], ["embeddings", 7], ["chat", undefined]]);
     // Every rocket entry outranks every other entry, whichever batch it was embedded in.
     expect(j.sources.every((s: any) => Number(s.document_id.slice(1)) % 3 === 1)).toBe(true);
+  });
+
+  test("calls that finish out of order change neither the ranking nor the order of the receipts", async () => {
+    const docs = Array.from({ length: 70 }, (_, i) => ({ id: `n${i}`, text: `Entry ${i}: ${DOCS[i % 3]!.text}` }));
+    const baseline = (await (await rag({ documents: docs, top_k: 3 })).json()) as any;
+    state.requests.length = 0;
+    // Hold back the call that carries the question until the other has been answered.
+    state.delay = (path, body) => (path === "/v1/embeddings" && body.input[0] === QUESTION ? 80 : 0);
+    const j = (await (await rag({ documents: docs, top_k: 3 })).json()) as any;
+    expect(sent("/v1/embeddings").map((c) => c.body.input.length)).toEqual([7, 64]); // it did arrive last
+    expect(j.receipts.map((x: any) => [x.step, x.inputs])).toEqual([["embeddings", 64], ["embeddings", 7], ["chat", undefined]]);
+    expect(j.sources).toEqual(baseline.sources);
+    expect(j.answer).toBe(baseline.answer);
   });
 });
 
