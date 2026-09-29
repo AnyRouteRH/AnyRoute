@@ -37,6 +37,7 @@ export default function Hero(){
         <div className="hero-sub"><p>Route AI calls through <strong>one API, one USDG balance</strong> and a signed receipt for every generation. Choose your model. Keep control of the route.</p><p>Built on Robinhood Chain. Deposit USDG and start routing.</p></div>
         <div className="button-row"><Button href="/dashboard/">Open dashboard</Button><Button href="/docs/" secondary>Read the docs</Button></div>
         <a className="hero-harness" href="/harness/">Or try every model and its tools on one page<b aria-hidden="true">→</b></a>
+        <a className="hero-harness" href="/seal/">Read SEAL, the privacy protocol, and its public spec<b aria-hidden="true">→</b></a>
         <ContractAddress/>
       </div>
       <LiveCard route={route}/>

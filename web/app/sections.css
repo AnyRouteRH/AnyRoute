@@ -42,3 +42,4 @@ html:not(.js) .meter i{transform:scaleX(var(--v,1))}
 .hero-harness:hover{color:var(--paper)}
 .hero-harness:hover b{transform:translateX(4px)}
 .harness-link{margin:-6px 0 20px!important}
+.hero-harness+.hero-harness{display:flex;width:fit-content;margin-top:10px}
