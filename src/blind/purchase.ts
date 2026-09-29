@@ -9,7 +9,7 @@ import { post, release, reserve, settle } from "../ledger/ledger.ts";
 import { keyValue } from "./issuer.ts";
 import { BLIND_POOL, ensurePool } from "./redeem.ts";
 import { isValidBlindedMsg } from "./rsa.ts";
-import { hex } from "./token.ts";
+import { hex } from "./privacy-token.ts";
 
 // Buying tokens: the caller's credits pay for N blind signatures on one denomination.
 //

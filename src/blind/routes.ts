@@ -5,7 +5,7 @@ import { picoToUsdString } from "../lib/money.ts";
 import { requireKey, requireRole } from "../api/auth.ts";
 import { readJson } from "../api/common.ts";
 import { purchaseTokens } from "./purchase.ts";
-import { b64url, decodeBase64 } from "./token.ts";
+import { b64url, decodeBase64 } from "./privacy-token.ts";
 import { epochCommitment, keyValue } from "./issuer.ts";
 
 // GET  /api/v1/blind/keys      the issuer keys, the challenge tokens must carry, and prices (public)

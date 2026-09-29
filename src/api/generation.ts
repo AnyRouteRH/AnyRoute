@@ -8,7 +8,7 @@ import { picoToUsd } from "../lib/money.ts";
 import { MerkleTree, receiptLeaf } from "../receipts/merkle.ts";
 import { canonicalBytes, verifyWithRawKey } from "../receipts/signer.ts";
 import { bearer, resolveKey, walletAuth } from "./auth.ts";
-import { nullifierOf, parsePrivateToken } from "../blind/token.ts";
+import { nullifierOf, parsePrivateToken } from "../blind/privacy-token.ts";
 
 export async function anchorProof(ctx: Ctx, g: { anchorIndex: number | null; leafIndex: number | null }) {
   if (g.anchorIndex == null || g.leafIndex == null) return null;

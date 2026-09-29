@@ -5,7 +5,7 @@ import { ApiError } from "../lib/errors.ts";
 import { picoToUsd, type Pico } from "../lib/money.ts";
 import { ensureAccount } from "../ledger/ledger.ts";
 import { keyValue, type VerifiedToken } from "./issuer.ts";
-import { parsePrivateToken } from "./token.ts";
+import { parsePrivateToken } from "./privacy-token.ts";
 
 // Redeeming a token on a request. Every blind redemption is charged to one pooled internal account, so the
 // ledger, the generation row and the receipt carry no buyer: the receipt has the token's nullifier (a hash)

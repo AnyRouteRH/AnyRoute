@@ -11,7 +11,7 @@ import { BLIND_POOL } from "../src/blind/redeem.ts";
 import { epochCommitment } from "../src/blind/issuer.ts";
 import { blindTokens, buyTokens, fetchDirectory, finalizeTokens, issuingKey, tokenNullifier, type DirectoryKey } from "../src/blind/client.ts";
 import { importIssuerPublicKey, parseIssuerSpki, suite, tokenKeyId } from "../src/blind/rsa.ts";
-import { authorizationHeader, b64url, decodeBase64, decodeToken, encodeToken, hex, signedPart } from "../src/blind/token.ts";
+import { authorizationHeader, b64url, decodeBase64, decodeToken, encodeToken, hex, signedPart } from "../src/blind/privacy-token.ts";
 
 // Blinding a token takes ~50 ms in the reference JavaScript implementation and the tests buy several.
 setDefaultTimeout(60_000);

@@ -7,7 +7,7 @@ import { ApiError } from "../lib/errors.ts";
 import type { Pico } from "../lib/money.ts";
 import { decrypt, encrypt, log } from "../lib/util.ts";
 import { generateIssuerKey, importIssuerPublicKey, parseIssuerSpki, Signer, suite, tokenKeyId } from "./rsa.ts";
-import { b64url, bytesEqual, challengeDigest, decodeToken, hex, nullifierOf, signedPart, tokenChallenge } from "./token.ts";
+import { b64url, bytesEqual, challengeDigest, decodeToken, hex, nullifierOf, signedPart, tokenChallenge } from "./privacy-token.ts";
 
 // Per-epoch issuer keys, one per denomination, and token verification.
 //

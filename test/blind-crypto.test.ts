@@ -2,7 +2,7 @@ import { describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { createPrivateKey } from "node:crypto";
 import { RSABSSA, type BlindRSA } from "@cloudflare/blindrsa-ts";
 import { generateIssuerKey, importIssuerPublicKey, issuerSpki, isValidBlindedMsg, parseIssuerSpki, Signer, suite, tokenKeyId } from "../src/blind/rsa.ts";
-import { challengeDigest, decodeBase64, decodeToken, encodeToken, hex, nullifierOf, parsePrivateToken, sha256Bytes, signedPart, tokenChallenge, tokenInput, unhex, TOKEN_LEN } from "../src/blind/token.ts";
+import { challengeDigest, decodeBase64, decodeToken, encodeToken, hex, nullifierOf, parsePrivateToken, sha256Bytes, signedPart, tokenChallenge, tokenInput, unhex, TOKEN_LEN } from "../src/blind/privacy-token.ts";
 import { epochCommitment } from "../src/blind/issuer.ts";
 import vectors from "./fixtures/blind-vectors.json";
 

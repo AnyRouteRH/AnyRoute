@@ -1,5 +1,5 @@
 import { importIssuerPublicKey, suite, tokenKeyId } from "./rsa.ts";
-import { authorizationHeader, b64url, decodeBase64, encodeToken, hex, nullifierOf, tokenInput, unhex } from "./token.ts";
+import { authorizationHeader, b64url, decodeBase64, encodeToken, hex, nullifierOf, tokenInput, unhex } from "./privacy-token.ts";
 
 // Client helper for blind tokens: fetch the issuer keys, blind a batch, buy it, unblind, and build the
 // Authorization header. Everything secret stays in this process; the router sees blinded messages when
