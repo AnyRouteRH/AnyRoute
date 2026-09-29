@@ -9,6 +9,7 @@ import { runAttestor } from "./attestor.ts";
 import { runMeasurementJob } from "./measurement-bundles.ts";
 import { runIpxOracle } from "./ipx-oracle.ts";
 import { runDayzero } from "./dayzero.ts";
+import { runHostAnchor } from "./host-anchor.ts";
 import { runCanaries } from "./canaries.ts";
 import { runProbes } from "./probes.ts";
 import { runRegistry } from "./registry.ts";
@@ -38,6 +39,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall) {
   if (cfg.lane.dayzero.enabled) jobs.register("dayzero", cfg.lane.dayzero.intervalMs, () => runDayzero(ctx));
   jobs.register("receipts-anchor", cfg.receipts.anchorIntervalMs, async () => ({ anchor: await runAnchor(ctx), retry: await retryAnchors(ctx) }), { atStart: true });
   jobs.register("receipt-key-rotation", 3_600_000, () => runKeyRotation(ctx), { atStart: true });
+  // Off unless HOST_ANCHOR_ENABLED: per-host roots of attested sidecars' receipt leaves (ReceiptAnchor.anchorAttested).
+  if (cfg.hostAnchor.enabled) jobs.register("host-anchor", cfg.hostAnchor.intervalMs, () => runHostAnchor(ctx));
   jobs.register("settlement", cfg.workers.settlementIntervalMs, () => runSettlement(ctx), { atStart: true });
   jobs.register("slasher", 3_600_000, () => runSlasher(ctx));
   jobs.register("buyback", 3_600_000, () => runBuyback(ctx));

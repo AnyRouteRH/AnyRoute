@@ -53,6 +53,7 @@ import { ensurePool } from "./blind/redeem.ts";
 import { blindRoutes } from "./blind/routes.ts";
 import { OhttpKeys } from "./ohttp/keys.ts";
 import { ohttpRoutes } from "./ohttp/gateway.ts";
+import { hostAnchorRoutes } from "./api/host-anchor.ts";
 
 export type AppOptions = {
   env?: Record<string, unknown>;
@@ -140,6 +141,7 @@ export async function createApp(opts: AppOptions = {}) {
   creatorClaimRoutes(app, ctx);
   if (ctx.blind) blindRoutes(app, ctx);
   if (ctx.ohttp) ohttpRoutes(app, ctx);
+  if (ctx.cfg.hostAnchor.enabled) hostAnchorRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);

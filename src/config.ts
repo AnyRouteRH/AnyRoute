@@ -62,6 +62,13 @@ const schema = z.object({
   RECEIPT_SIGNING_KEY: opt,
   RECEIPT_KEY_ROTATION_DAYS: num(7),
   ANCHOR_INTERVAL_MS: int(3_600_000),
+  // Per-host anchoring of enclave receipts. Off by default: no job, no route. The `host-anchor` worker job collects each
+  // attested sidecar's receipt leaves (GET /anchor/leaves with that host's anchor token), keeps those signed by the
+  // receipt key its router-verified attestation binds, and roots them per host and interval; with a configured chain and
+  // anchorer key it posts each root with ReceiptAnchor.anchorAttested, otherwise keeps it off chain (status "local").
+  HOST_ANCHOR_ENABLED: bool.default(false),
+  HOST_ANCHOR_INTERVAL_MS: int(3_600_000),
+  HOST_ANCHOR_TOKENS: opt, // JSON {"<provider id>": "<that sidecar's SIDECAR_ANCHOR_TOKEN>"}
 
   // Chain (Robinhood Chain mainnet by default)
   CHAIN_ID: int(4663),
@@ -389,11 +396,12 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.IPX_KEEPER_PRIVATE_KEY && (escrowMode || Object.values(roleKeys).some(Boolean))) throw new Error("IPX_KEEPER_PRIVATE_KEY must be isolated from every other signing role.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
       if (names.includes("ipx-oracle") && !(e.IPX_ORACLE_ENABLED && e.IPX_ORACLE_PRIVATE_KEY)) throw new Error("The ipx-oracle job needs IPX_ORACLE_ENABLED and IPX_ORACLE_PRIVATE_KEY.");
+      if (names.includes("host-anchor") && !e.HOST_ANCHOR_ENABLED) throw new Error("The host-anchor job needs HOST_ANCHOR_ENABLED.");
       if (!escrowMode)
         for (const [role, key] of Object.entries(roleKeys)) {
           const enabled = names.includes(keyJobs[role as keyof typeof keyJobs]);
@@ -620,6 +628,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     blind: blindSettings(e),
     ohttp: ohttpSettings(e, production),
     onion: onionSettings(e),
+    hostAnchor: hostAnchorSettings(e),
   };
 }
 
@@ -629,6 +638,24 @@ function onionSettings(e: Env) {
   if (address && !secrets.length) throw new Error("ONION_ADDRESS requires ONION_PROXY_SECRET, the secret the onion proxy sends, so requests that arrive over Tor are not limited as one client.");
   if (!Number.isInteger(e.ONION_POOL_MULTIPLIER) || e.ONION_POOL_MULTIPLIER < 1 || e.ONION_POOL_MULTIPLIER > 1000) throw new Error("ONION_POOL_MULTIPLIER must be an integer from 1 to 1000.");
   return { address, secrets, poolMultiplier: e.ONION_POOL_MULTIPLIER };
+}
+
+// ---- Per-host anchoring of enclave receipts (services/host-anchor.ts) ---------------------------------------
+function hostAnchorSettings(e: Env) {
+  if (!Number.isInteger(e.HOST_ANCHOR_INTERVAL_MS) || e.HOST_ANCHOR_INTERVAL_MS < 60_000) throw new Error("HOST_ANCHOR_INTERVAL_MS must be at least 60000.");
+  let tokens: Record<string, string> = {};
+  if (e.HOST_ANCHOR_TOKENS) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(e.HOST_ANCHOR_TOKENS);
+    } catch {
+      throw new Error("HOST_ANCHOR_TOKENS must be a JSON object of provider id to anchor token.");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("HOST_ANCHOR_TOKENS must be a JSON object of provider id to anchor token.");
+    for (const [id, token] of Object.entries(parsed)) if (!id || typeof token !== "string" || !token.trim() || /\s/.test(token)) throw new Error(`HOST_ANCHOR_TOKENS has no usable token for "${id}".`);
+    tokens = parsed as Record<string, string>;
+  }
+  return { enabled: e.HOST_ANCHOR_ENABLED, intervalMs: e.HOST_ANCHOR_INTERVAL_MS, tokens };
 }
 
 // ---- The Lane -------------------------------------------------------------------------------------------
