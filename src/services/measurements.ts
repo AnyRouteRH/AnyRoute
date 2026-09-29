@@ -106,6 +106,9 @@ export type RekorEntry = {
   logIndex: number | null;
   integratedTime: number | null;
   inclusionProof: { logIndex: number; treeSize: number; rootHash: string; hashes: string[]; checkpoint?: string } | null;
+  /** The log's identifier and its signed entry timestamp, when the entry carries them. */
+  logId?: string | null;
+  signedEntryTimestamp?: string | null;
 };
 
 const HEX = /^[0-9a-fA-F]+$/;
@@ -170,6 +173,24 @@ export function checkpointSigned(e: RekorEntry, publicKeyPem: string): boolean {
   return false;
 }
 
+/** Verify an entry's signed entry timestamp (SET) against the log's key: an ECDSA P-256 / SHA-256 signature over the
+ *  canonical JSON of { body, integratedTime, logID, logIndex }, as Rekor v1 issues when it accepts an entry. */
+export function setSigned(e: RekorEntry, publicKeyPem: string): boolean {
+  if (!e.signedEntryTimestamp || !e.logId || e.integratedTime == null || e.logIndex == null) return false;
+  let key;
+  try {
+    key = createPublicKey(publicKeyPem);
+  } catch {
+    return false;
+  }
+  const payload = canonicalJson({ body: e.body, integratedTime: e.integratedTime, logID: e.logId, logIndex: e.logIndex });
+  try {
+    return cryptoVerify("sha256", Buffer.from(payload), key, Buffer.from(e.signedEntryTimestamp, "base64"));
+  } catch {
+    return false;
+  }
+}
+
 async function rekorJson(f: FetchFn, url: string, init: RequestInit = {}): Promise<unknown> {
   const res = await f(url, { ...init, redirect: "error", signal: AbortSignal.timeout(15_000), headers: { accept: "application/json", ...(init.body ? { "content-type": "application/json" } : {}) } });
   if (res.status === 404) return null;
@@ -183,10 +204,16 @@ export async function rekorSearch(f: FetchFn, baseUrl: string, imageDigest: Hex)
   return Array.isArray(r) ? r.filter((u): u is string => typeof u === "string" && /^[0-9a-f]{64,80}$/i.test(u)) : [];
 }
 
-export async function rekorEntry(f: FetchFn, baseUrl: string, uuid: string): Promise<RekorEntry | null> {
+/** The entry exactly as the log returned it, keyed by nothing: `{ body, integratedTime, logID, logIndex, verification }`. */
+export type RawRekorEntry = Record<string, any>;
+
+export async function rekorEntryRaw(f: FetchFn, baseUrl: string, uuid: string): Promise<RawRekorEntry | null> {
   const r = (await rekorJson(f, `${baseUrl}/api/v1/log/entries/${uuid}`)) as Record<string, any> | null;
   const raw = r && typeof r === "object" ? Object.values(r)[0] : null;
-  if (!raw || typeof raw.body !== "string") return null;
+  return raw && typeof raw === "object" && typeof (raw as RawRekorEntry).body === "string" ? (raw as RawRekorEntry) : null;
+}
+
+export function parseRekorEntry(uuid: string, raw: RawRekorEntry): RekorEntry {
   let kind: string | null = null;
   try {
     kind = String(JSON.parse(Buffer.from(raw.body, "base64").toString("utf8")).kind ?? "") || null;
@@ -201,7 +228,14 @@ export async function rekorEntry(f: FetchFn, baseUrl: string, uuid: string): Pro
     logIndex: Number.isSafeInteger(raw.logIndex) ? raw.logIndex : null,
     integratedTime: Number.isSafeInteger(raw.integratedTime) ? raw.integratedTime : null,
     inclusionProof: ip && typeof ip.rootHash === "string" && Array.isArray(ip.hashes) ? { logIndex: Number(ip.logIndex), treeSize: Number(ip.treeSize), rootHash: ip.rootHash, hashes: ip.hashes.map(String), checkpoint: typeof ip.checkpoint === "string" ? ip.checkpoint : undefined } : null,
+    logId: typeof raw.logID === "string" ? raw.logID : null,
+    signedEntryTimestamp: typeof raw.verification?.signedEntryTimestamp === "string" ? raw.verification.signedEntryTimestamp : null,
   };
+}
+
+export async function rekorEntry(f: FetchFn, baseUrl: string, uuid: string): Promise<RekorEntry | null> {
+  const raw = await rekorEntryRaw(f, baseUrl, uuid);
+  return raw ? parseRekorEntry(uuid, raw) : null;
 }
 
 const MAX_ENTRIES_PER_DIGEST = 5;
