@@ -3,7 +3,7 @@
   "info": {
     "title": "Anyroute API",
     "version": "1.0.0",
-    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the Lane: model variants, day-zero candidates and creator royalty claims, and Private RAG (answers from documents sent with the question, nothing kept). Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, teams, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
+    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the transparency log of keys and configurations with its tiles, checkpoints and witness cosignatures (present only when the router enables it) the Lane: model variants, day-zero candidates and creator royalty claims, and Private RAG (answers from documents sent with the question, nothing kept). Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, teams, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
     "contact": {
       "name": "AnyRoute support",
       "email": "Anyroute1@atomicmail.io"
@@ -107,6 +107,10 @@
     {
       "name": "Private RAG",
       "description": "Answers from documents sent with the question, ranked in memory and kept nowhere, through the router's own embeddings and chat routes."
+    },
+    {
+      "name": "Transparency log",
+      "description": "An append-only log (C2SP tlog-tiles, RFC 6962 hashing) of the keys and configurations clients encrypt to or verify against: receipt keys, Oblivious HTTP key configurations, blind-token issuer keys, measurement bundles and sidecar key bindings. Checkpoints are signed notes (C2SP tlog-checkpoint) that witnesses cosign (C2SP tlog-cosignature, cosignature/v1). Present only when the router enables it (TLOG_ENABLED)."
     }
   ],
   "paths": {
@@ -4111,6 +4115,452 @@
           }
         }
       }
+    },
+    "/tlog/checkpoint": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogCheckpoint",
+        "summary": "Newest checkpoint, with the cosignatures collected so far",
+        "description": "Public; 404 unless the router enables the transparency log. A C2SP signed note: the checkpoint text (origin, tree size, base64 root hash; no extension lines), a blank line, the log's Ed25519 signature line, then one cosignature/v1 line per configured witness that has cosigned this tree size. Verify the log's line against the log key pinned out of band (GET /api/v1/tlog shows it, but a client must not take it from the log it is checking), and count witness lines against the witness keys you trust. Served with Cache-Control: no-cache.",
+        "responses": {
+          "200": {
+            "description": "The checkpoint note.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "router.example/tlog\n12\nq0qBmQ4H0cMA5Tq3kQ0V8wQv1c5V3bI1n4r7FQ0y2Hc=\n\n— router.example/tlog <base64 key id and signature>\n— witness.example/w1 <base64 key id, timestamp and cosignature>\n"
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/tlog/tile/{level}/{index}": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogTile",
+        "summary": "Merkle tree tile (tlog-tiles, height 8)",
+        "description": "Public; 404 unless the router enables the transparency log, and for any tile or width the tree does not have yet. The concatenated 32-byte node hashes of tree level 8 x level, indices 256 x N to 256 x N + W. The index path is the tlog-tiles encoding of N (groups of three digits, all but the last prefixed with x: 1234067 is x001/x234/067) and may end in .p/<W> for a partial tile of width 1 to 255. A tile of a given width never changes, so tiles are served with Cache-Control: public, max-age=31536000, immutable.",
+        "parameters": [
+          {
+            "name": "level",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 63
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "The encoded tile index, optionally followed by .p/<width>; it may contain slashes.",
+            "schema": {
+              "type": "string",
+              "example": "x001/234.p/17"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tile.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/tlog/tile/entries/{index}": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogEntryBundle",
+        "summary": "Entry bundle (tlog-tiles)",
+        "description": "Public; 404 unless the router enables the transparency log. The entries at leaf indices 256 x N to 256 x N + W, each as a big-endian 16-bit length followed by the entry: the canonical JSON {v, type: \"anyroute.tlog.entry\", kind, sha256, key}, whose leaf hash is SHA-256(0x00 || entry). Same index encoding and caching as the hash tiles.",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "description": "The encoded tile index, optionally followed by .p/<width>; it may contain slashes.",
+            "schema": {
+              "type": "string",
+              "example": "000.p/12"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entry bundle.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogInfo",
+        "summary": "The log: origin, verifier key, witnesses, quorum and newest checkpoint",
+        "description": "Public; 404 unless the router enables the transparency log. What entry kinds exist and which witnesses the router collects cosignatures from. Pin the log's verifier key and the witness keys from a source other than the log itself.",
+        "responses": {
+          "200": {
+            "description": "The log description.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TlogInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/witnessed": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogWitnessedCheckpoint",
+        "summary": "Newest checkpoint cosigned by the witness quorum",
+        "description": "Public; 404 (not_witnessed) until some checkpoint carries cosignatures from at least TLOG_WITNESS_QUORUM configured witnesses. Same note format as /tlog/checkpoint.",
+        "responses": {
+          "200": {
+            "description": "The checkpoint note.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "router.example/tlog\n12\nq0qBmQ4H0cMA5Tq3kQ0V8wQv1c5V3bI1n4r7FQ0y2Hc=\n\n— router.example/tlog <base64 key id and signature>\n— witness.example/w1 <base64 key id, timestamp and cosignature>\n"
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/checkpoints/{size}": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogCheckpointBySize",
+        "summary": "One checkpoint with its cosignatures",
+        "parameters": [
+          {
+            "name": "size",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "description": "Public; 404 (unknown_checkpoint) when the log never signed a checkpoint of that tree size.",
+        "responses": {
+          "200": {
+            "description": "The checkpoint note.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "router.example/tlog\n12\nq0qBmQ4H0cMA5Tq3kQ0V8wQv1c5V3bI1n4r7FQ0y2Hc=\n\n— router.example/tlog <base64 key id and signature>\n— witness.example/w1 <base64 key id, timestamp and cosignature>\n"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/lookup": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "lookupTlogEntry",
+        "summary": "The entry for a key or configuration",
+        "description": "Public; 404 (not_logged) when the key is not in the log. sha256 is the digest a client computes from what it holds: the raw Ed25519 receipt key, the encoded Oblivious HTTP key configuration, the blind issuer SubjectPublicKeyInfo (its token_key_id), the canonical measurement bundle, or the canonical JSON of a sidecar's bindings.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TlogKind"
+          },
+          {
+            "$ref": "#/components/parameters/TlogSha256"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TlogEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/proof": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogProof",
+        "summary": "An entry with its inclusion proof and, on request, a consistency proof",
+        "description": "Public. The entry for (kind, sha256), a checkpoint that includes it (by default the newest one the witness quorum cosigned, else the newest one), the RFC 6962 inclusion proof to that checkpoint's root and, with from, the consistency proof between tree size from and the checkpoint's size. Nothing here is trusted by itself: a client checks the log signature and witness cosignatures on the checkpoint, recomputes the leaf from the entry and verifies both proofs. 404 not_logged, 409 not_yet_included when the requested checkpoint predates the entry.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TlogKind"
+          },
+          {
+            "$ref": "#/components/parameters/TlogSha256"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "Prove against the checkpoint of this tree size instead.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The tree size of the newest checkpoint the client already holds.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The proof bundle.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TlogProof"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The chosen checkpoint does not include the entry yet (not_yet_included).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/consistency": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogConsistency",
+        "summary": "Consistency proof between two tree sizes",
+        "description": "Public. The RFC 6962 consistency proof from tree size from to tree size to (to at most the current size). Witnesses use it before cosigning; clients use it to check that a newer checkpoint extends one they saw.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The proof.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TlogConsistency"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/cosignatures": {
+      "post": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "postTlogCosignature",
+        "summary": "A witness hands in its cosignature on a checkpoint",
+        "description": "Public, rate limited per client address (TLOG_COSIGN_RPM). The body is the checkpoint note as the log served it with the witness's cosignature/v1 line added (the C2SP tlog-cosignature format: key id, 8-byte timestamp and Ed25519 signature over \"cosignature/v1\\ntime <t>\\n\" and the checkpoint text). Only lines from witnesses in TLOG_WITNESSES count; each valid one is kept, the newest per witness and tree size. A witness should cosign only after verifying a consistency proof from the last checkpoint it cosigned (scripts/tlog-witness.ts does). 400 invalid_checkpoint or unknown_log, 403 unknown_witness or invalid_cosignature, 404 unknown_checkpoint, 409 checkpoint_mismatch when the text is not what the log signed for that size.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string",
+                "maxLength": 16384
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The cosignatures that were accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TlogCosignatureResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The note is not the checkpoint the log signed for that size (checkpoint_mismatch).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The note is larger than 16 KiB (payload_too_large).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4218,6 +4668,31 @@
           "default": "none"
         },
         "description": "Same as provider.lane_downgrade: attested lets a request for lane unlinkable that carries an API key or a wallet be served on lane attested. none in either setting refuses the downgrade."
+      },
+      "TlogKind": {
+        "name": "kind",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "receipt_key",
+            "ohttp_key_config",
+            "blind_issuer_key",
+            "measurement_bundle",
+            "attestation_binding"
+          ]
+        }
+      },
+      "TlogSha256": {
+        "name": "sha256",
+        "in": "query",
+        "required": true,
+        "description": "Lowercase hex SHA-256 of the key or configuration.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       }
     },
     "headers": {
@@ -9681,6 +10156,344 @@
               "cost_usd": {
                 "type": "string",
                 "description": "The same total, exact."
+              }
+            }
+          }
+        }
+      },
+      "TlogCheckpoint": {
+        "type": "object",
+        "required": [
+          "size",
+          "root_hash",
+          "note",
+          "cosigned_by",
+          "witnessed"
+        ],
+        "properties": {
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "root_hash": {
+            "type": "string",
+            "description": "Base64 (standard, padded) 32-byte hash.",
+            "contentEncoding": "base64"
+          },
+          "note": {
+            "type": "string",
+            "description": "The signed note, as served at /tlog/checkpoint."
+          },
+          "cosigned_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of the configured witnesses whose cosignatures are attached."
+          },
+          "witnessed": {
+            "type": "boolean",
+            "description": "True when at least the quorum of configured witnesses cosigned."
+          }
+        }
+      },
+      "TlogInfo": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "origin",
+              "verifier_key",
+              "kinds",
+              "witnesses",
+              "quorum",
+              "size",
+              "checkpoint"
+            ],
+            "properties": {
+              "origin": {
+                "type": "string",
+                "description": "Checkpoint origin and the log's key name."
+              },
+              "verifier_key": {
+                "type": "string",
+                "description": "Signed-note verifier key <origin>+<key id>+<base64(0x01 || Ed25519 key)>."
+              },
+              "formats": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "kinds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "receipt_key",
+                    "ohttp_key_config",
+                    "blind_issuer_key",
+                    "measurement_bundle",
+                    "attestation_binding"
+                  ]
+                }
+              },
+              "witnesses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "verifier_key"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "verifier_key": {
+                      "type": "string",
+                      "description": "<name>+<key id>+<base64(0x04 || Ed25519 key)>, a cosignature/v1 key."
+                    }
+                  }
+                }
+              },
+              "quorum": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "checkpoint": {
+                "$ref": "#/components/schemas/TlogCheckpoint"
+              },
+              "witnessed_size": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Tree size of the newest checkpoint the quorum cosigned."
+              },
+              "tiles_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            }
+          }
+        }
+      },
+      "TlogEntry": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "index",
+              "kind",
+              "sha256",
+              "subject",
+              "entry",
+              "leaf_hash"
+            ],
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "receipt_key",
+                  "ohttp_key_config",
+                  "blind_issuer_key",
+                  "measurement_bundle",
+                  "attestation_binding"
+                ]
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "subject": {
+                "type": "string",
+                "description": "The key id, epoch or provider the entry is about."
+              },
+              "entry": {
+                "type": "string",
+                "description": "The entry's canonical JSON; its leaf hash is SHA-256(0x00 || these bytes)."
+              },
+              "leaf_hash": {
+                "type": "string",
+                "description": "Base64 (standard, padded) 32-byte hash.",
+                "contentEncoding": "base64"
+              }
+            }
+          }
+        }
+      },
+      "TlogConsistency": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "from",
+              "to",
+              "proof"
+            ],
+            "properties": {
+              "from": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "to": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "proof": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "description": "Base64 (standard, padded) 32-byte hash.",
+                  "contentEncoding": "base64"
+                }
+              }
+            }
+          }
+        }
+      },
+      "TlogProof": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "origin",
+              "index",
+              "kind",
+              "sha256",
+              "entry",
+              "checkpoint",
+              "inclusion"
+            ],
+            "properties": {
+              "origin": {
+                "type": "string"
+              },
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "receipt_key",
+                  "ohttp_key_config",
+                  "blind_issuer_key",
+                  "measurement_bundle",
+                  "attestation_binding"
+                ]
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "subject": {
+                "type": "string",
+                "description": "The key id, epoch or provider the entry is about."
+              },
+              "entry": {
+                "type": "string",
+                "description": "The entry's canonical JSON; its leaf hash is SHA-256(0x00 || these bytes)."
+              },
+              "checkpoint": {
+                "$ref": "#/components/schemas/TlogCheckpoint"
+              },
+              "inclusion": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "description": "Base64 (standard, padded) 32-byte hash.",
+                  "contentEncoding": "base64"
+                },
+                "description": "RFC 6962 inclusion proof from the entry's leaf to checkpoint.root_hash."
+              },
+              "consistency": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "required": [
+                  "from",
+                  "to",
+                  "proof"
+                ],
+                "properties": {
+                  "from": {
+                    "type": "integer"
+                  },
+                  "to": {
+                    "type": "integer"
+                  },
+                  "proof": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "description": "Base64 (standard, padded) 32-byte hash.",
+                      "contentEncoding": "base64"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "TlogCosignatureResult": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "size",
+              "accepted",
+              "cosignatures",
+              "witnessed"
+            ],
+            "properties": {
+              "size": {
+                "type": "integer"
+              },
+              "accepted": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Witnesses whose cosignature on this note verified."
+              },
+              "cosignatures": {
+                "type": "integer",
+                "description": "Configured witnesses that have now cosigned this tree size."
+              },
+              "witnessed": {
+                "type": "boolean"
               }
             }
           }

@@ -295,6 +295,25 @@ const res = await client.chat.completions.create(
 const check = res.anyroute.receiptVerification; // checked against /.well-known/anyroute-receipt-keys.json
 console.log(check.valid, check.anchor);          // anchor: "proof_valid" | "proof_invalid" | "no_proof"
 for (const c of check.checks) console.log(c.id, c.status, c.detail); // pass | fail | not_checked`;
+const sdkTransparency = `import { AnyRoute, SplitViewDetected } from "@anyroute/client";
+
+// Pin the log key and the witness keys from somewhere other than the log itself.
+const client = new AnyRoute({
+  baseUrl: "https://<router>",
+  apiKey: process.env.ANYROUTE_API_KEY,
+  transparency: { logKey: "<origin>+<key id>+<key>", witnesses: ["<witness key>", "<witness key>"], quorum: 2 },
+});
+
+const res = await client.chat.completions.create({ model: "meta-llama/llama-3.3-70b-instruct", messages: [{ role: "user", content: "Hello" }] });
+res.anyroute.receiptVerification.checks.find((c) => c.id === "key_logged"); // fails if the receipt key is not logged
+
+// Any other key or configuration, by kind: ohttp_key_config, blind_issuer_key, attestation_binding, ...
+try {
+  await client.transparency.requireLogged("ohttp_key_config", keyConfigBytes);
+} catch (e) {
+  if (e instanceof SplitViewDetected) console.error("two views of the log", e.evidence);
+  throw e; // not_logged, not_witnessed, bad_proof: do not use the key
+}`;
 const sdkAttested = `import { AnyRoute, AttestationRefused } from "@anyroute/client";
 import { nodeAttestFetcher } from "@anyroute/client/node"; // Node and Bun: reads the provider's certificate too
 
@@ -463,6 +482,8 @@ const endpoints = [
   ["POST /api/v1/blind/purchase", "Blind tokens, where enabled: buy tokens with credits by sending blinded messages; spend one with Authorization: PrivateToken on chat or embeddings"],
   ["GET /api/v1/ohttp/keys · POST /api/v1/ohttp/gateway", "Oblivious HTTP, where enabled: the gateway key configuration (application/ohttp-keys), and the gateway that unwraps message/ohttp-req sent by a relay and returns message/ohttp-res"],
   ["GET /api/v1/ohttp/key-list · GET /api/v1/relays", "Oblivious HTTP, where enabled: the gateway key history signed with the receipt key, and the relays clients may use, by operator"],
+  ["GET /tlog/checkpoint · /tlog/tile/…", "Transparency log, where enabled: the newest checkpoint (a signed note with the witnesses’ cosignatures) and the C2SP tlog-tiles hash tiles and entry bundles"],
+  ["GET /api/v1/tlog · /tlog/proof · /tlog/consistency · POST /tlog/cosignatures", "Transparency log, where enabled: origin, log key, witnesses and quorum; an entry with its inclusion and consistency proofs; and where witnesses hand in cosignatures"],
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt (v1, or v2 with its chain head and Merkle path); signing keys (JWKS)"],
   ["GET /api/v1/receipts/:id · /receipts/:id/proof", "A receipt by id, v2 beside v1 (?format=cose for the COSE bytes); the Merkle path to its hourly root, with anchored true only once that root is on chain"],
@@ -500,6 +521,7 @@ export default function Docs() {
             <a href="#disclosure">Disclosure</a>
             <a href="#lanes">Lanes</a>
             <a href="#tor">Tor</a>
+            <a href="#key-log">Key log</a>
             <a href="#lane">Lane</a>
             <a href="#payments">Payments</a>
             <a href="#x402">x402</a>
@@ -623,6 +645,19 @@ export default function Docs() {
             onion address, and a call with a key is limited per key as usual: use a key or a token for a quota of your own. The first request can take several seconds while Tor builds its circuit. A relay operator can also reach a gateway’s onion address through a
             SOCKS5 proxy (RELAY_SOCKS5_PROXY in relay/), so the gateway never sees the relay’s address either.
           </p>
+          <h2 id="key-log">A witnessed log of every key, where the router enables it.</h2>
+          <p>
+            Where the router runs its transparency log, every key and configuration a client encrypts to or verifies against is appended to one append-only Merkle log: receipt signing keys, Oblivious HTTP key configurations, blind-token issuer keys,
+            measurement bundles once their Sigstore entry checks out, and the key bindings of each sidecar whose hardware quote the router’s quote verifiers accepted. The log uses the C2SP formats: tiles at /tlog/tile/, the newest checkpoint at
+            /tlog/checkpoint as a signed note, and witnesses that cosign a checkpoint (cosignature/v1) only after checking a consistency proof from the last one they cosigned. A history shown to one user that differs from the one the witnesses saw
+            cannot collect their cosignatures, unless the quorum of witnesses colludes with the log. GET /api/v1/tlog names the log, its witnesses and the quorum; scripts/tlog-witness.ts in the repository is a minimal witness anyone can run.
+          </p>
+          <p>
+            The check is opt-in in @anyroute/client. With transparency set, a receipt verifies only if its signing key is in the log under a checkpoint cosigned by the quorum of the witnesses you pinned, and consistent with every checkpoint the
+            client saw before; client.transparency.requireLogged() does the same for any other key and refuses a key that is not logged. Two checkpoints of the same size with different roots, or a newer tree that does not extend an older one, raise
+            SplitViewDetected with both notes as evidence. Mirrors of the checkpoint can be added as a second path. Pin the log key and the witness keys from a source other than the log: the log’s own description of itself proves nothing.
+          </p>
+          <Code label="TypeScript · witnessed keys">{sdkTransparency}</Code>
           <h2 id="lane">Open-weights variants, and paying their creators.</h2>
           <p>
             Every model has a variant. mainstream keeps the publisher’s own alignment. native_low_refusal (trained to refuse little) and abliterated (refusal behaviour removed from the weights after training) are restricted variants. GET
