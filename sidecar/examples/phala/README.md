@@ -104,6 +104,128 @@ Shell variables in the compose file are written `$$name` so that compose leaves 
 To serve other weights, change the URL, revision and sha256 in `model-fetch`, the file name in `llama` and
 `sidecar.yaml`, and put the new digest (`bun src/main.ts digest <file>`) on the allow-list.
 
+## Measurement bundle and transparency log
+
+The quote commits to a compose hash, and the compose file pins everything else by hash. A **measurement bundle** writes
+those pins down in one signed document, and the bundle's digest is recorded in a public transparency log (Sigstore
+Rekor). The router then reports a log entry for the provider's measurement that anyone can check, on the verify page and
+in `GET /api/v1/attestation/<provider>` (`checks.transparency_log_entry`).
+
+The bundle is canonical JSON (keys sorted, no whitespace) with:
+
+| Field | What it says |
+| --- | --- |
+| `provider`, `created_at` | The provider id the router knows, and when the bundle was made. |
+| `compose_hash` | The hash the quote committed to (`sha256` of the CVM's `app-compose.json`). |
+| `source` | Repository, commit and the `sha256` of the GitHub tarball the compose file checks before it runs anything. |
+| `model` | The digest the sidecar binds into its quote, and the weights file with its `sha256` and URL. |
+| `images` | Every image in the compose file, by digest. |
+| `tdx` | `mrtd` and `rtmr3` allow-lists. `rtmr3` changes with the CVM instance, so it is empty unless you pin it. |
+| `signer` | The measurement public key that signed the bundle. |
+
+The log entry is a `hashedrekord` entry: the artifact is the bundle's bytes, the hash is their `sha256`, and the signature
+is ECDSA P-256 with SHA-256 by the measurement key (Rekor accepts Ed25519 only in a prehashed form, so P-256 is used).
+Anyone can look it up by the bundle digest.
+
+### Set up
+
+Make a key for signing bundles, separate from every other key. Only the publisher holds the private half.
+
+```sh
+openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -out measurement-signing.p8
+openssl pkey -in measurement-signing.p8 -pubout          # this is MEASUREMENT_PUBLIC_KEY
+```
+
+Router settings (both the API and the job process need them if they run apart):
+
+| Variable | Value |
+| --- | --- |
+| `MEASUREMENTS_ENABLED` | `true`. |
+| `MEASUREMENT_PUBLIC_KEY` | The public key above. Turns bundle checking on and is served at `GET /api/v1/measurements/key`. A private key here is refused at startup. |
+| `REKOR_PUBLIC_KEY` | The log's key: `curl -s $REKOR_URL/api/v1/log/publicKey` (compare it with the key in Sigstore's trusted root). Without it entries are found and their inclusion proofs verified, but the checkpoint signature is reported unverified and the verify page shows "partial". |
+| `REKOR_URL` | Defaults to the public instance. |
+
+### Publish
+
+The script needs only `MEASUREMENT_SIGNING_KEY` (the private key, PEM or base64 PKCS#8, read from the environment and never
+printed or written). It reads the compose file, takes the compose hash, image and model digests and MRTD from the router's
+attestation record (values from the verified quote), and refuses to go on if they do not match the compose file: a bundle
+must describe what is running.
+
+```sh
+export MEASUREMENT_SIGNING_KEY="$(cat measurement-signing.p8)"
+
+# 1. Look first. Builds and signs the bundle, prints it with the exact request for the log, sends nothing.
+bun scripts/publish-measurement.ts --provider <id> --router-url https://<router> --dry-run
+
+# 2. Publish. Submits the entry to REKOR_URL, verifies what comes back (inclusion proof, entry contents, and with
+#    REKOR_PUBLIC_KEY the checkpoint and signed entry timestamp), writes the publication record to
+#    measurement-<id>-<digest>.publication.json, and hands it to the router.
+ADMIN_TOKEN=<operator token> REKOR_PUBLIC_KEY="$(curl -s https://rekor.sigstore.dev/api/v1/log/publicKey)" \
+  bun scripts/publish-measurement.ts --provider <id> --router-url https://<router> --handover
+```
+
+A log entry is permanent. The script refuses to publish when the router already holds a verified bundle for the same
+compose hash (`--force` overrides), and never overwrites an output file. If the hand-over fails after the entry is
+logged, repeat only that step: `ADMIN_TOKEN=... bun scripts/publish-measurement.ts --resume <record> --router-url ...`.
+Without a router, give the compose hash with `--compose-hash`, `--app-compose <app-compose.json>` or `--attest </attest
+document>`, and the MRTD with `--mrtd`. `--pin-rtmr3` also pins the instance's RTMR3.
+
+### What the router checks
+
+For each measurement it recorded from a verified quote, the router looks for a bundle with the same provider and compose
+hash. It marks `transparency_log_entry` true only when all of these hold:
+
+1. the bundle is well formed, its signature verifies with `MEASUREMENT_PUBLIC_KEY`, and it names that key;
+2. the router fetched the entry from the log itself, the entry's uuid names its body, and its inclusion proof verifies;
+3. the entry is a `hashedrekord` entry whose artifact hash is the bundle's digest, whose public key is the measurement key,
+   and whose signature verifies over the bundle's bytes;
+4. the image digest, model digest and compose hash the quote committed to are in the bundle, and so is the quote's MRTD
+   (and RTMR3) when the bundle lists them.
+
+The checkpoint signature and the signed entry timestamp are checked too when `REKOR_PUBLIC_KEY` is set, and reported
+separately. The router does not check the bundle's source commit, tarball hash or weights hash: those are the publisher's
+statement, which anyone can reproduce (next section).
+
+### Check a bundle yourself
+
+```sh
+bun scripts/publish-measurement.ts --verify <record> --router-url https://<router>   # or --offline, or --public-key <file>
+```
+
+or with standard tools:
+
+```sh
+curl -s https://<router>/api/v1/measurements/bundles/<id> | jq '[.data[] | select(.status=="verified")][0]' > item.json
+jq -cSj .bundle item.json > bundle.json                    # canonical bytes
+sha256sum bundle.json                                      # = item.json .bundle_digest, without the 0x
+jq -r .signature item.json | base64 -d > bundle.sig
+curl -s https://<router>/api/v1/measurements/key | jq -r .data.public_key_pem > key.pem
+openssl dgst -sha256 -verify key.pem -signature bundle.sig bundle.json      # Verified OK
+curl -s https://rekor.sigstore.dev/api/v1/index/retrieve -H 'content-type: application/json' -d '{"hash":"sha256:<digest>"}'
+```
+
+The last call lists the log entries for that digest; the router keeps the one signed by the measurement key
+(`transparency_log.entry_url`).
+
+### Reproduce what the bundle says
+
+```sh
+bun scripts/check-reproducible.ts --repo <a checkout that has the pinned commit>
+bun scripts/check-reproducible.ts --app-compose app-compose.json --compose-hash sha256:<compose hash>
+```
+
+The first checks that the compose file is fully pinned and that the model digest it allows follows from the pinned
+weights hash; downloads the GitHub tarball for the pinned commit twice and compares both hashes with the pin; and, with a
+checkout, that the uncompressed tar equals `git archive` of that commit. (The pin is on GitHub's compressed bytes, which a
+local `gzip` does not reproduce; the script reports that as a note.)
+
+The second recomputes the compose hash. dstack's compose hash is the `sha256` of the CVM's `app-compose.json`, whose
+`docker_compose_file` is `docker-compose.yml` byte for byte and whose other fields are the deployment's settings (name,
+runner, key-provider and gateway flags). Those come from the platform, not from the example file: get the document with
+`npx -y phala cvms attestation <name> --json` and let the script confirm that it embeds this file and hashes to the value the
+quote committed to.
+
 ## Limits
 
 * Each start downloads the weights (once; they stay on the volume), the sidecar source and its one dependency. The
@@ -121,3 +243,8 @@ To serve other weights, change the URL, revision and sha256 in `model-fetch`, th
 * CPU only: there is no GPU evidence to collect. The 512-token cap and the quota are sized for a demo provider.
 * Phala makes container logs public by default (`--no-public-logs` turns that off). The sidecar logs no request
   content or addresses.
+* A bundle is the publisher's statement, signed with a key the router is configured to trust. The router checks it against
+  the quote's compose hash, image and model digests and MRTD, and the log entry against the log; it does not rebuild
+  anything, and it cannot tell who holds the measurement key.
+* Only the router that holds a log entry for a bundle reports it. A restart that changes the compose file changes the
+  compose hash, and needs a new bundle.

@@ -385,7 +385,9 @@ image for you.
   reports it (dstack); on bare-metal TDX it comes from the file or hash you supply.
 * Confidential-GPU evidence (NVIDIA) is not collected. Only the CPU-side quote is bound.
 * There is no blind-token redemption, and the sidecar does not publish to a transparency log or an on-chain
-  registry. `sidecar.yaml`, the compose file and the endpoints above are the whole interface today.
+  registry itself. An operator can publish a signed measurement bundle for a deployment with
+  `scripts/publish-measurement.ts` (see `examples/phala/README.md`). `sidecar.yaml`, the compose file and the endpoints
+  above are the whole interface of the sidecar.
 * The classifier is a best-effort text filter (see "In-enclave classifier"): it does not examine images or audio,
   and it can be wrong in both directions. Its digest is measured the same way as the main model's, at boot only.
 * Encrypted requests protect the body against everything outside this process. They do not hide who is calling, when,
