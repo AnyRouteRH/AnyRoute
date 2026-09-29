@@ -1,0 +1,120 @@
+/* Batch Studio. Builds on the dashboard design system in app/globals.css and app/pages.css
+   (tokens, .field, .note, .error, .data-table, .badge); only layout and batch-specific pieces live here. */
+
+.lede{max-width:640px}
+.privacy{margin:0 0 28px}
+.privacy strong{font-weight:600}
+
+.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:24px;align-items:start}
+.panel{position:relative;border:1px solid var(--line-strong);background:var(--white);padding:24px;min-width:0}
+.panel h3{display:flex;align-items:center;gap:10px;font-size:18px;letter-spacing:-.03em;margin:0 0 20px}
+.panel h3::before{content:"";width:8px;height:8px;background:var(--signal);flex:none}
+.panel.drop{box-shadow:0 0 0 3px var(--signal-tint);border-color:var(--signal-deep)}
+
+.fileRow{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 16px;margin-bottom:6px}
+.fileRow>.fileField{flex:1 1 220px;min-width:0}
+.fileRow>.formatField{flex:0 1 180px;min-width:140px}
+.fileInput{width:100%;font:400 13px var(--sans);color:var(--muted);padding:6px 0}
+.fileInput::file-selector-button{margin-right:12px;padding:10px 14px;border:1px solid var(--line-strong);background:var(--paper);color:var(--ink);font:500 11px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:background .2s,color .2s}
+.fileInput:hover::file-selector-button{background:var(--ink);color:var(--paper)}
+.fileInput:focus-visible{outline:2px solid var(--signal-deep);outline-offset:3px}
+
+.source{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:14px 16px;margin:0 0 18px;border:1px dashed var(--line-strong);background:var(--paper);font:400 12px/1.5 var(--mono)}
+.source strong{font-weight:500;overflow-wrap:anywhere}
+.input textarea{min-height:220px;font:400 12.5px/1.65 var(--mono);white-space:pre;overflow-wrap:normal;overflow-x:auto;tab-size:2}
+.examples{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;margin:-6px 0 4px}
+.examples span{font:500 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+
+.subhead{display:flex;align-items:center;gap:10px;margin:28px 0 18px;padding-top:22px;border-top:1px dashed var(--line);font:500 11px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.subhead::before{content:"";width:7px;height:7px;background:var(--ink);flex:none}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.more{margin:0 0 6px}
+.more summary{cursor:pointer;font:500 11px var(--mono);letter-spacing:.04em;text-transform:uppercase;text-decoration:underline;text-underline-offset:4px;margin-bottom:14px}
+.more textarea{min-height:90px;font:400 12.5px/1.6 var(--mono)}
+.fieldError{margin:-10px 0 18px;font-size:13px;color:#96161b}
+
+.figures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin:0 0 18px}
+.figures.wide{grid-template-columns:repeat(6,minmax(0,1fr))}
+.figures.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.figure{background:var(--white);padding:16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.figure strong{font-size:24px;font-weight:620;letter-spacing:-.045em;line-height:1.05;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.figure>span:last-child{font-size:12px;color:var(--muted)}
+.figure :global(.eyebrow){font-size:10px}
+
+.check{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;margin:0 0 16px;border:1px solid var(--line);border-left:3px solid var(--signal-deep);font-size:13px;line-height:1.45}
+.check.warn{border-left-color:var(--warn);background:#fff8e8}
+.check.muted{border-left-color:var(--line-strong);color:var(--muted)}
+.check b{font-weight:600}
+
+.issues{margin:0 0 18px;border:1px solid rgba(229,72,77,.35);background:#fffafa}
+.issues h4{margin:0;padding:12px 14px;font:500 11px/1.3 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:#96161b;border-bottom:1px solid rgba(229,72,77,.25);letter-spacing:.05em}
+.issues ul{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto}
+.issues li{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.45}
+.issues li:last-child{border-bottom:0}
+.issues li b{font:500 11px/1.8 var(--mono);color:#96161b;white-space:nowrap}
+.issues code{font-size:11.5px;padding:1px 5px;margin-right:6px;background:var(--paper-2);border:1px solid var(--line);overflow-wrap:anywhere}
+.issues p{margin:0;padding:10px 14px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+
+.slider{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 16px;margin:4px 0 20px}
+.slider label{grid-column:1 / -1;font:500 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.slider input{width:100%;height:28px;margin:0;accent-color:var(--signal-deep);cursor:pointer}
+.slider input:disabled{cursor:not-allowed}
+.slider output{min-width:2ch;font:500 16px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.slider small{grid-column:1 / -1;font-size:12px;color:var(--muted);line-height:1.45}
+
+.startRow{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px}
+.locked{font-size:13px;color:var(--muted);line-height:1.45}
+
+.progressHead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px 16px;font:400 12px/1.4 var(--mono)}
+.progressHead strong{font:600 15px var(--sans);letter-spacing:-.02em}
+.progress{height:10px;margin:10px 0 20px}
+.controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px 24px;margin:4px 0 0}
+.controls .slider{flex:1 1 260px;max-width:420px;margin:0}
+.keepOpen{display:flex;gap:10px;align-items:flex-start;margin:20px 0 0;font-size:13px;color:var(--muted);line-height:1.45}
+.keepOpen::before{content:"";width:7px;height:7px;margin-top:6px;background:var(--warn);flex:none}
+
+.tools{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0 0 16px}
+.tools>input{flex:1 1 220px;min-width:0}
+.tools>select{width:auto;min-height:48px;font-size:14px}
+
+.pill{display:inline-flex;align-items:center;gap:6px;font:500 10px/1.4 var(--mono);letter-spacing:.05em;text-transform:uppercase;padding:4px 7px;border:1px solid var(--line);background:var(--paper-2);white-space:nowrap}
+.pill::before{content:"";width:5px;height:5px;background:var(--muted-dark)}
+.pill[data-status=done]{background:var(--signal-tint);border-color:rgba(10,125,49,.3);color:var(--signal-deep)}
+.pill[data-status=done]::before{background:var(--signal-deep)}
+.pill[data-status=failed]{background:#fff0ef;border-color:rgba(229,72,77,.35);color:#96161b}
+.pill[data-status=failed]::before{background:var(--danger)}
+.pill[data-status=running]::before{background:var(--signal-deep);animation:pulse 1s steps(2) infinite}
+.pill[data-status=waiting]{background:#fff8e8;border-color:rgba(243,180,63,.5);color:#6b4a00}
+.pill[data-status=waiting]::before{background:var(--warn)}
+.pill[data-status=cancelled]{color:var(--muted)}
+@keyframes pulse{50%{opacity:.25}}
+.rowNote{display:block;max-width:360px;margin-top:6px;font-size:12px;line-height:1.4;color:var(--muted);white-space:normal!important;overflow-wrap:anywhere}
+
+.pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 20px;margin:-8px 0 8px;font:400 12px var(--mono);color:var(--muted)}
+.pager :global(.button-row){gap:20px}
+
+.results{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.response{margin:0 0 20px;padding:14px 16px;max-height:320px;overflow:auto;background:var(--white);border:1px solid var(--line);font:400 12.5px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+
+@media (max-width:1100px){
+  .figures.wide{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:860px){
+  .grid{grid-template-columns:1fr}
+  .figures.four{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:600px){
+  .panel{padding:18px}
+  .pair{grid-template-columns:1fr;gap:0}
+  .figures.wide{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .figure{padding:14px}
+  .figure strong{font-size:21px}
+  .issues li{grid-template-columns:1fr;gap:2px}
+  .controls{align-items:stretch}
+  .controls .slider{max-width:none}
+  .tools>select{width:100%}
+  .rowNote{max-width:none;text-align:left}
+}
+@media (prefers-reduced-motion:reduce){
+  .pill[data-status=running]::before{animation:none}
+}
