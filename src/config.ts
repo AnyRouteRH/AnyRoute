@@ -238,6 +238,12 @@ const schema = z.object({
   ANYROUTE_COUNCIL_JUDGE: opt, // model id of the judge used when a council request names none
   ANYROUTE_COUNCIL_MODE: z.enum(["judge", "fuse"]).default("judge"),
 
+  // Private RAG (POST /api/v1/rag): what one request may carry. Document text is never stored; these bound the memory and the calls it costs.
+  RAG_MAX_DOCUMENTS: int(200),
+  RAG_MAX_BYTES: int(2_097_152), // total UTF-8 bytes of document text
+  RAG_MAX_CHUNKS: int(2000),
+  RAG_MAX_EMBEDDING_CALLS: int(64), // embeddings calls one request may make (a small-context embedding model needs more, smaller ones)
+
   // Default per-key limits (0 = unlimited)
   DEFAULT_RPM: int(600),
   DEFAULT_TPM: int(0),
@@ -604,6 +610,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     // Off unless enabled. Council members and the judge are billed and receipted like any other call.
     features: { council: e.ANYROUTE_FEATURE_COUNCIL },
     council: { models: councilModels, judge: e.ANYROUTE_COUNCIL_JUDGE ?? null, mode: e.ANYROUTE_COUNCIL_MODE },
+    rag: { maxDocuments: e.RAG_MAX_DOCUMENTS, maxBytes: e.RAG_MAX_BYTES, maxChunks: e.RAG_MAX_CHUNKS, maxEmbeddingCalls: e.RAG_MAX_EMBEDDING_CALLS },
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
     telegram: { botToken: e.TELEGRAM_BOT_TOKEN },
