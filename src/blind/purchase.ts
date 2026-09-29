@@ -6,6 +6,7 @@ import { picoToUsdString, type Pico } from "../lib/money.ts";
 import { log, sha256 } from "../lib/util.ts";
 import type { KeyRow } from "../api/auth.ts";
 import { post, release, reserve, settle } from "../ledger/ledger.ts";
+import { keyValue } from "./issuer.ts";
 import { BLIND_POOL, ensurePool } from "./redeem.ts";
 import { isValidBlindedMsg } from "./rsa.ts";
 import { hex } from "./token.ts";
@@ -44,7 +45,7 @@ export async function purchaseTokens(ctx: Ctx, caller: KeyRow, input: { tokenKey
   if (!rl.ok)
     fail(429, `Rate limit exceeded (${cfg.purchaseRpm} purchases/min). Retry in ${Math.ceil(rl.retryAfterMs / 1000)}s.`, "rate_limited", { retry_after_ms: rl.retryAfterMs }, { "retry-after": String(Math.ceil(rl.retryAfterMs / 1000)) });
 
-  const cost = BigInt(count) * BigInt(key.denomination) * cfg.unitPricePico;
+  const cost = BigInt(count) * keyValue(key);
   const dayCap = BigInt(Math.round(cfg.maxUsdPerDay * 1e6)) * 1_000_000n; // pico-USD
   if (cost > dayCap) fail(400, `A purchase may not exceed the daily cap of $${cfg.maxUsdPerDay}.`, "purchase_cap", { cost_usd: picoToUsdString(cost), daily_cap_usd: cfg.maxUsdPerDay });
 

@@ -5,9 +5,8 @@ import { picoToUsdString } from "../lib/money.ts";
 import { requireKey, requireRole } from "../api/auth.ts";
 import { readJson } from "../api/common.ts";
 import { purchaseTokens } from "./purchase.ts";
-import { tokenValue } from "./redeem.ts";
 import { b64url, decodeBase64 } from "./token.ts";
-import { epochCommitment } from "./issuer.ts";
+import { epochCommitment, keyValue } from "./issuer.ts";
 
 // GET  /api/v1/blind/keys      the issuer keys, the challenge tokens must carry, and prices (public)
 // POST /api/v1/blind/purchase  buy tokens with credits (a router API key)
@@ -34,7 +33,7 @@ export function blindRoutes(app: Hono, ctx: Ctx) {
         // token_input without guessing the router's host name.
         challenge: b64url(issuer.challenge),
         challenge_digest: Buffer.from(issuer.challengeDigest).toString("hex"),
-        unit_price_usd: picoToUsdString(cfg.unitPricePico),
+        unit_price_usd: picoToUsdString(cfg.unitPricePico), // the price keys created from now on will carry
         epoch_seconds: cfg.epochSeconds,
         redeem_grace_seconds: cfg.redeemGraceSeconds,
         max_batch: cfg.maxBatch,
@@ -45,7 +44,8 @@ export function blindRoutes(app: Hono, ctx: Ctx) {
           token_key: k.spki, // base64url SubjectPublicKeyInfo; token_key_id is its SHA-256
           epoch: k.epoch,
           denomination: k.denomination,
-          value_usd: picoToUsdString(tokenValue(ctx, k.denomination)),
+          value_usd: picoToUsdString(keyValue(k)), // what one token of this key is worth; fixed for the key's life
+          unit_price_usd: picoToUsdString(k.unitPrice),
           status: issuer.status(k),
           not_before: k.validFrom.toISOString(),
           issue_until: k.issueUntil.toISOString(),

@@ -4,7 +4,7 @@ import { blindNullifiers } from "../db/schema.ts";
 import { ApiError } from "../lib/errors.ts";
 import { picoToUsd, type Pico } from "../lib/money.ts";
 import { ensureAccount } from "../ledger/ledger.ts";
-import type { VerifiedToken } from "./issuer.ts";
+import { keyValue, type VerifiedToken } from "./issuer.ts";
 import { parsePrivateToken } from "./token.ts";
 
 // Redeeming a token on a request. Every blind redemption is charged to one pooled internal account, so the
@@ -20,9 +20,10 @@ export const BLIND_POOL = "blind_pool";
 
 export type BlindPass = VerifiedToken & { value: Pico };
 
-export const tokenValue = (ctx: Ctx, denomination: number): Pico => BigInt(denomination) * ctx.cfg.blind.unitPricePico;
-
 export const ensurePool = (ctx: Ctx) => ensureAccount(ctx.db, BLIND_POOL, "blind_pool");
+
+/** True when the feature is on and the Authorization header uses the PrivateToken scheme (valid or not). */
+export const isBlindRequest = (ctx: Ctx, authorization: string | undefined | null) => !!ctx.blind && parsePrivateToken(authorization) !== undefined;
 
 /**
  * The verified token on an Authorization: PrivateToken header, or null when the feature is off or the header
@@ -34,7 +35,7 @@ export async function presentBlindToken(ctx: Ctx, authorization: string | undefi
   if (bytes === undefined) return null;
   if (bytes === null) throw new ApiError(401, "Malformed PrivateToken credential: expected `PrivateToken token=<base64url>`.", "invalid_token");
   const verified = await ctx.blind.verify(bytes);
-  return { ...verified, value: tokenValue(ctx, verified.denomination) };
+  return { ...verified, value: keyValue(verified.key) };
 }
 
 /** A request may cost at most the token's value: the hold is checked against it before the token is claimed. */

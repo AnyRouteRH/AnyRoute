@@ -25,7 +25,7 @@ import { payPerCall } from "../pay/percall.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import type { HolderTier } from "../config.ts";
 import { COUNCIL_MODEL, applyDualDecoding, runCouncil, runDual, validateMulti } from "./council.ts";
-import { BLIND_POOL, claimToken, confirmToken, presentBlindToken, redemptionSummary, requireValue, unclaimToken, type BlindPass } from "../blind/redeem.ts";
+import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken, type BlindPass } from "../blind/redeem.ts";
 
 export type Kind = "chat" | "completion";
 export type Billing =
@@ -219,7 +219,10 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     tier = await holderTier(ctx, walletOfAccount(key.accountId));
     await limitOrThrow(ctx, `k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), "requests");
   } else {
-    await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
+    // A token carries its own quota (one request), so token callers get their own, larger per-address limit:
+    // behind a relay many strangers share an address.
+    if (isBlindRequest(ctx, c.req.header("authorization"))) await limitOrThrow(ctx, `blind-ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.blind.redeemRpm, "requests");
+    else await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
     pass = await presentBlindToken(ctx, c.req.header("authorization"));
     const wa = c.req.header("x-wallet-auth");
     if (wa && !pass) wallet = await walletAuth(ctx, wa, bodySha);

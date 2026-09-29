@@ -103,7 +103,7 @@ export const ledger = pgTable(
     accountId: text("account_id").notNull(),
     keyHash: text("key_hash"),
     amount: money("amount").notNull(),
-    kind: text("kind").notNull(), // deposit | credit | usage | refund | paywith | change | adjustment | withdrawal_lock | withdrawal
+    kind: text("kind").notNull(), // deposit | credit | usage | refund | paywith | change | adjustment | withdrawal_lock | withdrawal | blind_purchase
     ref: text("ref").notNull(),
     generationId: text("generation_id"),
     description: text("description").notNull().default(""),
@@ -676,6 +676,7 @@ export const blindKeys = pgTable(
     keyId: text("key_id").primaryKey(), // token_key_id: hex SHA-256 of the RFC 9578 SPKI
     epoch: integer("epoch").notNull(),
     denomination: integer("denomination").notNull(), // token-units the key's tokens are worth: 1000 | 10000 | 100000
+    unitPrice: money("unit_price").notNull(), // pico-USD per token-unit, fixed when the key is created: a token's value never changes
     spki: text("spki").notNull(), // base64url RFC 9578 SubjectPublicKeyInfo
     privateEnc: text("private_enc"), // PKCS#8, encrypted; null once the key no longer issues
     validFrom: ts("valid_from").notNull(),

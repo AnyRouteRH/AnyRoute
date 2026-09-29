@@ -4,6 +4,7 @@ import type { Config } from "../config.ts";
 import type { Db } from "../db/client.ts";
 import { blindKeys, blindNullifiers } from "../db/schema.ts";
 import { ApiError } from "../lib/errors.ts";
+import type { Pico } from "../lib/money.ts";
 import { decrypt, encrypt, log } from "../lib/util.ts";
 import { generateIssuerKey, importIssuerPublicKey, parseIssuerSpki, Signer, suite, tokenKeyId } from "./rsa.ts";
 import { b64url, bytesEqual, challengeDigest, decodeToken, hex, nullifierOf, signedPart, tokenChallenge } from "./token.ts";
@@ -17,6 +18,9 @@ import { b64url, bytesEqual, challengeDigest, decodeToken, hex, nullifierOf, sig
 
 export type BlindKey = typeof blindKeys.$inferSelect;
 export type KeyStatus = "upcoming" | "issuing" | "redeem_only" | "expired" | "revoked";
+
+/** What one token of this key is worth (pico-USD): its denomination at the unit price the key was created with. */
+export const keyValue = (k: Pick<BlindKey, "denomination" | "unitPrice">): Pico => BigInt(k.denomination) * k.unitPrice;
 
 /** A token that verified: what it is worth and which key signed it. Not yet spent. */
 export type VerifiedToken = { nullifier: string; keyId: string; epoch: number; denomination: number; key: BlindKey };
@@ -90,6 +94,7 @@ export class BlindIssuer {
           keyId: material.keyId,
           epoch,
           denomination,
+          unitPrice: this.cfg.blind.unitPricePico,
           spki: b64url(material.spki),
           privateEnc: encrypt(this.cfg.appSecret, Buffer.from(material.pkcs8).toString("base64")),
           ...this.window(epoch),

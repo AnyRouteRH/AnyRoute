@@ -17,7 +17,7 @@ import { requestHash } from "./chat.ts";
 import { payPerCall } from "../pay/percall.ts";
 import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
-import { BLIND_POOL, claimToken, confirmToken, presentBlindToken, redemptionSummary, requireValue, unclaimToken } from "../blind/redeem.ts";
+import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken } from "../blind/redeem.ts";
 
 // POST /api/v1/embeddings — prepaid keys, or no key at all: an unpaid call gets the same 402 as chat
 // (CallPay and/or x402, whichever this router has configured) and the paid retry is served.
@@ -27,7 +27,11 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const key = bearer(c.req.header("authorization")) ? await requireKey(ctx, c.req.header("authorization")) : null;
     if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
     let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null; // $ANYR holders get a higher rpm
-    const lim = key ? await ctx.limiter.take(`k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), 60_000) : await ctx.limiter.take(`ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, 60_000);
+    const lim = key
+      ? await ctx.limiter.take(`k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), 60_000)
+      : isBlindRequest(ctx, c.req.header("authorization"))
+        ? await ctx.limiter.take(`blind-ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.blind.redeemRpm, 60_000) // a token carries its own quota
+        : await ctx.limiter.take(`ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, 60_000);
     if (!lim.ok) fail(429, "Rate limit exceeded.", "rate_limited", undefined, { "retry-after": String(Math.ceil(lim.retryAfterMs / 1000)) });
     // A Privacy Pass token (Authorization: PrivateToken) instead of a key, when ANYROUTE_FEATURE_BLIND is on.
     const pass = key ? null : await presentBlindToken(ctx, c.req.header("authorization"));

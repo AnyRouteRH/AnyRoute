@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { startRouter, type Harness } from "./helpers.ts";
 import { loadConfig } from "../src/config.ts";
@@ -11,6 +11,9 @@ import { epochCommitment } from "../src/blind/issuer.ts";
 import { blindTokens, buyTokens, fetchDirectory, finalizeTokens, issuingKey, tokenNullifier, type DirectoryKey } from "../src/blind/client.ts";
 import { importIssuerPublicKey, parseIssuerSpki, suite, tokenKeyId } from "../src/blind/rsa.ts";
 import { authorizationHeader, b64url, decodeBase64, decodeToken, encodeToken, hex, signedPart } from "../src/blind/token.ts";
+
+// Blinding a token takes ~50 ms in the reference JavaScript implementation and the tests buy several.
+setDefaultTimeout(60_000);
 
 const LLAMA = "meta-llama/llama-3.3-70b-instruct";
 const chat = { model: LLAMA, messages: [{ role: "user", content: "hello" }], max_tokens: 20 };
@@ -57,6 +60,7 @@ describe("feature flag", () => {
     expect(() => loadConfig({ BLIND_UNIT_PRICE_USD: "abc" })).toThrow(/BLIND_UNIT_PRICE_USD/);
     expect(() => loadConfig({ BLIND_EPOCH_SECONDS: "10" })).toThrow(/BLIND_EPOCH_SECONDS/);
     expect(() => loadConfig({ BLIND_MAX_BATCH: "0" })).toThrow(/BLIND_MAX_BATCH/);
+    expect(() => loadConfig({ BLIND_REDEEM_RPM: "0" })).toThrow(/BLIND_REDEEM_RPM/);
     expect(() => loadConfig({ BLIND_MAX_USD_PER_DAY: "0" })).toThrow(/BLIND_MAX_USD_PER_DAY/);
   });
 });
@@ -185,6 +189,17 @@ describe("blind tokens: keys, purchase, redemption", () => {
     expect((await h.ctx.blind!.redeemedCounts()).get(bought.keyId)).toBe(1);
     expect(await h.ctx.db.select().from(blindNullifiers)).toHaveLength(1);
     expect((await verifyInvariants(h.ctx.db)).ok).toBe(true);
+
+    // The holder of the spent token can read its receipt back (with the anchor proof once it exists); nobody else can.
+    const auth = { authorization: authorizationHeader(decodeBase64(bought.tokens[0])!) };
+    const mine = await h.request(`/api/v1/generation?id=${out.id}`, { headers: auth });
+    expect(mine.status).toBe(200);
+    const detail = (await mine.json()).data;
+    expect(detail.mode).toBe("blind");
+    expect(detail.receipt.nullifier).toBe(nullifier);
+    expect((await h.request(`/api/v1/generation?id=${out.id}`, { headers: { authorization: authorizationHeader(decodeBase64(bought.tokens[1])!) } })).status).toBe(404); // a different token
+    expect((await h.request(`/api/v1/generation?id=${out.id}`)).status).toBe(404);
+    expect((await h.request(`/api/v1/generation?id=${out.id}`, { headers: k.auth })).status).toBe(404); // the buyer's key is not linked to it
   });
 
   test("double spend is rejected, sequentially and concurrently", async () => {
@@ -427,6 +442,30 @@ describe("blind tokens: epochs and rotation", () => {
     expect((await redeem(h, current.tokens[0])).status).toBe(200);
   }, 60_000);
 
+  test("a token keeps the value of the key that signed it when the unit price changes", async () => {
+    const k = await h.fundedKey(10n);
+    const cfg = h.ctx.cfg.blind as { unitPricePico: bigint };
+    const original = cfg.unitPricePico;
+    try {
+      during(5000, 0.1);
+      const old = await buy(h, k.secret, 1_000, 1);
+      expect(old.costUsd).toBe("0.002");
+      cfg.unitPricePico = usdToPico("0.00001"); // five times the price; keys already created keep theirs (the next epoch's was made ahead of time)
+      during(5001, 0.5);
+      const paid = await (await redeem(h, old.tokens[0])).json();
+      expect(paid.blind.token_value_usd).toBe(0.002);
+      expect(paid.blind.epoch).toBe(5000);
+      during(5002, 0.1);
+      const dir = await fetchDirectory("http://router.test", shim(h));
+      expect(dir.keys.find((x) => x.epoch === 5002 && x.denomination === 1_000)!.value_usd).toBe("0.01");
+      const fresh = await buy(h, k.secret, 1_000, 1);
+      expect(fresh.costUsd).toBe("0.01");
+      expect((await (await redeem(h, fresh.tokens[0])).json()).blind.token_value_usd).toBe(0.01);
+    } finally {
+      cfg.unitPricePico = original;
+    }
+  });
+
   test("weekly rotation creates the next epoch's keys ahead of time and wipes ended epochs' private keys", async () => {
     const epoch = 100; // an epoch long before the real one: the clock is ours and nothing else is due yet
     during(epoch, 0.2);
@@ -492,6 +531,29 @@ describe("blind tokens: purchase limits", () => {
       expect((await verifyInvariants(h2.ctx.db)).ok).toBe(true);
     } finally {
       await h2.close();
+    }
+  });
+});
+
+describe("blind tokens: redemption limits", () => {
+  test("calls that present a token have their own per-address limit, apart from the unauthenticated one", async () => {
+    const h = await startRouter({ env: { ANYROUTE_FEATURE_BLIND: "true", BLIND_REDEEM_RPM: "3", UNAUTH_RPM: "1", TRUST_PROXY: "true" } });
+    try {
+      // A unique client address keeps the counters apart even when a shared Redis backs the limiter.
+      const ip = `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+      const bad = () => h.request("/api/v1/chat/completions", { method: "POST", headers: { authorization: "PrivateToken token=AAAA", "x-forwarded-for": ip }, json: chat });
+      expect((await bad()).status).toBe(401); // invalid token, counted against the token limit (3), not the unauthenticated one (1)
+      expect((await bad()).status).toBe(401);
+      expect((await bad()).status).toBe(401);
+      const limited = await bad();
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get("retry-after")).toBeTruthy();
+      // Unauthenticated calls without a token still use UNAUTH_RPM (1): the first is a 402 quote, the second is limited.
+      const plain = () => h.request("/api/v1/chat/completions", { method: "POST", headers: { "x-forwarded-for": ip }, json: chat });
+      expect((await plain()).status).toBe(402);
+      expect((await plain()).status).toBe(429);
+    } finally {
+      await h.close();
     }
   });
 });

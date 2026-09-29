@@ -1,10 +1,12 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import { createPrivateKey } from "node:crypto";
 import { RSABSSA, type BlindRSA } from "@cloudflare/blindrsa-ts";
 import { generateIssuerKey, importIssuerPublicKey, issuerSpki, isValidBlindedMsg, parseIssuerSpki, Signer, suite, tokenKeyId } from "../src/blind/rsa.ts";
 import { challengeDigest, decodeBase64, decodeToken, encodeToken, hex, nullifierOf, parsePrivateToken, sha256Bytes, signedPart, tokenChallenge, tokenInput, unhex, TOKEN_LEN } from "../src/blind/token.ts";
 import { epochCommitment } from "../src/blind/issuer.ts";
 import vectors from "./fixtures/blind-vectors.json";
+
+setDefaultTimeout(60_000); // 4096-bit blinding in the reference JavaScript implementation is slow
 
 // Public test vectors: RFC 9474 Appendix A (RSABSSA) and RFC 9578 Appendix A.2 (token type 0x0002).
 

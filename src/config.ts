@@ -233,6 +233,7 @@ const schema = z.object({
   BLIND_REDEEM_GRACE_SECONDS: int(604_800), // tokens stay redeemable this long after their epoch stops issuing
   BLIND_MAX_BATCH: int(32), // most tokens one purchase request may ask for
   BLIND_PURCHASE_RPM: int(10), // purchase requests per key per minute
+  BLIND_REDEEM_RPM: int(600), // calls per minute per client address that present a token (tokens bring their own quota)
   BLIND_MAX_USD_PER_DAY: num(100), // most one account may convert into tokens per rolling day
 });
 
@@ -566,6 +567,7 @@ function blindSettings(e: Env) {
   if (e.BLIND_REDEEM_GRACE_SECONDS < 0) throw new Error("BLIND_REDEEM_GRACE_SECONDS must not be negative.");
   if (e.BLIND_MAX_BATCH < 1 || e.BLIND_MAX_BATCH > 256) throw new Error("BLIND_MAX_BATCH must be between 1 and 256.");
   if (e.BLIND_PURCHASE_RPM < 1) throw new Error("BLIND_PURCHASE_RPM must be at least 1.");
+  if (e.BLIND_REDEEM_RPM < 1) throw new Error("BLIND_REDEEM_RPM must be at least 1.");
   if (!(e.BLIND_MAX_USD_PER_DAY > 0)) throw new Error("BLIND_MAX_USD_PER_DAY must be positive.");
   let issuerName = "localhost";
   try {
@@ -581,6 +583,7 @@ function blindSettings(e: Env) {
     redeemGraceSeconds: e.BLIND_REDEEM_GRACE_SECONDS,
     maxBatch: e.BLIND_MAX_BATCH,
     purchaseRpm: e.BLIND_PURCHASE_RPM,
+    redeemRpm: e.BLIND_REDEEM_RPM,
     maxUsdPerDay: e.BLIND_MAX_USD_PER_DAY,
     issuerName,
   };

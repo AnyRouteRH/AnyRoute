@@ -2,12 +2,13 @@ import type { Hono } from "hono";
 import { and, asc, desc, eq, lt } from "drizzle-orm";
 import type { Hex } from "viem";
 import type { Ctx } from "../context.ts";
-import { agentSessions, anchors, generations, paywithDebts, paywithSwaps } from "../db/schema.ts";
+import { agentSessions, anchors, blindNullifiers, generations, paywithDebts, paywithSwaps } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { MerkleTree, receiptLeaf } from "../receipts/merkle.ts";
 import { canonicalBytes, verifyWithRawKey } from "../receipts/signer.ts";
 import { bearer, resolveKey, walletAuth } from "./auth.ts";
+import { nullifierOf, parsePrivateToken } from "../blind/token.ts";
 
 export async function anchorProof(ctx: Ctx, g: { anchorIndex: number | null; leafIndex: number | null }) {
   if (g.anchorIndex == null || g.leafIndex == null) return null;
@@ -95,6 +96,14 @@ export function generationRoutes(app: Hono, ctx: Ctx) {
     } else if (c.req.header("x-wallet-auth")) {
       const w = await walletAuth(ctx, c.req.header("x-wallet-auth")!, (await import("../lib/util.ts")).sha256(""));
       allowed = w.accountId === g.accountId;
+    } else if (ctx.blind) {
+      // A blind redemption has no account. Whoever holds the spent token owns its receipt: the token hashes to the
+      // nullifier recorded against this generation.
+      const token = parsePrivateToken(c.req.header("authorization"));
+      if (token) {
+        const [spent] = await ctx.db.select({ id: blindNullifiers.generationId }).from(blindNullifiers).where(eq(blindNullifiers.nullifier, nullifierOf(token)));
+        allowed = !!spent && spent.id === g.id;
+      }
     }
     if (!allowed) fail(404, "Generation not found.", "not_found");
     let paidWith = g.paidWith as Record<string, unknown> | null;
