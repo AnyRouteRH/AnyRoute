@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
-import { attestations, providers } from "../src/db/schema.ts";
+import { and, desc, eq } from "drizzle-orm";
+import { attestationEvents, attestations, providers } from "../src/db/schema.ts";
 import { loadAciGateway, keysetDigest } from "../src/providers/aci.ts";
 import { loadTlsPin } from "../src/providers/tls-pin.ts";
 import { runAttestor } from "../src/services/attestor.ts";
 import { runRegistry } from "../src/services/registry.ts";
 import { encrypt } from "../src/lib/util.ts";
 import { ADMIN, sse, startRouter, type Harness } from "./helpers.ts";
-import { CLAIMS_OK, OTHER_KEY, RECEIPT_KEY, gatewayReport, keyset, phalaVerifierAnswer, session, signedReceipt, type Claims, type ReportOptions } from "./aci-fixtures.ts";
+import { APP_COMPOSE, CLAIMS_OK, OTHER_KEY, RECEIPT_KEY, composeHashOf, gatewayReport, keyset, phalaVerifierAnswer, session, signedReceipt, type Claims, type ReportOptions } from "./aci-fixtures.ts";
+import { REGS } from "./measurement-fixtures.ts";
 
 // An attested aci/1 gateway (providers/aci.ts) end to end against the router: a mock gateway that serves a report
 // bound to the attestor's nonce, answers chat calls and signs a receipt for each, and a mock of the Phala quote
@@ -144,6 +145,18 @@ describe("attesting the gateway", () => {
     const { data } = (await (await h.request("/api/v1/attestation/gw")).json()) as { data: any };
     expect(data).toMatchObject({ status: "attested", tee: "tdx", verifiers: ["phala"], gateway: { protocol: "aci/1", keyset_digest: keysetDigest(keyset()), source_provenance: { repo_commit: "ab".repeat(20) } } });
     expect(data.not_checked.at(-1)).toContain("attested gateway");
+  });
+  test("each run goes into the attestation history, and a new gateway release shows as a measurement change", async () => {
+    const latest = async () => (await h.ctx.db.select().from(attestationEvents).where(eq(attestationEvents.providerId, "gw")).orderBy(desc(attestationEvents.ts), desc(attestationEvents.id)).limit(1))[0];
+    expect(await latest()).toMatchObject({ kind: "attestation", ok: true, teeKind: "tdx", verifiers: ["phala"], simulated: false, measurements: expect.objectContaining({ compose_hash: composeHashOf(APP_COMPOSE), mrtd: REGS.mrtd }) });
+    state.report = { bindNonce: "11".repeat(32) };
+    expect(await attest()).toMatchObject({ ok: false });
+    expect(await latest()).toMatchObject({ ok: false, reason: "nonce_not_bound" });
+    state.report = { appCompose: JSON.stringify({ manifest_version: 2, name: "gateway", release: 2 }) };
+    expect(await attest()).toMatchObject({ ok: true });
+    const changed = await latest();
+    expect(changed).toMatchObject({ ok: true, measurementChanged: true });
+    expect((changed.detail as { changed: string[] }).changed).toEqual(expect.arrayContaining(["compose_hash", "rtmr3"]));
   });
   test("a replayed report, a rejected quote, another compose or a broken event log fail, and unattest the provider", async () => {
     const cases: [Partial<State>, string][] = [

@@ -267,7 +267,8 @@ async function attestAciGateway(
     teeKind: p.teeKind ?? "tdx",
     reportHash,
     nonce: o.nonce,
-    measurements,
+    // The gateway's compose hash with the registers, so the attestation history shows each gateway release.
+    measurements: { ...measurements, ...(g.composeHash ? { compose_hash: g.composeHash } : {}) },
     detail: {
       signing_address: null,
       verifiers: q.verifiers,
