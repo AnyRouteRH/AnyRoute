@@ -105,3 +105,26 @@ test('the lane variants, day-zero candidate endpoints and creator claim flow are
   for(const [,name] of path.matchAll(/\{(\w+)\}/g))assert.ok(declared.has(name),`${path} declares {${name}}`);
  }
 });
+
+test('the Oblivious HTTP endpoints, media types and schemas are documented and consistent',()=>{
+ const ops={keys:spec.paths['/api/v1/ohttp/keys'].get,gateway:spec.paths['/api/v1/ohttp/gateway'].post,list:spec.paths['/api/v1/ohttp/key-list'].get,relays:spec.paths['/api/v1/relays'].get};
+ for(const op of Object.values(ops))assert.deepEqual(op.tags,['Oblivious HTTP']);
+ assert.ok(spec.tags.some((t)=>t.name==='Oblivious HTTP'));
+ for(const op of Object.values(ops))assert.equal(op.security,undefined,'the gateway and its documents are public');
+ assert.ok(ops.keys.responses['200'].content['application/ohttp-keys'],'RFC 9458 key configuration media type');
+ assert.ok(ops.gateway.requestBody.content['message/ohttp-req'],'encapsulated request media type');
+ assert.ok(ops.gateway.responses['200'].content['message/ohttp-res'],'encapsulated response media type');
+ assert.ok(ops.gateway.responses['422'].content['application/problem+json'],'a key problem is application/problem+json');
+ assert.match(ops.gateway.description,/replayed_request/);
+ for(const name of ['OhttpKeyList','Relay','RelayList'])assert.ok(spec.components.schemas[name],name);
+ assert.equal(spec.components.schemas.OhttpKeyList.properties.signature.properties.alg.const,'Ed25519');
+ assert.deepEqual(spec.components.schemas.OhttpKeyList.properties.data.properties.keys.items.properties.status.enum,['upcoming','current','grace','expired','revoked']);
+ assert.ok(spec.components.schemas.Relay.required.includes('independent'));
+ assert.match(spec.paths['/api/v1/chat/completions'].post.description,/unlinkable_requires_relay/);
+ assert.match(spec.components.securitySchemes.PrivateToken.description,/PrivateToken/);
+ assert.ok(spec.components.headers.LaneServed.schema.enum.includes('unlinkable'));
+ assert.match(spec.components.responses.LaneNotAvailable.description,/Oblivious HTTP/);
+ const ids=[];
+ walk(spec.paths,(n)=>{if(typeof n.operationId==='string')ids.push(n.operationId);});
+ assert.equal(new Set(ids).size,ids.length,'operation ids are unique');
+});

@@ -190,6 +190,8 @@ const endpoints = [
   ["POST /api/v1/creators/claims · /claims/{id}/verify", "Claim a model’s creator royalty by publishing a challenge in its Hugging Face repository"],
   ["GET /api/v1/blind/keys", "Blind tokens, where enabled: the issuer keys per epoch and denomination, the challenge every token carries, and prices"],
   ["POST /api/v1/blind/purchase", "Blind tokens, where enabled: buy tokens with credits by sending blinded messages; spend one with Authorization: PrivateToken on chat or embeddings"],
+  ["GET /api/v1/ohttp/keys · POST /api/v1/ohttp/gateway", "Oblivious HTTP, where enabled: the gateway key configuration (application/ohttp-keys), and the gateway that unwraps message/ohttp-req sent by a relay and returns message/ohttp-res"],
+  ["GET /api/v1/ohttp/key-list · GET /api/v1/relays", "Oblivious HTTP, where enabled: the gateway key history signed with the receipt key, and the relays clients may use, by operator"],
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt’s signature and anchor inclusion; signing keys (JWKS)"],
   ["GET /.well-known/anyroute-receipt-keys.json", "The same signing keys at a fixed path, for clients that verify receipts themselves"],
@@ -263,11 +265,22 @@ export default function Docs() {
           <p>
             Set provider.disclosure (or the X-Anyroute-Disclosure-Max header) to none, policy or any, the default. none routes only to providers whose retention is declared attested and whose TEE attestation is fresh; policy also accepts a
             documented no-retention policy with no legal hold. provider.lane (or X-Anyroute-Lane) is public, the default, or attested, which implies none; if both are set the stricter applies. When nothing qualifies the request fails with 409, or
-            503 when qualifying providers are down. It is never sent to a provider that does not qualify, and nothing is charged. The unlinkable lane is not available yet and returns 501. A request with a disclosure setting never uses the response cache.
+            503 when qualifying providers are down. It is never sent to a provider that does not qualify, and nothing is charged. The unlinkable lane is served only where the router enables Oblivious HTTP (see below); elsewhere it returns 501. A request with a disclosure setting never uses the response cache.
           </p>
           <p>
             Responses carry X-Anyroute-Disclosure (attested, policy or vendor-forwarded) and X-Anyroute-Lane, and the signed receipt records disclosure and lane. On a stream the header is sent only when every reachable provider shares one class; the
             receipt always states it. A development attestation is marked attestation_simulated and is refused in production. GET /api/v1/models?lane=attested lists the models that have an attested endpoint now.
+          </p>
+          <h2 id="unlinkable">The unlinkable lane, where the router enables it.</h2>
+          <p>
+            Lane unlinkable keeps the router from tying together who pays, where a request came from and what it says. It is served only when all three hold: the request arrives through the router’s Oblivious HTTP gateway (RFC 9458) by way of a relay
+            run by an operator other than the router’s own; it is paid with a blind token (Authorization: PrivateToken), never a key or a wallet; and it is routed only to attested providers, the same filter as lane attested. The receipt then
+            says lane unlinkable. GET /api/v1/relays lists the relays by operator. GET /api/v1/ohttp/keys is the gateway’s key configuration and GET /api/v1/ohttp/key-list is the key history, signed with the receipt key and hash-chained, for pinning.
+          </p>
+          <p>
+            A direct request for the lane is refused with 403 unlinkable_requires_relay and says what to do; through the gateway without a token it is 401 (unlinkable_requires_token) with the token challenge, and 403 for a key or a relay run by the
+            router’s own operator. What is hidden: the relay sees your address and an encrypted request; the router sees the request and the relay, never your address; the token’s purchase cannot be tied to its use. What is not: a relay that
+            cooperates with the router can join the two, timing and message sizes can be correlated (responses are padded), and any identifier you put in the request body reaches the provider. Streaming is not available through the gateway.
           </p>
           <Code label="Attested providers only">
             {JSON.stringify(
