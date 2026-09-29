@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { AttestationKind } from "./attestation/types.ts";
 import type { BucketConfig } from "./quota.ts";
+import { CATEGORY_ID_RE, MINIMUM_CATEGORIES, RESERVED_LABELS, type Category } from "./classifier.ts";
 import { isForbiddenForwardHeader } from "./headers.ts";
 import { SidecarError } from "./util.ts";
 
@@ -24,14 +25,38 @@ export type SidecarConfig = {
     forwardHeaders: string[];
   };
   model: { path?: string; digest?: string; exclude: string[]; servedName?: string };
-  allowlist: { modelDigests: string[]; modelDigestsFile?: string; composeHashes: string[]; composeHashesFile?: string };
+  allowlist: {
+    modelDigests: string[];
+    modelDigestsFile?: string;
+    composeHashes: string[];
+    composeHashesFile?: string;
+    /** Digests the in-enclave classifier's weights may have. Kept apart from modelDigests on purpose. */
+    classifierDigests: string[];
+    classifierDigestsFile?: string;
+  };
   image: { digest?: string };
   compose: { file?: string; hash?: string };
   attestation: { provider: AttestationKind; dstackEndpoint?: string; tdxTsmPath?: string; freshQuotesPerMinute: number };
   router: { url?: string; providerId?: string; apiKeyEnv: string; failClosed: boolean };
   auth: { keys: KeyPolicy[]; allowAnonymous: boolean };
   quota: { default: BucketConfig; global: BucketConfig };
-  classifier: { enabled: boolean };
+  classifier: {
+    enabled: boolean;
+    kind: "openai_chat";
+    baseUrl?: string;
+    apiKeyEnv: string;
+    timeoutMs: number;
+    model: { path?: string; digest?: string; exclude: string[]; servedName?: string };
+    /** Additions to the built-in minimum set (MINIMUM_CATEGORIES), which is always enforced. */
+    categories: Category[];
+    checkResponse: boolean;
+    nonTextInput: "refuse" | "allow";
+    chunkChars: number;
+    overlapChars: number;
+    maxChunks: number;
+    concurrency: number;
+  };
+  hpke: { enabled: boolean; clockSkewSeconds: number };
   royalty: { recipient?: string };
   receipts: { queueCapacity: number };
   anchor: { tokenEnv: string };
@@ -91,11 +116,44 @@ function bucket(raw: unknown, path: string): BucketConfig {
   };
 }
 
+function categoryList(raw: unknown, path: string): Category[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) return bad(path, "expected a list of {id, description}");
+  const builtIn = new Set(MINIMUM_CATEGORIES.map((c) => c.id));
+  const seen = new Set<string>();
+  return raw.map((c, i) => {
+    const p = `${path}[${i}]`;
+    const o = obj(c, p);
+    known(o, ["id", "description"], p);
+    const id = str(o, "id", p) ?? bad(p, "id is required");
+    if (!CATEGORY_ID_RE.test(id)) bad(`${p}.id`, "expected 3 to 40 characters: a lowercase letter, then lowercase letters, digits or _");
+    if (RESERVED_LABELS.has(id)) bad(`${p}.id`, `"${id}" is reserved`);
+    if (builtIn.has(id)) bad(`${p}.id`, `"${id}" is built in and always enforced; it cannot be redefined`);
+    if (seen.has(id)) bad(`${p}.id`, `duplicate category "${id}"`);
+    seen.add(id);
+    const description = str(o, "description", p) ?? bad(p, "description is required");
+    if (description.length > 240 || /[\u0000-\u001f\u007f]/.test(description)) bad(`${p}.description`, "expected one line of at most 240 characters");
+    return { id, description };
+  });
+}
+
+function httpOrigin(value: string, path: string): string {
+  const clean = value.replace(/\/+$/, "").replace(/\/v1$/, "");
+  try {
+    const u = new URL(clean);
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("scheme");
+    if (u.username || u.password || u.search || u.hash) throw new Error("parts");
+  } catch {
+    bad(path, "expected an http(s) URL without credentials, query or fragment");
+  }
+  return clean;
+}
+
 const PROVIDERS: AttestationKind[] = ["dstack", "tdx", "dev"];
 
 export function parseConfig(raw: unknown, env: Record<string, string | undefined> = {}): SidecarConfig {
   const root = obj(raw, "(root)");
-  known(root, ["server", "upstream", "model", "allowlist", "image_digest", "compose", "attestation", "router", "auth", "quota", "classifier", "royalty", "receipts", "anchor"], "");
+  known(root, ["server", "upstream", "model", "allowlist", "image_digest", "compose", "attestation", "router", "auth", "quota", "classifier", "hpke", "royalty", "receipts", "anchor"], "");
 
   const server = obj(root.server, "server");
   known(server, ["host", "port", "hostnames", "tls", "cert_validity_days"], "server");
@@ -104,7 +162,7 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
   const model = obj(root.model, "model");
   known(model, ["path", "digest", "exclude", "served_name"], "model");
   const allow = obj(root.allowlist, "allowlist");
-  known(allow, ["model_digests", "model_digests_file", "compose_hashes", "compose_hashes_file"], "allowlist");
+  known(allow, ["model_digests", "model_digests_file", "compose_hashes", "compose_hashes_file", "classifier_digests", "classifier_digests_file"], "allowlist");
   const compose = obj(root.compose, "compose");
   known(compose, ["file", "hash"], "compose");
   const att = obj(root.attestation, "attestation");
@@ -120,7 +178,11 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
   const quota = obj(root.quota, "quota");
   known(quota, ["default", "global"], "quota");
   const classifier = obj(root.classifier, "classifier");
-  known(classifier, ["enabled"], "classifier");
+  known(classifier, ["enabled", "kind", "base_url", "api_key_env", "timeout_ms", "model", "categories", "check_response", "non_text_input", "chunk_chars", "overlap_chars", "max_chunks", "concurrency"], "classifier");
+  const classifierModel = obj(classifier.model, "classifier.model");
+  known(classifierModel, ["path", "digest", "exclude", "served_name"], "classifier.model");
+  const hpke = obj(root.hpke, "hpke");
+  known(hpke, ["enabled", "clock_skew_seconds"], "hpke");
   const royalty = obj(root.royalty, "royalty");
   known(royalty, ["recipient"], "royalty");
   const receipts = obj(root.receipts, "receipts");
@@ -178,6 +240,24 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
     bad("auth.keys", "no API keys are configured; list keys (with the SHA-256 of each) or set auth.allow_anonymous: true to serve without authentication");
   }
 
+  const classifierEnabled = bool(classifier, "enabled", "classifier") ?? false;
+  const classifierKind = str(classifier, "kind", "classifier") ?? "openai_chat";
+  if (classifierKind !== "openai_chat") bad("classifier.kind", 'expected "openai_chat"');
+  const nonText = str(classifier, "non_text_input", "classifier") ?? "refuse";
+  if (nonText !== "refuse" && nonText !== "allow") bad("classifier.non_text_input", 'expected "refuse" or "allow"');
+  const chunkChars = int(classifier, "chunk_chars", "classifier", 200, 100_000) ?? 6000;
+  const overlapChars = int(classifier, "overlap_chars", "classifier", 0, 50_000) ?? 200;
+  if (overlapChars >= chunkChars) bad("classifier.overlap_chars", "must be smaller than chunk_chars");
+  const classifierUrlRaw = env.SIDECAR_CLASSIFIER_URL ?? str(classifier, "base_url", "classifier");
+  const classifierUrl = classifierUrlRaw ? httpOrigin(classifierUrlRaw, "classifier.base_url") : undefined;
+  if (classifierEnabled) {
+    if (!classifierUrl) bad("classifier.base_url", "required when classifier.enabled is true (the second model server, inside the same VM)");
+    if (!str(classifierModel, "served_name", "classifier.model")) bad("classifier.model.served_name", "required when classifier.enabled is true (the model name to send to the classifier server)");
+    if (!(env.SIDECAR_CLASSIFIER_MODEL_PATH ?? str(classifierModel, "path", "classifier.model")) && !(env.SIDECAR_CLASSIFIER_MODEL_DIGEST ?? str(classifierModel, "digest", "classifier.model"))) {
+      bad("classifier.model", "set classifier.model.path (the classifier weights to hash) or classifier.model.digest (a precomputed digest)");
+    }
+  }
+
   const cfg: SidecarConfig = {
     server: {
       host: env.SIDECAR_HOST ?? str(server, "host", "server") ?? "0.0.0.0",
@@ -206,6 +286,8 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
       modelDigestsFile: str(allow, "model_digests_file", "allowlist"),
       composeHashes: strList(allow, "compose_hashes", "allowlist"),
       composeHashesFile: str(allow, "compose_hashes_file", "allowlist"),
+      classifierDigests: strList(allow, "classifier_digests", "allowlist"),
+      classifierDigestsFile: str(allow, "classifier_digests_file", "allowlist"),
     },
     image: { digest: env.SIDECAR_IMAGE_DIGEST ?? str(root, "image_digest", "") },
     compose: { file: env.SIDECAR_COMPOSE_FILE ?? str(compose, "file", "compose"), hash: env.SIDECAR_COMPOSE_HASH ?? str(compose, "hash", "compose") },
@@ -218,7 +300,27 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
     router: { url: routerUrl, providerId: routerProvider, apiKeyEnv: str(router, "api_key_env", "router") ?? "SIDECAR_ROUTER_API_KEY", failClosed: bool(router, "fail_closed", "router") ?? true },
     auth: { keys, allowAnonymous: bool(auth, "allow_anonymous", "auth") ?? false },
     quota: { default: bucket(quota.default, "quota.default"), global: bucket(quota.global, "quota.global") },
-    classifier: { enabled: bool(classifier, "enabled", "classifier") ?? false },
+    classifier: {
+      enabled: classifierEnabled,
+      kind: classifierKind as "openai_chat",
+      baseUrl: classifierUrl,
+      apiKeyEnv: str(classifier, "api_key_env", "classifier") ?? "SIDECAR_CLASSIFIER_API_KEY",
+      timeoutMs: int(classifier, "timeout_ms", "classifier", 500, 300_000) ?? 10_000,
+      model: {
+        path: env.SIDECAR_CLASSIFIER_MODEL_PATH ?? str(classifierModel, "path", "classifier.model"),
+        digest: env.SIDECAR_CLASSIFIER_MODEL_DIGEST ?? str(classifierModel, "digest", "classifier.model"),
+        exclude: strList(classifierModel, "exclude", "classifier.model"),
+        servedName: str(classifierModel, "served_name", "classifier.model"),
+      },
+      categories: categoryList(classifier.categories, "classifier.categories"),
+      checkResponse: bool(classifier, "check_response", "classifier") ?? false,
+      nonTextInput: nonText as "refuse" | "allow",
+      chunkChars,
+      overlapChars,
+      maxChunks: int(classifier, "max_chunks", "classifier", 1, 1000) ?? 32,
+      concurrency: int(classifier, "concurrency", "classifier", 1, 32) ?? 4,
+    },
+    hpke: { enabled: bool(hpke, "enabled", "hpke") ?? false, clockSkewSeconds: int(hpke, "clock_skew_seconds", "hpke", 1, 3600) ?? 300 },
     royalty: { recipient },
     receipts: { queueCapacity: int(receipts, "queue_capacity", "receipts", 1, 10_000_000) ?? 100_000 },
     anchor: { tokenEnv: str(anchor, "token_env", "anchor") ?? "SIDECAR_ANCHOR_TOKEN" },

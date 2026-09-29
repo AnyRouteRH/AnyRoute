@@ -1,8 +1,10 @@
 import { readFile } from "node:fs/promises";
 import type { KeyObject } from "node:crypto";
 import { createAttestationProvider, type AttestationProvider, type QuoteEvidence } from "./attestation/index.ts";
-import { assertModelAllowlistConfigured, enforceComposePin, enforceModelPin, hashModelPath, loadAllowlist } from "./digest.ts";
+import { ChatLabelClassifier, ContentGate, enforcedCategories } from "./classifier.ts";
+import { assertClassifierAllowlistConfigured, assertModelAllowlistConfigured, enforceClassifierPin, enforceComposePin, enforceModelPin, hashModelPath, loadAllowlist } from "./digest.ts";
 import type { SidecarConfig } from "./config.ts";
+import { HpkeEndpoint } from "./hpke.ts";
 import { QuotaManager, type BucketConfig } from "./quota.ts";
 import { EnclaveSigner, ReceiptIndex, ReceiptQueue } from "./receipts.ts";
 import { verifyAgainstRouter } from "./router-check.ts";
@@ -13,14 +15,17 @@ import { normalizeDigest, sha256Hex, SidecarError, stderrLogger, type Logger } f
 // Boot sequence. Every step that can refuse to start runs before the keys are generated and before anything
 // listens, in this order (cheapest checks first):
 //   1. the attestation provider is constructed (this is where the dev provider is refused)
-//   2. the classifier setting is checked (no classifier ships in this version, so `enabled: true` is refused)
-//   3. the allow-lists are loaded and the model allow-list must be non-empty
-//   4. the weights are hashed (or a declared digest is checked against them) and must be on the allow-list
+//   2. (nothing: the classifier is checked with the allow-lists and the weights, below)
+//   3. the allow-lists are loaded and the model allow-list must be non-empty; with the classifier on, so must the
+//      classifier allow-list
+//   4. the weights are hashed (or a declared digest is checked against them) and must be on the allow-list; with the
+//      classifier on, its weights are measured and pinned the same way, against their own list
 //   5. the compose hash is collected from the platform, the configuration and the compose file; they must agree;
 //      when a compose allow-list is configured it must contain the hash
 //   6. optionally the router's record for this provider is compared with the served model digest
-//   7. the Ed25519 receipt key and the TLS key are generated, the quote is requested with report data that binds
-//      them and the digests, and the certificate is issued with the quote's hash in its SAN.
+//   7. the Ed25519 receipt key, the TLS key and (when enabled) the HPKE key are generated, the quote is requested
+//      with report data that binds them, the digests and the classifier, and the certificate is issued with the
+//      quote's hash in its SAN.
 
 export type Sourced = { value: string; source: string };
 
@@ -37,6 +42,12 @@ export type Runtime = {
   /** sha256 of the boot quote bytes, 64 hex characters: carried in the certificate SAN and in every receipt. */
   attestationRef: string;
   model: { digest: string; source: "measured" | "declared"; files?: number; bytes?: number };
+  /** The in-enclave classifier, when enabled. It only ever reports counts. */
+  classifier: ContentGate | null;
+  /** How the classifier's digest was obtained. */
+  classifierWeights: Runtime["model"] | null;
+  /** The request-encryption key, when enabled. */
+  hpke: HpkeEndpoint | null;
   composeHash: Sourced;
   imageDigest: Sourced;
   routerChecked: boolean;
@@ -61,6 +72,24 @@ export type BootDeps = {
 
 const nonEmpty = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
 
+/** Hash the weights at `spec.path`, or take the declared digest; a declared digest must match what is measured. */
+async function measureWeights(
+  spec: { path?: string; digest?: string; exclude: string[] },
+  o: { label: string; field: string; mismatchCode: string; logger: Logger },
+): Promise<Runtime["model"]> {
+  const declared = spec.digest ? normalizeDigest(spec.digest, `${o.field}.digest`) : undefined;
+  if (spec.path) {
+    o.logger("info", `hashing ${o.label} weights`, { path: spec.path });
+    const h = await hashModelPath(spec.path, { exclude: spec.exclude, logger: (l, m, f) => l !== "info" && o.logger(l, m, f) });
+    if (declared && declared !== h.digest) {
+      throw new SidecarError(o.mismatchCode, `${o.field}.digest ${declared} does not match the weights at ${o.field}.path (${h.digest}); refusing to start`);
+    }
+    return { digest: h.digest, source: "measured", files: h.files, bytes: h.bytes };
+  }
+  o.logger("warn", `${o.label} digest is declared, not measured: this process did not hash any weights`, { digest: declared });
+  return { digest: declared!, source: "declared" };
+}
+
 export async function boot(cfg: SidecarConfig, deps: BootDeps = {}): Promise<Runtime> {
   const env = deps.env ?? process.env;
   const logger = deps.logger ?? stderrLogger;
@@ -75,28 +104,19 @@ export async function boot(cfg: SidecarConfig, deps: BootDeps = {}): Promise<Run
   }
   if (dev) logger("warn", "DEV ATTESTATION: evidence is simulated and proves nothing; every response and receipt is marked dev");
 
-  // 2
-  if (cfg.classifier.enabled) throw new SidecarError("CLASSIFIER_UNAVAILABLE", "classifier.enabled is true but this version ships no classifier; refusing to start rather than run without one");
-
   // 3
   const allow = await loadAllowlist(cfg.allowlist, env);
   assertModelAllowlistConfigured(allow);
+  if (cfg.classifier.enabled) assertClassifierAllowlistConfigured(allow);
 
   // 4
-  let model: Runtime["model"];
-  const declared = cfg.model.digest ? normalizeDigest(cfg.model.digest, "model.digest") : undefined;
-  if (cfg.model.path) {
-    logger("info", "hashing served weights", { path: cfg.model.path });
-    const h = await hashModelPath(cfg.model.path, { exclude: cfg.model.exclude, logger: (l, m, f) => l !== "info" && logger(l, m, f) });
-    if (declared && declared !== h.digest) {
-      throw new SidecarError("MODEL_DIGEST_MISMATCH", `model.digest ${declared} does not match the weights at model.path (${h.digest}); refusing to start`);
-    }
-    model = { digest: h.digest, source: "measured", files: h.files, bytes: h.bytes };
-  } else {
-    logger("warn", "model digest is declared, not measured: this process did not hash any weights", { digest: declared });
-    model = { digest: declared!, source: "declared" };
-  }
+  const model = await measureWeights(cfg.model, { label: "served", field: "model", mismatchCode: "MODEL_DIGEST_MISMATCH", logger });
   enforceModelPin(model.digest, allow);
+  let classifierWeights: Runtime["model"] | null = null;
+  if (cfg.classifier.enabled) {
+    classifierWeights = await measureWeights(cfg.classifier.model, { label: "classifier", field: "classifier.model", mismatchCode: "CLASSIFIER_DIGEST_MISMATCH", logger });
+    enforceClassifierPin(classifierWeights.digest, allow);
+  }
 
   // 5
   const found: Sourced[] = [];
@@ -142,12 +162,35 @@ export async function boot(cfg: SidecarConfig, deps: BootDeps = {}): Promise<Run
   } else if (!dev) {
     logger("warn", "server.tls is off: the transport is not covered by the attestation; terminate TLS in front of this process only inside the same trust boundary");
   }
+  const hpke = cfg.hpke.enabled ? await HpkeEndpoint.generate({ clockSkewMs: cfg.hpke.clockSkewSeconds * 1000, now }) : null;
+  let classifier: ContentGate | null = null;
+  if (classifierWeights) {
+    const c = cfg.classifier;
+    classifier = new ContentGate(
+      new ChatLabelClassifier({
+        baseUrl: c.baseUrl!,
+        model: c.model.servedName!,
+        apiKey: nonEmpty(env[c.apiKeyEnv]),
+        timeoutMs: c.timeoutMs,
+        fetchImpl,
+        digest: classifierWeights.digest,
+        categories: enforcedCategories(c.categories),
+      }),
+      { checkResponse: c.checkResponse, nonTextInput: c.nonTextInput, chunkChars: c.chunkChars, overlapChars: c.overlapChars, maxChunks: c.maxChunks, concurrency: c.concurrency },
+      now,
+    );
+  }
+  if (classifier && cfg.classifier.nonTextInput === "allow") {
+    logger("warn", "classifier.non_text_input is allow: images, audio and files are forwarded without being examined");
+  }
   const bindings: Bindings = {
     tlsPubkey: tlsSpkiHex,
     receiptPubkey: signer.publicKeyHex,
     imageDigest: imageDigest.value,
     composeHash: composeHash.value,
     modelDigest: model.digest,
+    ...(classifier ? { classifier: { digest: classifier.digest, policy: classifier.policy } } : {}),
+    ...(hpke ? { hpkePubkey: hpke.publicKeyHex } : {}),
   };
   const rd = reportData(bindings);
   const bootEvidence = await provider.quote(rd);
@@ -179,6 +222,8 @@ export async function boot(cfg: SidecarConfig, deps: BootDeps = {}): Promise<Run
     dev,
     model_digest: model.digest,
     model_digest_source: model.source,
+    classifier_digest: classifier?.digest ?? null,
+    hpke_key_id: hpke?.keyId ?? null,
     compose_hash_source: composeHash.source,
     attestation_ref: attestationRef,
     receipt_key_id: signer.keyId,
@@ -198,6 +243,9 @@ export async function boot(cfg: SidecarConfig, deps: BootDeps = {}): Promise<Run
     model,
     composeHash,
     imageDigest,
+    classifier,
+    classifierWeights,
+    hpke,
     routerChecked,
     queue: new ReceiptQueue(cfg.receipts.queueCapacity),
     receiptIndex: new ReceiptIndex(),

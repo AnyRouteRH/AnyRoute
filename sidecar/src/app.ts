@@ -51,7 +51,9 @@ export function createHandler(rt: Runtime): (req: Request) => Promise<Response> 
     if (p === "/healthz") {
       if (m !== "GET" && m !== "HEAD") return { name: "healthz", res: errorResponse(rt, 405, "method_not_allowed", "use GET", { allow: "GET, HEAD" }) };
       const upstream = await upstreamHealthy();
-      const ok = upstream;
+      // With the classifier on, an unreachable classifier means every request is refused (fail closed): not ready.
+      const classifierReachable = rt.classifier ? await rt.classifier.reachable() : true;
+      const ok = upstream && classifierReachable;
       const body = {
         status: ok ? "ok" : "degraded",
         version: SIDECAR_VERSION,
@@ -61,6 +63,18 @@ export function createHandler(rt: Runtime): (req: Request) => Promise<Response> 
         upstream: upstream ? "ok" : "unreachable",
         uptime_s: Math.floor((Date.now() - rt.startedAt) / 1000),
         receipts: { pending: rt.queue.pending, dropped: rt.queue.dropped },
+        // Counts only: the sidecar keeps no record of what was refused or why.
+        classifier: rt.classifier
+          ? {
+              enabled: true,
+              digest: rt.classifier.digest,
+              reachable: classifierReachable,
+              blocked_requests: rt.classifier.counters.blockedRequests,
+              blocked_responses: rt.classifier.counters.blockedResponses,
+              unavailable: rt.classifier.counters.unavailable,
+            }
+          : { enabled: false },
+        hpke: rt.hpke ? { enabled: true, key_id: rt.hpke.keyId } : { enabled: false },
         tls_not_after: rt.tls?.notAfter.toISOString() ?? null,
       };
       return { name: "healthz", res: jsonResponse(rt, ok ? 200 : 503, body) };

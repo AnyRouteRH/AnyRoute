@@ -7,7 +7,8 @@ import { bytesToHex, canonicalBytes, randomHex, sha256Hex } from "./util.ts";
 // The fields are carried as one JSON object and signed over its canonical bytes (keys sorted, no whitespace),
 // which is unambiguous where a raw concatenation is not, and is the same encoding and Ed25519 scheme the router
 // uses for its own receipts. The signing key is generated in memory at boot and its public half is bound into the
-// attestation report data.
+// attestation report data. Fields that only exist when a feature is on (`classifier`, `e2ee`) are left out
+// otherwise, so a receipt from a deployment without them is unchanged.
 
 export type Usage = { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 
@@ -34,6 +35,17 @@ export type ReceiptPayload = {
   usage: Usage | null;
   /** True when the attestation behind this receipt is simulated. Verifiers must reject dev receipts in production. */
   dev: boolean;
+  /**
+   * Present only when the in-enclave classifier is on: its weights digest (the one bound in the attestation) and one
+   * bit, whether it refused this exchange. Nothing about the content or the category is recorded.
+   */
+  classifier?: { enabled: true; digest: string; blocked: boolean };
+  /**
+   * Present only for end-to-end encrypted exchanges. req_hash and resp_hash are then hashes of the encrypted bytes
+   * on the wire (for a stream, everything before the final frame, which carries this receipt), which the client
+   * can recompute from what it sent and received.
+   */
+  e2ee?: "anyroute-hpke-v1";
 };
 
 export type ReceiptEnvelope = {

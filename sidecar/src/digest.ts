@@ -100,7 +100,7 @@ export async function hashModelPath(path: string, opts: HashOptions = {}): Promi
 
 // ---- allow-list -----------------------------------------------------------------------------------
 
-export type Allowlist = { modelDigests: Set<string>; composeHashes: Set<string> };
+export type Allowlist = { modelDigests: Set<string>; composeHashes: Set<string>; classifierDigests: Set<string> };
 
 /** One entry per line, `#` starts a comment. Entries are sha256 digests. */
 export function parseAllowlistText(text: string, what: string): string[] {
@@ -117,6 +117,9 @@ export type AllowlistSources = {
   modelDigestsFile?: string;
   composeHashes: string[];
   composeHashesFile?: string;
+  /** The in-enclave classifier's weights have their own list; a main-model entry never admits a classifier. */
+  classifierDigests?: string[];
+  classifierDigestsFile?: string;
 };
 
 export async function loadAllowlist(src: AllowlistSources, env: Record<string, string | undefined>): Promise<Allowlist> {
@@ -141,7 +144,12 @@ export async function loadAllowlist(src: AllowlistSources, env: Record<string, s
     ...(await fromFile(src.composeHashesFile, "compose hash")),
     ...fromEnv(env.SIDECAR_COMPOSE_ALLOWLIST, "SIDECAR_COMPOSE_ALLOWLIST"),
   ];
-  return { modelDigests: new Set(model), composeHashes: new Set(compose) };
+  const classifier = [
+    ...(src.classifierDigests ?? []).map((d) => normalizeDigest(d, "allowlist classifier digest")),
+    ...(await fromFile(src.classifierDigestsFile, "classifier digest")),
+    ...fromEnv(env.SIDECAR_CLASSIFIER_ALLOWLIST, "SIDECAR_CLASSIFIER_ALLOWLIST"),
+  ];
+  return { modelDigests: new Set(model), composeHashes: new Set(compose), classifierDigests: new Set(classifier) };
 }
 
 /** Checked before the weights are hashed, so a missing list fails in seconds rather than after an hour of hashing. */
@@ -156,6 +164,21 @@ export function enforceModelPin(digest: string, allow: Allowlist): void {
   assertModelAllowlistConfigured(allow);
   if (!allow.modelDigests.has(digest)) {
     throw new SidecarError("MODEL_DIGEST_NOT_ALLOWED", `served model digest ${digest} is not in the allow-list; refusing to start`);
+  }
+}
+
+/** Checked before the classifier weights are hashed, for the same reason as the model list. */
+export function assertClassifierAllowlistConfigured(allow: Allowlist): void {
+  if (!allow.classifierDigests.size) {
+    throw new SidecarError("CLASSIFIER_ALLOWLIST_EMPTY", "the classifier is enabled but no classifier digest allow-list is configured; refusing to start (set allowlist.classifier_digests, allowlist.classifier_digests_file or SIDECAR_CLASSIFIER_ALLOWLIST)");
+  }
+}
+
+/** Refuse to start unless the classifier's weights are on the classifier allow-list (not the model list). */
+export function enforceClassifierPin(digest: string, allow: Allowlist): void {
+  assertClassifierAllowlistConfigured(allow);
+  if (!allow.classifierDigests.has(digest)) {
+    throw new SidecarError("CLASSIFIER_DIGEST_NOT_ALLOWED", `classifier digest ${digest} is not in the classifier allow-list; refusing to start`);
   }
 }
 

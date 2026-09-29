@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { assertModelAllowlistConfigured, digestFromManifest, enforceComposePin, enforceModelPin, hashModelPath, loadAllowlist, parseAllowlistText } from "../src/digest.ts";
+import { assertClassifierAllowlistConfigured, assertModelAllowlistConfigured, enforceClassifierPin, digestFromManifest, enforceComposePin, enforceModelPin, hashModelPath, loadAllowlist, parseAllowlistText } from "../src/digest.ts";
 import { SidecarError } from "../src/util.ts";
 import { cleanup, tmpDir, writeFiles } from "./helpers.ts";
 
@@ -120,5 +120,26 @@ describe("allow-lists", () => {
     expect(codeOf(() => enforceComposePin(d2, some))).toBeNull();
     expect(codeOf(() => enforceComposePin(d1, some))).toBe("COMPOSE_HASH_NOT_ALLOWED");
     expect(codeOf(() => enforceComposePin(null, some))).toBe("COMPOSE_HASH_MISSING");
+  });
+
+  test("the classifier has its own list, merged from config, file and environment, and never shares entries with the model list", async () => {
+    const dir = tmpDir();
+    writeFiles(dir, { "classifiers.txt": `${d2}\n` });
+    const allow = await loadAllowlist(
+      { modelDigests: [d1], composeHashes: [], classifierDigests: [d1], classifierDigestsFile: join(dir, "classifiers.txt") },
+      { SIDECAR_CLASSIFIER_ALLOWLIST: `0x${"cc".repeat(32)}`, SIDECAR_MODEL_ALLOWLIST: `0x${"dd".repeat(32)}` },
+    );
+    expect([...allow.classifierDigests].sort()).toEqual([d1, d2, `sha256:${"cc".repeat(32)}`].sort());
+    expect(allow.modelDigests.has(`sha256:${"cc".repeat(32)}`)).toBe(false);
+    expect(allow.classifierDigests.has(`sha256:${"dd".repeat(32)}`)).toBe(false);
+  });
+
+  test("the classifier pin refuses an empty list and any digest not on it, even one the model list has", async () => {
+    const modelOnly = await loadAllowlist({ modelDigests: [d1], composeHashes: [] }, {});
+    expect(codeOf(() => assertClassifierAllowlistConfigured(modelOnly))).toBe("CLASSIFIER_ALLOWLIST_EMPTY");
+    expect(codeOf(() => enforceClassifierPin(d1, modelOnly))).toBe("CLASSIFIER_ALLOWLIST_EMPTY");
+    const both = await loadAllowlist({ modelDigests: [d1], composeHashes: [], classifierDigests: [d2] }, {});
+    expect(codeOf(() => enforceClassifierPin(d2, both))).toBeNull();
+    expect(codeOf(() => enforceClassifierPin(d1, both))).toBe("CLASSIFIER_DIGEST_NOT_ALLOWED");
   });
 });

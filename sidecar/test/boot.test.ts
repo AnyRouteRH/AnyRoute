@@ -114,8 +114,12 @@ describe("boot", () => {
     expect(await bootFails(harness({ model, raw: { compose: { file: join(dir, "missing.json") } } }))).toBe("COMPOSE_UNREADABLE");
   });
 
-  test("the classifier is refused rather than silently skipped", async () => {
-    expect(await bootFails(harness({ raw: { classifier: { enabled: true } } }))).toBe("CLASSIFIER_UNAVAILABLE");
+  test("a classifier that is switched on without its settings is refused, not skipped", async () => {
+    expect(await bootFails(harness({ raw: { classifier: { enabled: true } } }))).toBe("BAD_CONFIG");
+    // Complete settings but no allow-list entry for its weights: also refused (see classifier.test.ts for the rest).
+    const model = await makeModel();
+    const raw = { classifier: { enabled: true, base_url: "http://127.0.0.1:1", model: { digest: `sha256:${"ab".repeat(32)}`, served_name: "cls" } } };
+    expect(await bootFails(harness({ model, raw }))).toBe("CLASSIFIER_ALLOWLIST_EMPTY");
   });
 
   test("tls off leaves the TLS binding empty and says so", async () => {

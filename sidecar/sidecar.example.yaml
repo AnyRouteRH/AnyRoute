@@ -45,6 +45,12 @@ allowlist:
   # If set, the deployment (compose) hash must be listed too.
   compose_hashes: []
   # compose_hashes_file: /etc/sidecar/compose-hashes.txt
+  # Digests the classifier's weights (classifier.model below) may have. A separate list on purpose: a digest that
+  # is only on model_digests never admits a classifier. Required when classifier.enabled is true.
+  classifier_digests:
+    - sha256:0000000000000000000000000000000000000000000000000000000000000000 # REPLACE
+  # classifier_digests_file: /etc/sidecar/classifiers.txt
+  # (SIDECAR_CLASSIFIER_ALLOWLIST adds comma-separated digests from the environment.)
 
 # The digest of this image as you pin it in your compose file. Bound into the attestation as declared.
 # image_digest: sha256:REPLACE
@@ -94,8 +100,48 @@ quota:
     burst: 10
   global: {}
 
+# In-enclave hard-block classifier. A second, small model served inside the same VM labels the text of each request
+# (and, if check_response is set, of each response). A hit refuses the exchange with a generic error and never
+# forwards it; the receipt carries one signed bit and the operator sees a counter, never the text or the label.
+# If the classifier cannot answer, the exchange is refused too. Its weights are hashed at boot like the main model
+# and must be on allowlist.classifier_digests; the digest and policy are bound into the attestation.
 classifier:
-  enabled: false # no classifier ships in this version; true is refused at startup
+  enabled: false
+  kind: openai_chat # the shipped backend: one chat-completions call per chunk with a fixed prompt template
+  # The classifier's own OpenAI-compatible server. Keep it on the internal network, like the main model server.
+  base_url: http://classifier:8001
+  api_key_env: SIDECAR_CLASSIFIER_API_KEY
+  timeout_ms: 10000
+  model:
+    # The weights that server loads (hashed at boot), or a precomputed digest, and the name it serves them under.
+    path: /models/classifier
+    # digest: sha256:REPLACE
+    exclude: []
+    served_name: classifier
+  # Categories illegal everywhere are built in and always enforced (sexual content involving minors). Add more
+  # here if your jurisdiction needs them; a built-in category can be neither removed nor redefined.
+  categories: []
+  #  - id: example_category
+  #    description: one line describing what falls in this category
+  # Also check what the model returns. A stream is then read to the end and examined before any of it is released,
+  # so the first token arrives later.
+  check_response: false
+  # The classifier reads text only. "refuse" rejects requests carrying images, audio or files; "allow" lets them
+  # through unexamined (choose it only if you knowingly serve a multimodal model).
+  non_text_input: refuse
+  # Long text is checked in overlapping pieces; more than max_chunks pieces is refused rather than partly checked.
+  chunk_chars: 6000
+  overlap_chars: 200
+  max_chunks: 32
+  concurrency: 4
+
+# End-to-end encryption of requests and responses to a key generated inside the enclave at boot (RFC 9180 HPKE:
+# X25519, HKDF-SHA256, AES-128-GCM). The public key is published at /attest and bound into the attestation. Clients
+# send content-type application/anyroute-hpke (format in the README); plain JSON keeps working.
+hpke:
+  enabled: false
+  # How far a request's timestamp may differ from this clock. Requests are also refused if their key share repeats.
+  clock_skew_seconds: 300
 
 royalty:
   # Published in /.well-known/anyroute-sidecar.json. Does not change what the sidecar does.

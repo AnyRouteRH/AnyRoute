@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { Runtime } from "./boot.ts";
+import type { Verdict } from "./classifier.ts";
 import { buildUpstreamHeaders, pickResponseHeaders } from "./headers.ts";
+import { HPKE_CONTENT_TYPE, HPKE_STREAM_CONTENT_TYPE, HpkeError, type HpkeResponder } from "./hpke.ts";
 import { encodeReceiptHeader, newReceiptId, normalizeUsage, type ReceiptEnvelope, type ReceiptPayload, type Usage } from "./receipts.ts";
 import { baseHeaders, errorResponse } from "./respond.ts";
 import { SseScanner } from "./sse.ts";
@@ -11,6 +13,14 @@ import { SseScanner } from "./sse.ts";
 // the client sent and exactly what the model server received. Request headers are forwarded by allow-list (see
 // headers.ts): no client address, forwarding header, cookie or client credential reaches the model server, and
 // the sidecar never reads the peer address of the connection at all.
+//
+// Two optional layers wrap that path, both off unless configured:
+//   * end-to-end encryption (hpke.ts): a request with content-type application/anyroute-hpke is opened inside
+//     this process, and whatever the model server returns is encrypted back to the caller. In that mode req_hash
+//     and resp_hash are hashes of the encrypted bytes, and no client header is forwarded.
+//   * the hard-block classifier (classifier.ts): the request text is checked before anything is forwarded, and
+//     optionally the response text before anything is returned. A hit refuses the exchange with a generic error and
+//     a receipt carrying one bit; an unusable answer refuses it too.
 
 export type Caller = { keyId: string };
 
@@ -61,9 +71,11 @@ type Ctx = {
   path: string;
   id: string;
   reqHash: string;
+  /** Set when the request arrived encrypted: the response goes back encrypted with it. */
+  responder: HpkeResponder | null;
 };
 
-function makeReceipt(c: Ctx, o: { status: number; stream: boolean; complete: boolean; respHash: string; usage: Usage | null }): ReceiptEnvelope {
+function makeReceipt(c: Ctx, o: { status: number; stream: boolean; complete: boolean; respHash: string; usage: Usage | null; blocked?: boolean }): ReceiptEnvelope {
   const payload: ReceiptPayload = {
     v: 1,
     type: "anyroute.sidecar.receipt",
@@ -80,6 +92,8 @@ function makeReceipt(c: Ctx, o: { status: number; stream: boolean; complete: boo
     nullifier: "",
     usage: o.usage,
     dev: c.rt.dev,
+    ...(c.rt.classifier ? { classifier: { enabled: true as const, digest: c.rt.classifier.digest, blocked: o.blocked ?? false } } : {}),
+    ...(c.responder ? { e2ee: "anyroute-hpke-v1" as const } : {}),
   };
   const env = c.rt.signer.sign(payload);
   c.rt.queue.push(env);
@@ -87,18 +101,74 @@ function makeReceipt(c: Ctx, o: { status: number; stream: boolean; complete: boo
   return env;
 }
 
+const REFUSAL_MESSAGE = { request: "the request was declined by this endpoint's content policy", response: "the response was withheld by this endpoint's content policy" };
+
+/** Sidecar-made error with a signed receipt carrying the classifier bit. The body names no category. */
+function blockedResponse(c: Ctx, phase: "request" | "response", usage: Usage | null): Response {
+  const bytes = new TextEncoder().encode(JSON.stringify({ error: { message: REFUSAL_MESSAGE[phase], type: "invalid_request_error", code: "content_policy_violation" } }));
+  const env = makeReceipt(c, { status: 400, stream: false, complete: true, respHash: sha(bytes), usage, blocked: true });
+  const headers = baseHeaders(c.rt);
+  headers.set("content-type", "application/json");
+  headers.set("x-anyroute-receipt-id", c.id);
+  headers.set("x-anyroute-receipt", encodeReceiptHeader(env));
+  return new Response(bytes, { status: 400, headers });
+}
+
+/** The classifier gave no usable answer: nothing is forwarded and nothing is released. */
+const checkUnavailable = (rt: Runtime, phase: "request" | "response") =>
+  errorResponse(rt, 503, "content_check_unavailable", `the content check is unavailable; the ${phase} was not ${phase === "request" ? "processed" : "released"}`, { "retry-after": "5" });
+
+/** Turn a non-allow verdict into the response that ends the exchange, or null for allow. */
+function verdictResponse(c: Ctx, v: Verdict, phase: "request" | "response", usage: Usage | null): Response | null {
+  switch (v) {
+    case "allow":
+      return null;
+    case "blocked":
+      return blockedResponse(c, phase, usage);
+    case "unsupported":
+      return errorResponse(c.rt, 400, "unsupported_input", "this endpoint cannot check non-text input, so it does not accept it");
+    case "too_large":
+      return errorResponse(c.rt, 413, "content_too_large", "there is more text than the content check will examine");
+  }
+}
+
+const HPKE_ERRORS: Record<HpkeError["reason"], { status: number; code: string }> = {
+  malformed: { status: 400, code: "invalid_encryption" },
+  expired: { status: 400, code: "request_expired" },
+  replayed: { status: 400, code: "request_replayed" },
+  decryption_failed: { status: 400, code: "decryption_failed" },
+};
+
 export async function handleInference(rt: Runtime, req: Request, path: string, caller: Caller): Promise<Response> {
   if (req.method !== "POST") return errorResponse(rt, 405, "method_not_allowed", "use POST", { allow: "POST" });
   const ctype = (req.headers.get("content-type") ?? "").toLowerCase();
-  if (!/^application\/json\s*(;|$)/.test(ctype)) return errorResponse(rt, 415, "unsupported_media_type", "content-type must be application/json");
+  const encrypted = rt.hpke !== null && /^application\/anyroute-hpke\s*(;|$)/.test(ctype);
+  if (!encrypted && !/^application\/json\s*(;|$)/.test(ctype)) {
+    return errorResponse(rt, 415, "unsupported_media_type", rt.hpke ? `content-type must be application/json or ${HPKE_CONTENT_TYPE}` : "content-type must be application/json");
+  }
 
   const admission = rt.quota.admit(caller.keyId);
   if (!admission.ok) {
     return errorResponse(rt, 429, "rate_limit_exceeded", "quota exceeded for this key", { "retry-after": String(admission.retryAfterSec) });
   }
 
-  const body = await readBodyCapped(req, rt.cfg.upstream.maxRequestBytes);
-  if (!body) return errorResponse(rt, 413, "request_too_large", `request body exceeds ${rt.cfg.upstream.maxRequestBytes} bytes`);
+  const wire = await readBodyCapped(req, rt.cfg.upstream.maxRequestBytes);
+  if (!wire) return errorResponse(rt, 413, "request_too_large", `request body exceeds ${rt.cfg.upstream.maxRequestBytes} bytes`);
+  // What the client sent: the body itself, or (encrypted) the encrypted body, which the client can hash too.
+  const reqHash = sha(wire);
+  let body: Uint8Array = wire;
+  let responder: HpkeResponder | null = null;
+  if (encrypted) {
+    try {
+      const opened = await rt.hpke!.open(wire, path);
+      body = opened.plaintext;
+      responder = opened.responder;
+    } catch (e) {
+      if (!(e instanceof HpkeError)) throw e;
+      const { status, code } = HPKE_ERRORS[e.reason];
+      return errorResponse(rt, status, code, e.message);
+    }
+  }
   let parsed: Record<string, unknown>;
   try {
     const v = JSON.parse(Buffer.from(body).toString("utf8"));
@@ -110,7 +180,19 @@ export async function handleInference(rt: Runtime, req: Request, path: string, c
   const served = rt.cfg.model.servedName;
   if (served && parsed.model !== served) return errorResponse(rt, 404, "model_not_found", `this endpoint serves "${served}" only`);
 
-  const ctx: Ctx = { rt, caller, path, id: newReceiptId(), reqHash: sha(body) };
+  const ctx: Ctx = { rt, caller, path, id: newReceiptId(), reqHash, responder };
+
+  if (rt.classifier) {
+    let verdict: Verdict;
+    try {
+      verdict = await rt.classifier.checkRequest(parsed);
+    } catch {
+      return checkUnavailable(rt, "request"); // fail closed: nothing has been forwarded
+    }
+    const refusal = verdictResponse(ctx, verdict, "request", null);
+    if (refusal) return refusal;
+  }
+
   const ac = new AbortController();
   const onClientAbort = () => ac.abort();
   req.signal.addEventListener("abort", onClientAbort, { once: true });
@@ -121,7 +203,8 @@ export async function handleInference(rt: Runtime, req: Request, path: string, c
   try {
     up = await rt.fetchImpl(`${rt.cfg.upstream.baseUrl}${path}`, {
       method: "POST",
-      headers: buildUpstreamHeaders(req.headers, { forwardHeaders: rt.cfg.upstream.forwardHeaders, upstreamApiKey: rt.upstreamApiKey }),
+      // Encrypted: the outer headers are not covered by the encryption, so none of them is passed on.
+      headers: buildUpstreamHeaders(encrypted ? new Headers() : req.headers, { forwardHeaders: rt.cfg.upstream.forwardHeaders, upstreamApiKey: rt.upstreamApiKey }),
       body,
       redirect: "error",
       signal: ac.signal,
@@ -135,6 +218,7 @@ export async function handleInference(rt: Runtime, req: Request, path: string, c
   const upType = (up.headers.get("content-type") ?? "").toLowerCase();
   if (up.ok && upType.startsWith("text/event-stream") && up.body) {
     clearTimeout(timer); // streams are bounded by the idle timeout and the response size cap instead
+    if (rt.classifier?.checkResponses && path === "/v1/chat/completions") return checkedStream(ctx, up, ac, cleanup);
     return streamResponse(ctx, up, ac, cleanup);
   }
 
@@ -153,21 +237,41 @@ export async function handleInference(rt: Runtime, req: Request, path: string, c
 
   const headers = baseHeaders(rt);
   for (const [k, v] of pickResponseHeaders(up.headers)) headers.set(k, v);
-  if (!up.ok) return new Response(bytes, { status: up.status, headers }); // errors are passed through, without a receipt
+  if (encrypted) {
+    // Everything that came from the model server, errors included, goes back encrypted.
+    if (upType) headers.set("x-anyroute-inner-content-type", upType);
+    headers.set("content-type", HPKE_CONTENT_TYPE);
+  }
+  if (!up.ok) return new Response(encrypted ? responder!.sealOnce(bytes) : bytes, { status: up.status, headers }); // errors are passed through, without a receipt
 
   let usage: Usage | null = null;
+  let json: unknown = null;
   if (upType.includes("json")) {
     try {
-      usage = normalizeUsage((JSON.parse(Buffer.from(bytes).toString("utf8")) as Record<string, unknown>).usage);
+      json = JSON.parse(Buffer.from(bytes).toString("utf8"));
+      usage = normalizeUsage((json as Record<string, unknown>).usage);
     } catch {
       usage = null;
     }
   }
-  const env = makeReceipt(ctx, { status: up.status, stream: false, complete: true, respHash: sha(bytes), usage });
+  if (rt.classifier?.checkResponses && path === "/v1/chat/completions") {
+    // Examined in the clear, before anything is sent. The model server already ran, so its usage is charged.
+    let verdict: Verdict;
+    try {
+      verdict = await rt.classifier.checkResponse(json ?? Buffer.from(bytes).toString("utf8"));
+    } catch {
+      return checkUnavailable(rt, "response");
+    }
+    if (verdict !== "allow" && usage) rt.quota.charge(caller.keyId, usage.total_tokens);
+    const refusal = verdictResponse(ctx, verdict, "response", usage);
+    if (refusal) return refusal;
+  }
+  const out = encrypted ? responder!.sealOnce(bytes) : bytes;
+  const env = makeReceipt(ctx, { status: up.status, stream: false, complete: true, respHash: sha(out), usage });
   if (usage) rt.quota.charge(caller.keyId, usage.total_tokens);
   headers.set("x-anyroute-receipt-id", ctx.id);
   headers.set("x-anyroute-receipt", encodeReceiptHeader(env));
-  return new Response(bytes, { status: up.status, headers });
+  return new Response(out, { status: up.status, headers });
 }
 
 /**
@@ -204,8 +308,62 @@ export const RECEIPT_EVENT = "anyroute.receipt";
 const receiptEvent = (env: ReceiptEnvelope, prefixBoundary: boolean) =>
   new TextEncoder().encode(`${prefixBoundary ? "\n\n" : ""}event: ${RECEIPT_EVENT}\ndata: ${JSON.stringify(env)}\n\n`);
 
+/**
+ * With response checking on, a stream cannot be released as it is generated: text that has been sent cannot be
+ * taken back. The whole stream is read first, examined, and only then delivered (or replaced by the refusal), so
+ * such a deployment trades time to first token for that guarantee.
+ */
+async function checkedStream(c: Ctx, up: Response, ac: AbortController, cleanup: () => void): Promise<Response> {
+  const { rt } = c;
+  const reader = up.body!.getReader();
+  const parts: Uint8Array[] = [];
+  const scan = new SseScanner(true);
+  const idleMs = rt.cfg.upstream.streamIdleTimeoutMs;
+  const max = rt.cfg.upstream.maxResponseBytes;
+  let total = 0;
+  try {
+    for (;;) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const r = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("idle")), idleMs);
+        }),
+      ]);
+      clearTimeout(timer);
+      if (r.done) break;
+      total += r.value.length;
+      if (total > max) throw new Error("too large");
+      parts.push(r.value);
+      scan.feed(r.value);
+    }
+  } catch {
+    ac.abort();
+    cleanup();
+    return errorResponse(rt, 502, "upstream_unavailable", "the model server did not finish the stream");
+  }
+  scan.flush();
+  const usage = normalizeUsage(scan.usage);
+  let verdict: Verdict;
+  try {
+    verdict = scan.overflow ? "too_large" : await rt.classifier!.checkResponse(scan.events);
+  } catch {
+    cleanup();
+    return checkUnavailable(rt, "response");
+  }
+  if (verdict !== "allow") {
+    cleanup();
+    rt.quota.charge(c.caller.keyId, usage?.total_tokens ?? scan.chunks);
+    return verdictResponse(c, verdict, "response", usage)!;
+  }
+  // Released: deliver the bytes as one piece through the ordinary stream path (hash, receipt event, framing).
+  const released = new Response(new Uint8Array(Buffer.concat(parts)), { status: up.status, headers: up.headers });
+  return streamResponse(c, released, ac, cleanup);
+}
+
 function streamResponse(c: Ctx, up: Response, ac: AbortController, cleanup: () => void): Response {
   const { rt } = c;
+  const responder = c.responder;
   const reader = up.body!.getReader();
   const hash = createHash("sha256");
   const scan = new SseScanner();
@@ -225,6 +383,12 @@ function streamResponse(c: Ctx, up: Response, ac: AbortController, cleanup: () =
   };
 
   const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (responder) {
+        hash.update(responder.prefix); // encrypted: the hash covers the bytes the client receives
+        controller.enqueue(responder.prefix);
+      }
+    },
     async pull(controller) {
       if (finished) return;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -240,9 +404,10 @@ function streamResponse(c: Ctx, up: Response, ac: AbortController, cleanup: () =
         if (!r.done) {
           total += r.value.length;
           if (total <= maxBytes) {
-            hash.update(r.value);
             scan.feed(r.value);
-            controller.enqueue(r.value);
+            const out = responder ? responder.frame(r.value, false) : r.value;
+            hash.update(out);
+            controller.enqueue(out);
             return;
           }
           ac.abort(); // over the size cap: end the stream as incomplete
@@ -254,7 +419,8 @@ function streamResponse(c: Ctx, up: Response, ac: AbortController, cleanup: () =
         ac.abort();
       }
       const env = finish(complete);
-      controller.enqueue(receiptEvent(env, !scan.endsOnBoundary));
+      const tail = receiptEvent(env, !scan.endsOnBoundary);
+      controller.enqueue(responder ? responder.frame(tail, true) : tail); // encrypted: the receipt is the last frame
       controller.close();
     },
     cancel() {
@@ -264,7 +430,8 @@ function streamResponse(c: Ctx, up: Response, ac: AbortController, cleanup: () =
   });
 
   const headers = baseHeaders(rt);
-  headers.set("content-type", "text/event-stream; charset=utf-8");
+  headers.set("content-type", responder ? HPKE_STREAM_CONTENT_TYPE : "text/event-stream; charset=utf-8");
+  if (responder) headers.set("x-anyroute-inner-content-type", "text/event-stream");
   headers.set("cache-control", "no-cache, no-store");
   headers.set("x-accel-buffering", "no");
   headers.set("x-anyroute-receipt-id", c.id);

@@ -28,6 +28,22 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
+  # Optional: the in-enclave classifier (classifier.enabled in sidecar.yaml). Start it with
+  #   docker compose --profile classifier up
+  # Put its weights next to the main model under ${MODELS_DIR}/classifier. Like the main model server it has no
+  # route out and publishes nothing. Two model servers on one GPU need --gpu-memory-utilization set on both.
+  classifier:
+    profiles: [classifier]
+    image: ${CLASSIFIER_IMAGE:?set CLASSIFIER_IMAGE to a digest-pinned vLLM image}
+    command: ["--model", "/models/classifier", "--served-model-name", "classifier", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${MODELS_DIR:?set MODELS_DIR}:/models:ro
+    networks: [backend]
+    expose: ["8001"]
+    restart: unless-stopped
+
   sidecar:
     image: ${SIDECAR_IMAGE:?set SIDECAR_IMAGE to a digest-pinned sidecar image}
     depends_on: [vllm]

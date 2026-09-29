@@ -23,6 +23,9 @@ describe("sidecar.yaml", () => {
     expect(c.server.port).toBe(8443);
     expect(c.attestation.provider).toBe("dstack");
     expect(c.classifier.enabled).toBe(false);
+    expect(c.classifier).toMatchObject({ kind: "openai_chat", checkResponse: false, nonTextInput: "refuse", categories: [] });
+    expect(c.hpke).toEqual({ enabled: false, clockSkewSeconds: 300 });
+    expect(c.allowlist.classifierDigests).toEqual([]);
     expect(c.upstream.baseUrl).toBe("http://127.0.0.1:8000");
     expect(c.router.failClosed).toBe(true);
     expect(c.upstream.forwardHeaders).toEqual([]);
