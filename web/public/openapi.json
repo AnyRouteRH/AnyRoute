@@ -200,7 +200,7 @@
         ],
         "operationId": "createChatCompletion",
         "summary": "Create a chat completion",
-        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request. When the router has x402 enabled, the 402 body is also an x402 v1 payment requirement (x402Version, accepts): sign the exact-scheme USDG authorization and retry with X-PAYMENT; the paid response carries X-PAYMENT-RESPONSE. Two opt-in modes run several billed calls for one request and are off unless the router enables them: model anyroute/council (a panel of models plus a judge; see the council field) and verify \"dual\" (the same request to two providers; see the verification field). Both are non-streaming only. Where the router enables blind tokens, Authorization: PrivateToken token=<base64url> pays with one token instead of a key (see the Blind tokens tag): the call is charged to a pooled account, the signed receipt carries the token's nullifier and no payer, and the token is spent only if the call is served. A token pays for at most its value, so a request whose worst case costs more is refused with 402 token_value_too_low; council mode and verify are refused with 400 blind_unsupported. A refused, unknown, expired or already spent token is a 401 that carries WWW-Authenticate: PrivateToken challenge=\"...\". Disclosure ceilings and lanes apply to token calls exactly as to key calls. Lane unlinkable, where the router enables Oblivious HTTP, is served only for a request that arrives through the gateway (POST /api/v1/ohttp/gateway) by way of an independent relay, paid with a blind token and never a key, and only by attested providers; otherwise it is refused with 403 lane_requires_anonymous_auth for an API key or a wallet (unless provider.lane_downgrade is attested, which serves it on lane attested instead), 403 unlinkable_requires_relay or unlinkable_requires_independent_relay, 401 unlinkable_requires_token with the token challenge when no token is presented, or 503 no_attested_endpoint when no attested endpoint can serve the model. A request that arrives through an independent relay, is paid with a blind token and names no lane is served on lane unlinkable. On lanes attested and unlinkable the router never falls back to an endpoint without a fresh, verified attestation: it answers 503 no_attested_endpoint instead. Within a lane endpoints are weighted uptime x quality x attested_bonus / price^2 (attested_bonus 1.25 on public, 1 elsewhere). On attested and unlinkable the router still terminates TLS and sees the prompt; end-to-end encryption through the router is planned. Streaming is not available through the gateway.",
+        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request. When the router has x402 enabled, the 402 body is also an x402 v1 payment requirement (x402Version, accepts): sign the exact-scheme USDG authorization and retry with X-PAYMENT; the paid response carries X-PAYMENT-RESPONSE. Two opt-in modes run several billed calls for one request and are off unless the router enables them: model anyroute/council (a panel of models plus a judge; see the council field) and verify \"dual\" (the same request to two providers; see the verification field). Both are non-streaming only. Where the router enables blind tokens, Authorization: PrivateToken token=<base64url> pays with one token instead of a key (see the Blind tokens tag): the call is charged to a pooled account, the signed receipt carries the token's nullifier and no payer, and the token is spent only if the call is served. A token pays for at most its value, so a request whose worst case costs more is refused with 402 token_value_too_low; council mode and verify are refused with 400 blind_unsupported. A refused, unknown, expired or already spent token is a 401 that carries WWW-Authenticate: PrivateToken challenge=\"...\". Disclosure ceilings and lanes apply to token calls exactly as to key calls. Lane unlinkable, where the router enables Oblivious HTTP, is served only for a request that arrives through the gateway (POST /api/v1/ohttp/gateway) by way of an independent relay, paid with a blind token and never a key, and only by attested providers; otherwise it is refused with 403 lane_requires_anonymous_auth for an API key or a wallet (unless provider.lane_downgrade is attested, which serves it on lane attested instead), 403 unlinkable_requires_relay or unlinkable_requires_independent_relay, 401 unlinkable_requires_token with the token challenge when no token is presented, or 503 no_attested_endpoint when no attested endpoint can serve the model. A request that arrives through an independent relay, is paid with a blind token and names no lane is served on lane unlinkable. On lanes attested and unlinkable the router never falls back to an endpoint without a fresh, verified attestation: it answers 503 no_attested_endpoint instead. Within a lane endpoints are weighted uptime x quality x attested_bonus / price^2 (attested_bonus 1.25 on public, 1 elsewhere). On attested and unlinkable the router still terminates TLS and sees the prompt; end-to-end encryption through the router is planned. Through the gateway, streaming needs chunked Oblivious HTTP (message/ohttp-chunked-req), where the router enables it; stream true in a message/ohttp-req is refused with 400 stream_unsupported.",
         "security": [
           {
             "BearerAuth": []
@@ -3352,11 +3352,17 @@
         ],
         "operationId": "ohttpGateway",
         "summary": "Oblivious HTTP gateway: unwrap an encapsulated request, serve it, wrap the response",
-        "description": "Sent by a relay (or, without the privacy benefit, directly). The body is a message/ohttp-req: a binary HTTP request (RFC 9292) sealed to the gateway key. The gateway serves it on the router's own routes and answers 200 with a message/ohttp-res that carries the whole inner response, errors included, so an inner 4xx is inside the encapsulation. Reachable routes: POST chat/completions and completions (non-streaming only), POST embeddings, POST blind/purchase, GET blind/keys, GET models; anything else is an inner 404 route_not_allowed. Of the request's headers only Authorization, Content-Type, Accept, X-Anyroute-Lane and X-Anyroute-Disclosure-Max are passed on. Responses are zero-padded to a multiple of 256 bytes. A relay identifies itself with Authorization: Bearer <key_id>:<secret>; a request without it is treated as direct and is not served the unlinkable lane. Errors before the request could be unwrapped are plain HTTP: 415, 413, 400, 422 (unknown key identifier or a request that does not decrypt, application/problem+json), 401 (a relay credential that is not recognised) and 429. Do not retry a failed encapsulated request automatically; a repeated ciphertext is answered with an inner 409 replayed_request.",
+        "description": "Sent by a relay (or, without the privacy benefit, directly). The body is a message/ohttp-req: a binary HTTP request (RFC 9292) sealed to the gateway key. The gateway serves it on the router's own routes and answers 200 with a message/ohttp-res that carries the whole inner response, errors included, so an inner 4xx is inside the encapsulation. Reachable routes: POST chat/completions and completions (streaming only with chunked Oblivious HTTP), POST embeddings, POST blind/purchase, GET blind/keys, GET models; anything else is an inner 404 route_not_allowed. Of the request's headers only Authorization, Content-Type, Accept, X-Anyroute-Lane and X-Anyroute-Disclosure-Max are passed on. Responses are zero-padded to a multiple of 256 bytes. A relay identifies itself with Authorization: Bearer <key_id>:<secret>; a request without it is treated as direct and is not served the unlinkable lane. Errors before the request could be unwrapped are plain HTTP: 415, 413, 400, 422 (unknown key identifier or a request that does not decrypt, application/problem+json), 401 (a relay credential that is not recognised) and 429. Where the router enables chunked Oblivious HTTP (draft-ietf-ohai-chunked-ohttp; GET /api/v1/relays then lists gateway.chunked), the body may instead be a message/ohttp-chunked-req, answered with a message/ohttp-chunked-res (with Incremental: ?1) that is encrypted and sent chunk by chunk as the inner response is produced, so stream true works; the last chunk is sealed as the final one, so a response that ends without it was cut off and is incomplete. A chunked response that grows past the size limit ends without its final chunk. Do not retry a failed encapsulated request automatically; a repeated ciphertext is answered with an inner 409 replayed_request.",
         "requestBody": {
           "required": true,
           "content": {
             "message/ohttp-req": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "message/ohttp-chunked-req": {
               "schema": {
                 "type": "string",
                 "format": "binary"
@@ -3366,9 +3372,15 @@
         },
         "responses": {
           "200": {
-            "description": "The encapsulated response.",
+            "description": "The encapsulated response: message/ohttp-res for a message/ohttp-req, message/ohttp-chunked-res for a message/ohttp-chunked-req.",
             "content": {
               "message/ohttp-res": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "message/ohttp-chunked-res": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
@@ -3396,7 +3408,7 @@
             }
           },
           "415": {
-            "description": "The content type is not message/ohttp-req.",
+            "description": "The content type is not message/ohttp-req (or message/ohttp-chunked-req, where the router enables chunked Oblivious HTTP).",
             "content": {
               "application/json": {
                 "schema": {
@@ -8037,6 +8049,20 @@
                   },
                   "key_list_url": {
                     "type": "string"
+                  },
+                  "chunked": {
+                    "type": "object",
+                    "description": "Present only where the gateway accepts chunked Oblivious HTTP.",
+                    "properties": {
+                      "request": {
+                        "type": "string",
+                        "const": "message/ohttp-chunked-req"
+                      },
+                      "response": {
+                        "type": "string",
+                        "const": "message/ohttp-chunked-res"
+                      }
+                    }
                   }
                 }
               },

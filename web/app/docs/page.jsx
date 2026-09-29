@@ -331,6 +331,22 @@ try {
   if (e instanceof AttestationRefused) console.error(e.verification.checks.filter((c) => c.status === "fail"));
   else throw e;
 }`;
+const sdkOblivious = `import { AnyRoute } from "@anyroute/client";
+import { obliviousFetch } from "@anyroute/client/ohttp"; // npm install ohttp-ts@0.6.0 hpke@1.1.7
+
+// keyConfig: the base64url-decoded "config" of the current key in GET /api/v1/ohttp/key-list, after checking the
+// list's signature against the receipt key you pinned. receiptKeys: the same pinned key set.
+const client = new AnyRoute({
+  baseUrl: "https://<router>",
+  privateToken: "<a blind token>",
+  lane: "unlinkable",
+  receiptKeys,
+  fetch: obliviousFetch({ relayUrl: "https://<independent relay>/relay", keyConfig }),
+});
+const stream = await client.chat.completions.stream({ model: "<model>", messages: [{ role: "user", content: "Hello" }] });
+for await (const chunk of stream) process.stdout.write(chunk.choices?.[0]?.delta?.content ?? "");
+// A response cut off on the way throws AnyRouteError "ohttp_truncated"; an altered chunk, "ohttp_decrypt_failed".
+console.log((await stream.meta()).lane); // "unlinkable"`;
 const sdkPython = `from anyroute_client import AnyRoute, AttestedOptions, AttestationRefused, ExpectedDigests
 
 client = AnyRoute("https://<router>", "sk-ar-v1-…")
@@ -480,7 +496,7 @@ const endpoints = [
   ["POST /api/v1/creators/claims · /claims/{id}/verify", "Claim a model’s creator royalty by publishing a challenge in its Hugging Face repository"],
   ["GET /api/v1/blind/keys", "Blind tokens, where enabled: the issuer keys per epoch and denomination, the challenge every token carries, and prices"],
   ["POST /api/v1/blind/purchase", "Blind tokens, where enabled: buy tokens with credits by sending blinded messages; spend one with Authorization: PrivateToken on chat or embeddings"],
-  ["GET /api/v1/ohttp/keys · POST /api/v1/ohttp/gateway", "Oblivious HTTP, where enabled: the gateway key configuration (application/ohttp-keys), and the gateway that unwraps message/ohttp-req sent by a relay and returns message/ohttp-res"],
+  ["GET /api/v1/ohttp/keys · POST /api/v1/ohttp/gateway", "Oblivious HTTP, where enabled: the gateway key configuration (application/ohttp-keys), and the gateway that unwraps message/ohttp-req sent by a relay and returns message/ohttp-res (and, where chunked Oblivious HTTP is on, message/ohttp-chunked-req and message/ohttp-chunked-res, sent as it is produced)"],
   ["GET /api/v1/ohttp/key-list · GET /api/v1/relays", "Oblivious HTTP, where enabled: the gateway key history signed with the receipt key, and the relays clients may use, by operator"],
   ["GET /tlog/checkpoint · /tlog/tile/…", "Transparency log, where enabled: the newest checkpoint (a signed note with the witnesses’ cosignatures) and the C2SP tlog-tiles hash tiles and entry bundles"],
   ["GET /api/v1/tlog · /tlog/proof · /tlog/consistency · POST /tlog/cosignatures", "Transparency log, where enabled: origin, log key, witnesses and quorum; an entry with its inclusion and consistency proofs; and where witnesses hand in cosignatures"],
@@ -618,8 +634,16 @@ export default function Docs() {
           <p>
             A request that carries an API key or a wallet is refused with 403 lane_requires_anonymous_auth. A direct request for the lane is refused with 403 unlinkable_requires_relay and says what to do; through the gateway without a token it
             is 401 (unlinkable_requires_token) with the token challenge, and 403 through a relay run by the router’s own operator. With no attested endpoint it is 503 no_attested_endpoint, and the token is not spent. What is hidden: the relay sees your address and an encrypted request; the router sees the request and the relay, never your address; the token’s purchase cannot be tied to its use. What is not: a relay that
-            cooperates with the router can join the two, timing and message sizes can be correlated (responses are padded), and any identifier you put in the request body reaches the provider. Streaming is not available through the gateway.
+            cooperates with the router can join the two, timing and message sizes can be correlated (responses are padded), and any identifier you put in the request body reaches the provider.
           </p>
+          <p>
+            A message/ohttp-req response is encrypted as a whole, so stream: true sent that way is refused with 400 stream_unsupported. Where the router also enables chunked Oblivious HTTP (draft-ietf-ohai-chunked-ohttp),
+            GET /api/v1/relays lists gateway.chunked, and a request sent as message/ohttp-chunked-req is answered with message/ohttp-chunked-res: the response is encrypted and sent chunk by chunk as the router produces it, so a streamed
+            completion arrives token by token while the relay still carries only ciphertext. The relay has to carry it too (RELAY_CHUNKED_ENABLED in relay/); it passes each chunk on as it arrives, under the same size limit and timeout. The
+            last chunk is sealed as the final one, so a client can tell a response that was cut off from a complete one; the TypeScript SDK’s obliviousFetch (@anyroute/client/ohttp) decrypts each chunk as it arrives and fails with
+            ohttp_truncated when the final chunk never came and ohttp_decrypt_failed when a chunk was altered or reordered. Chunk sizes and their timing stay visible to the relay.
+          </p>
+          <Code label="TypeScript SDK · a streamed completion on the unlinkable lane, through a relay">{sdkOblivious}</Code>
           <Code label="Attested providers only">
             {JSON.stringify(
               {
