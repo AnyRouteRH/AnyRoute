@@ -95,6 +95,7 @@ const endpoints = [
   ["GET · POST · PATCH · DELETE /api/v1/routes", "Saved Routes: named routing policies you call as model \"@route/<slug>\""],
   ["POST · GET · DELETE /api/v1/sessions · GET /sessions/current", "Agent Sessions: short-lived, budget-capped keys for agent runs"],
   ["GET /api/v1/spend · /spend/alerts", "Spend Watch: totals, projection, breakdowns, key budgets and alert rules"],
+  ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt’s signature and anchor inclusion; signing keys (JWKS)"],
   ["POST /mcp", "AnyRoute MCP: list_models, chat, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; provider registry; router configuration"],

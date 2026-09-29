@@ -12,6 +12,7 @@ import { readinessMetrics } from "../services/readiness-metrics.ts";
 import { readJson } from "./common.ts";
 import { requireKey } from "./auth.ts";
 import { verifyReceipt, anchorProof } from "./generation.ts";
+import { holdersStatus } from "../holders/tiers.ts";
 import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAllowance, openDebt, rawToPico, saveAllowance, signCharge, statement, typedDataJson } from "../pay/paywith.ts";
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
@@ -286,6 +287,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         // Escrow payments: the tokens it credits, the Stock Token haircut, and $ANYR's own terms (null when not accepted).
         escrow: { enabled: escrowEnabled(ctx), tokens: escrowEnabled(ctx) ? acceptedTokens(ctx).map((t) => t.symbol) : [], haircut_bps: ctx.cfg.escrow.haircutBps, anyr: anyrSummary(ctx) },
         per_call: { configured: !!ctx.cfg.chain.callPay || x402Enabled(ctx), max_usd: ctx.cfg.fees.perCallMaxUsd, x402: { configured: x402Enabled(ctx), network: ctx.cfg.x402.network } },
+        // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.
+        holders: holdersStatus(ctx),
         telemetry: ctx.telemetry.enabled,
         jobs: ctx.jobs.status().map((job) => ({ ...job, last_error: job.last_error ? "Job failed" : null })),
         catalog: { models: ctx.catalog.models.size, providers: ctx.catalog.providers.size },

@@ -20,6 +20,8 @@ import { clientIp, readJson } from "./common.ts";
 import { grantFor, recordDebt, type PaywithGrant } from "../pay/paywith.ts";
 import { resolveSavedRoute } from "../routing/saved-routes.ts";
 import { payPerCall } from "../pay/percall.ts";
+import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
+import type { HolderTier } from "../config.ts";
 
 type Kind = "chat" | "completion";
 type Billing =
@@ -115,11 +117,14 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const secret = bearer(c.req.header("authorization"));
   let key: KeyRow | null = null;
   let wallet: { accountId: string; wallet: string; exists: boolean } | null = null;
+  // $ANYR holder tier of the wallet behind this request (null unless HOLDER_TIERS is live).
+  let tier: HolderTier | null = null;
   if (secret) {
     key = await resolveKey(ctx, secret);
     if (!key) fail(401, "Unknown API key. Create one (POST /api/v1/keys) or deposit USDG to its key hash first.", "invalid_key");
     await requireRole(ctx, key, ["owner", "admin", "member"]);
-    await limitOrThrow(ctx, `k:${key.keyHash}`, 1, key.rpm ?? ctx.cfg.limits.defaultRpm, "requests");
+    tier = await holderTier(ctx, walletOfAccount(key.accountId));
+    await limitOrThrow(ctx, `k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), "requests");
   } else {
     await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
     const wa = c.req.header("x-wallet-auth");
@@ -251,7 +256,8 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     const r = await payPerCall(ctx, c, { pricePico: hold, bodySha, modelId: primary.id });
     billing = { mode: "per_call", accountId: r.accountId, payer: r.payer, paymentTx: r.txHash, paymentResponse: r.paymentResponse };
   }
-  if (billing.key?.tpm) await limitOrThrow(ctx, `kt:${billing.key.keyHash}`, promptTokens, billing.key.tpm, "tokens");
+  if (billing.mode === "per_call") tier = await holderTier(ctx, billing.payer);
+  if (billing.key?.tpm) await limitOrThrow(ctx, `kt:${billing.key.keyHash}`, promptTokens, scaleLimit(billing.key.tpm, tier), "tokens");
 
   const holdId = genId();
   try {
@@ -275,7 +281,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const keyFor = (cand: Candidate) => providerKey(cand, ctx.cfg.appSecret, byok.get(cand.providerId));
   const path = kind === "chat" ? ("/chat/completions" as const) : ("/completions" as const);
   const meta = { guard, middle, paywithNote, cacheMode, excluded, route: savedRoute };
-  const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens };
+  const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens, tier };
 
   if (stream) return streamResponse({ ...common, run: () => route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: true, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, production: ctx.cfg.production, caller: sha256(billing.accountId).slice(0, 16) }), abort });
 
@@ -335,6 +341,7 @@ type Common = {
   meta: { guard: ReturnType<typeof applyGuardrails>; middle: { removed: number; truncated: number } | null; paywithNote?: string; cacheMode: CacheMode | null; excluded: unknown[]; route: string | null };
   guardCfg: GuardrailConfig | null;
   promptTokens: number;
+  tier: HolderTier | null;
 };
 
 async function finalize(
@@ -351,7 +358,7 @@ async function finalize(
   const { ctx, billing, r } = p;
   const isByok = p.byok.has(r.candidate.providerId);
   const mode: Mode = isByok ? "byok" : billing.mode;
-  const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: ctx.cfg.fees.perCallMarginBps, byokFeeBps: ctx.cfg.fees.byokFeeBps };
+  const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: ctx.cfg.fees.perCallMarginBps, byokFeeBps: ctx.cfg.fees.byokFeeBps, discountBps: p.tier?.discountBps ?? 0 };
   const cost = priceUsage(r.candidate, r.model, p.usage, billing.mode === "per_call" ? "per_call" : mode, fees, isByok);
   const id = p.holdId;
   const settled = await settle(ctx.db, p.holdId, cost.total, {
@@ -469,7 +476,7 @@ async function finalize(
     total_tokens: p.usage.prompt + p.usage.completion,
     cost: picoToUsd(charged),
     is_byok: isByok,
-    cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), margin: picoToUsd(cost.margin) },
+    cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), margin: picoToUsd(cost.margin), ...(p.tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) },
     prompt_tokens_details: { cached_tokens: p.usage.cachedRead, cache_write_tokens: p.usage.cacheWrite },
     completion_tokens_details: { reasoning_tokens: p.usage.reasoning },
   };
@@ -494,6 +501,7 @@ async function finalize(
       if (p.meta.guard || redactions) x.guardrails = { ...(p.meta.guard ?? {}), output_redactions: redactions };
       if (p.meta.middle && (p.meta.middle.removed || p.meta.middle.truncated)) x.transforms = { "middle-out": p.meta.middle };
       if (p.meta.paywithNote) x.pay_with_fallback = p.meta.paywithNote;
+      if (p.tier) x.holder = { tier: p.tier.name, rpm_multiplier: p.tier.rpmMultiplier, discount_bps: p.tier.discountBps };
       if (r.dropped.length) x.dropped_parameters = r.dropped;
       return Object.keys(x).length ? x : null;
     },

@@ -14,6 +14,7 @@ import { clientIp, readJson } from "./common.ts";
 import { requestHash } from "./chat.ts";
 import { payPerCall } from "../pay/percall.ts";
 import type { Attempt } from "../router/execute.ts";
+import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 
 // POST /api/v1/embeddings — prepaid keys, or no key at all: an unpaid call gets the same 402 as chat
 // (CallPay and/or x402, whichever this router has configured) and the paid retry is served.
@@ -22,7 +23,8 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const t0 = Date.now();
     const key = bearer(c.req.header("authorization")) ? await requireKey(ctx, c.req.header("authorization")) : null;
     if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
-    const lim = key ? await ctx.limiter.take(`k:${key.keyHash}`, 1, key.rpm ?? ctx.cfg.limits.defaultRpm, 60_000) : await ctx.limiter.take(`ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, 60_000);
+    let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null; // $ANYR holders get a higher rpm
+    const lim = key ? await ctx.limiter.take(`k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), 60_000) : await ctx.limiter.take(`ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, 60_000);
     if (!lim.ok) fail(429, "Rate limit exceeded.", "rate_limited", undefined, { "retry-after": String(Math.ceil(lim.retryAfterMs / 1000)) });
     const body = await readJson(c);
     const input = body.input;
@@ -55,6 +57,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     // No key: the caller pays this call up front (402 quote, or the X-Payment retry); the payment funds the hold.
     const paid = key ? null : await payPerCall(ctx, c, { pricePico: hold * 2n + 1n, bodySha: requestHash(body), modelId: r.model.id });
     const accountId = key?.accountId ?? paid!.accountId;
+    if (paid) tier = await holderTier(ctx, paid.payer); // a wallet paying per call: its $ANYR tier lowers the margin
     const id = genId();
     await reserve(ctx.db, { id, accountId, keyHash: key?.keyHash ?? null, amount: hold * 2n + 1n, ttlMs: ctx.cfg.routing.providerTimeoutMs * 2 });
     const attempts: Attempt[] = [];
@@ -83,7 +86,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         attempts.push({ provider: cand.providerId, model: r.model.id, ok: true, status: 200, latency_ms: Math.round(res.latencyMs) });
         ctx.health.record({ modelId: cand.modelId, providerId: cand.providerId, ok: true, latencyMs: res.latencyMs, source: "traffic" });
         const usage = readUsage(res.json.usage, { prompt: promptTokens, completion: 0 });
-        const cost = priceUsage(cand, r.model, { ...usage, completion: 0 }, mode, fees, false);
+        const cost = priceUsage(cand, r.model, { ...usage, completion: 0 }, mode, { ...fees, discountBps: tier?.discountBps ?? 0 }, false);
         const { charged } = await settle(ctx.db, id, cost.total, { description: `${r.model.id} embeddings via ${cand.providerId}`, generationId: id });
         const payload = {
           v: 1,
@@ -135,7 +138,8 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           id,
           model: r.model.id,
           provider: cand.provider.name,
-          usage: { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }) } },
+          usage: { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) } },
+          ...(tier ? { holder: { tier: tier.name, rpm_multiplier: tier.rpmMultiplier, discount_bps: tier.discountBps } } : {}),
           receipt: { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload },
         }, 200, paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {});
       }

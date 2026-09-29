@@ -20,6 +20,7 @@ export type Cost = {
   royalty: Pico;
   margin: Pico;
   cacheDiscount: Pico;
+  holderDiscount: Pico; // fee saved by an $ANYR holder tier (already taken off margin)
   total: Pico; // charged to the caller
 };
 
@@ -60,15 +61,21 @@ export function upstreamCost(c: Candidate, u: Usage): { cost: Pico; cacheDiscoun
   return { cost, cacheDiscount };
 }
 
-export type Fees = { royaltyBps: number; perCallMarginBps: number; byokFeeBps: number };
+/** `discountBps` ($ANYR holder tier) lowers Anyroute's own fee rates, never below 0: upstream cost and
+ *  royalties are never discounted, so a caller never pays less than the provider's cost. */
+export type Fees = { royaltyBps: number; perCallMarginBps: number; byokFeeBps: number; discountBps?: number };
 
 export function priceUsage(c: Candidate, model: ModelRow, u: Usage, mode: Mode, fees: Fees, byok: boolean): Cost {
   const { cost: notional, cacheDiscount } = upstreamCost(c, u);
   const upstream = byok ? 0n : notional;
   const royalty = model.creator && model.royaltyBps > 0 ? mulBps(notional, model.royaltyBps) : 0n;
-  const byokFee = byok ? mulBps(notional, fees.byokFeeBps) : 0n;
-  const margin = (mode === "per_call" ? mulBps(upstream + royalty, fees.perCallMarginBps) : 0n) + byokFee;
-  return { upstream, notional, royalty, margin, cacheDiscount, total: upstream + royalty + margin };
+  const marginAt = (off: number) =>
+    (mode === "per_call" ? mulBps(upstream + royalty, Math.max(0, fees.perCallMarginBps - off)) : 0n) + (byok ? mulBps(notional, Math.max(0, fees.byokFeeBps - off)) : 0n);
+  const off = Math.max(0, fees.discountBps ?? 0);
+  const margin = marginAt(off);
+  // What the discount saved: the margin at full rates minus the margin charged (0 when no margin applies).
+  const holderDiscount = off ? marginAt(0) - margin : 0n;
+  return { upstream, notional, royalty, margin, cacheDiscount, holderDiscount, total: upstream + royalty + margin };
 }
 
 /** Conservative prompt-token estimate used only for holds and context checks. */

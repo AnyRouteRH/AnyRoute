@@ -27,6 +27,7 @@ import { escrowRoutes } from "./api/escrow.ts";
 import { savedRoutesRoutes } from "./api/saved-routes.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
 import { spendRoutes } from "./api/spend.ts";
+import { holdersRoutes } from "./api/holders.ts";
 import { publicRoutes } from "./api/public.ts";
 import { embeddingsRoutes } from "./api/embeddings.ts";
 import { adminRoutes } from "./admin/trpc.ts";
@@ -96,6 +97,7 @@ export async function createApp(opts: AppOptions = {}) {
   savedRoutesRoutes(app, ctx);
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
+  holdersRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   paymasterRoutes(app, ctx);
