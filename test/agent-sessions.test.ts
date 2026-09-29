@@ -334,6 +334,21 @@ describe("Agent Sessions", () => {
     expect(credits.available).toBeLessThan(0.25);
     expect(credits.deposit).toBeUndefined();
   });
+
+  test("a session allowed only a saved route can call that route's models and nothing else", async () => {
+    const created = await h.request("/api/v1/routes", { method: "POST", headers: owner.auth, json: { slug: "llama-only", config: { models: [LLAMA], provider: { only: ["alpha"] } } } });
+    expect(created.status).toBe(201);
+    const s = await newSession(owner.auth, { name: "routed", budget_usd: 0.25, ttl_minutes: 10, allowed_models: ["@route/llama-only"] });
+    const ok = await chat(bearer(s.key), { model: "@route/llama-only", provider: undefined });
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).route).toBe("llama-only");
+    const direct = await chat(bearer(s.key), { model: QWEN });
+    expect(direct.status).toBe(403);
+    // Request-supplied fallbacks outside the route are dropped: the call is served by the route's model only.
+    const widened = await chat(bearer(s.key), { model: "@route/llama-only", models: [QWEN], provider: undefined });
+    expect(widened.status).toBe(200);
+    expect((await widened.json()).model).toBe(LLAMA);
+  });
 });
 
 describe("sessionStatus", () => {

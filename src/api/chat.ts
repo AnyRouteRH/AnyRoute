@@ -1,7 +1,7 @@
 import type { Context, Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
-import { apps, byokKeys, generations } from "../db/schema.ts";
+import { apps, byokKeys, generations, savedRoutes } from "../db/schema.ts";
 import type { Candidate, ModelRow, Modifier } from "../catalog/catalog.ts";
 import { ApiError, fail, isApiError } from "../lib/errors.ts";
 import { type Pico, maxPico, picoToUsd, picoToUsdString, usdToPico } from "../lib/money.ts";
@@ -140,11 +140,20 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const modelIds = [...new Set([...(typeof body.model === "string" ? [body.model] : []), ...((body.models as string[] | undefined) ?? [])])];
   if (!modelIds.length) fail(400, "`model` is required (e.g. \"meta-llama/llama-3.3-70b-instruct\").", "invalid_request");
   await ctx.catalog.ensureFresh();
+  // A key allowed `@route/<slug>` (e.g. an agent session) may use exactly that route's own models.
+  const allowed = new Set(key?.allowedModels ?? []);
+  if (savedRoute && allowed.has(`@route/${savedRoute}`) && key) {
+    const [row] = await ctx.db.select({ config: savedRoutes.config }).from(savedRoutes).where(and(eq(savedRoutes.accountId, key.accountId), eq(savedRoutes.slug, savedRoute)));
+    for (const m of ((row?.config as { models?: string[] } | undefined)?.models ?? [])) {
+      const r = ctx.catalog.resolve(m);
+      if (r) allowed.add(r.model.id);
+    }
+  }
   const resolved: { model: ModelRow; modifiers: Set<Modifier>; requested: string }[] = [];
   for (const id of modelIds) {
     const r = ctx.catalog.resolve(id);
     if (!r) continue;
-    if (key?.allowedModels?.length && !key.allowedModels.includes(r.model.id)) continue;
+    if (allowed.size && !allowed.has(r.model.id)) continue;
     resolved.push({ ...r, requested: id });
   }
   if (!resolved.length)
