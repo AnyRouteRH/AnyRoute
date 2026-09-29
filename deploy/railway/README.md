@@ -12,6 +12,7 @@ This directory models the whole Railway production topology: one reviewed file p
 | `api` | `Dockerfile` | `api.railway.json` | `bun src/index.ts` | deploy health check `GET /health`; restart `ON_FAILURE` |
 | `worker` | `Dockerfile` | `worker.railway.json` | `bun src/worker.ts` | no HTTP port; restart `ON_FAILURE` |
 | `backup` | `deploy/railway/backup.Dockerfile` | `backup.railway.json` | `bun scripts/backup-offsite.ts` | cron `17 3 * * *` (03:17 UTC daily); restart `NEVER` |
+| `onion` (optional) | `deploy/onion/Dockerfile` | `onion.railway.json` | Tor onion service and header-adding proxy to the `api`; a volume at `/var/lib/tor` holds its key | health check `GET /healthz` (answers only `ok`); restart `ON_FAILURE`; exactly 1 replica |
 | `Postgres`, `Redis` | Railway templates | – | – | managed by Railway |
 
 Keep every service's source root at the repository root, because the Dockerfiles copy `package.json`, `scripts/`, `src/` and `drizzle/`. Deploys are `railway up --service <name>` from a clean export of the reviewed commit.
@@ -24,6 +25,8 @@ Railway does not order deployments between services, so the order is an operator
 2. **grants**: the logs end with `Runtime role grants completed successfully.` This creates or updates `anyroute_runtime` with read/write access to application rows only (no schema, role or migration-table writes). Re-run it after every migration.
 3. **provider-init**: the logs end with its JSON success line and the deployment exits 0. It refuses to run unless it is connected as `anyroute_runtime`.
 4. **api** and **worker**: the api deployment turns healthy on `/health`; then `GET /ready` returns 200 once the worker's jobs have reported in.
+
+The optional `onion` service comes after `api` is healthy; it does not gate any other service.
 
 The API's deploy health check is `/health` (the process serves HTTP). Never use `/ready` there: readiness includes chain, worker and backup freshness, and a failing dependency would block every deploy, including the fix. The worker has no HTTP port. Its liveness is visible through the persisted job heartbeats that `/ready` reports (for example `escrow-indexer`, `catalog-refresh`), and Railway restarts it if it crashes. In Compose, workers also refresh a local heartbeat file that a read-only container health check reads (`scripts/worker-healthcheck.sh`). That check never starts the application or a job, so probing or restarting cannot run a privileged job twice.
 
@@ -38,6 +41,7 @@ Reference Railway variables instead of copying values, for example `${{Postgres.
 | `provider-init` | `DATABASE_URL` (runtime role), `APP_SECRET`, `UPSTREAM_API_KEY`, `UPSTREAM_BASE_URL` (optional: `UPSTREAM_PROVIDER_ID`, `UPSTREAM_PROVIDER_NAME`, `UPSTREAM_SMOKE_TEST`) |
 | `api` | `RUNTIME_ROLE=api`, `DATABASE_URL` (runtime role: user `anyroute_runtime` with password `RUNTIME_DB_PASSWORD`), `REDIS_URL`, `APP_SECRET`, `ADMIN_TOKEN`, `PUBLIC_BASE_URL`, `PAYMENTS_MODE`, the escrow/chain variables, `BACKUP_REQUIRED` |
 | `worker` | as `api`, plus `RUNTIME_ROLE=worker`, `WORKER_JOBS` (add `alert-notifier`), optional `ALERT_WEBHOOK_URL` and `ALERT_WEBHOOK_FORMAT` |
+| `onion` | `ONION_UPSTREAM` (the api's private URL), `ONION_PROXY_SECRET` (a shared variable, also set on `api`), `PORT=8081`; optional `ONION_SINGLE_HOP`. `api` then gets `ONION_ADDRESS` and `ONION_PROXY_SECRET`. Steps, and what the service does and does not log: [deploy/onion/README.md](../onion/README.md) |
 | `backup` | `DATABASE_URL` (runtime role), `BACKUP_AGE_RECIPIENTS`, `BACKUP_S3_ENDPOINT`, `BACKUP_S3_REGION`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`; optional `BACKUP_S3_PREFIX`, `BACKUP_S3_VIRTUAL_HOSTED`, `POSTGRES_CLIENT_IMAGE` |
 
 `BACKUP_REQUIRED=true` on `api` and `worker` adds the `backup_fresh` readiness check (a verified upload within `BACKUP_MAX_AGE_HOURS`, default 26). Turn it on only after the first backup succeeds. Without `ALERT_WEBHOOK_URL`, the `alert-notifier` job only records alert state; see [MONITORING.md](../../MONITORING.md).

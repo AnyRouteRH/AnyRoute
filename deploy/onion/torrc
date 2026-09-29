@@ -1,0 +1,21 @@
+# Tor settings for the AnyRoute onion service. entrypoint.sh copies this to a run directory and fills in the
+# @@ placeholders; it adds the two single-hop lines only when ONION_SINGLE_HOP=true.
+
+DataDirectory /var/lib/tor
+ClientOnly 1
+# No SOCKS listener and no control port: this Tor only publishes a service.
+SocksPort 0
+NoExec 1
+AvoidDiskWrites 1
+
+# Tor never logs what passes through a hidden service. SafeLogging keeps addresses out of the few lines it does write.
+SafeLogging 1
+Log notice stdout
+Log notice file @@NOTICE_LOG@@
+
+# The identity key (hs_ed25519_secret_key) and the address (hostname) live in HiddenServiceDir: keep it on the volume.
+HiddenServiceDir /var/lib/tor/hidden_service
+HiddenServiceVersion 3
+HiddenServicePort 80 127.0.0.1:18080
+# Under load, make clients solve a small proof of work so a flood cannot crowd out real users (no effect otherwise).
+HiddenServicePoWDefensesEnabled 1

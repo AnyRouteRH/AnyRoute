@@ -1,0 +1,5 @@
+# Only the three files the image copies are sent as build context (BuildKit reads this file for deploy/onion/Dockerfile).
+*
+!deploy/onion/torrc
+!deploy/onion/haproxy.cfg
+!deploy/onion/entrypoint.sh
