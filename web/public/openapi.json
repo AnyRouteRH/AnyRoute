@@ -97,7 +97,7 @@
       }
     },
     "/api/v1/status": {
-      "get": { "tags": ["Status"], "operationId": "getStatus", "summary": "Read public router configuration", "description": "Returns published runtime configuration, chain public fields, job state and catalog counts. It is not an uptime guarantee.", "responses": { "200": { "description": "Current public status snapshot.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } } }
+      "get": { "tags": ["Status"], "operationId": "getStatus", "summary": "Read public router configuration", "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). It is not an uptime guarantee.", "responses": { "200": { "description": "Current public status snapshot.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } } }
     },
     "/health": {
       "get": { "tags": ["Status"], "operationId": "getHealth", "summary": "Check process response", "description": "Returns { ok: true } when this process responds. It does not establish dependency health or uptime.", "responses": { "200": { "description": "Process responded.", "content": { "application/json": { "schema": { "type": "object", "required": ["ok"], "properties": { "ok": { "const": true } } } } } } } }

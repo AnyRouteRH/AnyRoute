@@ -3,6 +3,7 @@ import { Button, Code } from "../../components/UI";
 import { sampleRequest } from "../../components/Extensions";
 import { API_BASE } from "../../lib/api";
 import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
+import OnionAddress from "../../components/OnionAddress";
 export const metadata = { title: "Developer documentation — Anyroute" };
 const receipt = {
   id: "gen-1790461071-M1D5SJxd7YpD5A",
@@ -103,6 +104,12 @@ const claimResponse = JSON.stringify(
   2,
 );
 const BASE = API_BASE || "<your router>";
+const torCurl = `curl --socks5-hostname 127.0.0.1:9050 http://<onion address>/api/v1/models
+
+# a call with your key, the same request as on the clearnet
+curl --socks5-hostname 127.0.0.1:9050 http://<onion address>/api/v1/chat/completions \\
+  -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
+  -d '{"model":"meta-llama/llama-3.3-70b-instruct","messages":[{"role":"user","content":"Hello"}]}'`;
 const claudeCode = `claude mcp add --transport http anyroute ${BASE}/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY"`;
 const cursorConfig = JSON.stringify({ mcpServers: { anyroute: { url: `${BASE}/mcp`, headers: { Authorization: "Bearer sk-ar-v1-…" } } } }, null, 2);
 const desktopConfig = JSON.stringify(
@@ -226,7 +233,7 @@ const endpoints = [
   ["GET /api/v1/attestation/summary · /attestation/:providerId/history", "Proof-time: per attesting provider, the share of the last 24 hours and 7 days with a fresh attestation the router verified itself, measurement changes and the last failed check; and a provider’s recorded attestor, canary and probe events, newest first, paged by cursor. Failures are codes with fixed messages, never the provider’s own text. Kept for ATTESTATION_HISTORY_DAYS (30); 501 when it is 0"],
   ["GET /api/v1/measurements/key · /measurements/bundles/:providerId", "Where enabled: the key that signs measurement bundles (compose hash, source commit and tarball hash, model and image digests, MRTD allow-list), and a provider’s bundles with the transparency-log entry the router verified for each"],
   ["POST /mcp", "AnyRoute MCP: list_models, chat, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
-  ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration"],
+  ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
 export default function Docs() {
@@ -248,6 +255,7 @@ export default function Docs() {
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
             <a href="#disclosure">Disclosure</a>
+            <a href="#tor">Tor</a>
             <a href="#lane">Lane</a>
             <a href="#payments">Payments</a>
             <a href="#x402">x402</a>
@@ -323,6 +331,20 @@ export default function Docs() {
               2,
             )}
           </Code>
+          <h2 id="tor">Reach AnyRoute over Tor.</h2>
+          <p>
+            Where the router runs an onion service, you can call it through Tor and keep your network address from the router and from the network it runs on. GET /api/v1/status publishes the address as onion.address, and it is shown below. Use it as
+            http://&lt;address&gt; from Tor Browser or any client that can use a SOCKS5 proxy and lets the proxy resolve names (curl --socks5-hostname, or torsocks); the API is the same, under /api/v1 on that host. The onion service itself
+            encrypts and authenticates the connection to the router, so plain http:// is correct there. The site’s pages also carry an Onion-Location header, which Tor Browser turns into an “.onion available” prompt.
+          </p>
+          <OnionAddress />
+          <Code label="Through a local Tor client (SOCKS5 on 127.0.0.1:9050)">{torCurl}</Code>
+          <p>
+            Tor hides where you connect from, not what you send: an API key, a wallet signature or a prompt identifies you or your account exactly as it does on the clearnet. For payment that cannot be linked to your requests, use blind tokens, and for the
+            unlinkable lane a relay. Requests that arrive over Tor have no address the router can limit, so calls without an API key (unkeyed chat and embeddings, new keys, wallet sign-in challenges) share limits with everyone else using the
+            onion address, and a call with a key is limited per key as usual: use a key or a token for a quota of your own. The first request can take several seconds while Tor builds its circuit. A relay operator can also reach a gateway’s onion address through a
+            SOCKS5 proxy (RELAY_SOCKS5_PROXY in relay/), so the gateway never sees the relay’s address either.
+          </p>
           <h2 id="lane">Open-weights variants, and paying their creators.</h2>
           <p>
             Every model has a variant. mainstream keeps the publisher’s own alignment. native_low_refusal (trained to refuse little) and abliterated (refusal behaviour removed from the weights after training) are restricted variants. GET
