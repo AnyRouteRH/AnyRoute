@@ -35,3 +35,23 @@ test('4xx responses use the reusable error responses with the ApiError body',()=
  const chat=spec.paths['/api/v1/chat/completions'].post.responses;
  for(const code of Object.keys(ERRORS))assert.ok(chat[code],`chat completions should declare ${code}`);
 });
+
+test('the blind-token endpoints, scheme and schemas are documented and consistent',()=>{
+ const keys=spec.paths['/api/v1/blind/keys'].get;
+ const buy=spec.paths['/api/v1/blind/purchase'].post;
+ assert.deepEqual(keys.tags,['Blind tokens']);
+ assert.deepEqual(buy.tags,['Blind tokens']);
+ assert.ok(spec.tags.some((t)=>t.name==='Blind tokens'));
+ assert.deepEqual(buy.security,[{BearerAuth:[]}],'buying tokens needs a key');
+ assert.equal(keys.security,undefined,'the key list is public');
+ assert.equal(spec.components.securitySchemes.PrivateToken.name,'Authorization');
+ for(const [path,op] of [['/api/v1/chat/completions','post'],['/api/v1/embeddings','post'],['/api/v1/generation','get']])
+  assert.ok(spec.paths[path][op].security.some((s)=>s.PrivateToken),`${op.toUpperCase()} ${path} accepts a PrivateToken`);
+ const ids=[];
+ walk(spec.paths,(n)=>{if(typeof n.operationId==='string')ids.push(n.operationId);});
+ assert.equal(new Set(ids).size,ids.length,'operation ids are unique');
+ for(const name of ['BlindKeys','BlindKey','BlindPurchaseRequest','BlindPurchase'])assert.ok(spec.components.schemas[name],name);
+ assert.deepEqual(spec.components.schemas.BlindKey.properties.denomination.enum,[1000,10000,100000]);
+ assert.match(spec.components.schemas.Receipt.properties.payload.description,/nullifier/);
+ assert.ok(buy.responses['409'].content['application/json'].schema.$ref==='#/components/schemas/ApiError');
+});

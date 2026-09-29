@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { startRouter, type Harness } from "./helpers.ts";
+import { ADMIN, MODELS, startRouter, type Harness } from "./helpers.ts";
+import { runAttestor } from "../src/services/attestor.ts";
 import { loadConfig } from "../src/config.ts";
 import { blindKeys, blindNullifiers, generations, holds, ledger } from "../src/db/schema.ts";
 import { balanceOf, verifyInvariants } from "../src/ledger/ledger.ts";
@@ -26,8 +27,8 @@ const shim = (h: Harness): typeof fetch =>
     return h.app.request(u.pathname + u.search, init);
   }) as never;
 
-const redeem = (h: Harness, token: string, body: unknown = chat, path = "/api/v1/chat/completions") =>
-  h.request(path, { method: "POST", headers: { authorization: authorizationHeader(decodeBase64(token)!) }, json: body });
+const redeem = (h: Harness, token: string, body: unknown = chat, path = "/api/v1/chat/completions", headers: Record<string, string> = {}) =>
+  h.request(path, { method: "POST", headers: { authorization: authorizationHeader(decodeBase64(token)!), ...headers }, json: body });
 
 async function buy(h: Harness, apiKey: string, denomination: number, count: number) {
   return buyTokens({ baseUrl: "http://router.test", apiKey, denomination, count, fetch: shim(h) });
@@ -547,6 +548,100 @@ describe("blind tokens: purchase limits", () => {
     } finally {
       await h2.close();
     }
+  });
+});
+
+describe("blind tokens: disclosure ceilings and lanes still apply", () => {
+  const OLD = "2025-01-15";
+  const claim = { source: "https://provider.example/terms", as_of: OLD };
+  let h: Harness;
+  const declare = (id: string, json: unknown) => h.request(`/api/v1/disclosure/${id}`, { method: "PUT", headers: { "x-admin-token": ADMIN }, json });
+  const spentCount = async () => (await h.ctx.db.select().from(blindNullifiers)).length;
+  const generationCount = async () => (await h.ctx.db.select().from(generations)).length;
+  let tokens: string[] = [];
+  beforeAll(async () => {
+    h = await startRouter({
+      env: { ANYROUTE_FEATURE_BLIND: "true", ANYROUTE_FEATURE_COUNCIL: "true", BLIND_PURCHASE_RPM: "1000" },
+      providers: [
+        { id: "vendor", name: "Vendor", models: [MODELS.llama, MODELS.embed] },
+        { id: "policy", name: "Policy", models: [MODELS.llamaPricey] },
+        { id: "enclave", name: "Enclave", models: [MODELS.llamaPricey, MODELS.embed], tee: "dev" },
+      ],
+    });
+    const k = await h.fundedKey(10n);
+    tokens = (await buy(h, k.secret, 10_000, 12)).tokens;
+    // The enclave declared attested retention but has not been attested yet; the policy provider documented a policy.
+    expect((await declare("enclave", { retention: { value: "attested", ...claim }, legal_hold: { active: false, ...claim } })).status).toBe(200);
+    expect((await declare("policy", { retention: { value: "policy", ...claim }, legal_hold: { active: false, ...claim } })).status).toBe(200);
+  });
+  afterAll(async () => {
+    await h.close();
+  });
+
+  test("a request whose ceiling no provider meets is refused before the token's nullifier is consumed", async () => {
+    const before = { spent: await spentCount(), generations: await generationCount(), pool: (await balanceOf(h.ctx.db, BLIND_POOL)).balance };
+    const cases: [Record<string, unknown>, Record<string, string>, string, string?][] = [
+      [{ provider: { disclosure: "none" } }, {}, "disclosure_unavailable"],
+      [{ provider: { lane: "attested" } }, {}, "lane_unavailable"],
+      [{}, { "x-anyroute-disclosure-max": "none" }, "disclosure_unavailable"],
+      [{}, { "x-anyroute-lane": "attested" }, "lane_unavailable"],
+      [{ stream: true, provider: { disclosure: "none" } }, {}, "disclosure_unavailable"],
+      [{ model: "acme/embed-small", input: "hello", provider: { disclosure: "none" } }, {}, "disclosure_unavailable", "/api/v1/embeddings"],
+    ];
+    const token = tokens[0];
+    for (const [body, headers, type, path] of cases) {
+      const r = await redeem(h, token, path ? body : { ...chat, ...body }, path, headers);
+      expect(r.status).toBe(409);
+      const j = await r.json();
+      expect(j.error.type).toBe(type);
+      expect(j.error.message).toMatch(/Nothing was sent to any provider and nothing was charged/);
+      // Nothing was claimed, held, charged or receipted.
+      expect(await spentCount()).toBe(before.spent);
+      expect(await generationCount()).toBe(before.generations);
+      expect((await balanceOf(h.ctx.db, BLIND_POOL)).balance).toBe(before.pool);
+    }
+    // The token is still good: the same one pays for an ordinary request.
+    const ok = await redeem(h, token);
+    expect(ok.status).toBe(200);
+    expect(await spentCount()).toBe(before.spent + 1);
+    expect((await redeem(h, token)).status).toBe(401); // and now it is spent
+  });
+
+  test("once a provider is attested, none routes to it under a blind token, and the receipt says attested with no account", async () => {
+    expect(((await runAttestor(h.ctx)).results[0] as { ok: boolean }).ok).toBe(true);
+    const r = await redeem(h, tokens[1], { ...chat, provider: { disclosure: "none" } });
+    expect(r.status).toBe(200);
+    const j = await r.json();
+    expect(j.provider).toBe("Enclave");
+    expect(r.headers.get("x-anyroute-disclosure")).toBe("attested");
+    expect(j.receipt.payload).toMatchObject({ disclosure: "attested", lane: "public", nullifier: tokenNullifier(tokens[1]), payer: null });
+    const lane = await redeem(h, tokens[2], chat, "/api/v1/chat/completions", { "x-anyroute-lane": "attested" });
+    expect(lane.status).toBe(200);
+    expect((await lane.json()).receipt.payload).toMatchObject({ lane: "attested", disclosure: "attested" });
+    const emb = await redeem(h, tokens[3], { model: "acme/embed-small", input: "hello", provider: { disclosure: "none" } }, "/api/v1/embeddings");
+    expect(emb.status).toBe(200);
+    expect((await emb.json()).receipt.payload).toMatchObject({ disclosure: "attested", nullifier: tokenNullifier(tokens[3]), payer: null });
+  });
+
+  test("a documented-policy ceiling admits the policy provider and excludes the undeclared one", async () => {
+    for (const i of [4, 5, 6, 7]) {
+      const r = await redeem(h, tokens[i], { ...chat, provider: { disclosure: "policy", order: ["vendor", "policy", "enclave"] } });
+      expect(r.status).toBe(200);
+      const j = await r.json();
+      expect(j.provider).not.toBe("Vendor"); // vendor-forwarded is above a "policy" ceiling
+      expect(["policy", "attested"]).toContain(j.receipt.payload.disclosure);
+    }
+  });
+
+  test("council mode and dual verification make several provider calls, so a token is refused for them without being spent", async () => {
+    const before = await spentCount();
+    for (const body of [{ ...chat, model: "anyroute/council" }, { ...chat, verify: "dual" }]) {
+      const r = await redeem(h, tokens[8], body);
+      expect(r.status).toBe(400);
+      expect((await r.json()).error.type).toBe("blind_unsupported");
+    }
+    expect(await spentCount()).toBe(before);
+    expect((await redeem(h, tokens[8])).status).toBe(200);
   });
 });
 
