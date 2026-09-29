@@ -396,6 +396,21 @@ function DepositDialog({ onClose, apiKey, credits, status, onDone }) {
   );
 }
 
+/** How long escrow credits wait for the chain to finalize a transfer, in words. */
+const finalityWait = (escrow) => {
+  const s = Number(escrow?.expected_credit_delay_s);
+  if (!Number.isFinite(s) || s <= 0) return "once the chain finalizes the transfer";
+  const m = Math.max(1, Math.round(s / 60));
+  return `once the chain finalizes the transfer (about ${m} minute${m === 1 ? "" : "s"})`;
+};
+const DEPOSIT_STATUS = {
+  pending_finality: ["Waiting for finality", ""],
+  pending: ["Pricing", ""],
+  credited: ["Credited", " green"],
+  orphaned: ["Dropped by the chain · not credited", ""],
+  reversed: ["Reversed", ""],
+};
+
 /** ERC-20 transfer(to, raw) calldata, built without a library. */
 const transferData = (to, raw) => "0xa9059cbb" + to.slice(2).toLowerCase().padStart(64, "0") + BigInt(raw).toString(16).padStart(64, "0");
 
@@ -412,8 +427,8 @@ function StockDepositDialog({ onClose, escrow, stock, status, onDone }) {
   return (
     <Modal title="Pay with stock" onClose={onClose}>
       <p>
-        Send a listed Stock Token on {chainOf(status).name} to the escrow wallet. After {escrow?.confirmations ?? 2} confirmations your balance is credited at the live
-        Chainlink price{discount ? ` minus ${discount}%` : ""}. Credits are spent on API calls and are not withdrawable.
+        Send a listed Stock Token on {chainOf(status).name} to the escrow wallet. Your balance is credited {finalityWait(escrow)} at the live Chainlink
+        price{discount ? ` minus ${discount}%` : ""}. Credits are spent on API calls and are not withdrawable.
       </p>
       {error && (
         <div className="error" role="alert">
@@ -476,7 +491,7 @@ function StockDepositDialog({ onClose, escrow, stock, status, onDone }) {
                   if (from.toLowerCase() !== wallet.toLowerCase()) throw new Error(`Switch your wallet to ${shortAddress(wallet)}, the wallet you signed in with. Tokens sent from another wallet are credited to that wallet.`);
                   await ensureChain(chainOf(status));
                   await sendTransactions(from, [{ to: token.address, data: transferData(escrow.address, raw), description: `Send ${amount} ${token.symbol} to escrow` }], setStep);
-                  setStep("Sent. Waiting for confirmations and the credit…");
+                  setStep("Sent. Waiting for the router to see the transfer…");
                   await onDone();
                 } catch (e) {
                   setError(e?.message || String(e));
@@ -521,7 +536,7 @@ function StockDeposits({ deposits }) {
                 {d.credited_usd != null ? "$" + money(d.credited_usd, 2) : "—"}
               </td>
               <td data-label="Status">
-                <span className={"badge" + (d.status === "credited" ? " green" : "")}>{d.status === "credited" ? "Credited" : "Waiting"}</span>
+                <span className={"badge" + (DEPOSIT_STATUS[d.status]?.[1] ?? "")}>{DEPOSIT_STATUS[d.status]?.[0] ?? "Waiting"}</span>
                 {d.note && <small>{d.note}</small>}
               </td>
             </tr>
@@ -1600,7 +1615,7 @@ export default function Dashboard() {
                   <h2>Stock deposits</h2>
                   <p className="help-text">
                     {ws?.stock?.wallet
-                      ? `Transfers from ${shortAddress(ws.stock.wallet)} to the escrow wallet, credited after ${ws.escrow.confirmations} confirmations.`
+                      ? `Transfers from ${shortAddress(ws.stock.wallet)} to the escrow wallet, credited ${finalityWait(ws.escrow)}.`
                       : ws?.stock?.hint || "Sign in with a wallet to pay with stock."}
                   </p>
                 </div>
@@ -1924,15 +1939,17 @@ export default function Dashboard() {
           status={status}
           onClose={() => setModal(null)}
           onDone={async () => {
-            const before = (ws?.stock?.deposits || []).filter((d) => d.status === "credited").length;
+            // The transfer shows up within seconds as "Waiting for finality"; the credit follows once
+            // the chain finalizes it, so wait only until the router has seen it.
+            const before = (ws?.stock?.deposits || []).length;
             let next = ws;
-            for (let i = 0; i < 60; i++) {
+            for (let i = 0; i < 45; i++) {
               next = await refresh();
-              if ((next.stock?.deposits || []).filter((d) => d.status === "credited").length > before) break;
+              if ((next.stock?.deposits || []).length > before) break;
               await new Promise((r) => setTimeout(r, 2000));
             }
-            const credited = (next.stock?.deposits || []).filter((d) => d.status === "credited").length > before;
-            setNotice(credited ? "Stock deposit credited." : "Stock deposit sent. It is credited once confirmed and priced; check Stock deposits.");
+            const seen = (next.stock?.deposits || []).length > before;
+            setNotice(seen ? `Stock deposit received. It is credited ${finalityWait(next.escrow)}; track it under Stock deposits.` : "Stock deposit sent. It appears under Stock deposits once the router sees it.");
             if (errorKind === "insufficient_credits") {
               setError("");
               setErrorKind("");
