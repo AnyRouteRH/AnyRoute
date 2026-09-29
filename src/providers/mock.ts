@@ -22,6 +22,8 @@ export type MockConfig = {
   reply?: (prompt: string, body: any) => string | undefined;
   /** Test hook: token counts to report instead of the measured ones. */
   usage?: { prompt_tokens?: number; completion_tokens?: number };
+  /** Test hook: awaited before a stream sends content part `part` (0-based), so a test can hold a stream half-way. */
+  holdStream?: (part: number) => Promise<void> | void;
 };
 
 const WORDS = "the quick brown fox jumps over the lazy dog and keeps running far away".split(" ");
@@ -152,6 +154,7 @@ export function createMockProvider(initial: MockConfig) {
             return;
           }
           if (cfg.behaviour === "slow") await new Promise((r) => setTimeout(r, 20));
+          await cfg.holdStream?.(i);
           send({ id, object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: { content: p } }] });
         }
         send({ id, object: "chat.completion.chunk", model: body.model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
