@@ -152,7 +152,8 @@ const schema = z.object({
   NVIDIA_NRAS_URL: z.string().default("https://nras.attestation.nvidia.com/v3/attest/gpu"),
   TDX_VERIFIER_URL: opt,
   TDX_VERIFIER_KEY: opt,
-  // Which services confirm a TEE quote: a comma list of dcap (TDX_VERIFIER_URL, the default), intel-ta, dstack.
+  // Which services confirm a TEE quote: a comma list of dcap (TDX_VERIFIER_URL, the default), intel-ta, dstack,
+  // phala (Phala Cloud's public quote verifier, PHALA_VERIFIER_URL).
   // Every listed verifier must accept the quote.
   ATTESTATION_VERIFIERS: z.string().default("dcap"),
   INTEL_TA_URL: z.string().default("https://api.trustauthority.intel.com/appraisal/v2/attest"),
@@ -160,6 +161,7 @@ const schema = z.object({
   INTEL_TA_API_KEY: opt,
   DSTACK_VERIFIER_URL: opt,
   DSTACK_VERIFIER_KEY: opt,
+  PHALA_VERIFIER_URL: z.string().default("https://cloud-api.phala.com/api/v1/attestations/verify"),
 
   // Measurements: record the image/compose/model digests bound into verified quotes, look them up in the
   // Rekor transparency log and prepare MeasurementRegistry.register() calldata. Off by default; nothing is submitted.
@@ -304,13 +306,14 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     }
   }
   const verifierNames = e.ATTESTATION_VERIFIERS.split(",").map((v) => v.trim()).filter(Boolean);
-  if (!verifierNames.length || verifierNames.some((v) => !["dcap", "intel-ta", "dstack"].includes(v))) throw new Error("ATTESTATION_VERIFIERS must list dcap, intel-ta and/or dstack.");
+  if (!verifierNames.length || verifierNames.some((v) => !["dcap", "intel-ta", "dstack", "phala"].includes(v))) throw new Error("ATTESTATION_VERIFIERS must list dcap, intel-ta, dstack and/or phala.");
   if (new Set(verifierNames).size !== verifierNames.length) throw new Error("ATTESTATION_VERIFIERS lists a verifier twice.");
   if (verifierNames.includes("intel-ta") && !e.INTEL_TA_API_KEY) throw new Error("ATTESTATION_VERIFIERS includes intel-ta, which needs INTEL_TA_API_KEY.");
   if (verifierNames.includes("dstack") && !e.DSTACK_VERIFIER_URL) throw new Error("ATTESTATION_VERIFIERS includes dstack, which needs DSTACK_VERIFIER_URL.");
   if (production) {
     if (verifierNames.includes("intel-ta") && !(e.INTEL_TA_URL.startsWith("https://") && e.INTEL_TA_JWKS_URL.startsWith("https://"))) throw new Error("INTEL_TA_URL and INTEL_TA_JWKS_URL must be https in production.");
     if (e.MEASUREMENTS_ENABLED && !e.REKOR_URL.startsWith("https://")) throw new Error("REKOR_URL must be https in production.");
+    if (verifierNames.includes("phala") && !e.PHALA_VERIFIER_URL.startsWith("https://")) throw new Error("PHALA_VERIFIER_URL must be https in production.");
   }
   // Contract-path guards: verified deployment (H-02), buyback oracle (M-05), PayWithStock delegation (M-06).
   const contractPath = contractPathGuards(e, production, escrowMode);
@@ -476,10 +479,11 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       nrasUrl: e.NVIDIA_NRAS_URL,
       tdxVerifierUrl: e.TDX_VERIFIER_URL,
       tdxVerifierKey: e.TDX_VERIFIER_KEY,
-      verifiers: verifierNames as ("dcap" | "intel-ta" | "dstack")[],
+      verifiers: verifierNames as ("dcap" | "intel-ta" | "dstack" | "phala")[],
       intelTa: { url: e.INTEL_TA_URL, jwksUrl: e.INTEL_TA_JWKS_URL, apiKey: e.INTEL_TA_API_KEY },
       dstackVerifierUrl: e.DSTACK_VERIFIER_URL,
       dstackVerifierKey: e.DSTACK_VERIFIER_KEY,
+      phalaVerifierUrl: e.PHALA_VERIFIER_URL,
     },
     measurements: {
       enabled: e.MEASUREMENTS_ENABLED,

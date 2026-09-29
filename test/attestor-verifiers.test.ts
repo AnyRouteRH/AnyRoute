@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { loadConfig } from "../src/config.ts";
-import { composeHashFromEventLog, createVerifiers, verifiersConfigured, verifyJwt, verifyWithAll, type AttestationVerifierConfig, type VerifierInput } from "../src/services/attestor-verifiers.ts";
+import { composeHashFromEventLog, composeHashFromMrConfigId, createVerifiers, verifiersConfigured, verifyJwt, verifyWithAll, type AttestationVerifierConfig, type VerifierInput } from "../src/services/attestor-verifiers.ts";
 import { parseTdxQuote } from "../src/services/attestor.ts";
 import { REGS, rsaKey, signJwt, tdxQuote } from "./measurement-fixtures.ts";
+import recorded from "./fixtures/phala-verify.json";
 
 // Mocked-HTTP tests for the pluggable quote verifiers: every fetch goes to a fake that records the request.
 
@@ -18,6 +19,7 @@ const base: AttestationVerifierConfig = {
   intelTa: { url: "https://ita.example.test/appraisal/v2/attest", jwksUrl: "https://ita.example.test/certs", apiKey: "ita-key" },
   dstackVerifierUrl: "https://dstack.example.test/verify",
   dstackVerifierKey: undefined,
+  phalaVerifierUrl: "https://phala.example.test/api/v1/attestations/verify",
 };
 
 type Call = { url: string; init: RequestInit };
@@ -153,6 +155,60 @@ describe("dstack verifier", () => {
   });
 });
 
+describe("phala public verifier", () => {
+  const cfg: AttestationVerifierConfig = { ...base, verifiers: ["phala"] };
+  // A real quote from the sidecar example on Phala Cloud and the response the public verifier gave for it.
+  const realQuote = recorded.quote_hex;
+  const realInput = (): VerifierInput => ({ kind: "tdx", quoteHex: realQuote, registers: parseTdxQuote(realQuote) });
+  const answer = (body: unknown, status = 200) => fakeFetch({ [cfg.phalaVerifierUrl!]: () => json(body, status) });
+  const withBody = (over: Record<string, unknown>) => ({ ...recorded.response, quote: { ...recorded.response.quote, body: { ...recorded.response.quote.body, ...over } } });
+
+  test("accepts the recorded real response, posts {hex}, and reads the compose hash from MRCONFIGID", async () => {
+    const { f, calls } = answer(recorded.response);
+    const r = await createVerifiers(cfg, f)[0].verify(realInput());
+    expect(r).toMatchObject({ ok: true, status: "verified", composeHash: recorded.bindings.compose_hash.replace("sha256:", "") });
+    expect(calls[0].url).toBe(cfg.phalaVerifierUrl!);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ hex: realQuote });
+    expect(calls[0].init.redirect).toBe("error");
+    // The quote in the fixture carries the sidecar's bindings digest and the verifier's nonce.
+    expect(parseTdxQuote(realQuote).reportData.endsWith(recorded.nonce)).toBe(true);
+  });
+  test("rejects an answer about a different quote, an unverified quote, a non-TDX appraisal and HTTP errors", async () => {
+    const run = async (body: unknown, status = 200) => (await createVerifiers(cfg, answer(body, status).f)[0].verify(realInput())).reason ?? "ok";
+    expect(await run(withBody({ rtmr3: "0x" + "ee".repeat(48) }))).toContain("rtmr3");
+    expect(await run(withBody({ mrtd: "0x" + "ee".repeat(48) }))).toContain("mrtd");
+    expect(await run(withBody({ reportdata: "0x" + "00".repeat(64) }))).toContain("report_data");
+    expect(await run(withBody({ mr_config_id: "0x" + "00".repeat(48) }))).toContain("mr_config_id");
+    expect(await run(withBody({ reportdata: undefined }))).toContain("did not report");
+    expect(await run({ ...recorded.response, quote: { ...recorded.response.quote, verified: false } })).toContain("not verified");
+    expect(await run({ ...recorded.response, quote: { ...recorded.response.quote, header: { ...recorded.response.quote.header, tee_type: "TEE_SGX" } } })).toContain("did not appraise a TDX quote");
+    expect(await run({ detail: "JSON body must contain 'hex' field" }, 400)).toBe("Phala verifier HTTP 400");
+    const snp = await createVerifiers(cfg, answer(recorded.response).f)[0].verify({ ...realInput(), kind: "snp" });
+    expect(snp.ok).toBe(false);
+    const none = createVerifiers({ ...cfg, phalaVerifierUrl: undefined }, fakeFetch({}).f)[0];
+    expect((await none.verify(realInput())).reason).toContain("PHALA_VERIFIER_URL");
+  });
+  test("refuses a debuggable TD even when the verifier says verified", async () => {
+    const q = Buffer.from(realQuote, "hex");
+    q[48 + 120] |= 1; // TDATTRIBUTES.DEBUG
+    const hex = q.toString("hex");
+    const r = await createVerifiers(cfg, answer(recorded.response).f)[0].verify({ kind: "tdx", quoteHex: hex, registers: parseTdxQuote(hex) });
+    expect(r).toMatchObject({ ok: false, reason: "TD is debuggable" });
+  });
+  test("MRCONFIGID yields a compose hash only in dstack's 0x01 || hash form", () => {
+    expect(composeHashFromMrConfigId("0x01" + "ab".repeat(32) + "00".repeat(15))).toBe("ab".repeat(32));
+    expect(composeHashFromMrConfigId("00".repeat(48))).toBeUndefined();
+    expect(composeHashFromMrConfigId("02" + "ab".repeat(32) + "00".repeat(15))).toBeUndefined();
+    expect(composeHashFromMrConfigId("01" + "ab".repeat(32) + "01" + "00".repeat(14))).toBeUndefined();
+  });
+  test("its compose hash must agree with the dstack verifier's", async () => {
+    const both: AttestationVerifierConfig = { ...cfg, verifiers: ["phala", "dstack"] };
+    const eventLog = JSON.stringify([{ imr: 3, event: "compose-hash", event_payload: "5e".repeat(32) }]);
+    const fake = fakeFetch({ [both.phalaVerifierUrl!]: () => json(recorded.response), [both.dstackVerifierUrl!]: () => json({ is_valid: true, details: { event_log_verified: true } }) });
+    expect(await verifyWithAll(createVerifiers(both, fake.f), { ...realInput(), eventLog })).toMatchObject({ ok: false, reason: "verifiers disagree on the compose hash" });
+  });
+});
+
 describe("running several verifiers", () => {
   const both: AttestationVerifierConfig = { ...base, verifiers: ["dcap", "dstack"] };
   const compose = "5e".repeat(32);
@@ -178,6 +234,8 @@ describe("running several verifiers", () => {
     expect(verifiersConfigured({ ...both, dstackVerifierUrl: undefined })).toBe(false);
     expect(verifiersConfigured({ ...base, verifiers: ["intel-ta"] })).toBe(true);
     expect(verifiersConfigured({ ...base, verifiers: ["intel-ta"], intelTa: { ...base.intelTa, apiKey: undefined } })).toBe(false);
+    expect(verifiersConfigured({ ...base, verifiers: ["phala"] })).toBe(true);
+    expect(verifiersConfigured({ ...base, verifiers: ["phala"], phalaVerifierUrl: undefined })).toBe(false);
   });
 });
 
@@ -196,6 +254,9 @@ describe("configuration", () => {
     expect(() => cfg({ ATTESTATION_VERIFIERS: "dstack" })).toThrow("DSTACK_VERIFIER_URL");
     const c = cfg({ ATTESTATION_VERIFIERS: "dcap, intel-ta,dstack", INTEL_TA_API_KEY: "k", DSTACK_VERIFIER_URL: "http://x.test/verify" });
     expect(c.attestation.verifiers).toEqual(["dcap", "intel-ta", "dstack"]);
+    const phala = cfg({ ATTESTATION_VERIFIERS: "phala" });
+    expect(phala.attestation.verifiers).toEqual(["phala"]);
+    expect(phala.attestation.phalaVerifierUrl).toBe("https://cloud-api.phala.com/api/v1/attestations/verify");
   });
 });
 
@@ -212,6 +273,8 @@ describe("production configuration", () => {
     expect(loadConfig(ita).attestation.verifiers).toEqual(["intel-ta"]);
     expect(() => loadConfig({ ...ita, INTEL_TA_URL: "http://ita.example/attest" })).toThrow("must be https");
     expect(() => loadConfig({ ...ita, INTEL_TA_JWKS_URL: "http://ita.example/certs" })).toThrow("must be https");
+    expect(loadConfig({ ...prod, ATTESTATION_VERIFIERS: "phala" }).attestation.verifiers).toEqual(["phala"]);
+    expect(() => loadConfig({ ...prod, ATTESTATION_VERIFIERS: "phala", PHALA_VERIFIER_URL: "http://phala.example/verify" })).toThrow("PHALA_VERIFIER_URL must be https");
   });
   test("the measurement job is a valid worker job and needs no signing key", () => {
     const worker = { ...prod, RUNTIME_ROLE: "worker", WORKER_JOBS: "measurements", ROUTER_PRIVATE_KEY: "", MEASUREMENTS_ENABLED: "true" };

@@ -11,12 +11,16 @@ import type { Config } from "../config.ts";
 //             service's published JWKS, then read the appraisal claims.
 //   dstack    A dstack verifier service (POST {quote, event_log, vm_config}); also yields the compose hash the
 //             verified event log recorded, which the attestor compares with the compose hash the report claims.
+//   phala     Phala Cloud's public quote verifier (POST {hex} to PHALA_VERIFIER_URL). It checks the quote's
+//             signature and certificate chain; its answer names the registers and report_data it verified, which
+//             must be this quote's. On dstack the quote's MRCONFIGID is 0x01 || compose hash, which is returned as
+//             the compose hash. It reports no TCB status, so list dcap or intel-ta as well to enforce one.
 //
 // Every verifier also cross-checks any measurements it reports against the registers parsed locally from the
 // quote, so a verifier cannot vouch for a different quote than the one presented. None of them can prove the
 // digests a provider claims; that binding is checked by the attestor against the quote's report_data.
 
-export type VerifierName = "dcap" | "intel-ta" | "dstack";
+export type VerifierName = "dcap" | "intel-ta" | "dstack" | "phala";
 export type FetchFn = typeof fetch;
 
 export type QuoteRegisters = { mrtd: string; rtmr0: string; rtmr1: string; rtmr2: string; rtmr3: string; reportData: string };
@@ -46,7 +50,7 @@ export interface QuoteVerifier {
   verify(input: VerifierInput): Promise<VerifierResult>;
 }
 
-export type AttestationVerifierConfig = Pick<Config["attestation"], "verifiers" | "tdxVerifierUrl" | "tdxVerifierKey" | "intelTa" | "dstackVerifierUrl" | "dstackVerifierKey">;
+export type AttestationVerifierConfig = Pick<Config["attestation"], "verifiers" | "tdxVerifierUrl" | "tdxVerifierKey" | "intelTa" | "dstackVerifierUrl" | "dstackVerifierKey"> & { phalaVerifierUrl?: string };
 
 const ACCEPTED_TCB = new Set(["UpToDate", "SWHardeningNeeded"]);
 const REGISTER_KEYS = ["mrtd", "rtmr0", "rtmr1", "rtmr2", "rtmr3"] as const;
@@ -221,10 +225,60 @@ class DstackVerifier implements QuoteVerifier {
   }
 }
 
+// ---- Phala public verifier ------------------------------------------------------------------------
+
+/** TD report body fields read straight from the quote bytes (the header is 48 bytes). */
+function tdBodyField(quoteHex: string, offset: number, length: number): Buffer | null {
+  const b = Buffer.from(quoteHex.replace(/^0x/, ""), "hex");
+  return b.length >= 48 + offset + length ? b.subarray(48 + offset, 48 + offset + length) : null;
+}
+
+/** The compose hash a dstack host puts in MRCONFIGID (0x01 || sha256 || zero padding), lowercase hex. */
+export function composeHashFromMrConfigId(mrConfigIdHex: string | null | undefined): string | undefined {
+  const m = /^01([0-9a-f]{64})0{30}$/.exec(strip0x(mrConfigIdHex ?? ""));
+  return m ? m[1] : undefined;
+}
+
+class PhalaPublicVerifier implements QuoteVerifier {
+  readonly name = "phala" as const;
+  constructor(private url: string | undefined, private fetchImpl: FetchFn) {}
+  async verify(input: VerifierInput): Promise<VerifierResult> {
+    if (input.kind !== "tdx") return { ok: false, reason: "phala verifies TDX quotes only" };
+    if (!this.url) return { ok: false, reason: "no Phala verifier configured (PHALA_VERIFIER_URL)" };
+    const quoteHex = input.quoteHex.replace(/^0x/, "").toLowerCase();
+    const res = await this.fetchImpl(this.url, {
+      method: "POST",
+      redirect: "error",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ hex: quoteHex }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) return { ok: false, reason: `Phala verifier HTTP ${res.status}` };
+    const j = (await boundedJson(res, 4 * 1024 * 1024)) as { quote?: { verified?: unknown; header?: Record<string, unknown>; body?: Record<string, unknown> } };
+    const q = j.quote ?? {};
+    if (q.verified !== true) return { ok: false, reason: "quote not verified (Phala verifier)" };
+    if (q.header?.tee_type !== undefined && q.header.tee_type !== "TEE_TDX") return { ok: false, reason: "Phala verifier did not appraise a TDX quote" };
+    const body = (q.body ?? {}) as Record<string, unknown>;
+    // The answer must describe this quote: every register it reports, and its report_data, must match.
+    if (!input.registers || typeof body.mrtd !== "string" || typeof body.reportdata !== "string") return { ok: false, reason: "Phala verifier did not report the quote's registers" };
+    const mismatch = registerMismatch(body, input.registers);
+    if (mismatch) return { ok: false, reason: mismatch };
+    if (strip0x(body.reportdata) !== input.registers.reportData) return { ok: false, reason: "report_data reported by the verifier does not match the quote" };
+    // TDATTRIBUTES bit 0 is DEBUG; a debuggable TD's memory is readable by the host.
+    const attributes = tdBodyField(quoteHex, 120, 8);
+    if (!attributes || (attributes[0] & 1) === 1) return { ok: false, reason: "TD is debuggable" };
+    const mrConfigId = tdBodyField(quoteHex, 184, 48)?.toString("hex");
+    const reported = typeof body.mr_config_id === "string" ? strip0x(body.mr_config_id) : undefined;
+    if (reported !== undefined && reported !== mrConfigId) return { ok: false, reason: "mr_config_id reported by the verifier does not match the quote" };
+    return { ok: true, status: "verified", composeHash: composeHashFromMrConfigId(mrConfigId) };
+  }
+}
+
 export function createVerifiers(cfg: AttestationVerifierConfig, fetchImpl: FetchFn = fetch, nowMs: () => number = Date.now): QuoteVerifier[] {
   return cfg.verifiers.map((name) => {
     if (name === "intel-ta") return new IntelTrustAuthorityVerifier(cfg.intelTa, fetchImpl, nowMs);
     if (name === "dstack") return new DstackVerifier(cfg.dstackVerifierUrl, cfg.dstackVerifierKey, fetchImpl);
+    if (name === "phala") return new PhalaPublicVerifier(cfg.phalaVerifierUrl, fetchImpl);
     return new DcapVerifier(cfg, fetchImpl);
   });
 }
@@ -239,7 +293,7 @@ export function verifiersConfigured(cfg: AttestationVerifierConfig): boolean {
       return false;
     }
   };
-  return cfg.verifiers.every((n) => (n === "dcap" ? http(cfg.tdxVerifierUrl) : n === "dstack" ? http(cfg.dstackVerifierUrl) : !!cfg.intelTa.apiKey && http(cfg.intelTa.url) && http(cfg.intelTa.jwksUrl)));
+  return cfg.verifiers.every((n) => (n === "dcap" ? http(cfg.tdxVerifierUrl) : n === "dstack" ? http(cfg.dstackVerifierUrl) : n === "phala" ? http(cfg.phalaVerifierUrl) : !!cfg.intelTa.apiKey && http(cfg.intelTa.url) && http(cfg.intelTa.jwksUrl)));
 }
 
 export type VerifyOutcome = { ok: boolean; reason?: string; status?: string; verifiers: string[]; composeHash?: string };
