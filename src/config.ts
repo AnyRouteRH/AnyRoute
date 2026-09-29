@@ -226,6 +226,22 @@ const schema = z.object({
   IPX_THIN_USDG: z.string().regex(/^\d+(\.\d{1,6})?$/, "must be a USDG amount like \"50000\"").default("50000"), // trailing-24h volume below which a class is THIN
   IPX_MAX_ACCOUNT_SHARE_BPS: int(10_000), // cap on one account's share of a window's volume; 10000 = no cap
   IPX_ATTESTED_ONLY: bool.default(true), // count only fills served by providers with a stored attestation
+  // ---- IPX oracle publisher (src/services/ipx-oracle.ts): signed index price updates from the latest IPX samples,
+  // served at GET /api/v1/ipx/:class/oracle and optionally handed to publishers. Off unless IPX_ORACLE_ENABLED (and IPX_ENABLED).
+  IPX_ORACLE_ENABLED: bool.default(false),
+  IPX_ORACLE_PRIVATE_KEY: pk, // dedicated oracle signing key (32 bytes, hex); signs messages only and holds no funds. Never shared with a chain role.
+  IPX_ORACLE_PUBLIC_KEY: opt, // public half for replicas that do not hold the private key (ed25519: 0x + 32 bytes; secp256k1: address)
+  IPX_ORACLE_ALGORITHM: z.enum(["ed25519", "secp256k1-eip191"]).default("ed25519"),
+  IPX_ORACLE_CLASSES: opt, // comma list of IPX class ids to publish; default: every IPX class
+  IPX_ORACLE_INTERVAL_S: int(300), // publishing cadence
+  IPX_ORACLE_STALE_AFTER_S: int(1800), // an update is valid for this long; a consumer must halt past it
+  IPX_ORACLE_MAX_MOVE_BPS: int(1000), // largest move of the published price from the previous update, in basis points
+  IPX_ORACLE_HALTED: bool.default(false), // kill switch in config: freeze publishing (PUT /api/v1/ipx/oracle/halt sets it at runtime)
+  IPX_ORACLE_PUBLISHERS: opt, // comma list of sinks: "onchain" (IPXFeed calldata) and/or "https" (generic push); default none
+  IPX_ORACLE_FEEDS: opt, // JSON {"IPX-OPEN-70B":"0x<IPXFeed address>"} for the onchain sink
+  IPX_ORACLE_ONCHAIN_SUBMIT: bool.default(false), // onchain sink: submit the transaction with IPX_KEEPER_PRIVATE_KEY (default: build calldata only)
+  IPX_ORACLE_PUSH_CONFIG: opt, // https sink: path to a JSON file (or inline JSON) describing the request; see deploy/ipx-perp/
+  IPX_KEEPER_PRIVATE_KEY: pk, // the IPXFeed keeper; only used by the onchain sink with IPX_ORACLE_ONCHAIN_SUBMIT. Run it on a worker with no other signing key.
 
   // ---- Blind tokens: unlinkable paid access with Privacy Pass tokens (RFC 9578 type 0x0002). Off by default;
   // when off no route is registered and a PrivateToken Authorization header is not looked at.
@@ -292,12 +308,17 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     // Escrow mode has no contracts, so no job signs anything: receipts stay signed locally ("local"
     // anchors) and settlement, slashing and buybacks are inert. No signing key belongs anywhere.
     if (escrowMode && Object.values(roleKeys).some(Boolean)) throw new Error("PAYMENTS_MODE=escrow must not receive settlement, anchoring, slashing or keeper signing keys.");
+    // IPX: the oracle key signs messages and the IPX keeper key posts to the feed; neither belongs on the public API,
+    // and the keeper key (a funded chain signer) stays apart from every other signing role.
+    if (e.RUNTIME_ROLE === "api" && (e.IPX_ORACLE_PRIVATE_KEY || e.IPX_KEEPER_PRIVATE_KEY)) throw new Error("Public API must not receive the IPX oracle or IPX keeper key; set IPX_ORACLE_PUBLIC_KEY instead.");
+    if (e.IPX_KEEPER_PRIVATE_KEY && (escrowMode || Object.values(roleKeys).some(Boolean))) throw new Error("IPX_KEEPER_PRIVATE_KEY must be isolated from every other signing role.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
+      if (names.includes("ipx-oracle") && !(e.IPX_ORACLE_ENABLED && e.IPX_ORACLE_PRIVATE_KEY)) throw new Error("The ipx-oracle job needs IPX_ORACLE_ENABLED and IPX_ORACLE_PRIVATE_KEY.");
       if (!escrowMode)
         for (const [role, key] of Object.entries(roleKeys)) {
           const enabled = names.includes(keyJobs[role as keyof typeof keyJobs]);
@@ -419,6 +440,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       paymasterSignerKey: e.PAYMASTER_SIGNER_KEY as `0x${string}` | undefined,
       slasherKey: e.SLASHER_PRIVATE_KEY as `0x${string}` | undefined,
       keeperKey: e.KEEPER_PRIVATE_KEY as `0x${string}` | undefined,
+      ipxKeeperKey: e.IPX_KEEPER_PRIVATE_KEY as `0x${string}` | undefined,
       faucetKey: (e.DEV_FAUCET ? e.DEV_FAUCET_PRIVATE_KEY : undefined) as `0x${string}` | undefined,
       poolManager: e.V4_POOL_MANAGER as `0x${string}`,
     },
@@ -553,6 +575,63 @@ function ipxSettings(e: Env) {
     thinUsdg: BigInt(whole) * 1_000_000n + BigInt(frac.padEnd(6, "0")),
     maxAccountShareBps: e.IPX_MAX_ACCOUNT_SHARE_BPS,
     attestedOnly: e.IPX_ATTESTED_ONLY,
+    oracle: ipxOracleSettings(e, classes),
+  };
+}
+
+export type IpxOraclePublisherName = "onchain" | "https";
+const IPX_ORACLE_PUBLISHERS: IpxOraclePublisherName[] = ["onchain", "https"];
+
+function ipxOracleSettings(e: Env, classes: IpxClass[]) {
+  const ids = new Set(classes.map((c) => c.id));
+  const publishers = (e.IPX_ORACLE_PUBLISHERS ?? "").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
+  const bad = publishers.find((p) => !IPX_ORACLE_PUBLISHERS.includes(p as IpxOraclePublisherName));
+  if (bad) throw new Error(`IPX_ORACLE_PUBLISHERS: "${bad.slice(0, 20)}" is not a publisher (use ${IPX_ORACLE_PUBLISHERS.join(", ")}).`);
+  if (new Set(publishers).size !== publishers.length) throw new Error("IPX_ORACLE_PUBLISHERS lists a publisher twice.");
+  const listed = (e.IPX_ORACLE_CLASSES ?? "").split(",").map((v) => v.trim().toUpperCase()).filter(Boolean);
+  const unknown = listed.find((c) => !ids.has(c));
+  if (unknown) throw new Error(`IPX_ORACLE_CLASSES: ${unknown.slice(0, 40)} is not one of IPX_CLASSES.`);
+  const oracleClasses = listed.length ? [...new Set(listed)] : classes.map((c) => c.id);
+  let feeds: Record<string, `0x${string}`> = {};
+  if (e.IPX_ORACLE_FEEDS) {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(e.IPX_ORACLE_FEEDS);
+    } catch {
+      throw new Error("IPX_ORACLE_FEEDS must be a JSON object of class id to feed address.");
+    }
+    const parsed = z.record(z.string(), z.string().regex(/^0x[0-9a-fA-F]{40}$/)).safeParse(raw);
+    if (!parsed.success) throw new Error("IPX_ORACLE_FEEDS must be a JSON object of class id to feed address.");
+    feeds = Object.fromEntries(Object.entries(parsed.data).map(([k, v]) => [k.toUpperCase(), v as `0x${string}`]));
+    const stray = Object.keys(feeds).find((k) => !oracleClasses.includes(k));
+    if (stray) throw new Error(`IPX_ORACLE_FEEDS: ${stray.slice(0, 40)} is not an oracle class.`);
+  }
+  if (e.IPX_ORACLE_INTERVAL_S < 10 || e.IPX_ORACLE_INTERVAL_S > 3_600) throw new Error("IPX_ORACLE_INTERVAL_S must be between 10 and 3600.");
+  if (e.IPX_ORACLE_STALE_AFTER_S < 2 * e.IPX_ORACLE_INTERVAL_S || e.IPX_ORACLE_STALE_AFTER_S > 86_400) throw new Error("IPX_ORACLE_STALE_AFTER_S must be at least twice IPX_ORACLE_INTERVAL_S and at most 86400.");
+  if (e.IPX_ORACLE_MAX_MOVE_BPS < 1 || e.IPX_ORACLE_MAX_MOVE_BPS > 10_000) throw new Error("IPX_ORACLE_MAX_MOVE_BPS must be between 1 and 10000.");
+  const keyShape = e.IPX_ORACLE_ALGORITHM === "ed25519" ? /^0x[0-9a-fA-F]{64}$/ : /^0x[0-9a-fA-F]{40}$/;
+  if (e.IPX_ORACLE_PUBLIC_KEY && !keyShape.test(e.IPX_ORACLE_PUBLIC_KEY)) throw new Error(`IPX_ORACLE_PUBLIC_KEY must be ${e.IPX_ORACLE_ALGORITHM === "ed25519" ? "0x followed by the 32-byte ed25519 public key" : "the secp256k1 signer address"}.`);
+  if (e.IPX_ORACLE_ENABLED) {
+    if (!e.IPX_ENABLED) throw new Error("IPX_ORACLE_ENABLED requires IPX_ENABLED.");
+    if (e.RUNTIME_ROLE !== "api" && !e.IPX_ORACLE_PRIVATE_KEY) throw new Error("IPX_ORACLE_ENABLED requires IPX_ORACLE_PRIVATE_KEY (the public API may hold IPX_ORACLE_PUBLIC_KEY alone).");
+    if (publishers.includes("onchain") && !Object.keys(feeds).length) throw new Error("The onchain publisher needs IPX_ORACLE_FEEDS.");
+    if (publishers.includes("https") && !e.IPX_ORACLE_PUSH_CONFIG) throw new Error("The https publisher needs IPX_ORACLE_PUSH_CONFIG.");
+    if (e.IPX_ORACLE_ONCHAIN_SUBMIT && !(publishers.includes("onchain") && e.IPX_KEEPER_PRIVATE_KEY)) throw new Error("IPX_ORACLE_ONCHAIN_SUBMIT needs the onchain publisher and IPX_KEEPER_PRIVATE_KEY.");
+  }
+  return {
+    enabled: e.IPX_ORACLE_ENABLED,
+    algorithm: e.IPX_ORACLE_ALGORITHM,
+    privateKey: e.IPX_ORACLE_PRIVATE_KEY as `0x${string}` | undefined,
+    publicKey: e.IPX_ORACLE_PUBLIC_KEY?.toLowerCase(),
+    classes: oracleClasses,
+    intervalS: e.IPX_ORACLE_INTERVAL_S,
+    staleAfterS: e.IPX_ORACLE_STALE_AFTER_S,
+    maxMoveBps: e.IPX_ORACLE_MAX_MOVE_BPS,
+    halted: e.IPX_ORACLE_HALTED,
+    publishers: publishers as IpxOraclePublisherName[],
+    feeds,
+    onchainSubmit: e.IPX_ORACLE_ONCHAIN_SUBMIT,
+    pushConfig: e.IPX_ORACLE_PUSH_CONFIG,
   };
 }
 

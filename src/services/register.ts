@@ -7,6 +7,7 @@ import { runSpendWatch } from "./spend-watch.ts";
 import { retryAnchors, runAnchor, runKeyRotation } from "./anchor.ts";
 import { runAttestor } from "./attestor.ts";
 import { runMeasurements } from "./measurements.ts";
+import { runIpxOracle } from "./ipx-oracle.ts";
 import { runCanaries } from "./canaries.ts";
 import { runProbes } from "./probes.ts";
 import { runRegistry } from "./registry.ts";
@@ -28,6 +29,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall) {
   jobs.register("attestor", cfg.attestation.intervalMs, () => runAttestor(ctx), { atStart: true });
   // Off unless MEASUREMENTS_ENABLED: Rekor lookups and register() calldata for attested measurements. Sends nothing.
   if (cfg.measurements.enabled) jobs.register("measurements", cfg.measurements.intervalMs, () => runMeasurements(ctx));
+  // Off unless IPX_ENABLED and IPX_ORACLE_ENABLED: signs IPX index price updates and hands them to the configured sinks.
+  if (cfg.ipx.enabled && cfg.ipx.oracle.enabled) jobs.register("ipx-oracle", cfg.ipx.oracle.intervalS * 1000, () => runIpxOracle(ctx));
   jobs.register("receipts-anchor", cfg.receipts.anchorIntervalMs, async () => ({ anchor: await runAnchor(ctx), retry: await retryAnchors(ctx) }), { atStart: true });
   jobs.register("receipt-key-rotation", 3_600_000, () => runKeyRotation(ctx), { atStart: true });
   jobs.register("settlement", cfg.workers.settlementIntervalMs, () => runSettlement(ctx), { atStart: true });

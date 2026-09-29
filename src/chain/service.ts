@@ -22,6 +22,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import type { Config } from "../config.ts";
 import { fail } from "../lib/errors.ts";
+import { ipxFeedAbi } from "../services/ipx.ts";
 import { log } from "../lib/util.ts";
 import {
   AnyrStakingAbi,
@@ -71,7 +72,7 @@ const usdg3009Abi = [
   { type: "function", name: "transferWithAuthorization", stateMutability: "nonpayable", inputs: [{ name: "from", type: "address" }, { name: "to", type: "address" }, { name: "value", type: "uint256" }, { name: "validAfter", type: "uint256" }, { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" }, { name: "signature", type: "bytes" }], outputs: [] },
 ] as const;
 
-type Role = "router" | "settlement" | "anchorer" | "slasher" | "keeper" | "faucet";
+type Role = "router" | "settlement" | "anchorer" | "slasher" | "keeper" | "ipx" | "faucet";
 
 export class ChainService {
   readonly chain: Chain;
@@ -94,6 +95,7 @@ export class ChainService {
       anchorer: cfg.chain.anchorerKey,
       slasher: cfg.chain.slasherKey,
       keeper: cfg.chain.keeperKey,
+      ipx: cfg.chain.ipxKeeperKey,
       faucet: cfg.chain.faucetKey,
     };
     for (const [role, key] of Object.entries(keys) as [Role, Hex | undefined][]) {
@@ -230,6 +232,12 @@ export class ChainService {
 
   async tokenDecimals(token: Hex): Promise<number> {
     return Number(await this.client.readContract({ address: token, abi: erc20Abi, functionName: "decimals" }));
+  }
+
+  /** Post one IPXFeed round with the IPX keeper key (the "ipx" signing role). Simulated first; reverts are surfaced. */
+  async postIpxFeed(feed: Hex, u: { answer: bigint; receiptRoot: Hex; volumeUsdg: bigint }): Promise<{ hash: Hex }> {
+    const { hash } = await this.send("ipx", feed, ipxFeedAbi as unknown as Abi, "update", [u.answer, u.receiptRoot, u.volumeUsdg]);
+    return { hash };
   }
 
   /** Latest Chainlink-style (AggregatorV3) answer. */
