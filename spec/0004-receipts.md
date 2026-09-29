@@ -173,9 +173,16 @@ Every hour the router builds a Merkle tree over the leaves of all receipts issue
 
 Inclusion proves that a leaf was in a window's tree. It does not prove the leaf's timestamp or that it is unique.
 
-### 5.2 Node receipts (planned)
+### 5.2 Node receipts (implemented, off by default)
 
-The sidecar already offers its leaves in batches (`GET /anchor/leaves`, `POST /anchor/ack`, off unless an anchor token is set), and `ReceiptAnchor.anchorAttested(providerId, root, attestationRef)` exists on chain. The service that collects each host's leaves hourly and anchors one root per host, and `GET /v1/receipts/{rid}/proof` on the node, are planned.
+The sidecar offers its leaves in batches (`GET /anchor/leaves?after=&limit=`, `POST /anchor/ack`, off unless an anchor token is set). Where the router runs with `HOST_ANCHOR_ENABLED`, it collects them once an interval (an hour by default) from every provider whose sidecar certificate it has verified and pinned ([0001](0001-attestation.md) Section 3.2), over that pinned connection and with the host's anchor token:
+
+1. It reads the host's boot evidence and takes `bindings.receipt_pubkey` only if SHA-256 of the served quote is the attestation reference it verified and the quote's `report_data` commits to those bindings.
+2. It keeps a leaf only if the receipt's signature verifies under that key, `key_id` names that key, `attestation_ref` is that reference, `dev` is false and the leaf recomputes from the signed bytes (Section 3.1). Other leaves are discarded and counted.
+3. It builds one tree per host, attestation reference and interval over the kept leaves, in the order the sidecar queued them, with the tree rules of Section 5.1, and then acknowledges everything it pulled. A leaf already rooted is not rooted again.
+4. Where the router runs with a configured chain it calls `ReceiptAnchor.anchorAttested(keccak256(provider id), root, attestation reference)`. Attested anchors are a separate append-only list, and `verifyAttested(leaf, proof, index)` checks inclusion on chain. A root recorded without a configured chain has status `local`, as in Section 5.1.
+
+A root's window is the half-open interval in which the router collected its leaves, from the end of the host's previous root to the moment the root was built. `GET /api/v1/host-anchors/proof/{leaf}`, or `POST /api/v1/host-anchors/proof` with the receipt or its leaf, returns `{ rid, leaf, rooted, anchored, status, provider, provider_id_hash, attestation_ref, receipt_key, root, leaf_index, proof, window, anchor_index, tx, block }`. `anchored` is true only once the root was posted on chain and confirmed, and `anchor_index` is then its index among the attested anchors; for a `local` root it is false, and a verifier MUST NOT treat such a root as anchored. `packages/client` checks a node receipt against this proof (`verifyHostAnchor`): the signature, the path to the root and, with a reader for `attestedAnchors`, the root, provider and attestation reference on chain. `GET /v1/receipts/{rid}/proof` on the node itself is planned.
 
 ## 6. Verification order
 
