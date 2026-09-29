@@ -15,6 +15,7 @@ That only holds if **the relay is run by someone other than the router's operato
 
 - Accepts `POST` of `message/ohttp-req` on one fixed path (`/relay` by default) and nothing else.
 - Forwards the body, unchanged, to a gateway from its **allow-list** and returns the `message/ohttp-res`. The client names the gateway with `?gateway=<name>` (or its exact URL); with one gateway configured it can be omitted. Any other target is refused before a connection is made. Redirects are never followed.
+- Reaches a gateway that is an **onion service** through a SOCKS5 proxy (a local Tor client) when `RELAY_SOCKS5_PROXY` is set. See [Reaching a gateway over Tor](#reaching-a-gateway-over-tor).
 - Builds the forwarded request from scratch: it does not copy a single header, cookie, address or query string from the client's request. It sends `content-type`, `accept`, its own `user-agent`, and, if configured, `Authorization: Bearer <credential>` so the gateway can tell relay traffic from direct traffic.
 - Rebuilds the response too: only the `message/ohttp-res` body reaches the client. When the gateway refuses before unwrapping (stale key, size, rate limit) it passes on the status code and a fixed message, never the gateway's headers or body.
 - **Never logs a request, a body or a client address.** It writes one line at start-up (its own configuration: port, path, gateway names) and nothing while serving. What it keeps is counters, in memory, at `GET /metrics`: request, forwarded and refused counts by a fixed list of reasons, gateway response classes, bytes and requests in flight. They carry no client detail and reset on restart.
@@ -52,6 +53,7 @@ The relay reads its allow-list from the environment. Put the credential in a fil
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `RELAY_GATEWAYS` or `RELAY_GATEWAYS_FILE` | required | JSON array of `{name, url, credential?}`: the only gateways this relay will contact. URLs must be `https` (plain `http` only for localhost), with no credentials, query or fragment. |
+| `RELAY_SOCKS5_PROXY` | unset | `socks5h://[user:password@]host:port`: a SOCKS5 proxy, normally a Tor client, that gateways whose URL is an onion service (`http://<56 characters>.onion/...`) are reached through. Required if any gateway is one; other gateways are still reached directly. The name is always sent to the proxy and never looked up by the relay, so `socks5://` means the same. |
 | `RELAY_HOST` / `RELAY_PORT` | `127.0.0.1` / `8080` | Listen address. The container image listens on `0.0.0.0:8080`. |
 | `RELAY_PATH` | `/relay` | The one path that accepts requests. |
 | `RELAY_MAX_BODY_BYTES` | 8 MiB | Largest request the relay carries (a response may be 64 KiB larger, for the gateway's padding). Match the gateway's `OHTTP_MAX_REQUEST_BYTES`. |
@@ -74,6 +76,34 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --lo
 Put TLS in front (or set the `RELAY_TLS_*` files). Requests and responses cross the network encrypted end to end to the gateway, but the client's connection to you must be HTTPS or a network observer sees who talks to you and when.
 
 `GET /healthz` answers `ok`. A quick check from a client is the client helper in the router repository (`src/ohttp/client.ts`, `sendViaRelay`), which fetches the gateway key, encrypts a request and sends it through your URL.
+
+### Reaching a gateway over Tor
+
+A gateway operator can publish an onion address for its router (`GET /api/v1/status` carries it as `onion.address`; the gateway is then at `http://<address>/api/v1/ohttp/gateway`). A relay that reaches the gateway that way connects to it through the Tor network rather than from its own address: the gateway never sees the relay's network address, and the connection is encrypted and authenticated end to end by the onion service itself, so it uses plain `http://`. The relay's credential still goes in `Authorization` as before; the gateway operator still lists your relay, and its `key_id`, in `RELAY_OPERATORS`.
+
+1. Run a Tor client next to the relay and let it listen for SOCKS on an address only the relay can reach, for example in `torrc`:
+
+   ```
+   SocksPort 127.0.0.1:9050
+   ClientOnly 1
+   SafeLogging 1
+   Log notice stderr
+   ```
+
+   In containers, run it as its own container on a private network shared with the relay and point the relay at it by name (`socks5h://tor:9050`); never publish the SOCKS port.
+2. Put the onion gateway in the allow-list and give the relay the proxy:
+
+   ```sh
+   RELAY_SOCKS5_PROXY=socks5h://127.0.0.1:9050
+   RELAY_GATEWAYS='[{"name":"anyroute-onion","url":"http://<56 characters>.onion/api/v1/ohttp/gateway","credential":"example-relay-1:<secret>"}]'
+   ```
+
+   The relay refuses to start if a gateway is an onion service and no proxy is set, if the URL is `https://` (there is no certificate to check; the onion connection is the encryption), or if the name is not a version 3 onion address. A proxy URL with a user name and password makes Tor use a separate circuit per credential pair; without one Tor already keeps different destinations apart.
+3. Allow for the first connection: building a circuit to an onion service takes seconds and sometimes tens of seconds, so keep `RELAY_TIMEOUT_MS` at its default or higher.
+
+How it behaves: the relay hands the onion name to the proxy as a name and never resolves it (no DNS lookup on this host), opens one tunnel per request, sends the same request it would send to any gateway, and closes the tunnel afterwards. A proxy that cannot reach the onion service (Tor not running, service down, no circuit) gives the client a 502 and adds to `relay_gateway_unreachable_total{kind="proxy"}`; a gateway that answers too slowly gives a 504 as usual. Nothing about the tunnel or the proxy's reply is logged or passed to the client. Gateways that are not onion services keep going out directly, so one relay can serve both kinds.
+
+Tor hides the relay from the gateway; it does not change what a relay and a gateway that cooperate can do, and the client's connection to the relay is a separate matter (a relay can itself be offered as an onion service by putting a Tor onion service in front of it, with access logs off as above).
 
 ### Build it yourself
 

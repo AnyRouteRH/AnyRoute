@@ -26,7 +26,7 @@ function serve() {
     error: () => new Response(JSON.stringify({ error: { code: 500, type: "internal", message: "Relay error." } }), { status: 500, headers: { "content-type": "application/json" } }),
   });
   // The only log line: what the relay is, never who talks to it.
-  process.stderr.write(`${JSON.stringify({ msg: "listening", version: RELAY_VERSION, host: cfg.host, port: server.port, path: cfg.path, tls: !!cfg.tls, gateways: cfg.gateways.map((g) => g.name) })}\n`);
+  process.stderr.write(`${JSON.stringify({ msg: "listening", version: RELAY_VERSION, host: cfg.host, port: server.port, path: cfg.path, tls: !!cfg.tls, socks5: !!cfg.socks5, gateways: cfg.gateways.map((g) => g.name) })}\n`);
   const stop = () => {
     void server.stop().then(() => process.exit(0));
     setTimeout(() => process.exit(0), 10_000).unref();

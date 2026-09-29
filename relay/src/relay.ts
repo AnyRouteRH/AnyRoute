@@ -1,4 +1,5 @@
-import type { Gateway, RelayConfig } from "./config.ts";
+import { isOnionHost, type Gateway, type RelayConfig } from "./config.ts";
+import { SocksError, createSocksFetch } from "./socks.ts";
 import { RELAY_VERSION } from "./version.ts";
 
 // The relay: it receives an encapsulated request from a client and forwards exactly those bytes to a gateway it was
@@ -21,8 +22,8 @@ export class Counters {
   rejected: Record<RejectReason, number> = { method: 0, media_type: 0, gateway_unknown: 0, gateway_ambiguous: 0, empty_body: 0, body_too_large: 0, busy: 0 };
   /** Answers from the gateway by class. */
   gateway = { ok: 0, refused: 0, error: 0 };
-  /** The gateway did not answer: timeouts and connection failures. */
-  unreachable = { timeout: 0, network: 0 };
+  /** The gateway did not answer: timeouts, connection failures, and (for an onion gateway) the SOCKS5 proxy failing to reach it. */
+  unreachable = { timeout: 0, network: 0, proxy: 0 };
   /** The gateway rejected the credential this relay presents. An operator problem; the client sees a 502. */
   credentialRejected = 0;
   bytesIn = 0;
@@ -48,6 +49,7 @@ export class Counters {
       "# TYPE relay_gateway_unreachable_total counter",
       `relay_gateway_unreachable_total{kind="timeout"} ${this.unreachable.timeout}`,
       `relay_gateway_unreachable_total{kind="network"} ${this.unreachable.network}`,
+      `relay_gateway_unreachable_total{kind="proxy"} ${this.unreachable.proxy}`,
       "# TYPE relay_gateway_credential_rejected_total counter",
       `relay_gateway_credential_rejected_total ${this.credentialRejected}`,
       "# TYPE relay_bytes_in_total counter",
@@ -103,6 +105,9 @@ function chooseGateway(cfg: RelayConfig, wanted: string | null): Gateway | "unkn
 
 export function createRelay(cfg: RelayConfig, fetchImpl: typeof fetch = fetch) {
   const counters = new Counters();
+  // A gateway that is an onion service is reached through the SOCKS5 proxy (config.ts refuses one without a proxy).
+  const socksFetch = cfg.socks5 ? createSocksFetch(cfg.socks5, { maxResponseBytes: cfg.maxBodyBytes + RESPONSE_SLACK }) : undefined;
+  const onionGateways = new Set(cfg.gateways.filter((g) => isOnionHost(new URL(g.url).hostname)).map((g) => g.name));
 
   const reject = (reason: RejectReason, status: number, type: string, message: string) => {
     counters.rejected[reason]++;
@@ -132,14 +137,17 @@ export function createRelay(cfg: RelayConfig, fetchImpl: typeof fetch = fetch) {
       if (gateway.credential) headers.authorization = `Bearer ${gateway.credential}`;
       let res: Response;
       try {
-        res = await fetchImpl(gateway.url, { method: "POST", headers, body, redirect: "manual", signal: AbortSignal.any([req.signal, AbortSignal.timeout(cfg.timeoutMs)]) });
+        const signal = AbortSignal.any([req.signal, AbortSignal.timeout(cfg.timeoutMs)]);
+        if (onionGateways.has(gateway.name) && socksFetch) res = await socksFetch(gateway.url, { method: "POST", headers, body, signal });
+        else res = await fetchImpl(gateway.url, { method: "POST", headers, body, redirect: "manual", signal });
       } catch (e) {
         if ((e as Error)?.name === "TimeoutError") {
           counters.unreachable.timeout++;
           return reply(504, "gateway_timeout", "The gateway did not answer in time.");
         }
         if (req.signal.aborted) return new Response(null, { status: 499 });
-        counters.unreachable.network++;
+        if (e instanceof SocksError) counters.unreachable.proxy++;
+        else counters.unreachable.network++;
         return reply(502, "gateway_unreachable", "The gateway could not be reached.");
       }
 

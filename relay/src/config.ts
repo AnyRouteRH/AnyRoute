@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { SocksProxy } from "./socks.ts";
 
 // Relay configuration comes from the environment. The one thing that matters for privacy is the gateway allow-list:
 // the relay forwards to these URLs and to nothing else, whatever a client asks for.
@@ -13,6 +14,8 @@ export type Gateway = {
 };
 
 export type RelayConfig = {
+  /** A SOCKS5 proxy (a local Tor client) that gateways which are onion services are reached through. */
+  socks5?: SocksProxy;
   host: string;
   port: number;
   /** The one path that accepts message/ohttp-req. */
@@ -32,6 +35,9 @@ export class ConfigError extends Error {}
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
+/** A version 3 onion service name: 56 base32 characters. (A gateway is never a subdomain of one.) */
+export const isOnionHost = (hostname: string) => /^[a-z2-7]{56}\.onion$/.test(hostname);
+
 function int(env: Record<string, string | undefined>, name: string, dflt: number, min: number, max: number): number {
   const raw = env[name];
   if (raw === undefined || raw === "") return dflt;
@@ -40,7 +46,28 @@ function int(env: Record<string, string | undefined>, name: string, dflt: number
   return n;
 }
 
-function parseGateways(raw: string, source: string): Gateway[] {
+/** RELAY_SOCKS5_PROXY: socks5h://[user:password@]host:port. The name of a target is always sent to the proxy, never resolved here, so socks5:// means the same. */
+function parseSocks(raw: string): SocksProxy {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new ConfigError("RELAY_SOCKS5_PROXY must look like socks5h://127.0.0.1:9050.");
+  }
+  if (u.protocol !== "socks5h:" && u.protocol !== "socks5:") throw new ConfigError("RELAY_SOCKS5_PROXY must be a socks5h:// (or socks5://) URL.");
+  if (!u.hostname || !u.port || (u.pathname !== "" && u.pathname !== "/") || u.search || u.hash) throw new ConfigError("RELAY_SOCKS5_PROXY must be socks5h://[user:password@]host:port, with a port and nothing after it.");
+  const port = Number(u.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new ConfigError("RELAY_SOCKS5_PROXY has an invalid port.");
+  // The URL parser keeps brackets on an IPv6 host; a socket wants it bare.
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  const username = u.username ? decodeURIComponent(u.username) : undefined;
+  const password = u.password ? decodeURIComponent(u.password) : undefined;
+  if (password !== undefined && username === undefined) throw new ConfigError("RELAY_SOCKS5_PROXY has a password without a user name.");
+  if ((username && Buffer.byteLength(username) > 255) || (password && Buffer.byteLength(password) > 255)) throw new ConfigError("RELAY_SOCKS5_PROXY credentials are longer than SOCKS5 allows (255 bytes each).");
+  return { host, port, ...(username !== undefined ? { username, ...(password !== undefined ? { password } : {}) } : {}) };
+}
+
+function parseGateways(raw: string, source: string, socks: SocksProxy | undefined): Gateway[] {
   let json: unknown;
   try {
     json = JSON.parse(raw);
@@ -61,8 +88,15 @@ function parseGateways(raw: string, source: string): Gateway[] {
     } catch {
       throw new ConfigError(`${source}[${i}].url is not a URL.`);
     }
-    // A relay carries traffic between strangers and a gateway: plain HTTP is only for a gateway on this machine.
-    if (u.protocol !== "https:" && !(u.protocol === "http:" && LOOPBACK.has(u.hostname))) throw new ConfigError(`${source}[${i}].url must be https (http is only accepted for localhost).`);
+    if (u.hostname.endsWith(".onion")) {
+      // An onion service authenticates and encrypts the connection itself, so it is reached over plain http, through the proxy.
+      if (!isOnionHost(u.hostname)) throw new ConfigError(`${source}[${i}].url is not a version 3 onion address.`);
+      if (u.protocol !== "http:") throw new ConfigError(`${source}[${i}].url must be http:// for an onion service (the onion connection is already encrypted end to end).`);
+      if (!socks) throw new ConfigError(`${source}[${i}].url is an onion service: set RELAY_SOCKS5_PROXY to a Tor client, for example socks5h://127.0.0.1:9050.`);
+    } else if (u.protocol !== "https:" && !(u.protocol === "http:" && LOOPBACK.has(u.hostname))) {
+      // A relay carries traffic between strangers and a gateway: plain HTTP is only for a gateway on this machine.
+      throw new ConfigError(`${source}[${i}].url must be https (http is only accepted for localhost and onion services).`);
+    }
     if (u.username || u.password || u.hash || u.search) throw new ConfigError(`${source}[${i}].url must not carry credentials, a query or a fragment.`);
     if (credential !== undefined && (typeof credential !== "string" || !/^[A-Za-z0-9._-]{1,64}:[\x21-\x7e]{1,256}$/.test(credential))) throw new ConfigError(`${source}[${i}].credential must be <key_id>:<secret>, the key_id from the gateway operator's relay list and a secret of printable characters without spaces.`);
     out.push({ name, url: u.toString(), ...(credential ? { credential } : {}) });
@@ -77,13 +111,15 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const file = env.RELAY_GATEWAYS_FILE;
   if (inline && file) throw new ConfigError("Set RELAY_GATEWAYS or RELAY_GATEWAYS_FILE, not both.");
   if (!inline && !file) throw new ConfigError("RELAY_GATEWAYS (or RELAY_GATEWAYS_FILE) is required: the relay forwards only to gateways you list.");
-  const gateways = inline ? parseGateways(inline, "RELAY_GATEWAYS") : parseGateways(readFileSync(file!, "utf8"), "RELAY_GATEWAYS_FILE");
+  const socks5 = env.RELAY_SOCKS5_PROXY ? parseSocks(env.RELAY_SOCKS5_PROXY) : undefined;
+  const gateways = inline ? parseGateways(inline, "RELAY_GATEWAYS", socks5) : parseGateways(readFileSync(file!, "utf8"), "RELAY_GATEWAYS_FILE", socks5);
   const path = env.RELAY_PATH ?? "/relay";
   if (!/^\/[A-Za-z0-9._~/-]{1,200}$/.test(path) || path.includes("//") || path === "/healthz" || path === "/metrics") throw new ConfigError("RELAY_PATH must be a plain path such as /relay.");
   const certFile = env.RELAY_TLS_CERT_FILE;
   const keyFile = env.RELAY_TLS_KEY_FILE;
   if (!!certFile !== !!keyFile) throw new ConfigError("RELAY_TLS_CERT_FILE and RELAY_TLS_KEY_FILE go together.");
   return {
+    ...(socks5 ? { socks5 } : {}),
     host: env.RELAY_HOST || "127.0.0.1",
     port: int(env, "RELAY_PORT", 8080, 0, 65535),
     path,
