@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { encodePacked, keccak256, recoverTypedDataAddress, toBytes, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
@@ -10,6 +11,7 @@ import { runRegistry } from "../src/services/registry.ts";
 import { serveMockProvider, type MockConfig } from "../src/providers/mock.ts";
 import { recordEvents, processEvents } from "../src/chain/indexer.ts";
 import { encrypt } from "../src/lib/util.ts";
+import { RedisRateLimiter } from "../src/lib/ratelimit.ts";
 import type { Ctx } from "../src/context.ts";
 
 export const ADMIN = "test-admin-token-0123456789abcdef";
@@ -385,6 +387,14 @@ export async function startRouter(opts: { providers?: (MockConfig & { id: string
   };
   const chain = opts.fakeChain === false ? undefined : new FakeChain(env);
   const { app, ctx, close } = await createApp({ env, chain, rand: opts.rand, startJobs: false });
+  // The in-memory limiter belongs to one router, and the tests are written against that. A Redis limiter's counters
+  // outlive the router and are shared by every harness and every run within the same window (fixed hour, minute), so a
+  // limit reached by one test file, or by an earlier run, would fail another. Give each router its own key namespace.
+  if (ctx.limiter instanceof RedisRateLimiter) {
+    const shared = ctx.limiter;
+    const namespace = `t${randomBytes(6).toString("hex")}:`;
+    ctx.limiter = { take: (key, amount, limit, windowMs) => shared.take(namespace + key, amount, limit, windowMs), close: () => shared.close() };
+  }
   for (const { spec, server } of mocks) {
     await ctx.db.insert(providers).values({
       id: spec.id,
