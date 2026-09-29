@@ -187,6 +187,12 @@ const schema = z.object({
 
   // Optional Telegram bot (BotFather token, a secret). Without it the bot never starts.
   TELEGRAM_BOT_TOKEN: opt,
+
+  // ---- $ANYR holder perks: free inference credits (scripts/holder-credits.ts) and live holder tiers.
+  // The token is ANYR_TOKEN_ADDRESS / ANYR_TOKEN_SYMBOL above (the $ANYR escrow settings).
+  ANYR_TOKEN_DEPLOY_BLOCK: z.coerce.bigint().optional(), // first block the holder snapshot scans for Transfer logs
+  HOLDER_CREDITS_EXCLUDE: opt, // comma list of addresses never credited (pool, treasury, escrow, burn...)
+  HOLDER_TIERS: opt, // JSON [{name,min,rpm_multiplier,discount_bps}]; tiers are off unless ANYR_TOKEN_ADDRESS is set too
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -309,6 +315,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   if (new Set(lower).size !== lower.length) throw new Error("ESCROW_TOKENS lists a token address twice.");
   if (escrowMode && !escrowTokens.length) throw new Error("PAYMENTS_MODE=escrow requires ESCROW_TOKENS (or PAYWITH_TOKENS) with price feeds.");
   const anyrEscrow = anyrEscrowConfig(e, lower);
+  const holders = holderSettings(e, anyrEscrow);
   return {
     env: e.ANYROUTE_ENV,
     production,
@@ -433,6 +440,58 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
     telegram: { botToken: e.TELEGRAM_BOT_TOKEN },
     backup: { required: e.BACKUP_REQUIRED, maxAgeHours: e.BACKUP_MAX_AGE_HOURS },
+    holders,
+  };
+}
+
+// ---- $ANYR holder perks ------------------------------------------------------------------------
+// Tiers are read live from the wallet's token balance; `min` is in whole tokens (a decimal string).
+export type HolderTier = { name: string; min: string; rpmMultiplier: number; discountBps: number };
+const DECIMAL_TOKENS = /^\d+(\.\d{1,18})?$/;
+/** A whole-token decimal string as an integer with 18 fractional digits, for ordering tiers. */
+const tokens18 = (v: string) => {
+  const [whole, frac = ""] = v.split(".");
+  return BigInt(whole) * 10n ** 18n + BigInt(frac.padEnd(18, "0"));
+};
+
+function holderSettings(e: Env, anyr: AnyrEscrow | null) {
+  // The token is the one ANYR_TOKEN_ADDRESS configures for $ANYR escrow payments (null when unset).
+  const token = anyr ? { address: anyr.address, symbol: anyr.symbol } : null;
+  const exclude = (e.HOLDER_CREDITS_EXCLUDE ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+  const badExclude = exclude.find((a) => !/^0x[0-9a-fA-F]{40}$/.test(a));
+  if (badExclude) throw new Error("HOLDER_CREDITS_EXCLUDE must be a comma list of 0x addresses.");
+  let tiers: HolderTier[] = [];
+  if (e.HOLDER_TIERS) {
+    const tierList = z
+      .array(
+        z.object({
+          name: z.string().trim().min(1).max(32),
+          min: z.union([z.string().regex(DECIMAL_TOKENS, "min must be a token amount like \"100000\""), z.number().int().positive().max(Number.MAX_SAFE_INTEGER)]).transform(String),
+          rpm_multiplier: z.number().min(1).max(100).default(1),
+          discount_bps: z.number().int().min(0).max(10_000).default(0),
+        }),
+      )
+      .min(1)
+      .max(10);
+    try {
+      tiers = tierList
+        .parse(JSON.parse(e.HOLDER_TIERS))
+        .map((t) => ({ name: t.name, min: t.min, rpmMultiplier: t.rpm_multiplier, discountBps: t.discount_bps }))
+        .sort((a, b) => (tokens18(a.min) < tokens18(b.min) ? -1 : 1));
+    } catch (err) {
+      throw new Error(`HOLDER_TIERS must be a JSON array of {name,min,rpm_multiplier,discount_bps}: ${(err as Error).message}`);
+    }
+    if (tiers.some((t) => tokens18(t.min) === 0n)) throw new Error("HOLDER_TIERS: every tier needs a min above 0.");
+    if (new Set(tiers.map((t) => tokens18(t.min))).size !== tiers.length) throw new Error("HOLDER_TIERS: two tiers share the same min.");
+    if (new Set(tiers.map((t) => t.name.toLowerCase())).size !== tiers.length) throw new Error("HOLDER_TIERS: tier names must be unique.");
+  }
+  return {
+    token,
+    deployBlock: e.ANYR_TOKEN_DEPLOY_BLOCK,
+    exclude: exclude.map((a) => a.toLowerCase() as `0x${string}`),
+    tiers,
+    /** Live tiers (rate limits and fee discounts) run only with both the token and HOLDER_TIERS set. */
+    enabled: !!token && tiers.length > 0,
   };
 }
 
