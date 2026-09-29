@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, lt, max, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, lt, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
 import { agentSessions, generations, holds, keys, savedRoutes } from "../db/schema.ts";
@@ -244,15 +244,47 @@ export async function describe(ctx: Ctx, rows: SessionRow[], now = Date.now()) {
   return out;
 }
 
-export async function listSessions(ctx: Ctx, accountId: string, opts: { limit: number; before?: Date }) {
+/** Where a page starts: strictly older than `at` (in whole milliseconds), or, given `id`, older than that exact (at, id) position. */
+export type SessionCursor = { at: Date; id?: string };
+
+const CURSOR_PREFIX = "c_";
+const CURSOR_MSG = "`before` must be the `next` value of the previous page (a plain ISO timestamp is also accepted).";
+
+export function encodeSessionCursor(at: Date, id: string): string {
+  return CURSOR_PREFIX + Buffer.from(`${at.toISOString()}|${id}`).toString("base64url");
+}
+
+/** Parse the `before` query value: an opaque compound cursor, or (legacy) a plain ISO timestamp. 400 on anything else. */
+export function parseSessionCursor(raw: string): SessionCursor {
+  if (raw.startsWith(CURSOR_PREFIX)) {
+    const decoded = /^[A-Za-z0-9_-]+$/.test(raw.slice(CURSOR_PREFIX.length)) ? Buffer.from(raw.slice(CURSOR_PREFIX.length), "base64url").toString("utf8") : "";
+    const bar = decoded.indexOf("|");
+    const at = new Date(decoded.slice(0, Math.max(bar, 0)));
+    const id = decoded.slice(bar + 1);
+    if (bar < 0 || Number.isNaN(at.getTime()) || !/^[\w-]{1,64}$/.test(id)) fail(400, CURSOR_MSG, "invalid_request");
+    return { at, id };
+  }
+  const at = new Date(raw);
+  if (Number.isNaN(at.getTime())) fail(400, CURSOR_MSG, "invalid_request");
+  return { at };
+}
+
+export async function listSessions(ctx: Ctx, accountId: string, opts: { limit: number; before?: SessionCursor }) {
+  // Keyset order (created_at desc, id desc) at millisecond precision: Postgres stores microseconds but the cursor
+  // carries a JS Date, so both the order and the comparison use the same truncated value and ties break on id.
+  const at = sql`date_trunc('milliseconds', ${agentSessions.createdAt})`;
+  const b = opts.before;
+  const bt = b && sql`${b.at.toISOString()}::timestamptz`; // an ISO string: drivers differ on how they bind a raw Date inside sql``
+  const after = !b ? [] : b.id === undefined ? [sql`${at} < ${bt}`] : [or(sql`${at} < ${bt}`, and(sql`${at} = ${bt}`, lt(agentSessions.id, b.id)))!];
   const rows = await ctx.db
     .select()
     .from(agentSessions)
-    .where(and(eq(agentSessions.accountId, accountId), ...(opts.before ? [lt(agentSessions.createdAt, opts.before)] : [])))
-    .orderBy(desc(agentSessions.createdAt), desc(agentSessions.id))
+    .where(and(eq(agentSessions.accountId, accountId), ...after))
+    .orderBy(desc(at), desc(agentSessions.id))
     .limit(opts.limit + 1);
   const page = rows.slice(0, opts.limit);
-  return { data: (await describe(ctx, page)).map((d) => d.json), next: rows.length > opts.limit ? page[page.length - 1].createdAt.toISOString() : null };
+  const last = page[page.length - 1];
+  return { data: (await describe(ctx, page)).map((d) => d.json), next: rows.length > opts.limit ? encodeSessionCursor(last.createdAt, last.id) : null };
 }
 
 export async function getSession(ctx: Ctx, accountId: string, id: string) {

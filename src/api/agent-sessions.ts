@@ -3,7 +3,7 @@ import type { Ctx } from "../context.ts";
 import { fail } from "../lib/errors.ts";
 import { readJson } from "./common.ts";
 import { requireKey, requireRole, type KeyRow } from "./auth.ts";
-import { createSession, describe, endSession, getSession, listSessions, recentCalls, sessionForKey, type SessionRow } from "../services/agent-sessions.ts";
+import { createSession, describe, endSession, getSession, listSessions, parseSessionCursor, recentCalls, sessionForKey, type SessionRow } from "../services/agent-sessions.ts";
 
 // Agent Sessions: short-lived, budget-capped session keys for agent runs.
 //   POST   /api/v1/sessions          owner/admin (management keys are owners): create; the secret is shown once
@@ -43,8 +43,7 @@ export function agentSessionsRoutes(app: Hono, ctx: Ctx) {
   app.get("/api/v1/sessions", async (c) => {
     const caller = await member(ctx, c);
     const beforeParam = c.req.query("before");
-    const before = beforeParam ? new Date(beforeParam) : undefined;
-    if (before && Number.isNaN(before.getTime())) fail(400, "`before` must be an ISO timestamp (the `next` value of the previous page).", "invalid_request");
+    const before = beforeParam ? parseSessionCursor(beforeParam) : undefined;
     return c.json(await listSessions(ctx, caller.accountId, { limit: intParam(c.req.query("limit"), 50, 1, 200), before }));
   });
 

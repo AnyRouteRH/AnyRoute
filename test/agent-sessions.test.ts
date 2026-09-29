@@ -305,13 +305,44 @@ describe("Agent Sessions", () => {
     const acct = await h.fundedKey(1n);
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) ids.push((await newSession(acct.auth, { name: `p${i}`, budget_usd: 1 })).id);
+    // Distinct, known times (creation may land in one millisecond, where the order falls back to the id).
+    for (const [i, id] of ids.entries()) await h.ctx.db.update(agentSessions).set({ createdAt: new Date(Date.UTC(2030, 0, 1, 0, 0, i)) }).where(eq(agentSessions.id, id));
     const p1 = await (await h.request("/api/v1/sessions?limit=2", { headers: acct.auth })).json();
     expect(p1.data.map((x: any) => x.id)).toEqual([ids[2], ids[1]]);
     expect(p1.next).not.toBeNull();
     const p2 = await (await h.request(`/api/v1/sessions?limit=2&before=${encodeURIComponent(p1.next)}`, { headers: acct.auth })).json();
     expect(p2.data.map((x: any) => x.id)).toEqual([ids[0]]);
     expect(p2.next).toBeNull();
-    expect((await h.request("/api/v1/sessions?before=yesterday", { headers: acct.auth })).status).toBe(400);
+    // A plain ISO timestamp is still accepted as `before`.
+    const legacy = await (await h.request(`/api/v1/sessions?before=${encodeURIComponent(new Date(Date.UTC(2030, 0, 1, 0, 0, 2)).toISOString())}`, { headers: acct.auth })).json();
+    expect(legacy.data.map((x: any) => x.id)).toEqual([ids[1], ids[0]]);
+    for (const bad of ["yesterday", "c_", "c_!!!", `c_${Buffer.from("not-a-date|as_1").toString("base64url")}`, `c_${Buffer.from("2030-01-01T00:00:00.000Z").toString("base64url")}`])
+      expect((await h.request(`/api/v1/sessions?before=${encodeURIComponent(bad)}`, { headers: acct.auth })).status).toBe(400);
+  });
+
+  test("pagination: sessions created in the same millisecond are each returned exactly once", async () => {
+    const acct = await h.fundedKey(1n);
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) ids.push((await newSession(acct.auth, { name: `tie${i}`, budget_usd: 1 })).id);
+    // An identical created_at for all of them, plus a distinct older and newer one around the tie.
+    const tie = new Date(Date.UTC(2031, 5, 1, 12, 0, 0, 123));
+    for (const id of ids) await h.ctx.db.update(agentSessions).set({ createdAt: tie }).where(eq(agentSessions.id, id));
+    const older = (await newSession(acct.auth, { name: "older", budget_usd: 1 })).id;
+    await h.ctx.db.update(agentSessions).set({ createdAt: new Date(tie.getTime() - 1) }).where(eq(agentSessions.id, older));
+    const newer = (await newSession(acct.auth, { name: "newer", budget_usd: 1 })).id;
+    await h.ctx.db.update(agentSessions).set({ createdAt: new Date(tie.getTime() + 1) }).where(eq(agentSessions.id, newer));
+    const expected = [newer, ...[...ids].sort().reverse(), older];
+    for (const limit of [1, 2, 3]) {
+      const seen: string[] = [];
+      let before = "";
+      for (let guard = 0; guard < 20; guard++) {
+        const page = await (await h.request(`/api/v1/sessions?limit=${limit}${before}`, { headers: acct.auth })).json();
+        seen.push(...page.data.map((x: any) => x.id));
+        if (page.next === null) break;
+        before = `&before=${encodeURIComponent(page.next)}`;
+      }
+      expect(seen).toEqual(expected);
+    }
   });
 
   test("a session key is managed only through /sessions and sees only its own calls and budget", async () => {
