@@ -35,9 +35,11 @@ export type Echo = {
   reasoning: { effort: string | null; summary: null };
   metadata: Record<string, string>;
   user: string | null;
+  /** Names of the request's custom (freeform) tools: chat sees each as a function with one string argument, and a call to it comes back as a custom_tool_call. */
+  customTools: Set<string>;
 };
 
-const HOSTED_NOTE = "AnyRoute does not host tools. Send it as a `function` tool and run it in your own code.";
+const HOSTED_NOTE = "AnyRoute does not host tools. Send it as a `function` tool (or a `custom` tool) and run it in your own code.";
 
 function contentToChat(role: string, content: unknown, where: string): string | Json[] {
   if (content == null) return "";
@@ -114,10 +116,19 @@ export function messagesFromInput(instructions: unknown, input: unknown): Json[]
         out.push({ role, content: contentToChat(role, item.content, `${at}.content`) });
         return;
       }
-      case "function_call": {
+      case "function_call":
+      case "custom_tool_call": {
         if (!isStr(item.call_id) || !item.call_id) throw refuse(`\`${at}.call_id\` is required.`, "invalid_request", `${at}.call_id`);
         if (!isStr(item.name) || !item.name) throw refuse(`\`${at}.name\` is required.`, "invalid_request", `${at}.name`);
-        const args = isStr(item.arguments) ? item.arguments : item.arguments == null ? "{}" : JSON.stringify(item.arguments);
+        // A custom tool's freeform input is the one string argument the model was given for it.
+        const args =
+          type === "custom_tool_call"
+            ? JSON.stringify({ input: isStr(item.input) ? item.input : item.input == null ? "" : JSON.stringify(item.input) })
+            : isStr(item.arguments)
+              ? item.arguments
+              : item.arguments == null
+                ? "{}"
+                : JSON.stringify(item.arguments);
         const call = { id: item.call_id, type: "function", function: { name: item.name, arguments: args } };
         // Calls that follow an assistant message (or each other) are one assistant turn in chat form.
         const prev = out[out.length - 1];
@@ -126,6 +137,7 @@ export function messagesFromInput(instructions: unknown, input: unknown): Json[]
         return;
       }
       case "function_call_output":
+      case "custom_tool_call_output":
         if (!isStr(item.call_id) || !item.call_id) throw refuse(`\`${at}.call_id\` is required.`, "invalid_request", `${at}.call_id`);
         out.push({ role: "tool", tool_call_id: item.call_id, content: outputToChat(item.output, `${at}.output`) });
         return;
@@ -137,7 +149,7 @@ export function messagesFromInput(instructions: unknown, input: unknown): Json[]
         throw refuse(
           HOSTED_TOOL.test(String(type).replace(/_call(_output)?$/, ""))
             ? `Input item type ${JSON.stringify(type)} at \`${at}\` belongs to a tool that runs on the API provider's servers. ${HOSTED_NOTE}`
-            : `Input item type ${JSON.stringify(type)} at \`${at}\` is not supported. AnyRoute accepts message, function_call and function_call_output items.`,
+            : `Input item type ${JSON.stringify(type)} at \`${at}\` is not supported. AnyRoute accepts message, function_call, function_call_output, custom_tool_call and custom_tool_call_output items.`,
           "unsupported_input",
           at,
         );
@@ -147,45 +159,74 @@ export function messagesFromInput(instructions: unknown, input: unknown): Json[]
   return out;
 }
 
-function toolsToChat(tools: unknown): Json[] | undefined {
+/** What the model is told about a custom tool: its own description, that it takes freeform text, and its grammar as guidance. */
+function customDescription(t: Json): string {
+  const f = isObj(t.format) ? t.format : null;
+  const parts: string[] = [];
+  if (isStr(t.description) && t.description) parts.push(t.description);
+  parts.push('This tool takes freeform text, not JSON fields. Put the complete text in the "input" argument, exactly in the format described for this tool.');
+  if (f && f.type === "grammar" && isStr(f.definition) && f.definition) {
+    parts.push(`The input is expected to follow this ${isStr(f.syntax) && f.syntax ? f.syntax : "grammar"} grammar. It is given as guidance only and is not enforced:\n${f.definition}`);
+  }
+  return parts.join("\n\n");
+}
+
+function toolsToChat(tools: unknown): { chat: Json[]; custom: Set<string> } | undefined {
   if (tools == null) return undefined;
   if (!Array.isArray(tools)) throw refuse("`tools` must be an array.", "invalid_request", "tools");
   const out: Json[] = [];
+  const custom = new Set<string>();
+  const names = new Set<string>();
   tools.forEach((t, i) => {
     const at = `tools[${i}]`;
     if (!isObj(t)) throw refuse(`\`${at}\` must be an object.`, "invalid_request", at);
-    if (t.type !== "function") {
+    if (t.type !== "function" && t.type !== "custom") {
       const type = String(t.type);
       throw refuse(
-        HOSTED_TOOL.test(type) ? `The \`${type}\` tool runs on the API provider's servers. ${HOSTED_NOTE}` : `Tool type ${JSON.stringify(t.type)} at \`${at}\` is not supported. AnyRoute supports \`function\` tools.`,
+        HOSTED_TOOL.test(type) ? `The \`${type}\` tool runs on the API provider's servers. ${HOSTED_NOTE}` : `Tool type ${JSON.stringify(t.type)} at \`${at}\` is not supported. AnyRoute supports \`function\` and \`custom\` tools.`,
         "unsupported_tool",
         `${at}.type`,
       );
     }
     if (!isStr(t.name) || !t.name) throw refuse(`\`${at}.name\` is required.`, "invalid_request", `${at}.name`);
-    out.push({
-      type: "function",
-      function: {
-        name: t.name,
-        ...(isStr(t.description) ? { description: t.description } : {}),
-        parameters: isObj(t.parameters) ? t.parameters : { type: "object", properties: {} },
-        ...(typeof t.strict === "boolean" ? { strict: t.strict } : {}),
-      },
-    });
+    if (t.type === "custom") {
+      if (names.has(t.name)) throw refuse(`Tool name ${JSON.stringify(t.name)} at \`${at}\` is used twice. A custom tool needs a name of its own.`, "invalid_request", `${at}.name`);
+      custom.add(t.name);
+      out.push({
+        type: "function",
+        function: {
+          name: t.name,
+          description: customDescription(t),
+          parameters: { type: "object", properties: { input: { type: "string", description: "The complete freeform input for this tool, as plain text." } }, required: ["input"], additionalProperties: false },
+        },
+      });
+    } else {
+      if (custom.has(t.name)) throw refuse(`Tool name ${JSON.stringify(t.name)} at \`${at}\` is used twice. A custom tool needs a name of its own.`, "invalid_request", `${at}.name`);
+      out.push({
+        type: "function",
+        function: {
+          name: t.name,
+          ...(isStr(t.description) ? { description: t.description } : {}),
+          parameters: isObj(t.parameters) ? t.parameters : { type: "object", properties: {} },
+          ...(typeof t.strict === "boolean" ? { strict: t.strict } : {}),
+        },
+      });
+    }
+    names.add(t.name);
   });
-  return out;
+  return { chat: out, custom };
 }
 
 function toolChoiceToChat(choice: unknown): unknown {
   if (choice == null) return undefined;
   if (choice === "auto" || choice === "none" || choice === "required") return choice;
-  if (isObj(choice) && choice.type === "function") {
+  if (isObj(choice) && (choice.type === "function" || choice.type === "custom")) {
     const name = isStr(choice.name) ? choice.name : isObj(choice.function) && isStr(choice.function.name) ? choice.function.name : "";
     if (name) return { type: "function", function: { name } };
-    throw refuse("`tool_choice` of type function needs a `name`.", "invalid_request", "tool_choice");
+    throw refuse("`tool_choice` of type function or custom needs a `name`.", "invalid_request", "tool_choice");
   }
   if (isObj(choice) && isStr(choice.type) && HOSTED_TOOL.test(choice.type)) throw refuse(`\`tool_choice\` names the \`${choice.type}\` tool. ${HOSTED_NOTE}`, "unsupported_tool", "tool_choice");
-  throw refuse('`tool_choice` must be "auto", "none", "required" or {"type":"function","name":"…"}.', "invalid_request", "tool_choice");
+  throw refuse('`tool_choice` must be "auto", "none", "required" or {"type":"function","name":"…"} (or "custom" for a custom tool).', "invalid_request", "tool_choice");
 }
 
 function responseFormatToChat(text: unknown): Json | undefined {
@@ -242,7 +283,8 @@ export function chatRequestFrom(body: Json): { chat: Json; echo: Echo; stream: b
   }
 
   const messages = messagesFromInput(body.instructions, body.input);
-  const tools = toolsToChat(body.tools);
+  const mapped = toolsToChat(body.tools);
+  const tools = mapped?.chat;
   const toolChoice = toolChoiceToChat(body.tool_choice);
   const responseFormat = responseFormatToChat(body.text);
   const effort = isObj(body.reasoning) && isStr(body.reasoning.effort) ? body.reasoning.effort : null;
@@ -277,8 +319,83 @@ export function chatRequestFrom(body: Json): { chat: Json; echo: Echo; stream: b
     reasoning: { effort, summary: null },
     metadata,
     user: isStr(body.user) ? body.user : null,
+    customTools: mapped?.custom ?? new Set(),
   };
   return { chat, echo, stream };
+}
+
+// ---- custom tools --------------------------------------------------------------------------------------------------
+
+/**
+ * Reads the string value of the "input" key out of `{"input":"…"}` while it is still arriving in pieces, so a custom
+ * tool's freeform text can be streamed as it is generated. Escapes (including \uXXXX and surrogate pairs) are decoded
+ * across piece boundaries, and a half of a surrogate pair is held back until its other half arrives. Anything that is
+ * not that shape decodes to nothing (`started` stays false); the finished text is always taken from `customInput`.
+ */
+export class InputDecoder {
+  started = false;
+  private state: "seek" | "str" | "done" | "none" = "seek";
+  private pre = "";
+  private esc = ""; // "" none, "\\" after a backslash, "u…" while reading the four hex digits of \uXXXX
+  private held = ""; // a high surrogate waiting for its low half
+
+  push(piece: string): string {
+    if (this.state === "none" || this.state === "done") return "";
+    let rest = piece;
+    if (this.state === "seek") {
+      this.pre += piece;
+      const m = /^\s*\{\s*"input"\s*:\s*"/.exec(this.pre);
+      if (!m) {
+        if (this.pre.length > 64) this.state = "none";
+        return "";
+      }
+      this.state = "str";
+      this.started = true;
+      rest = this.pre.slice(m[0].length);
+      this.pre = "";
+    }
+    let out = this.held;
+    this.held = "";
+    for (const c of rest) {
+      if (this.state !== "str") break;
+      if (this.esc === "") {
+        if (c === "\\") this.esc = "\\";
+        else if (c === '"') this.state = "done";
+        else out += c;
+      } else if (this.esc === "\\") {
+        this.esc = "";
+        const simple: Record<string, string> = { n: "\n", t: "\t", r: "\r", b: "\b", f: "\f" };
+        if (c === "u") this.esc = "u";
+        else out += simple[c] ?? c;
+      } else {
+        this.esc += c;
+        if (this.esc.length === 5) {
+          const code = parseInt(this.esc.slice(1), 16);
+          this.esc = "";
+          if (!Number.isNaN(code)) out += String.fromCharCode(code);
+        }
+      }
+    }
+    const last = out.charCodeAt(out.length - 1);
+    if (last >= 0xd800 && last <= 0xdbff) {
+      this.held = out.slice(-1);
+      out = out.slice(0, -1);
+    }
+    return out;
+  }
+}
+
+/** The freeform text of a custom tool call from the arguments the model produced for its one "input" argument. */
+export function customInput(args: string): string {
+  try {
+    const v = JSON.parse(args);
+    if (isObj(v) && isStr(v.input)) return v.input;
+  } catch {
+    /* not complete JSON: read what is there */
+  }
+  const d = new InputDecoder();
+  const text = d.push(args);
+  return d.started ? text : args;
 }
 
 // ---- response ----------------------------------------------------------------------------------------------------
@@ -348,7 +465,7 @@ function responseObject(
 }
 
 const suffixOf = (receiptId: string | null) => (receiptId ?? randomUUID().replace(/-/g, "")).replace(/^gen-/, "");
-const itemId = (prefix: "msg" | "fc", suffix: string, index: number) => `${prefix}_${suffix}_${index}`;
+const itemId = (prefix: "msg" | "fc" | "ctc", suffix: string, index: number) => `${prefix}_${suffix}_${index}`;
 const messageItem = (id: string, text: string, refusal: string, status: "in_progress" | "completed"): Json => ({
   id,
   type: "message",
@@ -357,6 +474,7 @@ const messageItem = (id: string, text: string, refusal: string, status: "in_prog
   content: [...(refusal ? [{ type: "refusal", refusal }] : []), ...(text || !refusal ? [{ type: "output_text", text, annotations: [] }] : [])],
 });
 const callItem = (id: string, callId: string, name: string, args: string, status: "in_progress" | "completed"): Json => ({ id, type: "function_call", call_id: callId, name, arguments: args, status });
+const customItem = (id: string, callId: string, name: string, input: string, status: "in_progress" | "completed"): Json => ({ id, type: "custom_tool_call", call_id: callId, name, input, status });
 const newCallId = () => `call_${randomBytes(9).toString("hex")}`;
 const incompleteReason = (finish: unknown) => (finish === "length" ? "max_output_tokens" : finish === "content_filter" ? "content_filter" : null);
 
@@ -375,7 +493,10 @@ export function responseFromChat(chat: Json, echo: Echo, meta: Meta, createdAt: 
   for (const tc of calls) {
     const fn = isObj(tc.function) ? tc.function : {};
     const args = isStr(fn.arguments) ? fn.arguments : fn.arguments == null ? "{}" : JSON.stringify(fn.arguments);
-    output.push(callItem(itemId("fc", suffix, output.length), isStr(tc.id) && tc.id ? tc.id : newCallId(), isStr(fn.name) ? fn.name : "", args, "completed"));
+    const name = isStr(fn.name) ? fn.name : "";
+    const callId = isStr(tc.id) && tc.id ? tc.id : newCallId();
+    if (echo.customTools.has(name)) output.push(customItem(itemId("ctc", suffix, output.length), callId, name, customInput(args), "completed"));
+    else output.push(callItem(itemId("fc", suffix, output.length), callId, name, args, "completed"));
   }
   const incomplete = incompleteReason(choice.finish_reason);
   return responseObject(echo, {
@@ -392,7 +513,7 @@ export function responseFromChat(chat: Json, echo: Echo, meta: Meta, createdAt: 
 
 // ---- streaming ---------------------------------------------------------------------------------------------------
 
-type OutItem = { kind: "message" | "call"; index: number; id: string; text: string; callId: string; name: string; args: string; open: boolean };
+type OutItem = { kind: "message" | "call" | "custom"; index: number; id: string; text: string; callId: string; name: string; args: string; open: boolean; dec?: InputDecoder };
 
 /**
  * Turns the chat completion events of one stream into the Responses event stream. Feed it every parsed chat event with
@@ -442,7 +563,9 @@ export class StreamTranslator {
   }
 
   private itemJson(it: OutItem, status: "in_progress" | "completed"): Json {
-    return it.kind === "message" ? messageItem(it.id, it.text, "", status) : callItem(it.id, it.callId, it.name, it.args, status);
+    if (it.kind === "message") return messageItem(it.id, it.text, "", status);
+    if (it.kind === "custom") return customItem(it.id, it.callId, it.name, status === "completed" ? it.text : "", status);
+    return callItem(it.id, it.callId, it.name, it.args, status);
   }
 
   /** response.created and response.in_progress, sent before the first chat event. */
@@ -478,6 +601,16 @@ export class StreamTranslator {
     this.emit("response.output_item.done", { output_index: it.index, item: this.itemJson(it, "completed") });
   }
 
+  /** A custom tool call is done: its input is what the arguments finally say, and any of it not yet streamed goes out first. */
+  private closeCustom(it: OutItem) {
+    it.open = false;
+    const input = customInput(it.args);
+    if (input.length > it.text.length && input.startsWith(it.text)) this.emit("response.custom_tool_call_input.delta", { item_id: it.id, output_index: it.index, delta: input.slice(it.text.length) });
+    it.text = input;
+    this.emit("response.custom_tool_call_input.done", { item_id: it.id, output_index: it.index, input });
+    this.emit("response.output_item.done", { output_index: it.index, item: this.itemJson(it, "completed") });
+  }
+
   private text(delta: string) {
     if (!delta) return;
     const it = this.message ?? this.startMessage();
@@ -493,14 +626,22 @@ export class StreamTranslator {
     let it = this.calls.get(index);
     if (!it) {
       this.closeMessage();
-      it = { kind: "call", index: this.items.length, id: itemId("fc", this.suffix, this.items.length), text: "", callId: isStr(tc.id) && tc.id ? tc.id : newCallId(), name: isStr(fn.name) ? fn.name : "", args: "", open: true };
+      const name = isStr(fn.name) ? fn.name : "";
+      const custom = this.echo.customTools.has(name);
+      it = { kind: custom ? "custom" : "call", index: this.items.length, id: itemId(custom ? "ctc" : "fc", this.suffix, this.items.length), text: "", callId: isStr(tc.id) && tc.id ? tc.id : newCallId(), name, args: "", open: true, ...(custom ? { dec: new InputDecoder() } : {}) };
       this.items.push(it);
       this.calls.set(index, it);
       this.emit("response.output_item.added", { output_index: it.index, item: this.itemJson(it, "in_progress") });
     } else if (!it.name && isStr(fn.name)) it.name = fn.name;
     if (isStr(fn.arguments) && fn.arguments) {
       it.args += fn.arguments;
-      this.emit("response.function_call_arguments.delta", { item_id: it.id, output_index: it.index, delta: fn.arguments });
+      if (it.kind === "custom") {
+        const delta = it.dec!.push(fn.arguments);
+        if (delta) {
+          it.text += delta;
+          this.emit("response.custom_tool_call_input.delta", { item_id: it.id, output_index: it.index, delta });
+        }
+      } else this.emit("response.function_call_arguments.delta", { item_id: it.id, output_index: it.index, delta: fn.arguments });
     }
   }
 
@@ -535,7 +676,11 @@ export class StreamTranslator {
       this.startMessage();
       this.closeMessage();
     }
-    for (const it of this.items) if (it.kind === "call" && it.open) this.closeCall(it);
+    for (const it of this.items) {
+      if (!it.open) continue;
+      if (it.kind === "custom") this.closeCustom(it);
+      else if (it.kind === "call") this.closeCall(it);
+    }
     const incomplete = incompleteReason(this.finish);
     this.emit(incomplete ? "response.incomplete" : "response.completed", {
       response: this.response(

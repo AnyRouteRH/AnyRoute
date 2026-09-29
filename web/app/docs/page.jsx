@@ -425,7 +425,7 @@ const endpoints = [
   ["GET /api/v1/measurements/key · /measurements/bundles/:providerId", "Where enabled: the key that signs measurement bundles (compose hash, source commit and tarball hash, model and image digests, MRTD allow-list), and a provider’s bundles with the transparency-log entry the router verified for each"],
   ["POST /mcp", "AnyRoute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["POST /v1/messages · /messages/count_tokens", "Anthropic Messages API (also under /api/v1) for the Anthropic SDKs and Claude Code: x-api-key or Authorization: Bearer; tools, images and streaming; the lane in X-Anyroute-Lane or provider.lane; the receipt in the reply and in X-Receipt-Id"],
-  ["POST /v1/responses · /api/v1/responses", "OpenAI Responses API for the OpenAI Agents SDK, the Codex CLI and other Responses clients: the chat route’s billing, lanes and signed receipts behind the Responses shape and event stream. Stateless: store must be false, there is no previous_response_id and no GET; function tools only"],
+  ["POST /v1/responses · /api/v1/responses", "OpenAI Responses API for the OpenAI Agents SDK, the Codex CLI and other Responses clients: the chat route’s billing, lanes and signed receipts behind the Responses shape and event stream. Stateless: store must be false, there is no previous_response_id and no GET; function and custom tools only"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
@@ -872,10 +872,16 @@ export default function Docs() {
           <Code label="A refusal">{responsesRefusal}</Code>
           <h3>What is supported</h3>
           <p>
-            Request: model, instructions, input (text, or message items with input_text and input_image, function_call and function_call_output items; earlier reasoning items are ignored), function tools with tool_choice and parallel_tool_calls, max_output_tokens, temperature, top_p, text.format (text, json_object or json_schema, which
-            needs a model and provider that support it), reasoning.effort, metadata (echoed back, never sent to a provider), user, and provider for routing. Other options, such as include, truncation and service_tier, are accepted and ignored. Response: a message with output_text and one function_call item per tool call, and usage with
+            Request: model, instructions, input (text, or message items with input_text and input_image, function_call and function_call_output items, custom_tool_call and custom_tool_call_output items; earlier reasoning items are ignored), function and custom tools with tool_choice and parallel_tool_calls, max_output_tokens, temperature, top_p, text.format (text, json_object or json_schema, which
+            needs a model and provider that support it), reasoning.effort, metadata (echoed back, never sent to a provider), user, and provider for routing. Other options, such as include, truncation and service_tier, are accepted and ignored. Response: a message with output_text and one function_call or custom_tool_call item per tool call, and usage with
             input_tokens, output_tokens and total_tokens (plus cost in USD). Tools that run on the API provider’s servers (web_search, file_search, code_interpreter, computer_use, image_generation, hosted mcp) are refused with a 400 that names the tool, because AnyRoute hosts none: give the model a function tool and run the work in your own code, and switch off
-            any client feature, such as web search in Codex, that depends on one. Freeform (custom) tools and file inputs are also refused.
+            any client feature, such as web search in Codex, that depends on one. File inputs are also refused.
+          </p>
+          <h3>Codex and apply_patch: custom tools</h3>
+          <p>
+            The Codex CLI offers apply_patch as a custom tool: freeform text, not JSON fields, with an optional grammar. AnyRoute passes a custom tool to the model as a function with one string argument, input, and puts the tool’s description, a line saying the tool takes freeform text, and the grammar if there is one into the function’s description. The grammar
+            is guidance for the model only: nothing checks or enforces it, and a model can still produce input that does not follow it, which the client then reports as a failed call. When the model calls the function, the call comes back as a custom_tool_call item with the text as input (in a stream, response.custom_tool_call_input.delta as it is generated and response.custom_tool_call_input.done with
+            the whole text), and the custom_tool_call_output item you send on the next turn goes back to the model as the tool result. Models differ in how well they follow a tool description, so how reliably apply_patch works depends on the model you choose. Codex’s shell and plan tools are ordinary function tools.
           </p>
           <h2 id="sdk">Verify before you send.</h2>
           <p>

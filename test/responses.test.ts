@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { balanceOf } from "../src/ledger/ledger.ts";
 import { keys as keysTable, providers } from "../src/db/schema.ts";
-import { chatRequestFrom, messagesFromInput, responseFromChat, StreamTranslator, type Echo, type Meta } from "../src/api/responses-map.ts";
+import { chatRequestFrom, customInput, InputDecoder, messagesFromInput, responseFromChat, StreamTranslator, type Echo, type Meta } from "../src/api/responses-map.ts";
 import { runRegistry } from "../src/services/registry.ts";
 import { encrypt } from "../src/lib/util.ts";
 import { MODELS, startRouter, type Harness } from "./helpers.ts";
@@ -268,8 +268,9 @@ describe("the Responses endpoint on a public provider", () => {
         expect(e.message).toContain(`\`${type}\``);
         expect(e.message).toContain("does not host tools");
       }
-      const custom = await refused({ ...REQUEST, tools: [{ type: "custom", name: "apply_patch" }] });
-      expect(custom.e.message).toContain("supports `function` tools");
+      const other = await refused({ ...REQUEST, tools: [{ type: "local_shell" }] });
+      expect(other.e).toMatchObject({ type: "unsupported_tool", param: "tools[0].type" });
+      expect(other.e.message).toContain("supports `function` and `custom` tools");
       expect((await refused({ ...REQUEST, tool_choice: { type: "web_search_preview" } })).e.type).toBe("unsupported_tool");
       expect((await refused({ ...REQUEST, input: [{ type: "web_search_call", id: "ws_1", status: "completed" }] })).e.message).toContain("runs on the API provider's servers");
     });
@@ -337,6 +338,9 @@ describe("streaming function calls, through a provider that streams them", () =>
   let stop: () => void;
   const MODEL = "streamtools/tool-chat";
   const seen: any[] = [];
+  // A patch with quotes, a backslash, accents and an emoji, as a model would send it: JSON text in the "input" argument.
+  const PATCH = '*** Begin Patch\n*** Add File: hello.txt\n+h\u00e9llo "quoted" \\ back \u{1F600}\n*** End Patch';
+  const PATCH_ARGS = JSON.stringify({ input: PATCH });
 
   beforeAll(async () => {
     const chunk = (delta: unknown, finish: string | null = null, usage?: unknown) => `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", model: MODEL, choices: usage ? [] : [{ index: 0, delta, finish_reason: finish }], ...(usage ? { usage } : {}) })}\n\n`;
@@ -347,7 +351,24 @@ describe("streaming function calls, through a provider that streams them", () =>
         const u = new URL(req.url);
         if (u.pathname === "/models") return Response.json({ data: [] });
         if (u.pathname !== "/chat/completions") return new Response("not found", { status: 404 });
-        seen.push(await req.json());
+        const body = (await req.json()) as any;
+        seen.push(body);
+        const last = body.messages.at(-1);
+        // A prompt that asks for the patch gets a call to apply_patch, as JSON or as a stream cut into small pieces.
+        if (last?.role === "user" && String(last.content).includes("apply the patch")) {
+          const usage = { prompt_tokens: 30, completion_tokens: 25, total_tokens: 55 };
+          const call = { id: "call_patch", type: "function", function: { name: "apply_patch", arguments: PATCH_ARGS } };
+          if (!body.stream) return Response.json({ id: "c2", object: "chat.completion", model: MODEL, choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: [call] }, finish_reason: "tool_calls" }], usage });
+          const pieces = PATCH_ARGS.match(/[\s\S]{1,5}/g)!;
+          const parts = [
+            chunk({ role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_patch", type: "function", function: { name: "apply_patch", arguments: "" } }] }),
+            ...pieces.map((arguments_) => chunk({ tool_calls: [{ index: 0, function: { arguments: arguments_ } }] })),
+            chunk({}, "tool_calls"),
+            chunk({}, null, usage),
+            "data: [DONE]\n\n",
+          ];
+          return new Response(parts.join(""), { headers: { "content-type": "text/event-stream" } });
+        }
         const parts = [
           chunk({ role: "assistant", content: "Checking. " }),
           chunk({ tool_calls: [{ index: 0, id: "call_a", type: "function", function: { name: "get_weather", arguments: "" } }] }),
@@ -431,6 +452,133 @@ describe("streaming function calls, through a provider that streams them", () =>
     expect(completed.output[1]).toMatchObject({ call_id: "call_a", name: "get_weather", arguments: '{"city":"Paris"}', status: "completed" });
     expect(completed.output[2]).toMatchObject({ call_id: "call_b", name: "get_time", arguments: "{}" });
     expect(completed.usage).toMatchObject({ input_tokens: 20, output_tokens: 15, total_tokens: 35 });
+  });
+
+  // What the Codex CLI sends: its shell and plan tools as functions, apply_patch as a freeform custom tool with a grammar.
+  const GRAMMAR = 'start: begin_patch hunk+ end_patch\nbegin_patch: "*** Begin Patch" LF\nend_patch: "*** End Patch" LF?\nhunk: add_hunk | update_hunk';
+  const codexTools = [
+    { type: "function", name: "shell", description: "Runs a shell command and returns its output.", strict: false, parameters: { type: "object", properties: { command: { type: "array", items: { type: "string" } }, workdir: { type: "string" } }, required: ["command"], additionalProperties: false } },
+    { type: "custom", name: "apply_patch", description: "Use the `apply_patch` tool to edit files.", format: { type: "grammar", syntax: "lark", definition: GRAMMAR } },
+    { type: "function", name: "update_plan", description: "Updates the task plan.", strict: false, parameters: { type: "object", properties: { plan: { type: "array", items: { type: "object" } } }, required: ["plan"], additionalProperties: false } },
+  ];
+  const codexRequest = (extra: Record<string, unknown> = {}) => ({
+    model: MODEL,
+    instructions: "You are a coding agent running in the Codex CLI.",
+    input: [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "<environment_context>\n  <cwd>/work</cwd>\n</environment_context>" }] },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "Add hello.txt: apply the patch" }] },
+    ],
+    tools: codexTools,
+    tool_choice: "auto",
+    parallel_tool_calls: false,
+    reasoning: { effort: "medium", summary: "auto" },
+    store: false,
+    include: ["reasoning.encrypted_content"],
+    prompt_cache_key: "0198-abc",
+    text: { verbosity: "medium" },
+    ...extra,
+  });
+
+  test("a Codex-shaped request: apply_patch is offered as a function with one string argument, the others unchanged", async () => {
+    const res = await h.request("/v1/responses", { method: "POST", headers: auth, json: codexRequest({ stream: false }) });
+    expect(res.status).toBe(200);
+    const sent = seen.at(-1);
+    expect(sent.tools.map((t: any) => t.function.name)).toEqual(["shell", "apply_patch", "update_plan"]);
+    expect(sent.tools[0]).toEqual({ type: "function", function: { name: "shell", description: "Runs a shell command and returns its output.", parameters: codexTools[0]!.parameters, strict: false } });
+    const patch = sent.tools[1].function;
+    expect(patch.parameters).toEqual({ type: "object", properties: { input: { type: "string", description: expect.stringContaining("freeform input") } }, required: ["input"], additionalProperties: false });
+    expect(patch.description).toStartWith("Use the `apply_patch` tool to edit files.");
+    expect(patch.description).toContain('Put the complete text in the "input" argument');
+    expect(patch.description).toContain("lark grammar");
+    expect(patch.description).toContain("guidance only and is not enforced");
+    expect(patch.description).toContain(GRAMMAR);
+    expect(sent.messages.map((m: any) => m.role)).toEqual(["system", "user", "user"]);
+    expect(sent).toMatchObject({ tool_choice: "auto", parallel_tool_calls: false });
+    // The answer: a custom_tool_call item, not a function_call, with the patch as its input.
+    const j = (await res.json()) as any;
+    expect(j.status).toBe("completed");
+    expect(j.output).toHaveLength(1);
+    expect(j.output[0]).toMatchObject({ type: "custom_tool_call", call_id: "call_patch", name: "apply_patch", input: PATCH, status: "completed" });
+    expect(j.output[0].id).toStartWith("ctc_");
+    expect(j.output[0].arguments).toBeUndefined();
+    expect(j.tools[1]).toEqual(codexTools[1]); // the custom tool is echoed as it was sent
+  });
+
+  test("streaming: the patch arrives as response.custom_tool_call_input deltas that add up to the input", async () => {
+    const res = await h.request("/v1/responses", { method: "POST", headers: auth, json: codexRequest({ stream: true }) });
+    expect(res.status).toBe(200);
+    const { raw, events, types } = await frames(res);
+    expect(raw).not.toContain("function_call_arguments");
+    const deltas = events.filter((e) => e.event === "response.custom_tool_call_input.delta");
+    expect(deltas.length).toBeGreaterThan(3);
+    expect(types).toEqual([
+      "response.created",
+      "response.in_progress",
+      "response.output_item.added",
+      ...deltas.map(() => "response.custom_tool_call_input.delta"),
+      "response.custom_tool_call_input.done",
+      "response.output_item.done",
+      "response.completed",
+    ]);
+    events.forEach((e, i) => expect(e.data.sequence_number).toBe(i));
+    const added = events[2]!.data;
+    expect(added).toMatchObject({ output_index: 0, item: { type: "custom_tool_call", call_id: "call_patch", name: "apply_patch", input: "", status: "in_progress" } });
+    expect(added.item.id).toStartWith("ctc_");
+    for (const d of deltas) expect(d.data).toMatchObject({ item_id: added.item.id, output_index: 0 });
+    expect(deltas.map((d) => d.data.delta).join("")).toBe(PATCH);
+    // No piece is a lone half of an emoji.
+    for (const d of deltas) expect(d.data.delta).toBe(d.data.delta.toWellFormed());
+    const done = events.find((e) => e.event === "response.custom_tool_call_input.done")!.data;
+    expect(done).toMatchObject({ item_id: added.item.id, output_index: 0, input: PATCH });
+    const item = events.find((e) => e.event === "response.output_item.done")!.data.item;
+    expect(item).toEqual({ id: added.item.id, type: "custom_tool_call", call_id: "call_patch", name: "apply_patch", input: PATCH, status: "completed" });
+    const completed = events.at(-1)!.data.response;
+    expect(completed.output).toEqual([item]);
+    expect(completed.usage).toMatchObject({ input_tokens: 30, output_tokens: 25, total_tokens: 55 });
+  });
+
+  test("the next turn: custom_tool_call and its output go back as chat tool messages, beside a function call and reasoning that is dropped", async () => {
+    const res = await h.request("/v1/responses", {
+      method: "POST",
+      headers: auth,
+      json: codexRequest({
+        stream: true,
+        input: [
+          { type: "message", role: "user", content: [{ type: "input_text", text: "Add hello.txt: apply the patch" }] },
+          { type: "reasoning", id: "rs_1", summary: [], encrypted_content: "opaque" },
+          { type: "custom_tool_call", id: "ctc_1", call_id: "call_patch", name: "apply_patch", input: PATCH },
+          { type: "function_call", id: "fc_1", call_id: "call_ls", name: "shell", arguments: '{"command":["ls"]}' },
+          { type: "custom_tool_call_output", call_id: "call_patch", output: "Success. Updated the following files:\nA hello.txt" },
+          { type: "function_call_output", call_id: "call_ls", output: "hello.txt" },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    await frames(res);
+    expect(seen.at(-1).messages).toEqual([
+      { role: "system", content: "You are a coding agent running in the Codex CLI." },
+      { role: "user", content: "Add hello.txt: apply the patch" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "call_patch", type: "function", function: { name: "apply_patch", arguments: PATCH_ARGS } },
+          { id: "call_ls", type: "function", function: { name: "shell", arguments: '{"command":["ls"]}' } },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_patch", content: "Success. Updated the following files:\nA hello.txt" },
+      { role: "tool", tool_call_id: "call_ls", content: "hello.txt" },
+    ]);
+  });
+
+  test("tool_choice can force a custom tool, and a custom tool cannot share a name with a function", async () => {
+    const forced = await h.request("/v1/responses", { method: "POST", headers: auth, json: codexRequest({ stream: false, tool_choice: { type: "custom", name: "apply_patch" } }) });
+    expect(forced.status).toBe(200);
+    expect(seen.at(-1).tool_choice).toEqual({ type: "function", function: { name: "apply_patch" } });
+    await forced.text();
+    const dup = await h.request("/v1/responses", { method: "POST", headers: auth, json: codexRequest({ tools: [codexTools[1], { type: "function", name: "apply_patch", parameters: {} }] }) });
+    expect(dup.status).toBe(400);
+    expect(((await dup.json()) as any).error).toMatchObject({ type: "invalid_request", param: "tools[1].name" });
   });
 });
 
@@ -603,8 +751,148 @@ describe("request mapping", () => {
   });
 });
 
+describe("custom tools", () => {
+  const PATCH = '*** Begin Patch\n+h\u00e9llo "q" \\ \u{1F600} \u{1D11E}\t\n*** End Patch';
+  const ASCII = (json: string) => json.replace(/[\u0080-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+  const decode = (pieces: string[]) => {
+    const d = new InputDecoder();
+    return pieces.map((p) => d.push(p)).join("");
+  };
+
+  test("the decoder reads the input string however the JSON is cut up, escapes and surrogate pairs included", () => {
+    for (const json of [JSON.stringify({ input: PATCH }), ASCII(JSON.stringify({ input: PATCH })), ` {\n "input" : ${JSON.stringify(PATCH)} }`]) {
+      for (let i = 0; i <= json.length; i++) expect(decode([json.slice(0, i), json.slice(i)])).toBe(PATCH);
+      for (const size of [1, 2, 3, 5, 7]) expect(decode(json.match(new RegExp(`[\\s\\S]{1,${size}}`, "g"))!)).toBe(PATCH);
+    }
+    // Text after the closing quote is not part of it.
+    expect(decode(['{"input":"a"', ',"x":"b"}'])).toBe("a");
+  });
+
+  test("a piece never ends in half of a surrogate pair", () => {
+    const d = new InputDecoder();
+    const pieces = ASCII(JSON.stringify({ input: "x\u{1F600}y" })).match(/[\s\S]{1,4}/g)!.map((p) => d.push(p));
+    for (const p of pieces) expect(p).toBe(p.toWellFormed());
+    expect(pieces.join("")).toBe("x\u{1F600}y");
+  });
+
+  test("customInput: the input key when the JSON is whole, what has arrived when it is cut short, the raw text when it is not that shape", () => {
+    expect(customInput(JSON.stringify({ input: PATCH }))).toBe(PATCH);
+    expect(customInput('{"input":"abc\\ndef')).toBe("abc\ndef");
+    expect(customInput("*** Begin Patch\n*** End Patch")).toBe("*** Begin Patch\n*** End Patch");
+    expect(customInput('{"patch":"x"}')).toBe('{"patch":"x"}');
+    expect(customInput("")).toBe("");
+  });
+
+  test("a custom tool becomes a function with one string argument; its grammar is description text only", () => {
+    const { chat, echo } = chatRequestFrom({
+      model: "m/x",
+      input: "hi",
+      tools: [
+        { type: "custom", name: "run_sql", description: "Runs SQL.", format: { type: "text" } },
+        { type: "custom", name: "patch", format: { type: "grammar", syntax: "regex", definition: "^x+$" } },
+      ],
+    });
+    const [sql, patch] = (chat.tools as any[]).map((t) => t.function);
+    expect(sql.description).toBe('Runs SQL.\n\nThis tool takes freeform text, not JSON fields. Put the complete text in the "input" argument, exactly in the format described for this tool.');
+    expect(sql.parameters.required).toEqual(["input"]);
+    expect(patch.description).toStartWith("This tool takes freeform text");
+    expect(patch.description).toContain("regex grammar");
+    expect(patch.description).toContain("not enforced");
+    expect(patch.description).toContain("^x+$");
+    expect(JSON.stringify(chat)).not.toContain('"format"'); // nothing in the request claims the grammar is enforced upstream
+    expect([...echo.customTools]).toEqual(["run_sql", "patch"]);
+  });
+
+  test("custom_tool_call and custom_tool_call_output items become an assistant tool call and a tool result", () => {
+    expect(
+      messagesFromInput(null, [
+        { role: "user", content: "go" },
+        { type: "custom_tool_call", call_id: "c1", name: "patch", input: "*** Begin Patch" },
+        { type: "custom_tool_call", call_id: "c2", name: "patch" },
+        { type: "custom_tool_call_output", call_id: "c1", output: [{ type: "input_text", text: "ok" }] },
+        { type: "custom_tool_call_output", call_id: "c2", output: "failed" },
+      ]),
+    ).toEqual([
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "c1", type: "function", function: { name: "patch", arguments: '{"input":"*** Begin Patch"}' } },
+          { id: "c2", type: "function", function: { name: "patch", arguments: '{"input":""}' } },
+        ],
+      },
+      { role: "tool", tool_call_id: "c1", content: "ok" },
+      { role: "tool", tool_call_id: "c2", content: "failed" },
+    ]);
+  });
+
+  const echo: Echo = { model: "m/x", instructions: null, maxOutputTokens: null, temperature: null, topP: null, parallelToolCalls: true, toolChoice: "auto", tools: [], text: { format: { type: "text" } }, reasoning: { effort: null, summary: null }, metadata: {}, user: null, customTools: new Set(["patch"]) };
+  const meta: Meta = { receiptId: "gen-2-def", lane: "public", disclosure: null, policyHash: null };
+
+  test("a call to a custom tool comes back as a custom_tool_call; a call to a function of the same turn stays a function_call", () => {
+    const r = responseFromChat(
+      {
+        choices: [
+          {
+            message: {
+              content: "Patching.",
+              tool_calls: [
+                { id: "c1", type: "function", function: { name: "patch", arguments: JSON.stringify({ input: PATCH }) } },
+                { id: "c2", type: "function", function: { name: "shell", arguments: '{"command":["ls"]}' } },
+                { id: "c3", type: "function", function: { name: "patch", arguments: "raw patch text" } },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      },
+      echo,
+      meta,
+      1,
+    ) as any;
+    expect(r.output.map((o: any) => o.type)).toEqual(["message", "custom_tool_call", "function_call", "custom_tool_call"]);
+    expect(r.output[1]).toMatchObject({ id: "ctc_2-def_1", call_id: "c1", name: "patch", input: PATCH, status: "completed" });
+    expect(r.output[2]).toMatchObject({ call_id: "c2", name: "shell", arguments: '{"command":["ls"]}' });
+    expect(r.output[3]).toMatchObject({ call_id: "c3", input: "raw patch text" });
+  });
+
+  test("the stream: item added, input deltas, input done with the whole text, item done, completed", () => {
+    const out: { event: string; data: any }[] = [];
+    const tr = new StreamTranslator(echo, meta, 1, (frame) => {
+      const [e, d] = frame.trim().split("\n");
+      out.push({ event: e!.slice(7), data: JSON.parse(d!.slice(6)) });
+    });
+    tr.begin();
+    const args = JSON.stringify({ input: PATCH });
+    tr.chat({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "c1", type: "function", function: { name: "patch", arguments: "" } }] } }] });
+    for (const piece of args.match(/[\s\S]{1,6}/g)!) tr.chat({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: piece } }] } }] });
+    tr.chat({ choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] });
+    tr.end(true);
+    const types = out.map((e) => e.event);
+    expect(types.slice(0, 3)).toEqual(["response.created", "response.in_progress", "response.output_item.added"]);
+    expect(types.slice(-3)).toEqual(["response.custom_tool_call_input.done", "response.output_item.done", "response.completed"]);
+    expect(out.filter((e) => e.event === "response.custom_tool_call_input.delta").map((e) => e.data.delta).join("")).toBe(PATCH);
+    expect(out.at(-1)!.data.response.output).toEqual([{ id: "ctc_2-def_0", type: "custom_tool_call", call_id: "c1", name: "patch", input: PATCH, status: "completed" }]);
+  });
+
+  test("a provider that streams the patch as plain text instead of JSON still gets its input, in one delta at the end", () => {
+    const out: { event: string; data: any }[] = [];
+    const tr = new StreamTranslator(echo, meta, 1, (frame) => {
+      const [e, d] = frame.trim().split("\n");
+      out.push({ event: e!.slice(7), data: JSON.parse(d!.slice(6)) });
+    });
+    tr.begin();
+    tr.chat({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "c1", type: "function", function: { name: "patch", arguments: "*** Begin " } }] } }] });
+    tr.chat({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: "Patch" } }] } }] });
+    tr.end(true);
+    expect(out.filter((e) => e.event === "response.custom_tool_call_input.delta").map((e) => e.data.delta)).toEqual(["*** Begin Patch"]);
+    expect(out.find((e) => e.event === "response.custom_tool_call_input.done")!.data.input).toBe("*** Begin Patch");
+  });
+});
+
 describe("the non-streaming translator", () => {
-  const echo: Echo = { model: "m/x", instructions: null, maxOutputTokens: 5, temperature: null, topP: null, parallelToolCalls: true, toolChoice: "auto", tools: [], text: { format: { type: "text" } }, reasoning: { effort: null, summary: null }, metadata: { a: "b" }, user: null };
+  const echo: Echo = { model: "m/x", instructions: null, maxOutputTokens: 5, temperature: null, topP: null, parallelToolCalls: true, toolChoice: "auto", tools: [], text: { format: { type: "text" } }, reasoning: { effort: null, summary: null }, metadata: { a: "b" }, user: null, customTools: new Set() };
   const meta: Meta = { receiptId: "gen-9-zzz", lane: "attested", disclosure: null, policyHash: "sha256:" + "ab".repeat(32) };
 
   test("a length finish is an incomplete response; the policy hash and user metadata ride along", () => {
@@ -626,7 +914,7 @@ describe("the non-streaming translator", () => {
 });
 
 describe("the stream translator", () => {
-  const echo: Echo = { model: "m/x", instructions: null, maxOutputTokens: null, temperature: null, topP: null, parallelToolCalls: true, toolChoice: "auto", tools: [], text: { format: { type: "text" } }, reasoning: { effort: null, summary: null }, metadata: {}, user: null };
+  const echo: Echo = { model: "m/x", instructions: null, maxOutputTokens: null, temperature: null, topP: null, parallelToolCalls: true, toolChoice: "auto", tools: [], text: { format: { type: "text" } }, reasoning: { effort: null, summary: null }, metadata: {}, user: null, customTools: new Set() };
   const meta: Meta = { receiptId: "gen-1-abc", lane: "public", disclosure: null, policyHash: null };
   const run = (events: unknown[], sawDone = true, m: Meta = meta) => {
     const out: { event: string; data: any }[] = [];

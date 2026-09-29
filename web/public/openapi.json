@@ -3686,7 +3686,7 @@
         ],
         "operationId": "createResponse",
         "summary": "Create a response (OpenAI Responses API)",
-        "description": "The OpenAI Responses API, for the OpenAI Agents SDK, the Codex CLI and other Responses clients (POST /v1/responses is the same route). It is an adapter over POST /api/v1/chat/completions: the request is translated and sent to that route in-process with the same credentials and headers, so keys, wallet and per-call payment, blind tokens, limits, disclosure ceilings, lanes, signed receipts and error responses are the chat route's own, and the answer is returned in the Responses shape. With stream true the body is the Responses event stream, each frame an event: line and a data: line carrying type and sequence_number: response.created, response.in_progress, response.output_item.added, response.content_part.added, response.output_text.delta, response.output_text.done, response.content_part.done, response.function_call_arguments.delta, response.function_call_arguments.done, response.output_item.done and last response.completed (or response.incomplete when the answer was cut off by max_output_tokens). A failure after the stream has started is an error event followed by response.failed; there is no [DONE]. Stateless by design: nothing is stored, so store must be false (the default; true is refused), and previous_response_id, conversation, background, stored prompts and file or item references are refused with a 400 whose error.param names the field. Send the whole conversation in input on every request, including function_call and function_call_output items for tool round trips. GET, DELETE and cancel under /api/v1/responses/{id} answer 404. Only function tools run. Hosted tools (web_search, file_search, code_interpreter, computer_use, image_generation, mcp) are refused with a 400 naming the tool, because AnyRoute hosts none; run the work in your own code and return it as a function_call_output. Route with provider (lane, disclosure and the router's other preferences) or the X-Anyroute-Lane header; the stricter of the two applies, and a request no provider can serve under the lane is refused (409 lane_unavailable) with nothing sent and nothing charged. The response carries X-Receipt-Id, Inference-Id and X-Anyroute-Lane (and X-Anyroute-Policy-Hash where the serving endpoint attested one), and its metadata carries anyroute_receipt_id, anyroute_lane and, once known, anyroute_disclosure. Other Responses options (include, truncation, service_tier, prompt_cache_key, safety_identifier, stream_options) are accepted and ignored.",
+        "description": "The OpenAI Responses API, for the OpenAI Agents SDK, the Codex CLI and other Responses clients (POST /v1/responses is the same route). It is an adapter over POST /api/v1/chat/completions: the request is translated and sent to that route in-process with the same credentials and headers, so keys, wallet and per-call payment, blind tokens, limits, disclosure ceilings, lanes, signed receipts and error responses are the chat route's own, and the answer is returned in the Responses shape. With stream true the body is the Responses event stream, each frame an event: line and a data: line carrying type and sequence_number: response.created, response.in_progress, response.output_item.added, response.content_part.added, response.output_text.delta, response.output_text.done, response.content_part.done, response.function_call_arguments.delta, response.function_call_arguments.done, response.custom_tool_call_input.delta and .done, response.output_item.done and last response.completed (or response.incomplete when the answer was cut off by max_output_tokens). A failure after the stream has started is an error event followed by response.failed; there is no [DONE]. Stateless by design: nothing is stored, so store must be false (the default; true is refused), and previous_response_id, conversation, background, stored prompts and file or item references are refused with a 400 whose error.param names the field. Send the whole conversation in input on every request, including function_call and function_call_output items for tool round trips. GET, DELETE and cancel under /api/v1/responses/{id} answer 404. Function tools and custom (freeform) tools run. A custom tool, such as Codex's apply_patch, is offered to the model as a function with one string argument, input; its description, a line saying it takes freeform text and its grammar, if it has one, become the function's description, as guidance only: no grammar is enforced. A call to it comes back as a custom_tool_call item with the text as input (streamed as response.custom_tool_call_input.delta, then response.custom_tool_call_input.done), and a custom_tool_call_output input item is its result on the next turn. Hosted tools (web_search, file_search, code_interpreter, computer_use, image_generation, mcp) are refused with a 400 naming the tool, because AnyRoute hosts none; run the work in your own code and return it as a function_call_output or custom_tool_call_output. Route with provider (lane, disclosure and the router's other preferences) or the X-Anyroute-Lane header; the stricter of the two applies, and a request no provider can serve under the lane is refused (409 lane_unavailable) with nothing sent and nothing charged. The response carries X-Receipt-Id, Inference-Id and X-Anyroute-Lane (and X-Anyroute-Policy-Hash where the serving endpoint attested one), and its metadata carries anyroute_receipt_id, anyroute_lane and, once known, anyroute_disclosure. Other Responses options (include, truncation, service_tier, prompt_cache_key, safety_identifier, stream_options) are accepted and ignored.",
         "security": [
           {
             "BearerAuth": []
@@ -8246,7 +8246,7 @@
         }
       },
       "ResponsesInputItem": {
-        "description": "An input item: a message, a function_call from an earlier turn, or the function_call_output for it.",
+        "description": "An input item: a message, a function_call or custom_tool_call from an earlier turn, or the function_call_output or custom_tool_call_output for it.",
         "oneOf": [
           {
             "type": "object",
@@ -8351,6 +8351,58 @@
                 "description": "The function's result: text, or input_text parts."
               }
             }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "call_id",
+              "name"
+            ],
+            "properties": {
+              "type": {
+                "const": "custom_tool_call"
+              },
+              "call_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "input": {
+                "type": "string",
+                "description": "The freeform text the model gave the tool."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "call_id",
+              "output"
+            ],
+            "properties": {
+              "type": {
+                "const": "custom_tool_call_output"
+              },
+              "call_id": {
+                "type": "string"
+              },
+              "output": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                ]
+              }
+            }
           }
         ]
       },
@@ -8360,7 +8412,7 @@
           "model",
           "input"
         ],
-        "description": "A Responses API request. Options AnyRoute cannot honour because they need stored state are refused (store true, previous_response_id, conversation, background, prompt) and so is every tool that is not a function tool.",
+        "description": "A Responses API request. Options AnyRoute cannot honour because they need stored state are refused (store true, previous_response_id, conversation, background, prompt) and so is every tool that is not a function or custom tool.",
         "properties": {
           "model": {
             "type": "string",
@@ -8387,31 +8439,73 @@
           "tools": {
             "type": "array",
             "items": {
-              "type": "object",
-              "required": [
-                "type",
-                "name"
-              ],
-              "properties": {
-                "type": {
-                  "const": "function"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                },
-                "parameters": {
+              "oneOf": [
+                {
                   "type": "object",
-                  "description": "JSON Schema of the arguments."
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "function"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "parameters": {
+                      "type": "object",
+                      "description": "JSON Schema of the arguments."
+                    },
+                    "strict": {
+                      "type": "boolean"
+                    }
+                  }
                 },
-                "strict": {
-                  "type": "boolean"
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "custom"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "object",
+                      "description": "{type: text}, or {type: grammar, syntax: lark or regex, definition}. The grammar is given to the model in the tool's description as guidance and is not enforced.",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "text",
+                            "grammar"
+                          ]
+                        },
+                        "syntax": {
+                          "type": "string"
+                        },
+                        "definition": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  }
                 }
-              }
+              ]
             },
-            "description": "Function tools only. Requires a model and provider that support tools."
+            "description": "Function and custom tools. Requires a model and provider that support tools. A custom tool takes freeform text; its name must differ from every function's."
           },
           "tool_choice": {
             "oneOf": [
@@ -8431,7 +8525,11 @@
                 ],
                 "properties": {
                   "type": {
-                    "const": "function"
+                    "type": "string",
+                    "enum": [
+                      "function",
+                      "custom"
+                    ]
                   },
                   "name": {
                     "type": "string"
@@ -8679,10 +8777,46 @@
                       ]
                     }
                   }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "id",
+                    "call_id",
+                    "name",
+                    "input",
+                    "status"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "custom_tool_call"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "call_id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "input": {
+                      "type": "string",
+                      "description": "The freeform text the model gave the custom tool."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "in_progress",
+                        "completed"
+                      ]
+                    }
+                  }
                 }
               ]
             },
-            "description": "A message with output_text, and a function_call item for each tool call the model made."
+            "description": "A message with output_text, and a function_call or custom_tool_call item for each tool call the model made."
           },
           "usage": {
             "type": [
