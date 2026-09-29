@@ -57,6 +57,32 @@ const councilResponse = JSON.stringify(
   2,
 );
 const verifyRequest = JSON.stringify({ model: "meta-llama/llama-3.3-70b-instruct", messages: [{ role: "user", content: "Your prompt" }], verify: "dual" }, null, 2);
+const attestedCouncilRequest = JSON.stringify(
+  {
+    model: "anyroute/council",
+    messages: [{ role: "user", content: "Your prompt" }],
+    council: { models: ["<model-a>", "<model-b>"], judge: "<judge-model>", attested: true },
+  },
+  null,
+  2,
+);
+const attestedCouncilResponse = JSON.stringify(
+  {
+    id: "<judge receipt id>",
+    model: "anyroute/council",
+    council: {
+      attested: true,
+      attestation_refs: [
+        { role: "member", label: "A", receipt_id: "<member receipt id>", provider: "<provider-a>", tee: "tdx", report_hash: "<attestation report hash>", attested_at: "…", tls_pin: { spki_sha256: "…", attestation_ref: "…" } },
+        { role: "member", label: "B", receipt_id: "<member receipt id>", provider: "<provider-b>", tee: "tdx", report_hash: "…", attested_at: "…", tls_pin: null },
+        { role: "judge", receipt_id: "<judge receipt id>", provider: "<provider-a>", tee: "tdx", report_hash: "…", attested_at: "…", tls_pin: { spki_sha256: "…", attestation_ref: "…" } },
+      ],
+    },
+  },
+  null,
+  2,
+);
+const attestedDualRequest = JSON.stringify({ model: "<model>", messages: [{ role: "user", content: "Your prompt" }], verify: "dual", provider: { lane: "attested" } }, null, 2);
 const claimRequest = JSON.stringify({ model: "<author>/<model>", address: "0x…your payout address" }, null, 2);
 const claimResponse = JSON.stringify(
   {
@@ -399,6 +425,27 @@ export default function Docs() {
             is the first provider’s output. If fewer than two providers of the model support temperature and seed under your routing preferences, the answer is 409. Agreement shows two providers gave the same text; it does not show that either is attested, and providers running different quantizations may legitimately differ.
           </p>
           <Code label="Dual verification request">{verifyRequest}</Code>
+          <p>
+            <b>Attested council and attested dual verification.</b> Set council.attested to true (or send provider.lane or the X-Anyroute-Lane header as attested, which asks for the same thing) and every member and the judge are held to the attested lane:
+            a provider whose retention is declared attested and whose hardware attestation the router holds fresh, the same test as any other attested-lane request. Nothing is downgraded and no member is dropped. A member, or the judge, with no
+            attested provider refuses the whole request with a 409 (lane_unavailable, and error.metadata.council_seat says which seat), or a 503 while attested providers are down; nothing is sent, held or charged. Each call’s signed receipt then has an
+            attestation_ref: the hash of the attestation report the router verified for the provider that served it, and the TLS key its connection was pinned to (tls_pin is null for a provider that did not attest through a self-signed certificate).
+            The response’s council field adds attested and attestation_refs (members in order, then the judge), and both are signed in the top-level receipt, so changing a reference breaks its signature. attested is true only when every call was served
+            under the attested class. These are the router’s own records, the same ones behind GET /api/v1/attestation/{"{providerId}"}; they show what was running and pinned, not what it did with your prompt.
+          </p>
+          <Code label="Attested council request">{attestedCouncilRequest}</Code>
+          <Code label="Attested council response (abridged)">{attestedCouncilResponse}</Code>
+          <p>
+            Dual verification with provider.lane set to attested sends the two calls to two different attested providers of the model. Both receipts carry the agreement bit, and the verification field and each receipt add attested and the two
+            attestation references. If the model has fewer than two attested providers the answer is 409 (verification_unavailable with one, lane_unavailable with none), and nothing is sent or charged. Agreement still only shows that two providers
+            gave the same text.
+          </p>
+          <Code label="Attested dual verification request">{attestedDualRequest}</Code>
+          <p>
+            <b>Availability.</b> Production has one attested provider today, and it serves a small (0.5B) model, so an attested council, which needs an attested provider for every member and the judge, and attested dual verification, which needs
+            two for one model, will mostly answer with the 409 above until more attested providers join. That refusal is the intended behaviour, not a fault: the router does not fall back to a provider that is not attested. On a development
+            router the attestation can be a development report; receipts then say so (attestation_simulated, and simulated inside the reference), and a production router never accepts one. Receipts from calls made any other way do not carry attestation_ref, and older receipts verify as before.
+          </p>
           <h2 id="mcp">Use every model as a tool.</h2>
           <p>
             The router hosts a remote MCP server at /mcp (Streamable HTTP, stateless, JSON replies). Connect it to Claude, Cursor or any MCP client with your Anyroute key. Four tools: list_models (live models, context length and price per 1M
