@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { models as sampleModels, providers as sampleProviders, initialWorkspace, storageKey, routeCall, validWorkspace, money } from "../lib/demo";
 import { API_BASE, ApiError, api, clearKey, downloadJSON, getMode, loadKey, loadWorkspace, saveKey, setMode, streamChat, toCatalogModel, toProvider, toReceiptRow, validKey } from "../lib/api";
-import { connect, ensureChain, hasWallet, personalSign, sendTransactions, shortAddress, signTypedData } from "../lib/wallet";
+import { connect, ensureChain, hasWallet, sendTransactions, shortAddress, signTypedData, walletApiKey } from "../lib/wallet";
 import { Button, Modal, Code, CopyButton } from "./UI";
 import ModelCatalog from "./ModelCatalog";
 import SavedRoutes from "./features/SavedRoutes";
@@ -793,12 +793,9 @@ function SignIn({ onKey, onDemo, onSecret, stockMode, anyr }) {
                 disabled={!!busy}
                 onClick={() =>
                   run("wallet", async () => {
-                    const address = await connect();
-                    const { data: challenge } = await api("/api/v1/auth/wallet/challenge", { method: "POST", body: { address } });
-                    const signature = await personalSign(address, challenge.message);
-                    const r = await api("/api/v1/auth/wallet", { method: "POST", body: { address, nonce: challenge.nonce, signature, name: "Wallet key" } });
-                    onSecret(r.key, null, "Your wallet’s API key");
-                    await onKey(r.key, remember);
+                    const key = await walletApiKey("Wallet key");
+                    onSecret(key, null, "Your wallet’s API key");
+                    await onKey(key, remember);
                   })
                 }
               >
@@ -1430,6 +1427,9 @@ export default function Dashboard() {
                 <h2>{live ? "Route a call." : "Route a sample call."}</h2>
                 <span className="badge">{live ? "Live request · billed to the selected key" : "No external request"}</span>
               </div>
+              <p className="help-text harness-link">
+                Want every model with its tools, compare mode and attachments? <a className="inline-link" href="/harness/">Open the harness</a>
+              </p>
               <div className="playground-grid">
                 <form className="control-panel" onSubmit={run}>
                   <Field label="Model" id="play-model">

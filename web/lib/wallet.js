@@ -1,5 +1,6 @@
 // Minimal EIP-1193 wallet helpers (MetaMask, Rabby, Coinbase Wallet, etc.). The router never holds a
 // user's funds: it returns unsigned transactions and the user's wallet signs and sends them.
+import { api } from "./api.js";
 
 const provider = () => (typeof window !== "undefined" ? window.ethereum : undefined);
 export const hasWallet = () => !!provider();
@@ -67,3 +68,12 @@ export async function personalSign(address, message) {
 }
 
 export const shortAddress = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "");
+
+/** Wallet sign-in: sign the router's one-time challenge and receive this wallet's API key. No password, no email. */
+export async function walletApiKey(name = "Wallet key") {
+  const address = await connect();
+  const { data: challenge } = await api("/api/v1/auth/wallet/challenge", { method: "POST", body: { address } });
+  const signature = await personalSign(address, challenge.message);
+  const r = await api("/api/v1/auth/wallet", { method: "POST", body: { address, nonce: challenge.nonce, signature, name } });
+  return r.key;
+}
