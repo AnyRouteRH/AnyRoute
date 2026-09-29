@@ -71,6 +71,13 @@
       "when": 1790667027250,
       "tag": "0009_v3_measurement",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790667296565,
+      "tag": "0010_v3_blind",
+      "breakpoints": true
     }
   ]
 }
