@@ -1,0 +1,59 @@
+# sidecar.yaml for the Phala Cloud example. docker-compose.yml carries a verbatim copy of this file in the
+# sidecar's SIDECAR_CONFIG_YAML variable, because a Phala CVM receives the compose file and nothing else; keep the
+# two identical (README.md shows how to check). ${DSTACK_APP_ID} and ${DSTACK_GATEWAY_DOMAIN} are filled in by the
+# platform when it interpolates the compose file.
+
+server:
+  host: 0.0.0.0
+  port: 8443
+  tls: self_signed
+  # The TLS-passthrough name the Phala gateway routes to this port, so a client that pins the certificate can
+  # also check the host name.
+  hostnames: ["${DSTACK_APP_ID}-8443s.${DSTACK_GATEWAY_DOMAIN}"]
+  cert_validity_days: 30
+
+upstream:
+  base_url: http://llama:8080
+  timeout_ms: 180000
+  stream_idle_timeout_ms: 60000
+  max_request_bytes: 65536
+  max_response_bytes: 1048576
+
+model:
+  # The GGUF file llama.cpp serves, mounted read-only. It is hashed at boot.
+  path: /models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+  served_name: qwen2.5-0.5b-instruct
+
+allowlist:
+  # bun src/main.ts digest qwen2.5-0.5b-instruct-q4_k_m.gguf
+  model_digests: ["sha256:1144b5db331424ae40213378a83575a5cf67090b0ce1ad49cf66ec75f17e2095"]
+
+# The image the sidecar process runs in (oven/bun:1.3.14, pinned by the same digest in the compose file). The
+# sidecar source is not part of an image here: it is the public commit's tarball, pinned by its sha256 in the
+# compose file, so the measured compose hash covers it.
+image_digest: "sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4"
+
+attestation:
+  provider: dstack
+  dstack:
+    endpoint: /var/run/dstack.sock
+  fresh_quotes_per_minute: 10
+
+# A public demo: no API keys, one shared quota for every caller.
+auth:
+  allow_anonymous: true
+
+quota:
+  default:
+    requests_per_minute: 30
+    burst: 10
+    tokens_per_minute: 20000
+    token_burst: 20000
+  global:
+    requests_per_minute: 60
+    burst: 20
+    tokens_per_minute: 40000
+    token_burst: 40000
+
+receipts:
+  queue_capacity: 10000

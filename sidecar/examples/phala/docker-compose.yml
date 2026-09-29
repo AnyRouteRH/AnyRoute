@@ -1,0 +1,161 @@
+# AnyRoute sidecar in front of llama.cpp, for a Phala Cloud (dstack) Intel TDX confidential VM.
+#
+#   model-fetch  downloads one GGUF file at a pinned Hugging Face revision and checks its sha256, then exits
+#   llama        llama.cpp's OpenAI-compatible server, on an internal network with no route out
+#   sidecar      the AnyRoute sidecar from a pinned public commit: hashes the weights, attests through the dstack
+#                guest agent, serves TLS on 8443 with a certificate bound to the quote, signs every response
+#
+# Everything that runs is pinned in this file: images by digest, the weights by revision and sha256, the sidecar
+# source by commit and tarball sha256, its dependencies by the committed bun.lock. dstack measures the hash of this
+# file into RTMR3, and the sidecar binds that compose hash into its own quote.
+#
+# No secrets and no operator-supplied variables: the only ${...} references are DSTACK_APP_ID and
+# DSTACK_GATEWAY_DOMAIN, which the platform sets, and they only name the gateway host in the certificate.
+# Shell variables below are written $$name so that compose leaves them to the shell.
+#
+# Deploy:  phala deploy -n <name> -c docker-compose.yml -t tdx.medium --wait
+# Reach:   https://<app_id>-8443s.<gateway domain>/attest   (the "s" suffix: TLS passthrough, so the client
+#          terminates TLS with the sidecar itself, not with the gateway)
+
+services:
+  model-fetch:
+    image: ghcr.io/ggml-org/llama.cpp:server-b11243@sha256:f9115c95639e60abc09d4ea83b26fd4d56c66aa1174594393335a514da00c283
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        f=/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+        sum=74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+        url=https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf
+        if [ -f "$$f" ] && echo "$$sum  $$f" | sha256sum -c --status -; then echo "weights present, sha256 ok"; exit 0; fi
+        rm -f "$$f" "$$f.part"
+        curl -fsSL --retry 5 --retry-delay 5 -o "$$f.part" "$$url"
+        echo "$$sum  $$f.part" | sha256sum -c -
+        mv "$$f.part" "$$f"
+    volumes:
+      - models:/models
+    networks: [egress]
+    restart: "no"
+
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server-b11243@sha256:f9115c95639e60abc09d4ea83b26fd4d56c66aa1174594393335a514da00c283
+    depends_on:
+      model-fetch:
+        condition: service_completed_successfully
+    command: ["-m", "/models/qwen2.5-0.5b-instruct-q4_k_m.gguf", "--alias", "qwen2.5-0.5b-instruct", "--host", "0.0.0.0", "--port", "8080", "-c", "4096", "-n", "512"]
+    volumes:
+      - models:/models:ro
+    networks: [backend]
+    restart: unless-stopped
+
+  sidecar:
+    image: oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4
+    depends_on:
+      model-fetch:
+        condition: service_completed_successfully
+      llama:
+        condition: service_started
+    # root, to open the dstack guest agent socket.
+    user: root
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        rev=f868ac620df5ba796db8621fe5b8ab9d918e3dab
+        sum=23233f8586eeb5c07fcc82cd723202e18022dd46fda85eeffc23ec6fd0eca8b6
+        mkdir -p /opt/anyroute "$$(dirname "$$SIDECAR_CONFIG")"
+        cd /opt/anyroute
+        bun -e "const r = await fetch('https://codeload.github.com/AnyRouteRH/AnyRoute/tar.gz/$$rev'); if (!r.ok) throw new Error('source download failed: HTTP ' + r.status); await Bun.write('src.tar.gz', r);"
+        echo "$$sum  src.tar.gz" | sha256sum -c -
+        rm -rf sidecar
+        tar -xzf src.tar.gz --strip-components=1 "AnyRoute-$$rev/sidecar"
+        cd sidecar
+        bun install --frozen-lockfile --production --ignore-scripts
+        printf '%s' "$$SIDECAR_CONFIG_YAML" > "$$SIDECAR_CONFIG"
+        exec bun src/main.ts serve --config "$$SIDECAR_CONFIG"
+    environment:
+      NODE_ENV: production
+      SIDECAR_CONFIG: /run/sidecar/sidecar.yaml
+      # A verbatim copy of sidecar.yaml.
+      SIDECAR_CONFIG_YAML: |
+        # sidecar.yaml for the Phala Cloud example. docker-compose.yml carries a verbatim copy of this file in the
+        # sidecar's SIDECAR_CONFIG_YAML variable, because a Phala CVM receives the compose file and nothing else; keep the
+        # two identical (README.md shows how to check). ${DSTACK_APP_ID} and ${DSTACK_GATEWAY_DOMAIN} are filled in by the
+        # platform when it interpolates the compose file.
+
+        server:
+          host: 0.0.0.0
+          port: 8443
+          tls: self_signed
+          # The TLS-passthrough name the Phala gateway routes to this port, so a client that pins the certificate can
+          # also check the host name.
+          hostnames: ["${DSTACK_APP_ID}-8443s.${DSTACK_GATEWAY_DOMAIN}"]
+          cert_validity_days: 30
+
+        upstream:
+          base_url: http://llama:8080
+          timeout_ms: 180000
+          stream_idle_timeout_ms: 60000
+          max_request_bytes: 65536
+          max_response_bytes: 1048576
+
+        model:
+          # The GGUF file llama.cpp serves, mounted read-only. It is hashed at boot.
+          path: /models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          served_name: qwen2.5-0.5b-instruct
+
+        allowlist:
+          # bun src/main.ts digest qwen2.5-0.5b-instruct-q4_k_m.gguf
+          model_digests: ["sha256:1144b5db331424ae40213378a83575a5cf67090b0ce1ad49cf66ec75f17e2095"]
+
+        # The image the sidecar process runs in (oven/bun:1.3.14, pinned by the same digest in the compose file). The
+        # sidecar source is not part of an image here: it is the public commit's tarball, pinned by its sha256 in the
+        # compose file, so the measured compose hash covers it.
+        image_digest: "sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4"
+
+        attestation:
+          provider: dstack
+          dstack:
+            endpoint: /var/run/dstack.sock
+          fresh_quotes_per_minute: 10
+
+        # A public demo: no API keys, one shared quota for every caller.
+        auth:
+          allow_anonymous: true
+
+        quota:
+          default:
+            requests_per_minute: 30
+            burst: 10
+            tokens_per_minute: 20000
+            token_burst: 20000
+          global:
+            requests_per_minute: 60
+            burst: 20
+            tokens_per_minute: 40000
+            token_burst: 40000
+
+        receipts:
+          queue_capacity: 10000
+    volumes:
+      - models:/models:ro
+      # dstack guest agent (attestation.provider: dstack)
+      - /var/run/dstack.sock:/var/run/dstack.sock
+    ports:
+      - "8443:8443"
+    networks: [backend, egress]
+    healthcheck:
+      test: ["CMD", "bun", "/opt/anyroute/sidecar/src/main.ts", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      start_period: 600s
+      retries: 3
+    restart: unless-stopped
+
+networks:
+  # No route out: the model server is reachable only from the sidecar.
+  backend:
+    internal: true
+  # Downloads at start (weights, sidecar source and its one dependency) and the published port.
+  egress: {}
+
+volumes:
+  models: {}
