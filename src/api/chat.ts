@@ -9,11 +9,12 @@ import { canonical, canonicalJson, decrypt, genId, log, sha256 } from "../lib/ut
 import { reserve, release, settle } from "../ledger/ledger.ts";
 import { selectProviders, type ProviderPrefs } from "../router/select.ts";
 import { isRestricted } from "../router/lane.ts";
-import { disclosureRefusal, profileOf, resolveDisclosureRequest, type DisclosureClass, type DisclosureRequest } from "../router/disclosure.ts";
+import { disclosureClass, disclosureRefusal, profileOf, resolveDisclosureRequest, type DisclosureClass, type DisclosureRequest } from "../router/disclosure.ts";
 import { servedDisclosure } from "./disclosure.ts";
 import { estimatePromptTokens, maxOutputTokens, priceUsage, readUsage, worstCase, type Mode, type Usage } from "../router/pricing.ts";
 import { route, type Attempt, type RouteSuccess, type RouteTarget } from "../router/execute.ts";
 import { providerKey } from "../providers/upstream.ts";
+import { compactUpstream, recordGpuAttested, verifyAciExchange, type UpstreamAttestation } from "../providers/aci.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
 import { applyGuardrails, mergeGuardrails, redactOutput, type GuardrailConfig } from "../gateway/guardrails.ts";
 import { middleOut } from "../gateway/transforms.ts";
@@ -398,7 +399,13 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const usage = readUsage(json.usage, { prompt: promptTokens, completion: Math.ceil(JSON.stringify(json.choices ?? []).length / 4) });
   const redactions = guardCfg?.redact_output ? redactOutput(json) : 0;
   const responseText = (json.choices ?? []).map((ch: any) => (typeof ch?.message?.content === "string" ? ch.message.content : ch?.text ?? "")).join("");
-  const fin = await finalize({ ...common, r, usage, responseText, finishReason: json.choices?.[0]?.finish_reason ?? null, nativeFinish: json.choices?.[0]?.native_finish_reason ?? json.choices?.[0]?.finish_reason ?? null, generationMs: Date.now() - t0, cancelled: false });
+  // An attested gateway's receipt for this exchange: checked before anything is returned.
+  const upstreamAttestation = await upstreamAttestationOf(ctx, r, byok);
+  const fin = await finalize({ ...common, r, usage, responseText, finishReason: json.choices?.[0]?.finish_reason ?? null, nativeFinish: json.choices?.[0]?.native_finish_reason ?? json.choices?.[0]?.finish_reason ?? null, generationMs: Date.now() - t0, cancelled: false, upstreamAttestation });
+  if (upstreamAttestation && requiresAttestedUpstream(body, disc) && !upstreamAttestation.attested) {
+    const err = unattestedUpstream(upstreamAttestation);
+    return c.json({ ...err.toJSON(), id: fin.id, usage: fin.usageJson, receipt: fin.receiptJson }, 502, { "x-generation-id": fin.id, "x-anyroute-disclosure": fin.disclosure, "x-anyroute-lane": disc.lane, ...paymentHeaders(billing) });
+  }
   const out = {
     ...json,
     id: fin.id,
@@ -421,6 +428,48 @@ function allFailed(attempts: Attempt[], last?: { status?: number; errorKind: str
     allRejected ? `Provider rejected the request: ${last?.message ?? "invalid request"}` : "All providers for this request failed. Nothing was charged.",
     allRejected ? "provider_rejected" : "providers_unavailable",
     { attempts: attempts.map(({ message, ...a }) => ({ ...a, message: message?.slice(0, 200) })) },
+  );
+}
+
+/** A request that may only be answered by attested hardware: lane "attested" (or any disclosure "none"), or `:private`. */
+export function requiresAttestedUpstream(body: Record<string, unknown>, disc: DisclosureRequest) {
+  return disc.max === "none" || (body.provider as ProviderPrefs | undefined)?.private === true || String(body.model ?? "").includes(":private");
+}
+
+/** The receipt check for a call an attested aci/1 gateway served (providers/aci.ts); null for every other provider. */
+async function upstreamAttestationOf(ctx: Ctx, r: RouteSuccess, byok: Map<string, string>): Promise<UpstreamAttestation | null> {
+  const g = r.candidate.provider.aci;
+  if (!g || !r.exchange) return null;
+  return verifyAciExchange({
+    baseUrl: r.candidate.provider.baseUrl,
+    gateway: g,
+    exchange: r.exchange,
+    apiKey: providerKey(r.candidate, ctx.cfg.appSecret, byok.get(r.candidate.providerId)),
+    tlsPin: r.candidate.provider.tlsPin,
+    production: ctx.cfg.production,
+  });
+}
+
+/**
+ * The class a call was served under, given its gateway receipt check: an answer whose receipt does not show an
+ * attested upstream is served under the class the provider has without a fresh attestation.
+ */
+function servedWith(ctx: Ctx, cand: Candidate, ua: UpstreamAttestation | null | undefined, base = servedDisclosure(ctx, cand)): { class: DisclosureClass; simulated: boolean } {
+  if (!ua || ua.attested || base.class !== "attested") return base;
+  return { class: disclosureClass(profileOf(ctx.catalog.disclosure.get(cand.providerId)), false), simulated: false };
+}
+
+/**
+ * The answer for a request that required attested hardware when the gateway's receipt does not show it: the
+ * upstream already did (and billed) the work, so the call is settled like any finished call, but its output is
+ * withheld and the signed receipt records why.
+ */
+function unattestedUpstream(ua: UpstreamAttestation): ApiError {
+  return new ApiError(
+    502,
+    `The provider's receipt does not show an attested upstream (${ua.reason ?? "not attested"}). The response was withheld. The upstream had already generated it, so the call is billed as usual; the signed receipt records the verification result.`,
+    "upstream_not_attested",
+    { upstream_attestation: compactUpstream(ua) },
   );
 }
 
@@ -469,6 +518,11 @@ export type FinalizeInput = Common & {
   generationMs: number;
   cancelled: boolean;
   extra?: FinalizeExtra;
+  /**
+   * The checked receipt of an attested aci/1 gateway for this call. When omitted and the call went to such a
+   * gateway, finalize checks it itself (council and dual verification calls).
+   */
+  upstreamAttestation?: UpstreamAttestation | null;
 };
 
 async function finalize(p: FinalizeInput) {
@@ -497,7 +551,11 @@ async function finalize(p: FinalizeInput) {
   }
 
   const attestation = r.candidate.provider.attested && r.candidate.provider.attestationHash ? r.candidate.provider.attestationHash : null;
-  const served = p.extra?.served ?? servedDisclosure(ctx, r.candidate);
+  const ua = p.upstreamAttestation !== undefined ? p.upstreamAttestation : await upstreamAttestationOf(ctx, r, p.byok);
+  // A gateway answer whose receipt does not show an attested upstream is served under the class the provider has
+  // without a fresh attestation, whatever the gateway's own attestation says.
+  const served = servedWith(ctx, r.candidate, ua, p.extra?.served ?? servedDisclosure(ctx, r.candidate));
+  if (ua) await recordGpuAttested(ctx.db, r.model.id, r.candidate.providerId, ua).catch((e) => log.error("recording gpu attestation failed", { error: (e as Error).message }));
   const privateRoute = (p.body.provider as ProviderPrefs | undefined)?.private === true || String(p.body.model ?? "").includes(":private");
   const payer = billing.key ? billing.key.chainKeyHash : billing.mode === "per_call" ? billing.payer : null;
   const payload = {
@@ -526,6 +584,7 @@ async function finalize(p: FinalizeInput) {
     ...(billing.mode === "blind" ? { nullifier: billing.pass.nullifier, token_key_id: billing.pass.keyId } : {}),
     request_sha256: p.bodySha,
     response_sha256: sha256(p.responseText),
+    ...(ua ? { upstream_attestation: compactUpstream(ua) } : {}),
     ...(p.extra?.payload ?? {}),
   };
   const signed = ctx.signer.sign(payload);
@@ -683,6 +742,12 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
       }
       const r = result as Extract<RouteSuccess, { kind: "stream" }>;
       const base = chunkBase(p.holdId, created, r.model, r.candidate.provider.name, kind);
+      // What an attested gateway streams for a request that requires attested hardware is held back until its
+      // receipt shows an attested upstream (providers/aci.ts); every other stream is relayed as it arrives.
+      const hold = !!r.exchange && !!r.candidate.provider.aci && requiresAttestedUpstream(p.body, p.disc);
+      const held: unknown[] = [];
+      const relay = (obj: unknown) => (hold ? held.push(obj) : event(obj));
+      const holdKeepalive = hold ? setInterval(() => send(": ANYROUTE PROCESSING\n\n"), 5_000) : undefined;
       let text = "";
       let reasoningText = ""; // billed when usage never arrives (e.g. the client cancels mid-stream)
       let toolText = "";
@@ -708,14 +773,14 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
         }
         if (!choices.length && ev?.usage) return; // usage-only chunk: we send our own at the end
         const { usage: _u, id: _i, model: _m, created: _c, object: _o, ...rest } = ev ?? {};
-        event({ ...base, ...rest, choices });
+        relay({ ...base, ...rest, choices });
       };
       try {
         for (const ev of r.buffered) emit(ev);
         for await (const ev of r.rest) {
           if (ev?.error) {
             midError = String(ev.error?.message ?? "provider error");
-            event({ ...base, error: { code: 502, message: midError, type: "provider_error" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] });
+            relay({ ...base, error: { code: 502, message: midError, type: "provider_error" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] });
             break;
           }
           emit(ev);
@@ -724,16 +789,22 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
         if (p.abort.signal.aborted) cancelled = true;
         else {
           midError = (e as Error).message;
-          event({ ...base, error: { code: 502, message: "Provider stream was interrupted.", type: "provider_interrupted" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] });
+          relay({ ...base, error: { code: 502, message: "Provider stream was interrupted.", type: "provider_interrupted" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] });
         }
       }
       try {
         const reasoningEst = Math.ceil(reasoningText.length / 4);
         const usage = readUsage(providerUsage, { prompt: p.promptTokens, completion: Math.ceil((text.length + toolText.length) / 4) + reasoningEst });
         if (!providerUsage) usage.reasoning = reasoningEst;
-        const fin = await finalize({ ...p, r, usage, responseText: text, finishReason: finish ?? (cancelled ? "cancelled" : midError ? "error" : null), nativeFinish, generationMs: Date.now() - p.t0, cancelled });
+        const upstreamAttestation = await upstreamAttestationOf(ctx, r, p.byok);
+        clearInterval(holdKeepalive);
+        const refused = hold && !!upstreamAttestation && !upstreamAttestation.attested;
+        if (hold && !refused) for (const e of held) event(e);
+        const fin = await finalize({ ...p, r, usage, responseText: text, finishReason: finish ?? (cancelled ? "cancelled" : midError ? "error" : null), nativeFinish, generationMs: Date.now() - p.t0, cancelled, upstreamAttestation });
+        if (refused) event({ ...unattestedUpstream(upstreamAttestation!).toJSON(), id: p.holdId });
         event({ ...base, choices: [], usage: fin.usageJson, receipt: fin.receiptJson, ...(fin.extras(0) ?? {}) });
       } catch (e) {
+        clearInterval(holdKeepalive);
         log.error("stream finalize failed", { error: (e as Error).message, hold: p.holdId });
         await release(ctx.db, p.holdId).catch(() => undefined);
       }
@@ -815,6 +886,6 @@ async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, un
 }
 
 /** What the multi-call modes (council, dual verification) reuse from the single-call path. */
-export const toolkit = { finalize, selectTargets, resolveBilling, allFailed, byokFor, limitOrThrow, requestHash, requestParams, paymentHeaders };
+export const toolkit = { finalize, selectTargets, resolveBilling, allFailed, byokFor, limitOrThrow, requestHash, requestParams, paymentHeaders, upstreamAttestationOf, servedWith };
 
 export { canonical };

@@ -83,6 +83,17 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
   };
 }
 
+/**
+ * For the attested lane: whether the latest verified gateway receipt for this model asserted GPU attestation
+ * (providers/aci.ts), counted only while the provider that served it is attested now. null: no receipt recorded.
+ */
+function gpuAttested(ctx: Ctx, m: ModelRow) {
+  const rec = ctx.catalog.gpuAttested.get(m.id);
+  if (!rec) return { gpu_attested: null, gpu_attested_at: null };
+  const current = servable(ctx, m).some((o) => o.providerId === rec.provider && attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production));
+  return { gpu_attested: current ? rec.last : false, gpu_attested_at: rec.lastAt };
+}
+
 export function modelsRoutes(app: Hono, ctx: Ctx) {
   const list = async (c: import("hono").Context) => {
     await ctx.catalog.ensureFresh();
@@ -98,7 +109,9 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
       .filter((m) => need.every((p) => m.supported_parameters.includes(p)))
       .filter((m) => (lane !== "attested" && lane !== "unlinkable") || m.disclosure.endpoints.attested > 0)
       .filter((m) => !variants || variants.has(m.variant))
-      .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id));
+      .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id))
+      // The attested lane also says, per model, whether GPU attestation was seen (gateway receipts).
+      .map((m) => (lane === "attested" || lane === "unlinkable" ? { ...m, ...gpuAttested(ctx, ctx.catalog.models.get(m.id)!) } : m));
     return c.json({ data });
   };
   app.get("/api/v1/models", list);

@@ -428,7 +428,9 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
     const answerText = source?.text ?? "";
     const outcome = spec.mode === "fuse" ? "fused" : selected ? "selected" : "invalid_verdict";
     // The top-level receipt stands for every call, so it never claims more than the weakest of them.
-    const judgeServed = servedDisclosure(ctx, judged.r.candidate);
+    // A judge an attested gateway served counts as attested only when its receipt shows an attested upstream.
+    const judgeUa = await tk.upstreamAttestationOf(ctx, judged.r, byok);
+    const judgeServed = tk.servedWith(ctx, judged.r.candidate, judgeUa);
     const served = weakestServed([...fins.map((f) => ({ class: f.disclosure, simulated: f.simulated })), judgeServed]);
     // Attested council: what the router checked for every provider that took part, in the signed block. `attested` is true only
     // when every call was served under the attested class and has a reference, so it is a fact about these calls and not a request echo.
@@ -462,6 +464,7 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
       generationMs: Date.now() - t0,
       cancelled: false,
       extra: { payload: { council: signedBlock, ...(judgeRef ? { attestation_ref: judgeRef } : {}) }, budget: budget(judgeLeg), served },
+      upstreamAttestation: judgeUa,
     });
     open.delete(judgeHoldId);
     fins.push(judgeFin);
@@ -567,12 +570,15 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
   c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });
   const call = { ctx, kind, billing: bill, byok, signal: abort.signal };
   const meta = { guard, middle, paywithNote, cacheMode: null, excluded: p.excluded, route: savedRoute };
+  // Each answer's gateway receipt check (providers/aci.ts), made once: it decides the attested block and goes into the receipt.
+  const checkedUpstream = new WeakMap<Done, Awaited<ReturnType<Toolkit["upstreamAttestationOf"]>>>();
   const settle = (leg: Leg, done: Done, verification: unknown) => {
     const f = firstFinish(done.json);
     return tk.finalize({
       ctx, c, body, billing: bill, holdId: leg.holdId, t0, bodySha, stream: false, kind, byok, meta, guardCfg, promptTokens, tier, disc, planned: null,
       r: done.r, usage: done.usage, responseText: done.text, finishReason: f.finish, nativeFinish: f.native, generationMs: done.doneAt - t0, cancelled: false,
       extra: { payload: { verification, ...refPayload(attested, done.r.candidate) } },
+      ...(checkedUpstream.has(done) ? { upstreamAttestation: checkedUpstream.get(done) } : {}),
     });
   };
   // What the router checked for the providers that answered, for the `verification` block (attested lane only).
@@ -582,7 +588,7 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
       const ref = refOf(x.done.r.candidate);
       return ref ? [{ label: x.label, receipt_id: x.receiptId, ...ref }] : [];
     });
-    const every = ran.every((x) => servedDisclosure(ctx, x.done.r.candidate).class === "attested");
+    const every = ran.every((x) => tk.servedWith(ctx, x.done.r.candidate, checkedUpstream.get(x.done)).class === "attested");
     return { attested: every && refs.length === ran.length, attestation_refs: refs };
   };
 
@@ -590,6 +596,7 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
     const outcomes = await Promise.all(legs.map((leg) => callLeg(tk, call, leg)));
     if (abort.signal.aborted) throw abort.signal.reason;
     const done = outcomes.map((o, i) => (o.ok ? prepare(legs[i], o, guardCfg) : null));
+    for (const d of done) if (d) checkedUpstream.set(d, await tk.upstreamAttestationOf(ctx, d.r, byok));
     const ids = [legs[0].holdId, legs[1].holdId];
 
     // One call failed: the other still ran, so it is billed and receipted, but nothing is verified.

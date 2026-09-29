@@ -2,6 +2,7 @@ import { openProviderHeaders } from "./headers.ts";
 import { providerFetch } from "./network.ts";
 import type { Candidate } from "../catalog/catalog.ts";
 import { decrypt } from "../lib/util.ts";
+import { ACI_CONSTRAINTS, type AciExchange } from "./aci.ts";
 
 // OpenAI-compatible upstream calls. Every failure is classified so the router can decide
 // whether to fall back (5xx, timeout, connection, 429, empty-200, provider-side 4xx) and what
@@ -19,8 +20,9 @@ export type ErrorKind =
   | "interrupted";
 
 export type UpstreamFailure = { ok: false; status?: number; errorKind: ErrorKind; message: string; latencyMs: number };
-export type UpstreamJson = { ok: true; kind: "json"; status: number; json: any; latencyMs: number };
-export type UpstreamStream = { ok: true; kind: "stream"; status: number; events: AsyncGenerator<any>; first: any; latencyMs: number; abort: () => void };
+/** `exchange` is set only for an attested aci/1 gateway: the bytes its receipt must commit to (providers/aci.ts). */
+export type UpstreamJson = { ok: true; kind: "json"; status: number; json: any; latencyMs: number; exchange?: AciExchange };
+export type UpstreamStream = { ok: true; kind: "stream"; status: number; events: AsyncGenerator<any>; first: any; latencyMs: number; abort: () => void; exchange?: AciExchange };
 export type UpstreamResult = UpstreamJson | UpstreamStream | UpstreamFailure;
 
 // Fields that only mean something to the router and must not reach providers.
@@ -48,6 +50,8 @@ export function upstreamBody(c: Candidate, body: Record<string, unknown>, stream
     if (supported.has("reasoning_effort") && reasoning.effort) out.reasoning_effort = reasoning.effort;
   }
   out.model = c.providerModelId;
+  // An attested gateway serves this request only from an upstream it verified in a TEE, under zero data retention.
+  if (c.provider?.aci) out.provider = { ...ACI_CONSTRAINTS };
   if (stream) {
     out.stream = true;
     out.stream_options = { ...(body.stream_options as object | undefined), include_usage: true };
@@ -176,6 +180,8 @@ export async function callUpstream(opts: {
   if (opts.apiKey) headers.authorization = `Bearer ${opts.apiKey}`;
 
   let res: Response;
+  const requestBody = JSON.stringify(opts.body);
+  const aci = !!c.provider?.aci;
   // Time-to-first-token applies to streams only: non-streaming providers send headers after generating.
   const firstTimer = opts.stream
     ? setTimeout(() => ctl.abort(new DOMException("first token timeout", "TimeoutError")), opts.firstTokenTimeoutMs)
@@ -185,7 +191,7 @@ export async function callUpstream(opts: {
       method: "POST",
       redirect: "error",
       headers,
-      body: JSON.stringify(opts.body),
+      body: requestBody,
       signal: ctl.signal,
     }, { production: opts.production, allowDevelopmentMockLoopback: !opts.production, tlsPin: c.provider.tlsPin });
   } catch (e) {
@@ -205,10 +211,17 @@ export async function callUpstream(opts: {
 
   if (!opts.stream) {
     try {
-      const json = await res.json();
+      let json: any;
+      let exchange: AciExchange | undefined;
+      if (aci) {
+        // The gateway's receipt commits to the exact bytes: keep them.
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        json = JSON.parse(new TextDecoder().decode(bytes));
+        exchange = { receiptId: res.headers.get("x-receipt-id"), requestBody, responseBody: () => bytes, drain: async () => {} };
+      } else json = await res.json();
       clearTimeout(firstTimer);
       cleanup();
-      return { ok: true, kind: "json", status: res.status, json, latencyMs: elapsed() };
+      return { ok: true, kind: "json", status: res.status, json, latencyMs: elapsed(), ...(exchange ? { exchange } : {}) };
     } catch (e) {
       clearTimeout(firstTimer);
       if (opts.signal.aborted) {
@@ -224,7 +237,8 @@ export async function callUpstream(opts: {
     clearTimeout(firstTimer);
     return fail("unreadable", "Provider returned an empty stream.");
   }
-  const events = parseSse(res.body, ctl.signal);
+  const recorded = aci ? recordBody(res.body) : null;
+  const events = parseSse(recorded ? recorded.stream : res.body, ctl.signal);
   // Wait for the first event so connection-level failures still allow fallback.
   let first: IteratorResult<any>;
   try {
@@ -248,5 +262,58 @@ export async function callUpstream(opts: {
       cleanup();
     }
   })();
-  return { ok: true, kind: "stream", status: res.status, events: wrapped, first: first.value, latencyMs, abort: () => ctl.abort() };
+  const exchange: AciExchange | undefined = recorded ? { receiptId: res.headers.get("x-receipt-id"), requestBody, responseBody: recorded.bytes, drain: recorded.drain } : undefined;
+  return { ok: true, kind: "stream", status: res.status, events: wrapped, first: first.value, latencyMs, abort: () => ctl.abort(), ...(exchange ? { exchange } : {}) };
+}
+
+/** The most response bytes kept for checking a gateway receipt; beyond it the response hash goes unchecked. */
+const RECORD_LIMIT = 16 * 1024 * 1024;
+
+/**
+ * Pass a response body through while keeping a copy of its bytes. `drain` reads whatever the consumer left
+ * unread (the SSE parser stops at [DONE]), so `bytes` can cover the whole body; `bytes` is null while the body
+ * is not finished or once it exceeded the limit.
+ */
+function recordBody(src: ReadableStream<Uint8Array>) {
+  const reader = src.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let overflow = false;
+  let done = false;
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(ctl) {
+      const r = await reader.read();
+      if (r.done) {
+        done = true;
+        ctl.close();
+        return;
+      }
+      size += r.value.byteLength;
+      if (size > RECORD_LIMIT) overflow = true;
+      else chunks.push(r.value);
+      ctl.enqueue(r.value);
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+  const bytes = () => {
+    if (!done || overflow) return null;
+    const out = new Uint8Array(size);
+    let at = 0;
+    for (const c of chunks) (out.set(c, at), (at += c.byteLength));
+    return out;
+  };
+  const drain = async () => {
+    if (done) return;
+    const r = stream.getReader();
+    const timer = setTimeout(() => r.cancel(new Error("drain timeout")).catch(() => undefined), 5_000);
+    try {
+      while (!(await r.read()).done);
+    } finally {
+      clearTimeout(timer);
+      r.releaseLock();
+    }
+  };
+  return { stream, bytes, drain };
 }
