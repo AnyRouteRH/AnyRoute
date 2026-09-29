@@ -922,3 +922,43 @@ export const hostAnchorLeaves = pgTable(
   },
   (t) => [primaryKey({ columns: [t.providerId, t.leaf] }), index("host_anchor_leaves_leaf_idx").on(t.leaf), uniqueIndex("host_anchor_leaves_position_idx").on(t.anchorId, t.leafIndex)],
 );
+
+// ---- Transparency log of keys and configurations (TLOG_ENABLED; src/tlog) ------------------------------------------
+// An append-only RFC 6962 tree in the C2SP tlog-tiles layout. Entries are never updated or deleted: `idx` is the leaf
+// index, `entry` the exact bytes that were hashed. A checkpoint is written once per tree size; witnesses add
+// cosignatures to it.
+export const tlogEntries = pgTable(
+  "tlog_entries",
+  {
+    idx: bigint("idx", { mode: "number" }).primaryKey(),
+    kind: text("kind").notNull(), // receipt_key | ohttp_key_config | blind_issuer_key | measurement_bundle | attestation_binding
+    sha256: text("sha256").notNull(), // hex digest of the key or configuration the entry names
+    subject: text("subject").notNull(), // the key id, epoch or provider the entry is about
+    entry: text("entry").notNull(), // canonical JSON; the leaf is SHA-256(0x00 || these UTF-8 bytes)
+    leafHash: text("leaf_hash").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("tlog_entries_kind_sha256_uq").on(t.kind, t.sha256), index("tlog_entries_subject_idx").on(t.kind, t.subject)],
+);
+
+export const tlogCheckpoints = pgTable("tlog_checkpoints", {
+  size: bigint("size", { mode: "number" }).primaryKey(),
+  rootHash: text("root_hash").notNull(), // hex
+  checkpoint: text("checkpoint").notNull(), // the checkpoint text: origin, size, base64 root hash
+  signature: text("signature").notNull(), // the log's signature line over the body
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+export const tlogCosignatures = pgTable(
+  "tlog_cosignatures",
+  {
+    size: bigint("size", { mode: "number" }).notNull(),
+    witness: text("witness").notNull(), // the witness's key name
+    keyId: text("key_id").notNull(), // hex of the 4-byte signed-note key id
+    timestamp: bigint("timestamp", { mode: "number" }).notNull(), // cosignature/v1 time, seconds
+    line: text("line").notNull(), // the signature line as the witness sent it
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.size, t.witness, t.keyId] })],
+);
