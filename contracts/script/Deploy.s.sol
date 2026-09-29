@@ -25,6 +25,11 @@ import {ChainlinkStockOracle, AggregatorV3Interface} from "../src/oracle/Chainli
 import {TwapBuybackPriceOracle} from "../src/oracle/TwapBuybackPriceOracle.sol";
 import {UniswapV4Adapter} from "../src/adapters/UniswapV4Adapter.sol";
 import {UniswapV3Adapter, ISwapRouter02} from "../src/adapters/UniswapV3Adapter.sol";
+import {SealMeasurementRegistry} from "../src/seal/SealMeasurementRegistry.sol";
+import {PolicyRegistry} from "../src/seal/PolicyRegistry.sol";
+import {KmsGovernance} from "../src/seal/KmsGovernance.sol";
+import {HostBond} from "../src/seal/HostBond.sol";
+import {CreditMintEvents} from "../src/seal/CreditMintEvents.sol";
 import {ICredits} from "../src/interfaces/ICredits.sol";
 import {IBuybackAdapter} from "../src/interfaces/IBuybackAdapter.sol";
 import {IStockOracle} from "../src/interfaces/IStockOracle.sol";
@@ -52,10 +57,13 @@ interface IDeploymentSafeLike {
 ///   OPS_WALLET=... PAYMASTER_SIGNER=... REFUND_POOL=... CALLPAY_TREASURY=... ANYR_RECIPIENTS=a,b,c,d \
 ///   forge script script/Deploy.s.sol --rpc-url rhc --broadcast
 ///   Optional: USDG (default config), REGISTRAR (default ROUTER), GUARDIAN (default OWNER_SAFE), CONFIG_PATH,
+///   SEAL_PUBLISHER (manifest/policy publisher, default ANCHORER), MINT_SIGNER (credit mint, default ANCHORER),
 ///   PAYMASTER_DAILY_CAP (wei, default 0.01 ether), PAYMASTER_DEPOSIT / PAYMASTER_STAKE (wei, default 0),
 ///   PAYMASTER_UNSTAKE_DELAY (s, default 86400), WETH_USDG_V3_FEE (default 100), DEPLOYMENTS_PATH,
 ///   SAFE_BATCH_PATH (must stay under ./deployments, see fs_permissions).
 ///   Every contract is deployed with the deployer as owner, configured, then `transferOwnership(timelock)`.
+///   This includes the SEAL contracts (SealMeasurementRegistry, PolicyRegistry, KmsGovernance, HostBond,
+///   CreditMintEvents); their guardian is GUARDIAN and HostBond's slasher/refund pool are SLASHER_SAFE/REFUND_POOL.
 ///   The deployer stays owner until the timelock (24h, proposer/executor = OWNER_SAFE) executes the
 ///   acceptOwnership batch written to deployments/<chainid>-accept-ownership.json (Safe Transaction Builder).
 ///
@@ -101,6 +109,8 @@ contract Deploy is Script {
         address callPayTreasury;
         address guardian;
         address[4] anyrRecipients;
+        address sealPublisher; // SEAL manifest + attestation policy publisher (measurement service)
+        address mintSigner; // anonymous-credit mint signer (CreditMintEvents)
     }
 
     struct Deployed {
@@ -123,6 +133,12 @@ contract Deploy is Script {
         address swapRouter02;
         address timelock;
         address buybackAdapter;
+        // SEAL
+        address sealMeasurementRegistry;
+        address policyRegistry;
+        address kmsGovernance;
+        address hostBond;
+        address creditMintEvents;
         // local mocks
         address mockNvda;
         address mockNvdaFeed;
@@ -186,6 +202,8 @@ contract Deploy is Script {
         r.opsWallet = _anvil(6);
         r.guardian = deployer;
         r.anyrRecipients = [deployer, deployer, deployer, deployer];
+        r.sealPublisher = r.anchorer;
+        r.mintSigner = r.anchorer;
     }
 
     function deployed() external view returns (Deployed memory) {
@@ -432,11 +450,23 @@ contract Deploy is Script {
 
         Credits(_d.credits).setCreditor(_d.payWithStock, true);
         ChainlinkStockOracle(_d.stockOracle).setGuardian(r.guardian);
+
+        _deploySeal(deployer, usdg, r);
+    }
+
+    /// @dev SEAL contracts (owner = deployer, handed to the timelock with the rest).
+    function _deploySeal(address deployer, IERC20 usdg, Roles memory r) internal {
+        _d.sealMeasurementRegistry =
+            address(new SealMeasurementRegistry(deployer, r.sealPublisher, r.guardian));
+        _d.policyRegistry = address(new PolicyRegistry(deployer, r.sealPublisher, r.guardian));
+        _d.kmsGovernance = address(new KmsGovernance(deployer));
+        _d.hostBond = address(new HostBond(usdg, deployer, r.slasher, r.refundPool));
+        _d.creditMintEvents = address(new CreditMintEvents(deployer, r.mintSigner));
     }
 
     /// @notice Every Ownable2Step contract handed to the timelock (order = accept batch order).
     function _ownedContracts() internal view returns (address[] memory a) {
-        uint256 n = _d.uniswapV3Adapter == address(0) ? 10 : 11;
+        uint256 n = _d.uniswapV3Adapter == address(0) ? 15 : 16;
         a = new address[](n);
         a[0] = _d.credits;
         a[1] = _d.callPay;
@@ -448,7 +478,12 @@ contract Deploy is Script {
         a[7] = _d.stockOracle;
         a[8] = _d.paymaster;
         a[9] = _d.uniswapV4Adapter;
-        if (n == 11) a[10] = _d.uniswapV3Adapter;
+        a[10] = _d.sealMeasurementRegistry;
+        a[11] = _d.policyRegistry;
+        a[12] = _d.kmsGovernance;
+        a[13] = _d.hostBond;
+        a[14] = _d.creditMintEvents;
+        if (n == 16) a[15] = _d.uniswapV3Adapter;
     }
 
     function ownedContracts() external view returns (address[] memory) {
@@ -513,6 +548,8 @@ contract Deploy is Script {
         r.callPayTreasury = vm.envAddress("CALLPAY_TREASURY");
         r.registrar = vm.envOr("REGISTRAR", r.router);
         r.guardian = vm.envOr("GUARDIAN", r.ownerSafe);
+        r.sealPublisher = vm.envOr("SEAL_PUBLISHER", r.anchorer);
+        r.mintSigner = vm.envOr("MINT_SIGNER", r.anchorer);
         address[] memory rec = vm.envAddress("ANYR_RECIPIENTS", ",");
         require(rec.length == 4, "Deploy: ANYR_RECIPIENTS needs 4 addresses (80/10/5/5)");
         r.anyrRecipients = [rec[0], rec[1], rec[2], rec[3]];
@@ -531,6 +568,8 @@ contract Deploy is Script {
         r.keeper = vm.envOr("KEEPER", r.keeper);
         r.opsWallet = vm.envOr("OPS_WALLET", r.opsWallet);
         r.guardian = vm.envOr("GUARDIAN", r.guardian);
+        r.sealPublisher = vm.envOr("SEAL_PUBLISHER", r.anchorer);
+        r.mintSigner = vm.envOr("MINT_SIGNER", r.anchorer);
         address[] memory none = new address[](0);
         address[] memory rec = vm.envOr("ANYR_RECIPIENTS", ",", none);
         if (rec.length == 4) r.anyrRecipients = [rec[0], rec[1], rec[2], rec[3]];
@@ -541,7 +580,8 @@ contract Deploy is Script {
             r.slasher != address(0) && r.router != address(0) && r.settlement != address(0)
                 && r.anchorer != address(0) && r.registrar != address(0) && r.keeper != address(0)
                 && r.opsWallet != address(0) && r.paymasterSigner != address(0) && r.refundPool != address(0)
-                && r.callPayTreasury != address(0) && r.guardian != address(0),
+                && r.callPayTreasury != address(0) && r.guardian != address(0)
+                && r.sealPublisher != address(0) && r.mintSigner != address(0),
             "Deploy: missing role address"
         );
         if (prod) {
@@ -576,9 +616,11 @@ contract Deploy is Script {
     /// { schema, chainId, mode, blockNumber, timestamp, deployer, owner, pendingOwner,
     ///   contracts: { usdg, anyrToken, credits, callPay, receiptAnchor, royalty, providerBond, anyrStaking,
     ///                payWithStock, stockOracle, uniswapV4Adapter, uniswapV3Adapter, paymaster, entryPoint,
-    ///                poolManager, swapRouter02, timelock, buybackAdapter },
+    ///                poolManager, swapRouter02, timelock, buybackAdapter, sealMeasurementRegistry,
+    ///                policyRegistry, kmsGovernance, hostBond, creditMintEvents },
     ///   roles: { ownerSafe, slasher, router, settlement, anchorer, registrar, keeper, opsWallet, paymasterSigner,
-    ///            refundPool, callPayTreasury, guardian, anyrRecipients[4], creditors[], adapterCallers[] },
+    ///            refundPool, callPayTreasury, guardian, anyrRecipients[4], creditors[], adapterCallers[],
+    ///            sealPublisher, mintSigner },
     ///   params: { timelockMinDelay, maxStaleness, applyUiMultiplier, payWithStockMaxSlipBps,
     ///             paymasterDailyCap, paymasterDeposit, paymasterStake },
     ///   stockTokens: [ { symbol, address, decimals, feed, primaryAdapter, fallbackAdapter, v3Path } ],
@@ -607,7 +649,7 @@ contract Deploy is Script {
 
     function _contractsJson() internal view returns (string memory) {
         Deployed memory d = _d;
-        string[] memory f = new string[](18);
+        string[] memory f = new string[](23);
         f[0] = _kvA("usdg", d.usdg);
         f[1] = _kvA("anyrToken", d.anyrToken);
         f[2] = _kvA("credits", d.credits);
@@ -626,6 +668,11 @@ contract Deploy is Script {
         f[15] = _kvA("swapRouter02", d.swapRouter02);
         f[16] = _kvA("timelock", d.timelock);
         f[17] = _kvA("buybackAdapter", d.buybackAdapter);
+        f[18] = _kvA("sealMeasurementRegistry", d.sealMeasurementRegistry);
+        f[19] = _kvA("policyRegistry", d.policyRegistry);
+        f[20] = _kvA("kmsGovernance", d.kmsGovernance);
+        f[21] = _kvA("hostBond", d.hostBond);
+        f[22] = _kvA("creditMintEvents", d.creditMintEvents);
         return _obj(f);
     }
 
@@ -640,7 +687,7 @@ contract Deploy is Script {
         for (uint256 i; i < 4; ++i) {
             rec[i] = r.anyrRecipients[i];
         }
-        string[] memory f = new string[](15);
+        string[] memory f = new string[](17);
         f[0] = _kvA("ownerSafe", r.ownerSafe);
         f[1] = _kvA("slasher", r.slasher);
         f[2] = _kvA("router", r.router);
@@ -656,6 +703,8 @@ contract Deploy is Script {
         f[12] = _kv("anyrRecipients", _addrArray(rec));
         f[13] = _kv("creditors", _addrArray(creditors));
         f[14] = _kv("adapterCallers", _addrArray(callers));
+        f[15] = _kvA("sealPublisher", r.sealPublisher);
+        f[16] = _kvA("mintSigner", r.mintSigner);
         return _obj(f);
     }
 

@@ -35,7 +35,8 @@ function tupleFields(value: unknown, names: string[]): Record<string, unknown> |
 const isUnsigned = (value: unknown) => typeof value === "bigint" || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) || (typeof value === "string" && /^\d+$/.test(value));
 const isAddress = (value: unknown) => typeof value === "string" && /^0x[0-9a-fA-F]{40}$/.test(value);
 
-const owned = ["credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "paymaster", "uniswapV4Adapter", "uniswapV3Adapter"] as const;
+// SEAL contracts are checked when the manifest lists them (older manifests predate them).
+const owned = ["credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "paymaster", "uniswapV4Adapter", "uniswapV3Adapter", "sealMeasurementRegistry", "policyRegistry", "kmsGovernance", "hostBond", "creditMintEvents"] as const;
 const requiredContracts = ["usdg", "anyrToken", "credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "uniswapV4Adapter", "uniswapV3Adapter", "paymaster", "entryPoint", "poolManager", "swapRouter02", "timelock", "buybackAdapter"] as const;
 const zero = "0x0000000000000000000000000000000000000000" as Address;
 const role = (name: string) => keccak256(stringToHex(name)) as Hex;

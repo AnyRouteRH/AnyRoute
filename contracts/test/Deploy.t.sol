@@ -19,6 +19,11 @@ import {AnyrPaymaster} from "../src/AnyrPaymaster.sol";
 import {ChainlinkStockOracle} from "../src/oracle/ChainlinkStockOracle.sol";
 import {UniswapV4Adapter} from "../src/adapters/UniswapV4Adapter.sol";
 import {UniswapV3Adapter} from "../src/adapters/UniswapV3Adapter.sol";
+import {SealMeasurementRegistry} from "../src/seal/SealMeasurementRegistry.sol";
+import {PolicyRegistry} from "../src/seal/PolicyRegistry.sol";
+import {KmsGovernance} from "../src/seal/KmsGovernance.sol";
+import {HostBond} from "../src/seal/HostBond.sol";
+import {CreditMintEvents} from "../src/seal/CreditMintEvents.sol";
 
 contract DeploymentSafeFixture {
     address public immutable masterCopy;
@@ -65,7 +70,7 @@ contract DeployLocalTest is Test {
 
     function test_ownershipIsDeployerWithoutTimelock() public view {
         address[] memory owned = _owned();
-        assertEq(owned.length, 10);
+        assertEq(owned.length, 15);
         for (uint256 i; i < owned.length; ++i) {
             assertEq(Ownable2Step(owned[i]).owner(), deployer, "owner");
             assertEq(Ownable2Step(owned[i]).pendingOwner(), address(0), "no pending owner");
@@ -147,6 +152,31 @@ contract DeployLocalTest is Test {
         assertEq(AnyrPaymaster(payable(d.paymaster)).verifyingSigner(), r.paymasterSigner);
         assertEq(address(AnyrPaymaster(payable(d.paymaster)).entryPoint()), d.entryPoint);
         assertEq(AnyrPaymaster(payable(d.paymaster)).getDeposit(), 10 ether);
+    }
+
+    function test_sealWiring() public view {
+        SealMeasurementRegistry mreg = SealMeasurementRegistry(d.sealMeasurementRegistry);
+        assertEq(mreg.publisher(), r.sealPublisher);
+        assertEq(mreg.guardian(), r.guardian);
+        PolicyRegistry preg = PolicyRegistry(d.policyRegistry);
+        assertEq(preg.publisher(), r.sealPublisher);
+        assertEq(preg.guardian(), r.guardian);
+        assertEq(KmsGovernance(d.kmsGovernance).epoch(), 1);
+        HostBond hb = HostBond(d.hostBond);
+        assertEq(address(hb.usdg()), d.usdg);
+        assertEq(hb.slasher(), r.slasher);
+        assertEq(hb.refundPool(), r.refundPool);
+        assertEq(hb.minBond(), 5_000e6);
+        assertEq(CreditMintEvents(d.creditMintEvents).mintSigner(), r.mintSigner);
+        assertEq(r.sealPublisher, r.anchorer);
+        assertEq(r.mintSigner, r.anchorer);
+
+        address[] memory owned = _owned();
+        assertEq(owned[10], d.sealMeasurementRegistry);
+        assertEq(owned[11], d.policyRegistry);
+        assertEq(owned[12], d.kmsGovernance);
+        assertEq(owned[13], d.hostBond);
+        assertEq(owned[14], d.creditMintEvents);
     }
 
     function test_adapterCallers() public view {
@@ -258,6 +288,13 @@ contract DeployLocalTest is Test {
         assertEq(vm.parseJsonAddress(json, ".mocks.nvdaFeed"), d2.mockNvdaFeed);
         assertEq(vm.parseJsonAddress(json, ".mocks.swapAdapter"), d2.mockSwapAdapter);
         assertEq(vm.parseJsonString(json, ".params.paymasterDeposit"), "10000000000000000000");
+        assertEq(vm.parseJsonAddress(json, ".contracts.sealMeasurementRegistry"), d2.sealMeasurementRegistry);
+        assertEq(vm.parseJsonAddress(json, ".contracts.policyRegistry"), d2.policyRegistry);
+        assertEq(vm.parseJsonAddress(json, ".contracts.kmsGovernance"), d2.kmsGovernance);
+        assertEq(vm.parseJsonAddress(json, ".contracts.hostBond"), d2.hostBond);
+        assertEq(vm.parseJsonAddress(json, ".contracts.creditMintEvents"), d2.creditMintEvents);
+        assertEq(vm.parseJsonAddress(json, ".roles.sealPublisher"), r.sealPublisher);
+        assertEq(vm.parseJsonAddress(json, ".roles.mintSigner"), r.mintSigner);
     }
 }
 
@@ -311,6 +348,8 @@ contract DeployProductionForkTest is Test {
         roles.callPayTreasury = makeAddr("treasury");
         roles.guardian = roles.ownerSafe;
         roles.anyrRecipients = [makeAddr("a0"), makeAddr("a1"), makeAddr("a2"), makeAddr("a3")];
+        roles.sealPublisher = makeAddr("sealPublisher");
+        roles.mintSigner = makeAddr("mintSigner");
 
         script.deployProduction(p, roles);
         d = script.deployed();
@@ -321,6 +360,9 @@ contract DeployProductionForkTest is Test {
         // --- wiring
         assertTrue(Credits(d.credits).isCreditor(d.payWithStock));
         assertEq(ProviderBond(d.providerBond).slasher(), r.slasher);
+        assertEq(HostBond(d.hostBond).slasher(), r.slasher);
+        assertEq(SealMeasurementRegistry(d.sealMeasurementRegistry).guardian(), r.ownerSafe);
+        assertEq(CreditMintEvents(d.creditMintEvents).mintSigner(), r.mintSigner);
         // buybacks route through the V3 pool whose TWAP sets the floor
         assertEq(address(AnyrStaking(d.anyrStaking).adapter()), d.uniswapV3Adapter);
         assertTrue(UniswapV4Adapter(payable(d.uniswapV4Adapter)).isCaller(d.payWithStock));
@@ -362,7 +404,7 @@ contract DeployProductionForkTest is Test {
 
         // --- pending ownership
         address[] memory owned = script.ownedContracts();
-        assertEq(owned.length, 11);
+        assertEq(owned.length, 16);
         for (uint256 i; i < owned.length; ++i) {
             assertEq(Ownable2Step(owned[i]).owner(), deployer);
             assertEq(Ownable2Step(owned[i]).pendingOwner(), d.timelock);
