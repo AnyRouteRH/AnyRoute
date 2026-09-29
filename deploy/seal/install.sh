@@ -279,7 +279,7 @@ fi
 [ -n "$ENGINE" ] || ENGINE=$DETECTED_KIND
 if [ -z "$ENGINE" ] || [ "$ENGINE" = unknown ]; then
   ask ENGINE "Engine kind (vllm, sglang, llamacpp, ollama)" vllm
-  [ -n "$ENGINE" ] && [ "$ENGINE" != unknown ] || die "could not tell which engine this is; pass --engine vllm|sglang|llamacpp|ollama"
+  if [ -z "$ENGINE" ] || [ "$ENGINE" = unknown ]; then die "could not tell which engine this is; pass --engine vllm|sglang|llamacpp|ollama"; fi
 fi
 case $ENGINE in vllm | sglang | llamacpp | ollama) ;; *) die "--engine must be vllm, sglang, llamacpp or ollama" ;; esac
 [ -n "$MODEL" ] || MODEL=$DETECTED_MODEL
