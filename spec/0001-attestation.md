@@ -154,9 +154,25 @@ A manifest is an in-toto Statement v1 in a DSSE envelope, logged both in Rekor a
 * Receipt-signing public keys are registered on chain in `ReceiptAnchor` and never overwritten.
 * Blind-token issuer keys are committed per epoch in `BlindIssuer` ([0003](0003-credits.md)).
 
-### 6.2 Witnessed log (planned)
+### 6.2 Witnessed log (implemented, off by default)
 
-Anyroute runs an append-only log in the C2SP tlog-tiles format [TLOG-TILES] with at least two external witnesses cosigning checkpoints. Every manifest, Oblivious HTTP key configuration, credit keyset and enclave HPKE key is logged. A client MUST refuse a key or configuration without an inclusion proof under a checkpoint carrying the required witness cosignatures, and SHOULD fetch the checkpoint over a second path to detect a split view. This closes key substitution and user partitioning (guarantee G8).
+Anyroute runs an append-only log in the C2SP tlog-tiles format [TLOG-TILES] (RFC 6962 hashing [RFC9162], tile height 8) with at least two external witnesses cosigning checkpoints. Every manifest, Oblivious HTTP key configuration, credit keyset and enclave HPKE key is logged. A client MUST refuse a key or configuration without an inclusion proof under a checkpoint carrying the required witness cosignatures, and SHOULD fetch the checkpoint over a second path to detect a split view. This closes key substitution and user partitioning (guarantee G8).
+
+Entries. Each entry is the canonical JSON `{"v": 1, "type": "anyroute.tlog.entry", "kind", "sha256", "key"}`, and its leaf hash is `SHA-256(0x00 || entry)`. `sha256` is the digest a client computes from the material it holds; `key` carries the public material and its validity window. Entries are appended when a key is created or rotated, deduplicated by (`kind`, `sha256`), and carry no log time.
+
+| `kind` | `sha256` over |
+| :--- | :--- |
+| `receipt_key` | the raw 32-byte Ed25519 receipt key |
+| `ohttp_key_config` | one encoded Oblivious HTTP key configuration ([0002](0002-transport.md) Section 4) |
+| `blind_issuer_key` | the issuer's SubjectPublicKeyInfo, which is its `token_key_id` ([0003](0003-credits.md)) |
+| `measurement_bundle` | the canonical bundle bytes (Section 5.2), once its Rekor entry verifies |
+| `attestation_binding` | `canonical_json(bindings)` of a sidecar whose hardware quote a configured verifier accepted (Section 3.1); this covers the enclave HPKE key when `hpke_pubkey` is bound |
+
+Manifests (Section 5.3) and e-cash keysets ([0003](0003-credits.md)) are logged the same way once they exist.
+
+Checkpoints and witnesses. The log serves `/tlog/checkpoint` as a signed note [SIGNED-NOTE] whose text is the C2SP checkpoint `<origin>\n<size>\n<base64 root>\n` with no extension lines, signed with the log's Ed25519 key (signature type 0x01, key name = origin), followed by the cosignatures collected so far. A witness cosigns with a cosignature/v1 key (type 0x04) over `"cosignature/v1\ntime <t>\n" || checkpoint` [TLOG-COSIGNATURE], and MUST do so only after verifying a consistency proof from the last checkpoint it cosigned for that origin; it MUST refuse a different root at the same size. Witnesses hand their cosignature back with `POST /api/v1/tlog/cosignatures`; the log accepts only witnesses it is configured with and keeps the newest valid cosignature per witness and tree size. `GET /api/v1/tlog/proof` returns an entry with its inclusion proof and, on request, a consistency proof from a size the client names.
+
+Client. A client pins the log's verifier key and the witness keys out of band, never from the log. It accepts a key only when the entry names that kind and digest, the inclusion proof leads to the root of a checkpoint the log signed and at least the configured quorum of witnesses cosigned, and that checkpoint is consistent with the newest one the client remembers (the same root at the same size, or a verified consistency proof). Two checkpoints of one size with different roots, or a failed consistency proof, is a split view: the client refuses and keeps both notes as evidence. Checkpoints fetched from mirrors (a second path) are held to the same rule.
 
 ## 7. Key management (planned)
 
@@ -201,6 +217,9 @@ The router's attestor repeats a nonce-bound check for every attested provider ev
 
 * [DSTACK] Dstack-TEE, "dstack", https://github.com/Dstack-TEE/dstack (Apache-2.0).
 * [TLOG-TILES] C2SP, "tlog-tiles", https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md.
+* [SIGNED-NOTE] C2SP, "signed-note", https://github.com/C2SP/C2SP/blob/main/signed-note.md.
+* [TLOG-COSIGNATURE] C2SP, "tlog-cosignature", https://github.com/C2SP/C2SP/blob/main/tlog-cosignature.md.
+* [RFC9162] Laurie, B., et al., "Certificate Transparency Version 2.0", RFC 9162.
 * [REKOR] Sigstore, "Rekor", https://github.com/sigstore/rekor.
 * [IN-TOTO] in-toto, "Attestation Framework, Statement v1", https://github.com/in-toto/attestation.
 * [DSSE] Secure Systems Lab, "Dead Simple Signing Envelope", https://github.com/secure-systems-lab/dsse.
