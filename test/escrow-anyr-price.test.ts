@@ -7,7 +7,8 @@ import { loadAnyrFixture } from "./anyr-twap-fixture.ts";
 import mainnet from "../config/rhc-mainnet.json";
 import { TwapError, poolId, readPool, v4Twap } from "../src/chain/twap.ts";
 import { escrowDeposits } from "../src/db/schema.ts";
-import { anyrEscrowQuote, anyrPricing, clearEscrowPriceCache, escrowStage, pollEscrow } from "../src/pay/escrow.ts";
+import { balanceOf } from "../src/ledger/ledger.ts";
+import { anyrEscrowQuote, anyrPricing, clearEscrowPriceCache, escrowAccountId, escrowStage, pollEscrow } from "../src/pay/escrow.ts";
 import { readiness } from "../src/services/readiness.ts";
 import { readinessMetrics } from "../src/services/readiness-metrics.ts";
 
@@ -74,6 +75,18 @@ describe("$ANYR pools on recorded mainnet responses", () => {
     expect(Math.abs(err.detail.deviation / (fixture.reading.spot / fixture.reading.average - 1) - 1)).toBeLessThan(0.05);
   });
 
+  test("at a steadier moment the production settings (30 minutes, 5%) do price ANYR, at the lower of spot and average", async () => {
+    const steady = loadAnyrFixture("anyr-twap-steady.json.gz");
+    const r = await v4Twap(steady.client, pm, legs, { windowSeconds: 1800, maxDeviation: 0.05, decimalsAdjust: 1e12, state: {} });
+    expect(r).toEqual(steady.fixture.reading);
+    expect(Math.abs(r.spot / r.average - 1)).toBeLessThan(0.05);
+    expect(r.conservative).toBe(Math.min(r.spot, r.average));
+    expect(r.conservative).toBeGreaterThan(1e-6); // sane for a token worth well under a cent, not zero and not dollars
+    expect(r.conservative).toBeLessThan(1e-2);
+    expect(r.windowSeconds).toBeGreaterThanOrEqual(1800);
+    expect(r.swaps).toBeGreaterThan(100);
+  });
+
   test("the pool's liquidity floor is enforced: a floor above what the pool holds gives no price", async () => {
     const thin = [{ ...mainnet.anyr.escrowPoolLegs[0], minLiquidity: "1" + "0".repeat(30) }, mainnet.anyr.escrowPoolLegs[1]] as never;
     const err = await v4Twap(client, pm, thin, { windowSeconds: 1800, maxDeviation: 1, decimalsAdjust: 1e12, state: {} }).catch((e) => e);
@@ -126,6 +139,23 @@ describe("the ANYR rate the router uses, from recorded mainnet responses", () =>
     expect(info.tokens.find((t: { symbol: string }) => t.symbol === "NVDA").price_reason).toBeNull();
     expect(BigInt(info.credit_block)).toBeLessThanOrEqual(BigInt(info.head_block));
     expect(fixture.reading.swaps).toBeGreaterThan(0);
+  });
+
+  test("at the steady moment a deposit is credited end to end at the priced rate, with the default guard", async () => {
+    const { fixture } = replay("anyr-twap-steady.json.gz");
+    const d = (await (await h.request("/api/v1/escrow/anyr/price")).json()).data;
+    expect(d).toMatchObject({ available: true, max_deviation: 0.05, window_minutes: 30, reason: null, swaps: fixture.reading.swaps });
+    expect(d.price_usd).toBeCloseTo(fixture.reading.conservative, 9);
+    const from = privateKeyToAccount(("0x" + "9e".repeat(32)) as Hex).address.toLowerCase() as Hex;
+    h.chain.escrowHead += 10n;
+    h.chain.escrowLogs.push({ token: mainnet.anyr.address.toLowerCase() as Hex, from, value: whole(1_000n), txHash: fakeTx(), logIndex: 0, blockNumber: h.chain.escrowHead - 3n });
+    expect(await pollEscrow(h.ctx)).toMatchObject({ credited: 1, waiting: 0 });
+    // 1,000 ANYR at the recorded conservative price, in pico-USD, to within the price's own rounding.
+    const expected = 1000 * fixture.reading.conservative * 1e12;
+    const got = Number((await balanceOf(h.ctx.db, escrowAccountId(from))).balance);
+    expect(Math.abs(got / expected - 1)).toBeLessThan(1e-9);
+    expect(got / 1e12).toBeGreaterThan(0.01);
+    expect(got / 1e12).toBeLessThan(10);
   });
 
   test("with a wider guard the same recording is priced at the lower of spot and average, with its window and source", async () => {
