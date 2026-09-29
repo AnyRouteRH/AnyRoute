@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { decodeFunctionData, type Hex } from "viem";
 import { MeasurementRegistryAbi } from "../src/chain/abis.ts";
@@ -7,8 +10,10 @@ import { measurementBundles, measurements, providers } from "../src/db/schema.ts
 import { asBytes32, bundleBytes, digestHex, keyId, parseBundle } from "../src/services/measurement-bundle.ts";
 import { applyVerifiedBundles, runMeasurementJob, submitBundle, watchBundles } from "../src/services/measurement-bundles.ts";
 import { recordMeasurement, runMeasurements, type FetchFn } from "../src/services/measurements.ts";
+import { main as publishScript } from "../scripts/publish-measurement.ts";
+import { parsePins } from "../scripts/lib/compose-pins.ts";
 import { ADMIN, MODELS, startRouter, type Harness } from "./helpers.ts";
-import { LLAMA_IMAGE, newSigner, signedBundle } from "./bundle-fixtures.ts";
+import { COMPOSE_TEXT, LLAMA_IMAGE, newSigner, signedBundle } from "./bundle-fixtures.ts";
 import { DIGESTS, REGS, tdxQuote } from "./measurement-fixtures.ts";
 import { MockRekor } from "./rekor-mock.ts";
 
@@ -366,5 +371,56 @@ describe("the public list of bundles", () => {
     expect(list[1]).toMatchObject({ bundle_digest: "0x" + s.digest, signature: s.signature, bundle: { provider: "alpha" }, transparency_log: { uuid, entry_url: `${log.baseUrl}/api/v1/log/entries/${uuid}` }, entry_record: { body: expect.any(String) } });
     expect((await h.request("/api/v1/measurements/bundles/nobody")).status).toBe(404);
     expect((await h.request("/api/v1/measurements/bundles/pending")).status).toBe(404);
+  });
+});
+
+describe("the publishing script against a running router", () => {
+  test("publish with --handover: the router's record turns from no to yes with the entry, key and bundle it can be checked against", async () => {
+    // A measurement the router recorded from a verified quote of the public compose file's deployment.
+    const pins = parsePins(COMPOSE_TEXT);
+    const composeHash = "sha256:" + "5e".repeat(32);
+    await record({ digests: { imageDigest: asBytes32(pins.images.find((i) => i.service === "sidecar")!.digest), composeHash: asBytes32(composeHash), modelDigest: asBytes32(pins.sidecar!.modelDigests[0]!) } });
+    expect((await view()).checks.transparency_log_entry).toBe(false);
+
+    const dir = mkdtempSync(join(tmpdir(), "publish-e2e-"));
+    try {
+      const router = "https://router.example.test";
+      const viaRouter = (async (url: string | URL | Request, init?: RequestInit) => {
+        const u = String(url);
+        if (u.startsWith(router)) return h.request(u.slice(router.length), init);
+        return log.fetch(url, init);
+      }) as unknown as typeof fetch;
+      const out: string[] = [];
+      const err: string[] = [];
+      const file = join(dir, "record.json");
+      const code = await publishScript(["--provider", "alpha", "--router-url", router, "--compose", new URL("../sidecar/examples/phala/docker-compose.yml", import.meta.url).pathname, "--out", file, "--handover"], {
+        env: { MEASUREMENT_SIGNING_KEY: signer.privatePem, REKOR_URL: log.baseUrl, REKOR_PUBLIC_KEY: log.publicKeyPem, ADMIN_TOKEN: ADMIN },
+        fetch: viaRouter,
+        out: (x) => out.push(x),
+        err: (x) => err.push(x),
+        now: () => new Date("2026-09-29T12:00:00.000Z"),
+        wait: async () => {},
+      });
+      expect(err.join("\n")).toBe("");
+      expect(code).toBe(0);
+      expect(out.join("\n")).toContain("is verified");
+
+      const rec = JSON.parse(readFileSync(file, "utf8"));
+      const d = await view();
+      expect(d.checks).toMatchObject({ quote_verified: true, transparency_log_entry: true, transparency_log_checkpoint_signature: true });
+      expect(d.measurement.transparency_log).toMatchObject({ found: true, subject: "measurement_bundle", uuid: rec.rekor.uuid, log_index: rec.rekor.log_index, entry_url: rec.rekor.entry_url, bundle: { digest: "0x" + rec.bundle_digest.slice(7) } });
+      expect(rec.rekor.entry_url).toBe(`${log.baseUrl}/api/v1/log/entries/${rec.rekor.uuid}`);
+
+      // the record the script wrote checks out against the router's published key, and a second publication is refused
+      out.length = 0;
+      expect(await publishScript(["--verify", file, "--router-url", router], { env: { REKOR_URL: log.baseUrl }, fetch: viaRouter, out: (x) => out.push(x), err: (x) => err.push(x), now: () => new Date() })).toBe(0);
+      expect(out.join("\n")).toContain("the key the router publishes");
+      err.length = 0;
+      expect(await publishScript(["--provider", "alpha", "--router-url", router, "--out", join(dir, "again.json"), "--dry-run"], { env: { MEASUREMENT_SIGNING_KEY: signer.privatePem }, fetch: viaRouter, out: () => {}, err: (x) => err.push(x), now: () => new Date() })).toBe(0);
+      expect(await publishScript(["--provider", "alpha", "--router-url", router, "--out", join(dir, "again.json")], { env: { MEASUREMENT_SIGNING_KEY: signer.privatePem, REKOR_URL: log.baseUrl }, fetch: viaRouter, out: () => {}, err: (x) => err.push(x), now: () => new Date() })).toBe(1);
+      expect(err.join("\n")).toContain("already holds a verified bundle");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
