@@ -134,9 +134,16 @@ A relay accepts `POST` of `message/ohttp-req` on one fixed path, forwards the bo
 
 The gateway MUST mark relays run by its own operator as not independent, and MUST NOT serve the `unlinkable` lane through them. A production gateway MUST list relays from a configured minimum number of operators other than its own before it enables the lane.
 
-### 4.5 Chunked Oblivious HTTP (planned)
+### 4.5 Chunked Oblivious HTTP (implemented, off by default)
 
-For streaming, G and the relays implement chunked Oblivious HTTP [CHUNKED-OHTTP] (`message/ohttp-chunked-req`, `message/ohttp-chunked-res`) with chunks of at least 16 KiB. Gateway key configurations MUST carry an inclusion proof in the witnessed log, and the SDK MUST refuse any configuration without one. Relays run on at least two independent infrastructure providers, and the client chooses. The client randomizes its `Date` header, pads chunks to a fixed size on a fixed tick, and normalizes its TLS and HTTP fingerprint. A two-hop MASQUE path is a documented alternative, not part of version 1.
+For streaming, G and the relays implement chunked Oblivious HTTP [CHUNKED-OHTTP] (`message/ohttp-chunked-req`, `message/ohttp-chunked-res`) with the suite and keys of Sections 4.1 and 4.2. G accepts it only where it is switched on (`OHTTP_CHUNKED_ENABLED`) and then lists `gateway.chunked` in `GET /api/v1/relays`; a relay carries it only where its operator switches it on (`RELAY_CHUNKED_ENABLED`). Otherwise the media type is refused with 415, like any other.
+
+* **Request.** G reads the whole request, bounded as in Section 4.1, opens every chunk and refuses a request that has no final chunk. Replay protection, the route allow-list and the header rules are those of Section 4.1. A chunked request MAY set `"stream": true`.
+* **Response.** G sends the 16-byte response nonce with the Binary HTTP header section (indeterminate length, [RFC9292] Section 3.2) first, then each piece of the router's response as a chunk as soon as it is produced, then a final chunk that ends the content and the empty trailer section and pads the whole message to a multiple of the gateway's padding block. A chunk carries at most 16384 bytes of plaintext, the size every implementation must accept. Chunked messages carry `Incremental: ?1`. An error G produces itself is one known-length message, sent the same way.
+* **Truncation.** Every chunk but the last is sealed with an empty AAD and the last with `"final"`. A client MUST NOT treat a response as complete until its final chunk opened, and MUST treat a chunk that does not open as an error. A response that grows past G's size limit, or whose inner response fails, ends without a final chunk; a relay passes the response on as it arrives, under its own size limit and timeout, and cuts it off the same way.
+* **Metadata.** The relay sees the size and timing of every chunk, and on a stream these follow the tokens of the answer.
+
+Planned: gateway key configurations MUST carry an inclusion proof in the witnessed log, and the SDK MUST refuse any configuration without one. Relays run on at least two independent infrastructure providers, and the client chooses. The client randomizes its `Date` header, pads chunks to a fixed size on a fixed tick, and normalizes its TLS and HTTP fingerprint. A two-hop MASQUE path is a documented alternative, not part of version 1.
 
 ### 4.6 Onion service (implemented)
 
