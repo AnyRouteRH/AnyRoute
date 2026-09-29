@@ -143,6 +143,89 @@ const mcpCurl = `curl -s ${BASE}/mcp \\
   -H "accept: application/json, text/event-stream" \\
   -H "Authorization: Bearer $ANYROUTE_API_KEY" \\
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'`;
+const claudeCodeEnv = `export ANTHROPIC_BASE_URL=${BASE}
+export ANTHROPIC_AUTH_TOKEN=$ANYROUTE_API_KEY        # sent as Authorization: Bearer. ANTHROPIC_API_KEY sends x-api-key instead; either works.
+
+# Anthropic model names are not served here: name AnyRoute models.
+export ANTHROPIC_MODEL=meta-llama/llama-3.3-70b-instruct
+export ANTHROPIC_DEFAULT_SONNET_MODEL=meta-llama/llama-3.3-70b-instruct
+export ANTHROPIC_DEFAULT_OPUS_MODEL=meta-llama/llama-3.3-70b-instruct
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen/qwen3-32b   # session titles and other background calls
+export CLAUDE_CODE_SUBAGENT_MODEL=qwen/qwen3-32b
+
+export CLAUDE_CODE_ATTRIBUTION_HEADER=0              # keep Claude Code's attribution line out of the prompt
+claude`;
+const claudeCodeAttestedEnv = `# Every request from this Claude Code session on the attested lane.
+# A request no attested provider can serve is refused (409) with nothing sent and nothing charged.
+export ANTHROPIC_CUSTOM_HEADERS="X-Anyroute-Lane: attested"
+export ANTHROPIC_MODEL=<a model from GET /v1/models?lane=attested>`;
+const claudeCodeSettings = JSON.stringify(
+  {
+    env: {
+      ANTHROPIC_BASE_URL: BASE,
+      ANTHROPIC_AUTH_TOKEN: "sk-ar-v1-…",
+      ANTHROPIC_MODEL: "<a model from GET /v1/models>",
+      ANTHROPIC_CUSTOM_HEADERS: "X-Anyroute-Lane: attested",
+    },
+  },
+  null,
+  2,
+);
+const anthropicPython = `import anthropic
+
+client = anthropic.Anthropic(base_url="${BASE}", api_key="sk-ar-v1-…")   # or auth_token=... for Authorization: Bearer
+
+raw = client.messages.with_raw_response.create(
+    model="<a model from GET /v1/models?lane=attested>",
+    max_tokens=512,
+    messages=[{"role": "user", "content": "Hello"}],
+    extra_body={"provider": {"lane": "attested"}},        # or extra_headers={"x-anyroute-lane": "attested"}
+)
+message = raw.parse()
+print(message.content[0].text)
+print(raw.headers["x-receipt-id"], raw.headers["x-anyroute-lane"], raw.headers.get("x-anyroute-policy-hash"))`;
+const anthropicTs = `import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({ baseURL: "${BASE}", apiKey: process.env.ANYROUTE_API_KEY });
+
+const { data: message, response } = await client.messages
+  .create(
+    { model: "<a model from GET /v1/models?lane=attested>", max_tokens: 512, messages: [{ role: "user", content: "Hello" }] },
+    { headers: { "x-anyroute-lane": "attested" } }, // or provider: { lane: "attested" } in the body
+  )
+  .withResponse();
+console.log(message.content, response.headers.get("x-receipt-id"), response.headers.get("x-anyroute-lane"));`;
+const anthropicCurl = `curl -s ${BASE}/v1/messages \\
+  -H "x-api-key: $ANYROUTE_API_KEY" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -H "content-type: application/json" \\
+  -H "x-anyroute-lane: attested" \\
+  -d '{"model":"<a model from GET /v1/models?lane=attested>","max_tokens":256,"messages":[{"role":"user","content":"Hello"}]}'`;
+const anthropicReply = JSON.stringify(
+  {
+    id: "gen-…",
+    type: "message",
+    role: "assistant",
+    model: "<the model that answered>",
+    content: [{ type: "text", text: "…" }],
+    stop_reason: "end_turn",
+    stop_sequence: null,
+    usage: { input_tokens: 12, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    anyroute: {
+      receipt_id: "gen-…",
+      lane: "attested",
+      disclosure: "attested",
+      policy_hash: "sha256:<64 hex, only when the endpoint attested one>",
+      provider: "…",
+      cost_usd: 0.000022,
+      upstream_attestation: { attested: true, gpu_attested: true, receipt_verified: true, kind: "aci/1" },
+      receipt: { id: "gen-…", sig: "…", key_id: "…", alg: "Ed25519", payload: "…" },
+    },
+  },
+  null,
+  2,
+);
+const anthropicModelMap = `ANTHROPIC_MODEL_MAP={"claude-sonnet-4-5":"meta-llama/llama-3.3-70b-instruct","claude-haiku-*":"qwen/qwen3-32b"}`;
 const x402Example = `import { privateKeyToAccount } from "viem/accounts";
 import { toHex } from "viem";
 
@@ -281,6 +364,7 @@ const endpoints = [
   ["GET /api/v1/attestation/summary · /attestation/:providerId/history", "Proof-time: per attesting provider, the share of the last 24 hours and 7 days with a fresh attestation the router verified itself, measurement changes and the last failed check; and a provider’s recorded attestor, canary and probe events, newest first, paged by cursor. Failures are codes with fixed messages, never the provider’s own text. Kept for ATTESTATION_HISTORY_DAYS (30); 501 when it is 0"],
   ["GET /api/v1/measurements/key · /measurements/bundles/:providerId", "Where enabled: the key that signs measurement bundles (compose hash, source commit and tarball hash, model and image digests, MRTD allow-list), and a provider’s bundles with the transparency-log entry the router verified for each"],
   ["POST /mcp", "AnyRoute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
+  ["POST /v1/messages · /messages/count_tokens", "Anthropic Messages API (also under /api/v1) for the Anthropic SDKs and Claude Code: x-api-key or Authorization: Bearer; tools, images and streaming; the lane in X-Anyroute-Lane or provider.lane; the receipt in the reply and in X-Receipt-Id"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
@@ -311,6 +395,7 @@ export default function Docs() {
             <a href="#receipts">Receipts</a>
             <a href="#council">Council</a>
             <a href="#mcp">MCP</a>
+            <a href="#anthropic">Anthropic</a>
             <a href="#sdk">SDKs</a>
             <a href="#run-a-provider">Run a provider</a>
             <a href="#badge">Badge</a>
@@ -597,6 +682,106 @@ export default function Docs() {
           <p>
             The Telegram bot follows the same rule. /private on sends every chat with lane attested, /models attested lists the models with a proven enclave and /model accepts only those while private mode is on. Each answer’s footer says attested, or attested · GPU when the gateway’s receipt asserts GPU attestation,
             taken from the signed receipt, with a link to the provider’s verify page; an answer whose receipt does not show an attested provider is not delivered. When no attested provider can answer, the bot says nothing was sent and nothing was charged.
+          </p>
+          <h2 id="anthropic">Use AnyRoute from Claude Code and the Anthropic SDKs.</h2>
+          <p>
+            The router speaks the Anthropic Messages API: POST /v1/messages (also under /api/v1) and POST /v1/messages/count_tokens. A client written for that API, such as the Anthropic SDKs or Claude Code, works with an Anyroute key and an Anyroute
+            model. The request is converted to a chat completion and sent through /api/v1/chat/completions inside the router, so the key, its balance and limits, the lane, the signed receipt and the response headers are those of a chat call. Anyroute serves open models, not
+            Anthropic’s, so choose a model from GET /v1/models. This is a compatibility layer over the Messages API, not an Anthropic service: how well an agent such as Claude Code works depends on the model you choose, and it needs reliable tool calling and a long context.
+          </p>
+          <h3>Claude Code</h3>
+          <p>
+            Point ANTHROPIC_BASE_URL at the router and put your Anyroute key in ANTHROPIC_AUTH_TOKEN (sent as Authorization: Bearer) or ANTHROPIC_API_KEY (sent as x-api-key); the router accepts both. Claude Code names Anthropic models for its main, subagent and background
+            calls, so set ANTHROPIC_MODEL and the ANTHROPIC_DEFAULT_SONNET_MODEL, ANTHROPIC_DEFAULT_OPUS_MODEL and ANTHROPIC_DEFAULT_HAIKU_MODEL variables (and CLAUDE_CODE_SUBAGENT_MODEL) to Anyroute model ids. Claude Code assumes a 200K context for a model it does not know;
+            if your model has less, set CLAUDE_CODE_AUTO_COMPACT_WINDOW to its window. Keep the key out of a project’s committed .claude/settings.json.
+          </p>
+          <Code label="Claude Code · environment">{claudeCodeEnv}</Code>
+          <Code label="Claude Code · ~/.claude/settings.json">{claudeCodeSettings}</Code>
+          <h3>The attested lane</h3>
+          <p>
+            Send X-Anyroute-Lane: attested, or {`{"provider":{"lane":"attested"}}`} in the body, and the prompt goes only to a provider whose TEE attestation the router has verified and that documents no retention: the same lane, with the same meaning, as on /api/v1/chat/completions. When no
+            such provider can serve the model the call is refused with 409 (503 while they are down) and nothing is sent or charged; an unrecognised lane is a 400, never public. X-Anyroute-Disclosure-Max and provider.disclosure work the same way. In Claude Code, ANTHROPIC_CUSTOM_HEADERS
+            adds the header to every request (one Name: Value pair per line; in a settings file use \n between pairs). Use a model from GET /v1/models?lane=attested. Attestation shows what code is running, not what a provider does with a prompt; see the verify page for what the router checked and did not.
+          </p>
+          <Code label="Claude Code · every request on the attested lane">{claudeCodeAttestedEnv}</Code>
+          <Code label="Python SDK · a call on the attested lane, reading the receipt headers">{anthropicPython}</Code>
+          <Code label="TypeScript SDK">{anthropicTs}</Code>
+          <Code label="curl">{anthropicCurl}</Code>
+          <h3>Model names</h3>
+          <p>
+            Any model id in the catalog works as sent, and so do saved routes and a key’s own model aliases. A claude-* name is not in the catalog: unless the operator has mapped it, the call is a 404 (not_found_error) that says so and names a model to use. An operator maps names
+            with ANTHROPIC_MODEL_MAP, a JSON object from a name sent by a client to a catalog model id. A name ending in * matches every name with that prefix (the longest prefix wins, and an exact name wins over a prefix), and a lone * answers any other name. A map that is not valid
+            JSON stops the router starting.
+          </p>
+          <Code label="Router configuration">{anthropicModelMap}</Code>
+          <h3>What is converted</h3>
+          <ul>
+            <li>
+              <b>Request.</b> model; system as a string or text blocks; messages with text, image (base64 and URL), tool_use and tool_result blocks (a tool result may hold text and images), and document blocks with a text source; system-role entries inside messages stay where they are. max_tokens, temperature,
+              top_p, top_k, stop_sequences and stream map directly; metadata.user_id is sent to the provider as user. top_k is dropped for a provider that does not list it, and a max_tokens above what the model can produce is lowered to its limit, since Anthropic clients ask for large values.
+              thinking blocks in history are dropped.
+            </li>
+            <li>
+              <b>Tools.</b> Custom tools become function tools with their JSON schema, and tool_choice auto, any, tool and none map to auto, required, a named function and none (disable_parallel_tool_use sets parallel_tool_calls to false). Tools hosted by Anthropic (web search, code execution, bash, text editor, computer use)
+              cannot run behind a model here: they are left out of the request and named in the X-Anyroute-Ignored response header, as is a thinking request, which is accepted and not acted on. PDF documents, mcp_servers and container are refused with a 400 that names the field.
+            </li>
+            <li>
+              <b>Reply.</b> A message object with text and tool_use blocks. stop_reason is end_turn, max_tokens, tool_use or refusal (from a content filter); stop_sequence appears only when the provider says which stop string ended the answer, otherwise an answer that hit one is end_turn. usage splits
+              cached prompt tokens out of input_tokens as cache_read_input_tokens and cache_creation_input_tokens, so the three add up to the prompt. cache_control markers are accepted and do nothing.
+            </li>
+            <li>
+              <b>Receipt.</b> The id of the message is the receipt id, and the reply carries an anyroute object with the lane, the disclosure class, the provider, the cost, the gateway’s upstream_attestation where there is one and the signed receipt. X-Receipt-Id, Inference-Id, X-Anyroute-Lane and X-Anyroute-Policy-Hash come back as
+              headers, as on a chat call.
+            </li>
+            <li>
+              <b>Streaming.</b> With stream: true the events are the API’s own: message_start, ping, then for each block content_block_start, content_block_delta (text_delta, or input_json_delta with the tool call’s arguments as they arrive) and content_block_stop, then message_delta with the billed usage and the
+              anyroute object, and message_stop. message_start states an estimate of the prompt tokens; message_delta has the counted figure. A failure after output has begun ends the stream with an error event and no message_stop. A request the router refuses before any output is a real HTTP error, so an SDK can retry it.
+            </li>
+            <li>
+              <b>Counting.</b> POST /v1/messages/count_tokens takes the same body without max_tokens and returns input_tokens. It is the router’s estimate (about one token for every three characters of text and JSON, and 1,600 per image), not a tokenizer’s count, and it costs nothing. It needs a key.
+            </li>
+          </ul>
+          <div className="table-wrap">
+            <table className="docs-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>error.type</th>
+                  <th>When</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>400</td>
+                  <td>invalid_request_error</td>
+                  <td>The request is malformed or names something not supported; the message names the field. A provider that rejects the request also lands here.</td>
+                </tr>
+                <tr>
+                  <td>401</td>
+                  <td>authentication_error</td>
+                  <td>No key, an unknown key, or a disabled or expired key.</td>
+                </tr>
+                <tr>
+                  <td>402 · 403 · 404 · 413 · 429</td>
+                  <td>billing_error · permission_error · not_found_error · request_too_large · rate_limit_error</td>
+                  <td>Not enough balance; a key that may not do this; an unknown model; a body over 16 MB; a rate limit (with Retry-After).</td>
+                </tr>
+                <tr>
+                  <td>409 · 501</td>
+                  <td>invalid_request_error · api_error</td>
+                  <td>The requested lane cannot be served, or is not run by this router. Sent with X-Should-Retry: false so an SDK does not retry it.</td>
+                </tr>
+                <tr>
+                  <td>502 · 503 · 504</td>
+                  <td>api_error · api_error · timeout_error</td>
+                  <td>Every provider for the request failed (nothing is charged), or an attested reply was withheld because the gateway’s receipt did not show an attested upstream (that call is billed).</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Every error has Anthropic’s shape, {`{"type":"error","error":{"type","message"},"request_id"}`}, plus an anyroute object with the router’s own error type, its metadata, and the receipt id when a refused call was billed. Every response has a request-id header. A browser
+            can call the endpoint directly: the router allows the x-api-key, anthropic-version, anthropic-beta and anthropic-dangerous-direct-browser-access headers.
           </p>
           <h2 id="sdk">Verify before you send.</h2>
           <p>
