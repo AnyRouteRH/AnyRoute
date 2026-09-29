@@ -5,6 +5,7 @@ import type { JobSnapshot } from "./jobs.ts";
 import { attestationFresh } from "../router/select.ts";
 import { escrowFinality, escrowReviewsOpen } from "../pay/escrow.ts";
 import { reconcileSpentRoots } from "./root-completeness.ts";
+import { backupFresh } from "./backup.ts";
 
 // One-day production timelock plus one day for review/execution. Submission failures retain the 2-minute bound.
 export const ROOT_REVIEW_SLA_MS = 48 * 3_600_000;
@@ -113,6 +114,11 @@ export async function readiness(ctx: Ctx) {
     })(),
     (async () => {
       try { await bounded(() => ctx.limiter.take("readiness", 0, 1, 60_000)); checks.rate_limiter = true; } catch { checks.rate_limiter = false; }
+    })(),
+    (async () => {
+      // Opt-in, so deployments without the scheduled off-host backup keep their current readiness.
+      if (!ctx.cfg.backup.required) return;
+      try { checks.backup_fresh = await bounded(() => backupFresh(ctx)); } catch { checks.backup_fresh = false; }
     })(),
   ]);
   if (!escrowMode) checks.receipt_anchor_configured = !!ctx.cfg.chain.receiptAnchor;

@@ -220,3 +220,56 @@ tests:
       - eval_time: 3m
         alertname: AnyRouteReadinessMetricsMissing
         exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteBackupStale
+        exp_alerts: []
+  - name: stale backup
+    interval: 30s
+    input_series:
+      - series: up{job="anyroute",instance="router:8787"}
+        values: 1x8
+      - series: anyroute_ready{job="anyroute",instance="router:8787"}
+        values: "0x8"
+      - series: anyroute_readiness_check{job="anyroute",instance="router:8787",check="database"}
+        values: 1x8
+      - series: anyroute_readiness_check{job="anyroute",instance="router:8787",check="backup_fresh"}
+        values: "0x8"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: AnyRouteBackupStale
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteBackupStale
+        exp_alerts:
+          - exp_labels:
+              job: anyroute
+              instance: router:8787
+              check: backup_fresh
+              severity: critical
+            exp_annotations:
+              summary: AnyRoute has no verified off-host backup inside its freshness window
+      - eval_time: 3m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteUnavailable
+        exp_alerts: []
+  - name: fresh backup
+    interval: 30s
+    input_series:
+      - series: up{job="anyroute",instance="router:8787"}
+        values: 1x8
+      - series: anyroute_ready{job="anyroute",instance="router:8787"}
+        values: 1x8
+      - series: anyroute_readiness_check{job="anyroute",instance="router:8787",check="backup_fresh"}
+        values: 1x8
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AnyRouteBackupStale
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteNotReady
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: AnyRouteDependencyFailed
+        exp_alerts: []

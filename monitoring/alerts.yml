@@ -14,7 +14,7 @@ groups:
         annotations:
           summary: AnyRoute cannot safely accept traffic
       - alert: AnyRouteDependencyFailed
-        expr: anyroute_readiness_check{job="anyroute"} == 0
+        expr: anyroute_readiness_check{job="anyroute",check!="backup_fresh"} == 0
         for: 2m
         labels: { severity: critical }
         annotations:
@@ -25,6 +25,13 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: Latest Credits spent root omits a funded key, overspends a key or does not reconcile; approve no root until scripts/reconcile-roots.ts passes
+      # Present only when BACKUP_REQUIRED=true; the backup job records each verified upload.
+      - alert: AnyRouteBackupStale
+        expr: anyroute_readiness_check{job="anyroute",check="backup_fresh"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: AnyRoute has no verified off-host backup inside its freshness window
       - alert: AnyRouteReadinessMetricsMissing
         expr: up{job="anyroute"} == 1 unless on(job, instance) anyroute_ready{job="anyroute"}
         for: 2m
