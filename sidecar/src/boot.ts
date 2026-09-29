@@ -9,6 +9,8 @@ import { QuotaManager, type BucketConfig } from "./quota.ts";
 import { EnclaveSigner, ReceiptIndex, ReceiptQueue } from "./receipts.ts";
 import { verifyAgainstRouter } from "./router-check.ts";
 import { reportData, reportDataHex, type Bindings } from "./reportdata.ts";
+import type { DpStats } from "./dpstats.ts";
+import { createSidecarStats } from "./stats.ts";
 import { createTlsIdentity, generateTlsKey, type TlsIdentity } from "./tls.ts";
 import { normalizeDigest, sha256Hex, SidecarError, stderrLogger, type Logger } from "./util.ts";
 
@@ -54,6 +56,8 @@ export type Runtime = {
   queue: ReceiptQueue;
   receiptIndex: ReceiptIndex;
   quota: QuotaManager;
+  /** Differentially private hourly counters: the only record of traffic the sidecar keeps. */
+  stats: DpStats;
   upstreamApiKey?: string;
   anchorToken?: string;
   startedAt: number;
@@ -250,6 +254,7 @@ export async function boot(cfg: SidecarConfig, deps: BootDeps = {}): Promise<Run
     queue: new ReceiptQueue(cfg.receipts.queueCapacity),
     receiptIndex: new ReceiptIndex(),
     quota,
+    stats: createSidecarStats(cfg.stats, now),
     upstreamApiKey: nonEmpty(env[cfg.upstream.apiKeyEnv]),
     anchorToken: nonEmpty(env[cfg.anchor.tokenEnv]),
     startedAt: now(),

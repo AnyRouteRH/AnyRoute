@@ -29,6 +29,7 @@ import type { HolderTier } from "../config.ts";
 import { COUNCIL_MODEL, applyDualDecoding, runCouncil, runDual, validateMulti } from "./council.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
 import { requestLane } from "../ohttp/lane.ts";
+import { blockReasonForStatus, isPrivateLaneRequest, noteLane, recordPrivateLane } from "../services/private-stats.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken, type BlindPass } from "../blind/redeem.ts";
 
 export type Kind = "chat" | "completion";
@@ -194,11 +195,21 @@ function chunkBase(id: string, created: number, model: ModelRow, provider: strin
 }
 
 export function chatRoutes(app: Hono, ctx: Ctx) {
-  app.post("/api/v1/chat/completions", (c) => handle(ctx, c, "chat"));
-  app.post("/api/v1/completions", (c) => handle(ctx, c, "completion"));
+  // A refused private-lane request is counted (noisily, see services/private-stats.ts) under the reason it was refused.
+  const run = async (c: Context, kind: Kind) => {
+    const t0 = Date.now();
+    try {
+      return await handle(ctx, c, kind);
+    } catch (e) {
+      if (isPrivateLaneRequest(c.req.raw)) recordPrivateLane(ctx, c.req.raw, { blocked: isApiError(e) ? blockReasonForStatus(e.status, e.type) : "upstream_error", latencyMs: Date.now() - t0 });
+      throw e;
+    }
+  };
+  app.post("/api/v1/chat/completions", (c) => run(c, "chat"));
+  app.post("/api/v1/completions", (c) => run(c, "completion"));
   // OpenAI-SDK style base URLs (…/api/v1) already covered; also accept /v1/* for convenience.
-  app.post("/v1/chat/completions", (c) => handle(ctx, c, "chat"));
-  app.post("/v1/completions", (c) => handle(ctx, c, "completion"));
+  app.post("/v1/chat/completions", (c) => run(c, "chat"));
+  app.post("/v1/completions", (c) => run(c, "completion"));
 }
 
 async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
@@ -259,6 +270,8 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   // Checked before anything is priced or spent (ohttp/lane.ts).
   const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
   const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !!wallet || (!key && !pass && !!c.req.header("x-payment")), hasToken: !!pass });
+  // Private-lane traffic (and `:private`, stored as private) is published only through noisy hourly counters.
+  noteLane(c.req.raw, disc.lane !== "public" ? disc.lane : (body.provider as ProviderPrefs | undefined)?.private === true || String(body.model ?? "").includes(":private") ? "attested" : "public");
   const strict = disc.max !== "any";
   const prefs: ProviderPrefs = { ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) };
 
@@ -657,7 +670,10 @@ async function finalize(p: FinalizeInput) {
   });
   if (billing.mode === "blind") await confirmToken(ctx, billing.pass, id);
 
-  ctx.telemetry.span("chat " + r.model.id, p.t0, Date.now(), {
+  // A private-lane request is counted once in the noisy counters and sends no per-request trace span.
+  const privateLane = isPrivateLaneRequest(p.c.req.raw);
+  recordPrivateLane(ctx, p.c.req.raw, { latencyMs: p.generationMs, tokens: p.usage.prompt + p.usage.completion });
+  if (!privateLane) ctx.telemetry.span("chat " + r.model.id, p.t0, Date.now(), {
     "gen_ai.system": r.candidate.providerId,
     "gen_ai.operation.name": p.kind === "chat" ? "chat" : "text_completion",
     "gen_ai.request.model": String(p.body.model ?? r.model.id),

@@ -184,7 +184,13 @@ uses it as declared and `/attest` reports `digest_source: "declared"`.
 | `POST /v1/embeddings` | API key | Proxied JSON; the same encrypted option. |
 | `GET /v1/models` | API key | The model server's model list, passed through (no receipt, no quota charge). |
 | `GET /v1/receipts/{id}` | API key | A receipt by id, for the key that earned it (useful when an SSE reader stops at `[DONE]`). |
+| `GET /v1/stats` | none | Privacy-safe stats: hourly counters released with Laplace noise, the privacy parameters and the epsilon spent today. Never a raw count or the current hour. See SEAL [0005](../spec/0005-policy.md) Section 3.4. |
 | `GET /anchor/leaves?after=&limit=`, `POST /anchor/ack` | anchor token | Batches of receipt leaves for the router's anchor; off unless `SIDECAR_ANCHOR_TOKEN` is set. |
+
+The sidecar writes no per-request log line. Each inference request is counted once in differentially private hourly
+counters (`src/dpstats.ts`: requests by route, refusals by reason, latency and token buckets); only their noisy
+releases leave the process, at `GET /v1/stats`. `stats.epsilon.{requests,blocked,latency,tokens}` (default 1 each, per
+hour), `stats.retention_hours` (48) and `stats.daily_epsilon_cap` (none) in `sidecar.yaml` tune them.
 
 Every response the sidecar produces carries `x-anyroute-attestation-ref` (the reference from the certificate SAN) and,
 in development mode, `x-anyroute-attestation: dev-simulated`. Requests carry `Authorization: Bearer <key>`. Keys are compared by SHA-256 in constant time. Quotas are token buckets

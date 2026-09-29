@@ -155,3 +155,17 @@ anchor:
   # Name of the environment variable holding the bearer token for /anchor/leaves and /anchor/ack. Unset: those
   # endpoints are off.
   token_env: SIDECAR_ANCHOR_TOKEN
+
+stats:
+  # Privacy-safe stats, the sidecar's only telemetry: there is no per-request log. Each inference request is counted
+  # once in hourly counters, released at GET /v1/stats with Laplace noise of scale 1/epsilon (SEAL 0005 Section 3.4).
+  # Epsilon per counter family, per hour. Smaller is more private and noisier.
+  epsilon:
+    requests: 1
+    blocked: 1
+    latency: 1
+    tokens: 1
+  # Released hours kept for GET /v1/stats.
+  retention_hours: 48
+  # Optional: withhold any hour that would take the epsilon spent in one UTC day above this.
+  # daily_epsilon_cap: 48

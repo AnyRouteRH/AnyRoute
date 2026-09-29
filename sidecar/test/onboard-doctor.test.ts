@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { formatReport, runDoctor, type DoctorOptions } from "../src/onboard/doctor.ts";
 import { BUN_IMAGE_DIGEST } from "../src/onboard/pins.ts";
+import { createHandler } from "../src/app.ts";
 import { startServer } from "../src/server.ts";
-import { sha256Hex, type Logger } from "../src/util.ts";
+import { sha256Hex } from "../src/util.ts";
 import { API_KEY, cleanup, dstackProvider, harness, startUpstream, type Harness } from "./helpers.ts";
 
 afterEach(cleanup);
@@ -14,17 +15,22 @@ afterEach(() => {
 const COMPOSE = `sha256:${"ce".repeat(32)}`;
 
 /** A real sidecar (dstack double for the quote) listening on a loopback port over its own TLS. */
-async function sidecar(o: { raw?: Record<string, unknown>; upstreamDown?: boolean; dev?: boolean; logger?: Logger } = {}) {
+async function sidecar(o: { raw?: Record<string, unknown>; upstreamDown?: boolean; dev?: boolean; seen?: string[] } = {}) {
   const upstream = startUpstream();
   if (o.upstreamDown) upstream.setMode("down");
   const h: Harness = await harness({
     upstream,
-    logger: o.logger,
     ...(o.dev ? {} : { provider: dstackProvider({ composeHash: COMPOSE }) }),
     raw: { attestation: { provider: o.dev ? "dev" : "dstack" }, image_digest: BUN_IMAGE_DIGEST, ...(o.raw ?? {}) },
     env: {},
   });
-  const server = startServer({ ...h.rt, cfg: { ...h.rt.cfg, server: { ...h.rt.cfg.server, host: "127.0.0.1", port: 0 } } });
+  const rt = { ...h.rt, cfg: { ...h.rt.cfg, server: { ...h.rt.cfg.server, host: "127.0.0.1", port: 0 } } };
+  // The sidecar keeps no per-request log, so a test that needs to know which paths were hit wraps the handler.
+  const handler = createHandler(rt);
+  const seen = o.seen;
+  const server = seen
+    ? Bun.serve({ hostname: "127.0.0.1", port: 0, tls: { key: rt.tls!.keyPem, cert: rt.tls!.certPem }, fetch: (req) => (seen.push(new URL(req.url).pathname), handler(req)) })
+    : startServer(rt);
   servers.push(server);
   return { h, base: `https://127.0.0.1:${server.port}`, port: server.port as number };
 }
@@ -161,10 +167,7 @@ describe("what it catches", () => {
 describe("simulated evidence", () => {
   test("is refused, and the router key is never sent to it", async () => {
     const seen: string[] = [];
-    const logger: Logger = (_l, msg, f) => {
-      if (msg === "request") seen.push(String(f?.route));
-    };
-    const s = await sidecar({ dev: true, logger });
+    const s = await sidecar({ dev: true, seen });
     const r = await runDoctor(opts(s));
     expect(r.ok).toBe(false);
     expect(status(r, "provider.simulated")).toBe("fail");
@@ -173,7 +176,7 @@ describe("simulated evidence", () => {
     expect(r.checks.find((c) => c.id === "auth.key")!.detail).toContain("not sent");
     // The only route that needs a key which was touched is /v1/models, once, by the check that sends none.
     expect(seen.filter((x) => x === "/v1/chat/completions")).toEqual([]);
-    expect(seen.filter((x) => x === "models")).toHaveLength(1);
+    expect(seen.filter((x) => x === "/v1/models")).toHaveLength(1);
     expect(status(r, "auth.required")).toBe("pass");
   });
 

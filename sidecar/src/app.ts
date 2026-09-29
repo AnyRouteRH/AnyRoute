@@ -3,11 +3,14 @@ import type { Runtime } from "./boot.ts";
 import { buildUpstreamHeaders } from "./headers.ts";
 import { handleInference, handleModels, type Caller } from "./proxy.ts";
 import { parseNonce } from "./reportdata.ts";
-import { errorResponse, jsonResponse } from "./respond.ts";
+import { errorResponse, jsonResponse, refusalOf } from "./respond.ts";
+import { blockReason, Tally } from "./stats.ts";
 import { SidecarError, safeEqual, sha256Hex } from "./util.ts";
 import { SIDECAR_VERSION } from "./version.ts";
 
-// Request routing. The handler takes a plain Request: it never sees, and cannot log, the peer address.
+// Request routing. The handler takes a plain Request: it never sees, and cannot log, the peer address. There is no
+// per-request log line either: inference requests are counted once each in the differentially private hourly
+// counters (stats.ts), and only their noisy hourly releases leave the process, at GET /v1/stats.
 
 /** Match a presented API key against the configured SHA-256 digests without an early exit. */
 export function authenticate(rt: Runtime, req: Request): Caller | null {
@@ -102,9 +105,19 @@ export function createHandler(rt: Runtime): (req: Request) => Promise<Response> 
     }
 
     if (p === "/v1/chat/completions" || p === "/v1/embeddings") {
+      const tally = new Tally(rt.stats, p === "/v1/embeddings" ? "embeddings" : "chat_completions", Date.now());
       const caller = authenticate(rt, req);
-      if (!caller) return { name: p, res: unauthorized(rt) };
-      return { name: p, res: await handleInference(rt, req, p, caller) };
+      const res = caller ? await handleInference(rt, req, p, caller, tally) : unauthorized(rt);
+      const refused = refusalOf(res);
+      if (refused) tally.block(blockReason(refused, res.status));
+      if (!tally.deferred) tally.finish();
+      return { name: p, res };
+    }
+
+    if (p === "/v1/stats") {
+      // Public on purpose: noisy hourly counts, the privacy parameters and the budget spent. Never a raw count.
+      if (m !== "GET") return { name: "stats", res: errorResponse(rt, 405, "method_not_allowed", "use GET", { allow: "GET" }) };
+      return { name: "stats", res: jsonResponse(rt, 200, rt.stats.document()) };
     }
 
     if (p === "/v1/models") {
@@ -148,18 +161,11 @@ export function createHandler(rt: Runtime): (req: Request) => Promise<Response> 
   };
 
   return async (req) => {
-    const started = Date.now();
-    let name = "unknown";
-    let res: Response;
     try {
-      const out = await route(req, new URL(req.url));
-      name = out.name;
-      res = out.res;
+      return (await route(req, new URL(req.url))).res;
     } catch (e) {
       rt.logger("error", "unhandled error", { error: e instanceof Error ? e.message : "unknown" });
-      res = errorResponse(rt, 500, "internal_error", "internal error");
+      return errorResponse(rt, 500, "internal_error", "internal error");
     }
-    if (name !== "healthz") rt.logger("info", "request", { route: name, status: res.status, ms: Date.now() - started });
-    return res;
   };
 }

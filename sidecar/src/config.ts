@@ -3,6 +3,7 @@ import type { AttestationKind } from "./attestation/types.ts";
 import type { BucketConfig } from "./quota.ts";
 import { CATEGORY_ID_RE, MINIMUM_CATEGORIES, RESERVED_LABELS, type Category } from "./classifier.ts";
 import { isForbiddenForwardHeader } from "./headers.ts";
+import type { StatsConfig } from "./stats.ts";
 import { SidecarError } from "./util.ts";
 
 // sidecar.yaml loader. Unknown keys are rejected so a typo in a security setting cannot silently do nothing.
@@ -60,6 +61,8 @@ export type SidecarConfig = {
   royalty: { recipient?: string };
   receipts: { queueCapacity: number };
   anchor: { tokenEnv: string };
+  /** Differentially private hourly counters, the sidecar's only telemetry (no per-request logs). */
+  stats: StatsConfig;
 };
 
 type Obj = Record<string, unknown>;
@@ -153,7 +156,7 @@ const PROVIDERS: AttestationKind[] = ["dstack", "tdx", "dev"];
 
 export function parseConfig(raw: unknown, env: Record<string, string | undefined> = {}): SidecarConfig {
   const root = obj(raw, "(root)");
-  known(root, ["server", "upstream", "model", "allowlist", "image_digest", "compose", "attestation", "router", "auth", "quota", "classifier", "hpke", "royalty", "receipts", "anchor"], "");
+  known(root, ["server", "upstream", "model", "allowlist", "image_digest", "compose", "attestation", "router", "auth", "quota", "classifier", "hpke", "royalty", "receipts", "anchor", "stats"], "");
 
   const server = obj(root.server, "server");
   known(server, ["host", "port", "hostnames", "tls", "cert_validity_days"], "server");
@@ -189,6 +192,10 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
   known(receipts, ["queue_capacity"], "receipts");
   const anchor = obj(root.anchor, "anchor");
   known(anchor, ["token_env"], "anchor");
+  const stats = obj(root.stats, "stats");
+  known(stats, ["epsilon", "retention_hours", "daily_epsilon_cap"], "stats");
+  const statsEps = obj(stats.epsilon, "stats.epsilon");
+  known(statsEps, ["requests", "blocked", "latency", "tokens"], "stats.epsilon");
 
   const provider = (env.SIDECAR_ATTESTATION ?? str(att, "provider", "attestation") ?? "dstack") as AttestationKind;
   if (!PROVIDERS.includes(provider)) bad("attestation.provider", `expected one of ${PROVIDERS.join(", ")}`);
@@ -324,6 +331,16 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
     royalty: { recipient },
     receipts: { queueCapacity: int(receipts, "queue_capacity", "receipts", 1, 10_000_000) ?? 100_000 },
     anchor: { tokenEnv: str(anchor, "token_env", "anchor") ?? "SIDECAR_ANCHOR_TOKEN" },
+    stats: {
+      epsilon: {
+        requests: num(statsEps, "requests", "stats.epsilon", 0.01, 10) ?? 1,
+        blocked: num(statsEps, "blocked", "stats.epsilon", 0.01, 10) ?? 1,
+        latency: num(statsEps, "latency", "stats.epsilon", 0.01, 10) ?? 1,
+        tokens: num(statsEps, "tokens", "stats.epsilon", 0.01, 10) ?? 1,
+      },
+      retentionHours: int(stats, "retention_hours", "stats", 1, 24 * 14) ?? 48,
+      dailyEpsilonCap: num(stats, "daily_epsilon_cap", "stats", 0.01, 10_000) ?? null,
+    },
   };
   if (!cfg.model.path && !cfg.model.digest) bad("model", "set model.path (the weights directory to hash) or model.digest (a precomputed digest)");
   return cfg;

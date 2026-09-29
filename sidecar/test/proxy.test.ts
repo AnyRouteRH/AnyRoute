@@ -243,16 +243,19 @@ describe("what the model server sees", () => {
     await s.text();
   });
 
-  test("the sidecar's own logs carry no client address or key", async () => {
+  test("the sidecar writes no per-request log at all", async () => {
     const lines: string[] = [];
     const h = await harness();
     h.rt.logger = (level, msg, fields) => lines.push(JSON.stringify({ level, msg, ...fields }));
     // createHandler captured rt (same object), so the replaced logger is used
     await h.call("/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9" }, body: chatBody() });
-    const logged = lines.join("\n");
-    expect(logged).toContain('"route":"/v1/chat/completions"');
-    expect(logged).not.toContain("203.0.113.9");
-    expect(logged).not.toContain(API_KEY);
+    await (await h.chat(chatBody({ stream: true }))).text();
+    await h.call("/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json" }, body: chatBody() }); // no key: refused
+    expect(lines).toEqual([]);
+    // It was counted instead, in the current hour, which is never published.
+    const doc = h.rt.stats.document();
+    expect(doc.current_hour.status).toBe("collecting");
+    expect(JSON.stringify(doc)).not.toContain("203.0.113.9");
   });
 });
 

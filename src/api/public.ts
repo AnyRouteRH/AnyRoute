@@ -18,6 +18,7 @@ import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAll
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
 import { x402Enabled } from "../pay/x402.ts";
+import { PRIVATE_LANES, PUBLIC_LANE_ROWS, privateLaneStats } from "../services/private-stats.ts";
 
 export { providerApplication } from "../providers/application.ts";
 
@@ -29,7 +30,7 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         coalesce(sum(tokens_in + tokens_out) FILTER (WHERE ts > now() - interval '7 days'), 0) / 7 AS tokens_per_day_7d,
         count(DISTINCT key_hash) FILTER (WHERE ts > now() - interval '24 hours') AS active_keys_24h,
         count(DISTINCT key_hash) FILTER (WHERE ts > now() - interval '30 days') AS active_keys_30d
-      FROM generations WHERE provider_id <> 'cache'`);
+      FROM generations WHERE provider_id <> 'cache' AND ${PUBLIC_LANE_ROWS}`);
     const row = (((r as { rows?: unknown[] }).rows ?? r) as Record<string, string | number>[])[0] ?? {};
     return {
       tokens_24h: Number(row.tokens_24h ?? 0),
@@ -38,6 +39,12 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
       active_keys_30d: Number(row.active_keys_30d ?? 0),
     };
   };
+  // ---- Private-lane stats: noisy hourly counters only (services/private-stats.ts) ----
+  app.get("/api/v1/stats", (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: { lanes: PRIVATE_LANES, ...privateLaneStats(ctx).document() } });
+  });
+
   // ---- Receipts ----
   app.get("/api/v1/receipts/keys", async (c) => c.json(await ctx.signer.jwks()));
   app.get("/.well-known/anyroute-receipt-keys.json", async (c) => c.json(await ctx.signer.jwks()));
@@ -67,14 +74,14 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         royalty: sql<string>`coalesce(sum(${generations.royalty}), 0)`,
       })
       .from(generations)
-      .where(and(gte(generations.ts, since), sql`${generations.providerId} <> 'cache'`))
+      .where(and(gte(generations.ts, since), sql`${generations.providerId} <> 'cache'`, PUBLIC_LANE_ROWS))
       .groupBy(generations.modelId)
       .orderBy(desc(sql`sum(${generations.tokensIn} + ${generations.tokensOut})`))
       .limit(100);
     const byApp = await ctx.db
       .select({ app: generations.appId, tokens: sql<string>`sum(${generations.tokensIn} + ${generations.tokensOut})` })
       .from(generations)
-      .where(and(gte(generations.ts, since), sql`${generations.appId} IS NOT NULL`))
+      .where(and(gte(generations.ts, since), sql`${generations.appId} IS NOT NULL`, PUBLIC_LANE_ROWS))
       .groupBy(generations.appId)
       .orderBy(desc(sql`sum(${generations.tokensIn} + ${generations.tokensOut})`))
       .limit(50);
@@ -264,7 +271,10 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
     await ctx.catalog.ensureFresh();
     return c.json({
       data: {
+        // Raw launch metrics count the public lane only. Attested and unlinkable traffic is published only as noisy
+        // hourly counters, at /api/v1/stats.
         launch: await launchMetrics(),
+        private_lanes: { lanes: PRIVATE_LANES, stats: "/api/v1/stats", epsilon_spent_today: privateLaneStats(ctx).budget().epsilon_spent_today },
         router: ctx.cfg.publicUrl,
         env: ctx.cfg.env,
         // The running build (RELEASE_COMMIT; null when unset) and whether its contracts were verified.

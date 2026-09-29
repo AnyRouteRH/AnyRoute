@@ -17,8 +17,16 @@ export function jsonResponse(rt: Runtime, status: number, body: unknown, extra?:
   return new Response(JSON.stringify(body), { status, headers: h });
 }
 
+// The error code of each response the sidecar refused with, so the counters can file it without parsing the body.
+const refusals = new WeakMap<Response, string>();
+export function markRefusal(res: Response, code: string): Response {
+  refusals.set(res, code);
+  return res;
+}
+export const refusalOf = (res: Response): string | null => refusals.get(res) ?? null;
+
 /** OpenAI-style error body so SDKs surface the message. */
 export function errorResponse(rt: Runtime, status: number, code: string, message: string, extra?: Record<string, string>): Response {
   const type = status === 401 ? "authentication_error" : status === 429 ? "rate_limit_error" : status >= 500 ? "api_error" : "invalid_request_error";
-  return jsonResponse(rt, status, { error: { message, type, code } }, extra);
+  return markRefusal(jsonResponse(rt, status, { error: { message, type, code } }, extra), code);
 }

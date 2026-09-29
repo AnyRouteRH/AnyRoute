@@ -4,9 +4,15 @@ All notable changes to the SEAL specification. The format follows [Keep a Change
 
 ## [Unreleased]
 
+### Added
+
+- `0005-policy.md` Section 3.4: privacy-safe stats as implemented. Four counter families with fixed labels and a per-request contribution bound of 1, hourly release with Laplace noise through Mironov's snapping mechanism and a CSPRNG, non-negative post-processing, the per-day epsilon ledger, the `GET /v1/stats` document, and the router's rule that attested and unlinkable traffic reaches public metrics only through these counters.
+
 ### Changed
 
 - `0002-transport.md` Section 5: lanes are first-class in the router. How a lane is chosen (request, key default, saved route, and `unlinkable` by default for a relayed blind-token request), enforcement with no fallback (503 `no_attested_endpoint`), 403 `lane_requires_anonymous_auth` for an API key or wallet on `unlinkable` with an opt-in downgrade to `attested`, the lane-aware selection weight `uptime * quality * attested_bonus / price^2`, and lane availability in the model list and status. Replaces 409 `lane_unavailable` and, for lanes, 503 `disclosure_provider_unavailable`.
+- `0005-policy.md` Section 4.3: planned telemetry now covers only what Section 3.4 does not (per-category counts, attested privacy parameters).
+- `README.md`: status rows for privacy-safe stats.
 
 ## [0.1.0] - 2026-09-29
 

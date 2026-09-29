@@ -72,6 +72,40 @@ Images, audio and files are not text and are not examined. By default a request 
 
 A refused request still spends a unit of the caller's request quota, so the check cannot be probed for free. The enclave keeps counters only (blocked requests, blocked responses, unavailable). The text, the label and the category are not logged or stored.
 
+### 3.4 Telemetry (implemented)
+
+The enclave writes no per-request log. Its only record of traffic is a set of counters for the current hour, released once the hour ends with Laplace noise, and served at `GET /v1/stats` without authentication. The router applies the same mechanism to requests on the `attested` and `unlinkable` lanes and serves them at `GET /api/v1/stats`; its raw public aggregates (`GET /api/v1/status` launch metrics, rankings) count public-lane requests only.
+
+**Counters.** Four families, each a histogram over a fixed, public list of labels. Every label is released every hour, including zeros, and every hour since start is released, including hours with no traffic, so neither which labels appear nor which hours appear depends on the data.
+
+| Family | Labels | A request adds |
+| :--- | :--- | :--- |
+| `requests` | request kinds (enclave: `chat_completions`, `embeddings`; router: `attested`, `unlinkable`), plus `other` | exactly 1 |
+| `blocked` | refusal reasons (enclave: `content_request`, `content_response`, `unsupported_input`, `too_large`, `check_unavailable`, `rate_limited`, `unauthorized`, `invalid_request`, `upstream_error`; router: `unauthorized`, `payment_required`, `forbidden`, `no_provider`, `rate_limited`, `invalid_request`, `upstream_error`, from the HTTP status and error type), plus `other` | at most 1 |
+| `latency` | `le_100`, `le_250`, `le_500`, `le_1000`, `le_2500`, `le_5000`, `le_10000`, `le_30000`, `le_60000`, `gt_60000` (milliseconds) | at most 1 |
+| `tokens` | `le_64`, `le_256`, `le_1024`, `le_4096`, `le_16384`, `le_65536`, `gt_65536` (prompt plus completion tokens) | at most 1 |
+
+Version 1 counts blocks by refusal reason, not by policy category: the classifier returns a verdict only, and the category never leaves it (Section 3.3). Per-category counts come with policy v2 (Section 4.3).
+
+**Contribution bound.** A request is recorded once, when it ends (a stream when it finishes or is cancelled). Values outside the buckets are clamped into the first or last bucket; unknown labels count as `other`. So adding or removing one request changes each family's histogram by at most 1 in L1 norm: sensitivity `Δ = 1`. The router records a request that makes several provider calls (council, dual verification) once, from its first call.
+
+**Mechanism.** For each family `f` with privacy parameter `ε_f` (default 1 per hour), each label's count `x` is released as
+
+```
+b      = Δ / ε_f
+Λ      = smallest power of two >= b
+y      = clamp(x, -B, B) + S * b * ln(U)        S uniform in {-1, +1}, U uniform in (0, 1)
+out    = max(0, round(clamp(Λ * round(y / Λ), -B, B)))
+```
+
+with `B = 2^24`. `S` and `U` come from the platform CSPRNG (`crypto.getRandomValues`). `U` is drawn over every double in (0, 1) with the correct weight per exponent (a geometric exponent and 52 uniform mantissa bits), not from a 53-bit grid. Noise is drawn once per hour; a read never re-samples it, and the raw counts are discarded after release.
+
+**Floating-point caveat.** Textbook Laplace sampling in floating point is not differentially private: the set of doubles `x + b * ln(U)` can produce depends on `x`, so the exact output can reveal the input [MIRONOV12]. Version 1 uses Mironov's snapping mechanism (clamping, a full-precision uniform variate, rounding to a multiple of `Λ`) as the mitigation; with `B = 2^24` the residual loss it allows is below `2^-20` per release. The final rounding and clamping at zero are post-processing and cost no privacy.
+
+**Budget.** One released hour spends `Σ_f ε_f` (basic composition over the four families; 4 by default). The privacy unit is one request (event-level): a client that sends `k` requests in an hour can move each count by up to `k`. The ledger sums the epsilon of every hour released in a UTC day and publishes it as `budget.epsilon_spent_today` together with the per-day history; that sum is the composition bound for a client with one request in every hour of the day. An operator MAY set a daily cap; an hour that would exceed it is released as `withheld`, with no values, and the decision depends on the clock only.
+
+**Document.** `GET /v1/stats` returns `{object: "stats", privacy, labels, buckets, current_hour, hours, budget}`. `privacy` states the mechanism, the sampler, the snapping bound, the unit, the sensitivity, `epsilon_per_hour` and `scale` per family. `current_hour` names the hour being collected and carries no values. `hours` lists released hours, newest first, each `{hour, status, epsilon, counts}`. The epsilon values are set in `sidecar.yaml` (`stats.epsilon.*`, `stats.retention_hours`, `stats.daily_epsilon_cap`); they are not yet bound in the attestation, so a client that relies on them SHOULD compare the served `privacy` block with the configuration the host published.
+
 ## 4. Policy v2 (planned)
 
 ### 4.1 `policy.json`
@@ -97,7 +131,7 @@ The prompt is checked before generation. The output is checked as tokens stream,
 
 ### 4.3 Telemetry
 
-Counters inside the enclave (requests, blocks by category, latency and token buckets) are exported hourly with Laplace noise for differential privacy. There are no per-request logs, and the platform's public log and system-information endpoints are off.
+The counters of Section 3.4 gain a `blocked` family keyed by policy category once refusals carry a category code (Section 4.2), and the privacy parameters join the measured policy so they are covered by the attestation. The platform's public log and system-information endpoints are off in the published manifest.
 
 ## 5. Disputes without logs (planned)
 
@@ -113,6 +147,7 @@ Nobody but the client holds the plaintext, so a dispute starts with the client:
 * **Classifier error.** A small model is a backstop, not a guarantee. It has false negatives and false positives, and crafted text can try to talk it into `SAFE`. Telling the classifier to treat text as data helps and proves nothing.
 * **Plaintext exposure.** The classifier server receives request text in the clear and MUST be reachable only from inside the enclave, on an internal network with no published ports.
 * **Meaning of the hash.** The policy hash fixes what the classifier is asked and which weights answer. It does not prove how well they answer.
+* **Telemetry.** Noisy counters bound what any single request adds to a published number; they do not hide traffic volume over many hours, and a client sending many requests is protected only up to the composition of their epsilons (Section 3.4).
 * **Side channels.** A refusal is observable by its status code and timing. Version 1 returns no category to limit what a refusal reveals; version 2 returns a category code only.
 * **Measured at boot.** Weights and policy are measured once, at boot. They MUST be mounted read-only.
 * **Not a compliance program.** The policy defines what the enclave refuses. It is not, by itself, a legal compliance program.
@@ -129,4 +164,5 @@ Nobody but the client holds the plaintext, so a dispute starts with the client:
 
 * [RFC9052] Schaad, J., "CBOR Object Signing and Encryption (COSE): Structures and Process", RFC 9052.
 * Dwork, C., McSherry, F., Nissim, K., Smith, A., "Calibrating Noise to Sensitivity in Private Data Analysis", TCC 2006.
+* [MIRONOV12] Mironov, I., "On Significance of the Least Significant Bits for Differential Privacy", ACM CCS 2012.
 * OpenDP, https://opendp.org.

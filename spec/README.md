@@ -15,7 +15,7 @@ This folder is the specification: RFC-style documents a third party can implemen
 | [0002-transport.md](0002-transport.md) | Inner HPKE end-to-end encryption, outer (chunked) Oblivious HTTP, lanes |
 | [0003-credits.md](0003-credits.md) | Blind RSA tokens (Privacy Pass) and blinded e-cash credits (BDHKE, DLEQ, P2PK) |
 | [0004-receipts.md](0004-receipts.md) | Receipt claims, chunk hash chain, anchoring, verification order |
-| [0005-policy.md](0005-policy.md) | Measured content policy, refusal receipts, disputes without logs |
+| [0005-policy.md](0005-policy.md) | Measured content policy, refusal receipts, privacy-safe stats, disputes without logs |
 | [CHANGELOG.md](CHANGELOG.md) | Versions of this specification |
 
 The HTTP API around these documents is described in OpenAPI 3.1 at [`web/public/openapi.json`](../web/public/openapi.json) (a documented subset of the router's API).
@@ -99,6 +99,8 @@ These hold for the design, not only for today's code, and are published with it.
 | Per-host anchoring of enclave receipts | 0004 | Contract function and sidecar leaf feed exist; the service that anchors them is planned | [`contracts/src/ReceiptAnchor.sol`](../contracts/src/ReceiptAnchor.sol) (`anchorAttested`) |
 | Receipts v2: COSE_Sign1, chunk hash chain, bucketed token counts | 0004 | Planned | |
 | In-enclave classifier: pinned weights, policy hash bound in the quote, one-bit receipt field, signed refusal | 0005 | Implemented, off by default | [`sidecar/src/classifier.ts`](../sidecar/src/classifier.ts) |
+| Privacy-safe stats: no per-request logs in the sidecar; hourly counters (requests, refusals by reason, latency and token buckets) released with snapped Laplace noise from a CSPRNG, epsilon 1 per family per hour by default, daily budget ledger; the router publishes attested and unlinkable traffic the same way and keeps it out of raw public metrics | 0005 | Implemented | [`sidecar/src/dpstats.ts`](../sidecar/src/dpstats.ts), [`src/services/private-stats.ts`](../src/services/private-stats.ts) |
+| Blocks counted by policy category; privacy parameters bound in the attestation | 0005 | Planned | |
 | Measured `policy.json` in a boot event; token-streamed output checks; dispute re-run in a second enclave | 0005 | Planned | |
 
 ## Versioning

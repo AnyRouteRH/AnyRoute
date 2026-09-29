@@ -4,8 +4,9 @@ import type { Verdict } from "./classifier.ts";
 import { buildUpstreamHeaders, pickResponseHeaders } from "./headers.ts";
 import { HPKE_CONTENT_TYPE, HPKE_STREAM_CONTENT_TYPE, HpkeError, type HpkeResponder } from "./hpke.ts";
 import { encodeReceiptHeader, newReceiptId, normalizeUsage, type ReceiptEnvelope, type ReceiptPayload, type Usage } from "./receipts.ts";
-import { baseHeaders, errorResponse } from "./respond.ts";
+import { baseHeaders, errorResponse, markRefusal } from "./respond.ts";
 import { SseScanner } from "./sse.ts";
+import type { Tally } from "./stats.ts";
 
 // The inference proxy for /v1/chat/completions and /v1/embeddings.
 //
@@ -73,6 +74,8 @@ type Ctx = {
   reqHash: string;
   /** Set when the request arrived encrypted: the response goes back encrypted with it. */
   responder: HpkeResponder | null;
+  /** This request's contribution to the private counters. */
+  tally?: Tally;
 };
 
 function makeReceipt(c: Ctx, o: { status: number; stream: boolean; complete: boolean; respHash: string; usage: Usage | null; blocked?: boolean }): ReceiptEnvelope {
@@ -111,7 +114,7 @@ function blockedResponse(c: Ctx, phase: "request" | "response", usage: Usage | n
   headers.set("content-type", "application/json");
   headers.set("x-anyroute-receipt-id", c.id);
   headers.set("x-anyroute-receipt", encodeReceiptHeader(env));
-  return new Response(bytes, { status: 400, headers });
+  return markRefusal(new Response(bytes, { status: 400, headers }), `content_${phase}`);
 }
 
 /** The classifier gave no usable answer: nothing is forwarded and nothing is released. */
@@ -139,7 +142,7 @@ const HPKE_ERRORS: Record<HpkeError["reason"], { status: number; code: string }>
   decryption_failed: { status: 400, code: "decryption_failed" },
 };
 
-export async function handleInference(rt: Runtime, req: Request, path: string, caller: Caller): Promise<Response> {
+export async function handleInference(rt: Runtime, req: Request, path: string, caller: Caller, tally?: Tally): Promise<Response> {
   if (req.method !== "POST") return errorResponse(rt, 405, "method_not_allowed", "use POST", { allow: "POST" });
   const ctype = (req.headers.get("content-type") ?? "").toLowerCase();
   const encrypted = rt.hpke !== null && /^application\/anyroute-hpke\s*(;|$)/.test(ctype);
@@ -180,7 +183,7 @@ export async function handleInference(rt: Runtime, req: Request, path: string, c
   const served = rt.cfg.model.servedName;
   if (served && parsed.model !== served) return errorResponse(rt, 404, "model_not_found", `this endpoint serves "${served}" only`);
 
-  const ctx: Ctx = { rt, caller, path, id: newReceiptId(), reqHash, responder };
+  const ctx: Ctx = { rt, caller, path, id: newReceiptId(), reqHash, responder, tally };
 
   if (rt.classifier) {
     let verdict: Verdict;
@@ -263,12 +266,14 @@ export async function handleInference(rt: Runtime, req: Request, path: string, c
       return checkUnavailable(rt, "response");
     }
     if (verdict !== "allow" && usage) rt.quota.charge(caller.keyId, usage.total_tokens);
+    if (verdict !== "allow") tally?.tokens(usage?.total_tokens);
     const refusal = verdictResponse(ctx, verdict, "response", usage);
     if (refusal) return refusal;
   }
   const out = encrypted ? responder!.sealOnce(bytes) : bytes;
   const env = makeReceipt(ctx, { status: up.status, stream: false, complete: true, respHash: sha(out), usage });
   if (usage) rt.quota.charge(caller.keyId, usage.total_tokens);
+  tally?.tokens(usage?.total_tokens);
   headers.set("x-anyroute-receipt-id", ctx.id);
   headers.set("x-anyroute-receipt", encodeReceiptHeader(env));
   return new Response(out, { status: up.status, headers });
@@ -354,6 +359,7 @@ async function checkedStream(c: Ctx, up: Response, ac: AbortController, cleanup:
   if (verdict !== "allow") {
     cleanup();
     rt.quota.charge(c.caller.keyId, usage?.total_tokens ?? scan.chunks);
+    c.tally?.tokens(usage?.total_tokens ?? scan.chunks);
     return verdictResponse(c, verdict, "response", usage)!;
   }
   // Released: deliver the bytes as one piece through the ordinary stream path (hash, receipt event, framing).
@@ -379,6 +385,8 @@ function streamResponse(c: Ctx, up: Response, ac: AbortController, cleanup: () =
     const env = makeReceipt(c, { status: up.status, stream: true, complete, respHash: `sha256:${hash.digest("hex")}`, usage });
     // Token accounting: the reported usage, else a rough count of completion chunks so a stream cannot dodge the token quota.
     rt.quota.charge(c.caller.keyId, usage?.total_tokens ?? scan.chunks);
+    c.tally?.tokens(usage?.total_tokens ?? scan.chunks);
+    c.tally?.finish(); // a stream records itself when it ends; the handler returned long before
     return env;
   };
 
@@ -435,5 +443,6 @@ function streamResponse(c: Ctx, up: Response, ac: AbortController, cleanup: () =
   headers.set("cache-control", "no-cache, no-store");
   headers.set("x-accel-buffering", "no");
   headers.set("x-anyroute-receipt-id", c.id);
+  if (c.tally) c.tally.deferred = true;
   return new Response(body, { status: up.status, headers });
 }
