@@ -33,6 +33,7 @@ export default function Privacy(){
     <div className="split-copy">
       <div data-reveal><span className="eyebrow tick">Privacy / attested routes</span><h2 className="h2">Privacy with a receipt.</h2><p className="lede">A private request goes only to a provider whose TEE evidence was verified minutes ago. If the evidence is missing or stale, the request fails closed.</p></div>
       <div className="points" data-stagger>{POINTS.map(([t,b])=><div className="point" key={t} data-reveal><i aria-hidden="true"/><h3>{t}</h3><p>{b}</p></div>)}</div>
+      <p data-reveal style={{marginTop:24}}><a className="inline-link" href="/verify/">Check what the router has verified about any provider</a></p>
     </div>
     <div data-reveal><div ref={ref} className={'attest'+(done?' done':'')} role="figure" aria-label="Example private route: attestation checks from request to signed receipt">
       <div className="panel-bar"><span>Private route · example</span><span>fail-closed</span></div>

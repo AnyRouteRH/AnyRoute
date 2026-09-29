@@ -5,6 +5,8 @@ import { AnyRoute, AttestationRefused, canonicalJson as sdkCanonicalJson, keccak
 import { nodeAttestFetcher } from "../packages/client/src/node.ts";
 import { tokenNullifier as sdkNullifier } from "../packages/client/src/blind.ts";
 import { canonicalJson } from "../src/lib/util.ts";
+import * as webVerify from "../web/lib/verify.js";
+import { verifyReceipt as sdkVerifyReceipt } from "../packages/client/src/index.ts";
 import { MerkleTree, receiptLeaf } from "../src/receipts/merkle.ts";
 import { canonicalBytes } from "../src/receipts/signer.ts";
 import { nullifierOf } from "../src/blind/privacy-token.ts";
@@ -65,6 +67,38 @@ describe("same bytes as the router", () => {
     for (let i = 0; i < leaves.length; i++) {
       expect(verifyMerkleProof(leaves[i], tree.proof(i), tree.root)).toBe(true);
       expect(verifyMerkleProof(leaves[(i + 1) % leaves.length], tree.proof(i), tree.root)).toBe(false);
+    }
+  });
+});
+
+describe("the verify page's browser code agrees with the SDK and the router", () => {
+  test("canonical bytes, keccak and receipt verdicts are identical", async () => {
+    let seed = 7;
+    const rnd = () => (seed = (seed * 48271) % 0x7fffffff) / 0x7fffffff;
+    for (let i = 0; i < 200; i++) {
+      const doc = { ["k" + ((rnd() * 9) | 0)]: [rnd(), "é😀", { "10": 1, "9": 2, b: null }], "3": i, z: { y: rnd() > 0.5 } };
+      expect(webVerify.canonicalJson(doc)).toBe(canonicalJson(doc));
+    }
+    const data = new Uint8Array(randomBytes(300));
+    expect(Buffer.from(webVerify.keccak256(data)).toString("hex")).toBe(keccak256Hex(data).slice(2));
+
+    const h = await startRouter({ providers: [{ id: "vendor", name: "Vendor", models: [MODELS.llama] }] });
+    try {
+      const k = await h.fundedKey(5n);
+      const c = new AnyRoute({ baseUrl: "http://router.test", apiKey: k.secret, fetch: shim(h) });
+      const res = await c.chat.completions.create(chat);
+      const keys = await c.receiptKeys();
+      const receipt = res.anyroute.receipt!;
+      const forged = structuredClone(receipt);
+      (forged.payload as Record<string, unknown>).cost = "0";
+      for (const r of [receipt, forged, { ...receipt, key_id: "0000000000000000" }, { ...receipt, leaf: "0x" + "11".repeat(32) }]) {
+        const a = await sdkVerifyReceipt(r as never, { keys });
+        const b = await webVerify.verifyReceipt(r, { keys });
+        expect(b.valid).toBe(a.valid);
+        expect(b.checks.map((x: { id: string; status: string }) => [x.id, x.status])).toEqual(a.checks.map((x) => [x.id, x.status]));
+      }
+    } finally {
+      await h.close();
     }
   });
 });

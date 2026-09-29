@@ -1,0 +1,372 @@
+// Verify page: pure helpers (no React), shared by components/Verify.jsx and its tests.
+// Two jobs. Describe what the router's attestation record for a provider does and does not establish, in plain words,
+// keeping "unverified" unverified. And check a pasted receipt in the browser against the router's published keys.
+// The receipt code follows packages/client/src/receipts.ts; a test in the router's suite runs both on the same input.
+
+export const KEYS_PATH = "/.well-known/anyroute-receipt-keys.json";
+export const attestationPath = (providerId) => `/api/v1/attestation/${encodeURIComponent(providerId)}`;
+
+// ---- provider id in the address --------------------------------------------------------------------------------
+
+const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+/** The provider id from `?p=` (or `?provider=`), or "" when absent or not a plausible id. */
+export function providerIdFromSearch(search) {
+  const params = new URLSearchParams(String(search || "").replace(/^\?/, ""));
+  const id = (params.get("p") || params.get("provider") || "").trim();
+  return PROVIDER_ID.test(id) ? id : "";
+}
+export const verifyHref = (providerId) => `/verify/?p=${encodeURIComponent(providerId)}`;
+
+// ---- what the router's record says -----------------------------------------------------------------------------
+
+const REASONS = {
+  no_attestation: "The router has never verified this provider.",
+  last_attempt_failed: "The router's most recent attempt to verify this provider failed.",
+  attestation_stale: "The router's last successful verification is too old to rely on.",
+  simulated_evidence_refused: "The only evidence is simulated (development) evidence, which this router does not accept.",
+};
+
+const VERIFIERS = {
+  dcap: "DCAP: Intel's signature and certificate chain over the quote",
+  dstack: "dstack: the deployment's compose hash against its event log",
+};
+
+const TEE = [
+  [/tdx/i, "Intel TDX (confidential virtual machine)"],
+  [/snp|sev/i, "AMD SEV-SNP (confidential virtual machine)"],
+  [/^dev$/i, "None: simulated for development"],
+];
+export function teeLabel(kind) {
+  if (!kind) return "Not reported";
+  for (const [re, label] of TEE) if (re.test(kind)) return label;
+  return String(kind);
+}
+
+const REGISTRY = {
+  registered: { state: "yes", text: "Registered on chain." },
+  revoked: { state: "bad", text: "Revoked on chain: this measurement is no longer accepted." },
+  submitted_unconfirmed: { state: "partial", text: "Submitted to the chain but not yet confirmed." },
+  calldata_ready_not_submitted: { state: "no", text: "Prepared for the chain but not submitted." },
+  not_submitted: { state: "no", text: "Not registered on chain." },
+  not_recorded: { state: "no", text: "Nothing to register: the router has no measurement for this provider." },
+};
+
+/** "4 min ago", "3 h ago", "2 d ago"; "just now" under a minute; "" when the time is unusable. */
+export function relativeTime(iso, now = Date.now()) {
+  const t = Date.parse(iso || "");
+  if (!Number.isFinite(t)) return "";
+  const s = Math.round((now - t) / 1000);
+  if (s < -60) return "in the future";
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+
+export const shortDigest = (d) => (typeof d === "string" && d.length > 22 ? `${d.slice(0, 12)}…${d.slice(-8)}` : d || "");
+
+const yes = (v) => (v ? "yes" : "no");
+
+/**
+ * A view model for the page from `GET /api/v1/attestation/:providerId` (the `data` object).
+ * Every row has a `state`: yes / no (established or not) / partial / bad / unknown. Nothing is upgraded: a missing
+ * field reads "unknown", a false check reads "no", and "attested" appears only when the router says status is attested.
+ */
+export function describeAttestation(data, now = Date.now()) {
+  const d = data || {};
+  const status = d.status === "attested" || d.status === "simulated" ? d.status : "unverified";
+  const verdict =
+    status === "attested"
+      ? { tone: "ok", label: "Attested", text: "The router verified this provider's hardware attestation recently and reports it as attested. That is what the router checked, listed below. It does not show what the provider does with your data, and this page did not contact the provider or read its quote." }
+      : status === "simulated"
+        ? { tone: "warn", label: "Simulated", text: "This provider has only simulated (development) evidence. No hardware backs it, so nothing about it is private or verified." }
+        : { tone: "bad", label: "Unverified", text: `${REASONS[d.reason] || "The router has no current verification for this provider."} Treat it as an ordinary provider: nothing here should be read as a privacy guarantee.` };
+
+  const m = d.measurement || null;
+  const log = m?.transparency_log || null;
+  const reg = m?.registry || null;
+  const registry = REGISTRY[reg?.state] || REGISTRY.not_recorded;
+  const verifiers = Array.isArray(d.verifiers) ? d.verifiers : [];
+
+  const logState = !m
+    ? { state: "no", text: "No measurement recorded, so no log lookup was made." }
+    : log?.found && log.inclusion_verified && log.checkpoint_signature_verified
+      ? { state: "yes", text: "An entry for the image was found, its inclusion in the log was verified, and so was the log's signature over its checkpoint." }
+      : log?.found && log.inclusion_verified
+        ? { state: "partial", text: "An entry for the image was found and its inclusion was verified, but the log's signature over the checkpoint was not." }
+        : log?.found
+          ? { state: "partial", text: "An entry for the image was found, but its inclusion in the log has not been verified." }
+          : { state: "no", text: "No transparency-log entry was found for the image." };
+
+  const attestedAt = status === "unverified" ? null : d.attested_at || null;
+  return {
+    status,
+    verdict,
+    provider: d.provider || "",
+    rows: {
+      tee: { label: "Hardware", value: status === "unverified" ? "Not established" : teeLabel(d.tee), state: status === "attested" ? "known" : status === "simulated" ? "simulated" : "unknown" },
+      verifiers: {
+        label: "Quote checked by",
+        value: verifiers.length && status === "attested" ? verifiers.map((v) => VERIFIERS[v] || v) : [],
+        empty: "Nobody: no verifier has accepted a quote for this provider.",
+        state: status === "attested" && verifiers.length ? "yes" : "no",
+      },
+      lastVerified: { label: "Last verified by the router", value: attestedAt || "", relative: relativeTime(attestedAt, now), empty: "Never, or not recently enough to count.", state: attestedAt ? "yes" : "no" },
+    },
+    measurement: m
+      ? {
+          recorded: true,
+          currentlyAttested: status === "attested" && !!m.attested_now,
+          status: m.status,
+          firstSeen: m.first_attested_at || "",
+          lastSeen: m.last_seen_at || "",
+          digests: [
+            { key: "image", label: "Image digest", value: m.image_digest || "" },
+            { key: "compose", label: "Compose hash", value: m.compose_hash || "" },
+            { key: "model", label: "Model digest", value: m.model_digest || "" },
+          ],
+        }
+      : { recorded: false, currentlyAttested: false, digests: [] },
+    transparencyLog: { ...logState, index: log?.log_index ?? null, uuid: log?.uuid || "", integratedAt: log?.integrated_at || "", checkedAt: log?.checked_at || "" },
+    registry: { ...registry, address: reg?.address || "", tx: reg?.tx_hash || "", registeredAt: reg?.registered_at || "" },
+    checks: [
+      // The first two only count while the router calls the provider attested, whatever the flags say.
+      ["quote_verified", "The router verified a hardware quote", yes(status === "attested" && d.checks?.quote_verified)],
+      ["digests_bound_to_quote", "The image, compose and model digests are committed inside that quote", yes(status === "attested" && d.checks?.digests_bound_to_quote)],
+      ["transparency_log_entry", "The image has an entry in a transparency log", yes(d.checks?.transparency_log_entry)],
+      ["transparency_log_checkpoint_signature", "The log's signature over that entry was verified", yes(d.checks?.transparency_log_checkpoint_signature)],
+      ["registered_on_chain", "The measurement is registered on chain", yes(d.checks?.registered_on_chain)],
+    ].map(([id, label, state]) => ({ id, label, state })),
+    notChecked: [
+      ...(Array.isArray(d.not_checked) ? d.not_checked : []),
+      "Anything about the provider itself. This page reads the router's record. To check the provider's own /attest document and its TLS certificate before you send, use an SDK (see the docs).",
+    ],
+  };
+}
+
+// ---- receipts, in the browser ----------------------------------------------------------------------------------
+
+// Canonical JSON: the router's `canonical` + JSON.stringify (src/lib/util.ts). Object key order comes out of the
+// JavaScript engine, exactly as it does when the router signs.
+function canonical(value) {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const k of Object.keys(value).sort()) if (value[k] !== undefined) out[k] = canonical(value[k]);
+    return out;
+  }
+  return value;
+}
+export const canonicalJson = (v) => JSON.stringify(canonical(v));
+
+const utf8 = (s) => new TextEncoder().encode(s);
+export const bytesToHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+export function hexToBytes(hex) {
+  const clean = String(hex).replace(/^0x/i, "");
+  if (clean.length % 2 || /[^0-9a-fA-F]/.test(clean)) throw new Error("invalid hex");
+  return Uint8Array.from(clean.match(/../g) || [], (h) => parseInt(h, 16));
+}
+export function base64ToBytes(text) {
+  const t = String(text).trim();
+  if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(t)) throw new Error("invalid base64");
+  const std = t.replace(/-/g, "+").replace(/_/g, "/").replace(/=+$/, "");
+  const bin = atob(std + "=".repeat((4 - (std.length % 4)) % 4));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+const concat = (...parts) => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) (out.set(p, at), (at += p.length));
+  return out;
+};
+const sha256 = async (b) => new Uint8Array(await crypto.subtle.digest("SHA-256", b));
+
+// Keccak-256 (Ethereum's padding), for the receipt leaf and merkle nodes.
+const MASK = (1n << 64n) - 1n;
+const RC = [0x1n, 0x8082n, 0x800000000000808an, 0x8000000080008000n, 0x808bn, 0x80000001n, 0x8000000080008081n, 0x8000000000008009n, 0x8an, 0x88n, 0x80008009n, 0x8000000an, 0x8000808bn, 0x800000000000008bn, 0x8000000000008089n, 0x8000000000008003n, 0x8000000000008002n, 0x8000000000000080n, 0x800an, 0x800000008000000an, 0x8000000080008081n, 0x8000000000008080n, 0x80000001n, 0x8000000080008008n];
+const ROT = [0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14];
+const rotl = (v, n) => (n === 0 ? v : ((v << BigInt(n)) | (v >> BigInt(64 - n))) & MASK);
+export function keccak256(data) {
+  const rate = 136;
+  const padded = new Uint8Array(Math.ceil((data.length + 1) / rate) * rate);
+  padded.set(data);
+  padded[data.length] ^= 0x01;
+  padded[padded.length - 1] ^= 0x80;
+  const a = new Array(25).fill(0n);
+  const c = new Array(5);
+  const b = new Array(25);
+  for (let off = 0; off < padded.length; off += rate) {
+    for (let i = 0; i < rate / 8; i++) {
+      let lane = 0n;
+      for (let j = 7; j >= 0; j--) lane = (lane << 8n) | BigInt(padded[off + i * 8 + j]);
+      a[i] ^= lane;
+    }
+    for (let round = 0; round < 24; round++) {
+      for (let x = 0; x < 5; x++) c[x] = a[x] ^ a[x + 5] ^ a[x + 10] ^ a[x + 15] ^ a[x + 20];
+      for (let x = 0; x < 5; x++) {
+        const d = c[(x + 4) % 5] ^ rotl(c[(x + 1) % 5], 1);
+        for (let y = 0; y < 25; y += 5) a[x + y] ^= d;
+      }
+      for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) b[y + 5 * ((2 * x + 3 * y) % 5)] = rotl(a[x + 5 * y], ROT[x + 5 * y]);
+      for (let y = 0; y < 25; y += 5) for (let x = 0; x < 5; x++) a[x + y] = b[x + y] ^ (~b[((x + 1) % 5) + y] & MASK & b[((x + 2) % 5) + y]);
+      a[0] ^= RC[round];
+    }
+  }
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 8; j++) out[i * 8 + j] = Number((a[i] >> BigInt(8 * j)) & 0xffn);
+  return out;
+}
+
+const cmp = (a, b) => {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return a.length - b.length;
+};
+export function verifyMerkleProof(leaf, proof, root) {
+  try {
+    let h = hexToBytes(leaf);
+    for (const p of proof) {
+      const q = hexToBytes(p);
+      h = keccak256(cmp(h, q) < 0 ? concat(h, q) : concat(q, h));
+    }
+    return bytesToHex(h) === bytesToHex(hexToBytes(root));
+  } catch {
+    return false;
+  }
+}
+
+/** Ed25519 through WebCrypto; throws {unsupported: true} where the browser cannot. */
+export async function ed25519Verify(publicKey, message, signature) {
+  let key;
+  try {
+    key = await crypto.subtle.importKey("raw", publicKey, { name: "Ed25519" }, false, ["verify"]);
+  } catch (e) {
+    throw Object.assign(new Error("This browser cannot verify Ed25519 signatures."), { unsupported: true, cause: e });
+  }
+  return crypto.subtle.verify({ name: "Ed25519" }, key, signature, message);
+}
+
+const pass = (id, detail) => ({ id, status: "pass", detail });
+const fail = (id, detail) => ({ id, status: "fail", detail });
+const skip = (id, detail) => ({ id, status: "not_checked", detail });
+
+const receiptTime = (payload) => {
+  if (typeof payload.ts === "number" && Number.isFinite(payload.ts)) return payload.ts;
+  const t = Date.parse(payload.issued || "");
+  return Number.isFinite(t) ? t : null;
+};
+
+export const RECEIPT_NOT_CHECKED = [
+  "That the signing key is the one registered on chain: compare the key id with the ReceiptAnchor contract, or pin the key yourself.",
+  "That an anchor root was posted on chain: an inclusion proof shows the receipt sits under a root, not that the root was published.",
+];
+
+/**
+ * Check a receipt against the router's published key set (`keys`: the JWKS, or its `keys` array) or against a raw
+ * Ed25519 public key in hex (`publicKeyHex`). Returns { valid, keyId, checks, anchor, notChecked }. `valid` is true only
+ * when the signature verified and nothing failed; a browser that cannot run Ed25519 gets "not_checked" and valid false.
+ */
+export async function verifyReceipt(receipt, { keys, publicKeyHex, ed25519 = ed25519Verify, skewMs = 300_000 } = {}) {
+  const checks = [];
+  const keyId = typeof receipt?.key_id === "string" ? receipt.key_id : "";
+  const done = (anchor) => ({ valid: checks.every((c) => c.status !== "fail") && checks.some((c) => c.id === "signature" && c.status === "pass"), keyId, checks, anchor, notChecked: RECEIPT_NOT_CHECKED });
+  if (!receipt || typeof receipt !== "object" || !receipt.payload || typeof receipt.payload !== "object" || typeof receipt.sig !== "string" || !keyId) {
+    checks.push(fail("shape", "A receipt needs payload, sig and key_id."));
+    return done("no_proof");
+  }
+  checks.push(receipt.alg === undefined || receipt.alg === "Ed25519" ? pass("alg", "Ed25519") : fail("alg", `Unsupported algorithm ${String(receipt.alg)}.`));
+
+  let raw = null;
+  let window = null;
+  const idOf = async (bytes) => bytesToHex(await sha256(bytes)).slice(0, 16);
+  if (publicKeyHex) {
+    try {
+      raw = hexToBytes(publicKeyHex.trim());
+      if (raw.length !== 32) throw new Error("length");
+    } catch {
+      raw = null;
+      checks.push(fail("key", "The key you entered is not 32 bytes of hex."));
+    }
+    if (raw) {
+      const derived = await idOf(raw);
+      checks.push(derived === keyId ? pass("key", `Key id ${keyId} matches the key you entered.`) : fail("key", `The receipt names key ${keyId}, but the key you entered has id ${derived}.`));
+    }
+  } else {
+    const list = Array.isArray(keys) ? keys : keys?.keys || [];
+    const jwk = list.find((k) => k.kid === keyId);
+    if (!jwk) checks.push(fail("key", `Key ${keyId} is not in the router's published key list.`));
+    else if (jwk.kty !== "OKP" || jwk.crv !== "Ed25519") checks.push(fail("key", "The published key is not an Ed25519 key."));
+    else {
+      try {
+        raw = base64ToBytes(jwk.x);
+        if (raw.length !== 32) throw new Error("length");
+        const derived = await idOf(raw);
+        checks.push(derived === keyId ? pass("key", `Key ${keyId} is in the router's published list and its id matches its bytes.`) : fail("key", `The published entry's id does not match its key bytes (${derived}).`));
+        window = { from: jwk.valid_from ? Date.parse(jwk.valid_from) : null, to: jwk.retired_at ? Date.parse(jwk.retired_at) : null };
+      } catch {
+        raw = null;
+        checks.push(fail("key", "The published key is malformed."));
+      }
+    }
+  }
+
+  let sig = null;
+  try {
+    sig = base64ToBytes(receipt.sig);
+  } catch {
+    checks.push(fail("signature", "The signature is not valid base64."));
+  }
+  const bytes = utf8(canonicalJson(receipt.payload));
+  if (raw && sig && !checks.some((c) => c.id === "key" && c.status === "fail")) {
+    try {
+      checks.push((await ed25519(raw, bytes, sig)) ? pass("signature", "The signature over the receipt's contents verifies with that key.") : fail("signature", "The signature does not verify: the receipt was changed or was not signed by that key."));
+    } catch (e) {
+      checks.push(e?.unsupported ? skip("signature", `${e.message} Use one of the SDKs to check it.`) : fail("signature", String(e?.message || e)));
+    }
+  } else if (!checks.some((c) => c.id === "signature")) {
+    checks.push(fail("signature", "Not verified: there is no usable key or signature."));
+  }
+
+  const t = receiptTime(receipt.payload);
+  if (window && t !== null && (window.from !== null || window.to !== null)) {
+    const early = window.from !== null && t < window.from - skewMs;
+    const late = window.to !== null && t > window.to + skewMs;
+    checks.push(early || late ? fail("key_window", "The receipt is dated outside its signing key's validity window.") : pass("key_window", "The receipt's date is inside its key's validity window."));
+  } else checks.push(skip("key_window", "No key window or receipt date to compare."));
+
+  if (receipt.leaf && sig) {
+    const leaf = "0x" + bytesToHex(keccak256(keccak256(concat(bytes, sig))));
+    checks.push(leaf === String(receipt.leaf).toLowerCase() ? pass("leaf", "The receipt's anchor leaf matches its contents and signature.") : fail("leaf", "The anchor leaf does not match the receipt's contents and signature."));
+  } else checks.push(skip("leaf", "The receipt carries no anchor leaf."));
+
+  let anchor = "no_proof";
+  const proof = receipt.anchor;
+  if (proof && Array.isArray(proof.proof) && typeof proof.root === "string" && receipt.leaf) {
+    const ok = verifyMerkleProof(receipt.leaf, proof.proof, proof.root);
+    anchor = ok ? "proof_valid" : "proof_invalid";
+    checks.push(ok ? pass("anchor_proof", `The receipt is included under anchor root ${proof.root.slice(0, 10)}…`) : fail("anchor_proof", "The inclusion proof does not lead from the receipt to the stated root."));
+  } else checks.push(skip("anchor_proof", "No anchor proof was included. A receipt is anchored within the hour, so fetch it again later to get one."));
+  return done(anchor);
+}
+
+/**
+ * Turn whatever was pasted into a receipt envelope. Accepts the receipt itself, a chat response holding `receipt`, or a
+ * receipt lookup response ({ data: ... }). Returns { receipt } or { error }.
+ */
+export function parseReceiptInput(text) {
+  const s = String(text || "").trim();
+  if (!s) return { error: "Paste a receipt first." };
+  let json;
+  try {
+    json = JSON.parse(s);
+  } catch {
+    return { error: "That is not valid JSON. Paste the whole receipt object." };
+  }
+  const candidates = [json, json?.receipt, json?.data, json?.data?.receipt];
+  const receipt = candidates.find((c) => c && typeof c === "object" && c.payload && typeof c.sig === "string" && typeof c.key_id === "string");
+  if (!receipt) return { error: "No receipt found. It needs payload, sig and key_id (a chat response's receipt field, or GET /api/v1/receipts/:id, works)." };
+  return { receipt };
+}
+
+/** A receipt the sidecar signed with its enclave key: the router's key list will not contain that key. */
+export const isEnclaveReceipt = (receipt) => receipt?.payload?.type === "anyroute.sidecar.receipt";
