@@ -86,8 +86,8 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
   const list = async (c: import("hono").Context) => {
     await ctx.catalog.ensureFresh();
     const need = (c.req.query("supported_parameters") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    // ?lane=attested keeps only models with at least one endpoint served under attested retention; public (or unset) keeps all.
-    const lane = parseLane(c.req.query("lane"), "`lane`");
+    // ?lane=attested (or unlinkable, where this router serves it) keeps only models with at least one endpoint served under attested retention; public (or unset) keeps all.
+    const lane = parseLane(c.req.query("lane"), "`lane`", { unlinkable: ctx.cfg.ohttp.enabled });
     // ?variant= keeps models of those variants (mainstream, native_low_refusal, abliterated). A restricted variant is
     // listed only while an attested provider that reports the classifier serves it.
     const variants = parseVariants(c.req.query("variant"));
@@ -95,7 +95,7 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
       .filter((m) => !m.hidden && servable(ctx, m).length > 0)
       .map((m) => modelJson(ctx, m))
       .filter((m) => need.every((p) => m.supported_parameters.includes(p)))
-      .filter((m) => lane !== "attested" || m.disclosure.endpoints.attested > 0)
+      .filter((m) => (lane !== "attested" && lane !== "unlinkable") || m.disclosure.endpoints.attested > 0)
       .filter((m) => !variants || variants.has(m.variant))
       .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id));
     return c.json({ data });

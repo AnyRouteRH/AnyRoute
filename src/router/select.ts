@@ -27,7 +27,7 @@ export type ProviderPrefs = {
   private?: boolean;
   /** Ceiling on how a prompt may be handled: "none" = attested retention only, "policy" = attested or documented no-retention policy, "any" = no filter (default). */
   disclosure?: DisclosureMax;
-  /** "public" (default, no filter) or "attested" (implies disclosure "none"). "unlinkable" is refused before selection. */
+  /** "public" (default, no filter), "attested" or "unlinkable" (both imply disclosure "none"). Whether a request may use "unlinkable" is decided before selection. */
   lane?: Lane;
 };
 

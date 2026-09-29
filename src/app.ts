@@ -44,6 +44,8 @@ import { siteRoutes } from "./api/site.ts";
 import { BlindIssuer } from "./blind/issuer.ts";
 import { ensurePool } from "./blind/redeem.ts";
 import { blindRoutes } from "./blind/routes.ts";
+import { OhttpKeys } from "./ohttp/keys.ts";
+import { ohttpRoutes } from "./ohttp/gateway.ts";
 
 export type AppOptions = {
   env?: Record<string, unknown>;
@@ -82,6 +84,7 @@ export async function createApp(opts: AppOptions = {}) {
     }, cfg.runtimeRole === "worker" ? cfg.workerJobs : undefined),
     rand: opts.rand,
     blind: cfg.blind.enabled ? new BlindIssuer(handle.db, cfg) : undefined,
+    ohttp: cfg.ohttp.enabled ? new OhttpKeys(handle.db, cfg) : undefined,
   };
   if (ctx.blind) await ensurePool(ctx);
 
@@ -116,6 +119,7 @@ export async function createApp(opts: AppOptions = {}) {
   dayzeroRoutes(app, ctx);
   creatorClaimRoutes(app, ctx);
   if (ctx.blind) blindRoutes(app, ctx);
+  if (ctx.ohttp) ohttpRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   paymasterRoutes(app, ctx);

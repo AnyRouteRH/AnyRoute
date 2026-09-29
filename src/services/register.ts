@@ -46,6 +46,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall) {
   jobs.register("paywith-aggregator", 60_000, async () => (ctx.chain.address("payWithStock") ? runPaywithAggregator(ctx) : { skipped: "not configured" }));
   // Weekly blind-token issuer key rotation: next epoch's keys are created ahead, ended epochs lose their private half.
   if (ctx.blind) jobs.register("blind-key-rotation", 3_600_000, () => ctx.blind!.rotate(), { atStart: true });
+  // Oblivious HTTP gateway key rotation (one key per epoch, a day by default): the next epoch's key is created ahead, expired keys lose their private half.
+  if (ctx.ohttp) jobs.register("ohttp-key-rotation", 3_600_000, () => ctx.ohttp!.rotate(), { atStart: true });
   jobs.register("alert-notifier", ALERT_INTERVAL_MS, () => runAlertNotifier(ctx), { atStart: true });
   // Long-polls Telegram: one getUpdates cycle per run, re-run every second (Jobs never overlaps a job with itself).
   if (cfg.telegram.botToken && router) {

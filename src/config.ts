@@ -269,6 +269,20 @@ const schema = z.object({
   BLIND_PURCHASE_RPM: int(10), // purchase requests per key per minute
   BLIND_REDEEM_RPM: int(600), // calls per minute per client address that present a token (tokens bring their own quota)
   BLIND_MAX_USD_PER_DAY: num(100), // most one account may convert into tokens per rolling day
+
+  // ---- Oblivious HTTP (RFC 9458) gateway and the "unlinkable" lane. Off by default: no route is registered and
+  // lane "unlinkable" keeps answering 501. Needs ANYROUTE_FEATURE_BLIND (the lane is paid with blind tokens).
+  OHTTP_ENABLED: bool.default(false),
+  OHTTP_KEY_EPOCH_SECONDS: int(86_400), // gateway HPKE keys rotate every epoch (one day)
+  OHTTP_KEY_GRACE_SECONDS: int(86_400), // an epoch's key still opens requests this long after the epoch ends
+  OHTTP_MAX_REQUEST_BYTES: int(8_388_608), // largest encapsulated request the gateway accepts
+  OHTTP_MAX_RESPONSE_BYTES: int(8_388_608), // largest response the gateway will encapsulate (larger becomes a 502)
+  OHTTP_RELAY_RPM: int(6000), // gateway requests per minute per authenticated relay
+  OHTTP_DIRECT_RPM: int(60), // gateway requests per minute per client address that did not come through a relay
+  OHTTP_PAD_BYTES: int(256), // responses are zero-padded to a multiple of this many bytes (0 = no padding)
+  OHTTP_GATEWAY_OPERATOR: z.string().default("AnyRoute"), // the name this router's own operator goes by in RELAY_OPERATORS
+  OHTTP_MIN_RELAY_OPERATORS: int(2), // production refuses to start with fewer relay operators than this that are not the gateway operator
+  RELAY_OPERATORS: opt, // JSON [{operator,url,key_id,secret_sha256}]: the relays clients may use; published at GET /api/v1/relays
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -330,7 +344,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.IPX_KEEPER_PRIVATE_KEY && (escrowMode || Object.values(roleKeys).some(Boolean))) throw new Error("IPX_KEEPER_PRIVATE_KEY must be isolated from every other signing role.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -554,6 +568,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     holders,
     ipx: ipxSettings(e),
     blind: blindSettings(e),
+    ohttp: ohttpSettings(e, production),
   };
 }
 
@@ -722,6 +737,72 @@ function blindSettings(e: Env) {
     maxUsdPerDay: e.BLIND_MAX_USD_PER_DAY,
     issuerName,
   };
+}
+
+// ---- Oblivious HTTP ------------------------------------------------------------------------------
+export type RelayOperator = { operator: string; url: string; keyId: string; secretSha256: string };
+
+const noControls = (v: string) => !/[\u0000-\u001f\u007f]/.test(v);
+const relayEntry = z
+  .object({
+    operator: z.string().trim().min(1).max(80).refine(noControls, "must not contain control characters"),
+    url: z.string().trim().min(8).max(300),
+    key_id: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/, "must be 1 to 64 letters, digits, dots, dashes or underscores"),
+    secret_sha256: z.string().regex(/^[0-9a-fA-F]{64}$/, "must be the hex SHA-256 of the secret the relay presents"),
+  })
+  .strict();
+
+function ohttpSettings(e: Env, production: boolean) {
+  const off = {
+    enabled: false as boolean,
+    keyEpochSeconds: e.OHTTP_KEY_EPOCH_SECONDS,
+    keyGraceSeconds: e.OHTTP_KEY_GRACE_SECONDS,
+    maxRequestBytes: e.OHTTP_MAX_REQUEST_BYTES,
+    maxResponseBytes: e.OHTTP_MAX_RESPONSE_BYTES,
+    relayRpm: e.OHTTP_RELAY_RPM,
+    directRpm: e.OHTTP_DIRECT_RPM,
+    padBytes: e.OHTTP_PAD_BYTES,
+    gatewayOperator: e.OHTTP_GATEWAY_OPERATOR.trim() || "AnyRoute",
+    minRelayOperators: e.OHTTP_MIN_RELAY_OPERATORS,
+    relays: [] as RelayOperator[],
+  };
+  if (!e.OHTTP_ENABLED) return off;
+  if (!e.ANYROUTE_FEATURE_BLIND) throw new Error("OHTTP_ENABLED requires ANYROUTE_FEATURE_BLIND=true: the unlinkable lane is paid with blind tokens.");
+  if (e.OHTTP_KEY_EPOCH_SECONDS < 60) throw new Error("OHTTP_KEY_EPOCH_SECONDS must be at least 60.");
+  if (e.OHTTP_KEY_GRACE_SECONDS < 0 || e.OHTTP_KEY_GRACE_SECONDS > 100 * e.OHTTP_KEY_EPOCH_SECONDS) throw new Error("OHTTP_KEY_GRACE_SECONDS must be between 0 and 100 epochs (key identifiers are 8 bits and repeat every 256 epochs).");
+  if (e.OHTTP_MAX_REQUEST_BYTES < 1024 || e.OHTTP_MAX_REQUEST_BYTES > 64 * 1024 * 1024) throw new Error("OHTTP_MAX_REQUEST_BYTES must be between 1 KiB and 64 MiB.");
+  if (e.OHTTP_MAX_RESPONSE_BYTES < 1024 || e.OHTTP_MAX_RESPONSE_BYTES > 64 * 1024 * 1024) throw new Error("OHTTP_MAX_RESPONSE_BYTES must be between 1 KiB and 64 MiB.");
+  if (e.OHTTP_RELAY_RPM < 1 || e.OHTTP_DIRECT_RPM < 1) throw new Error("OHTTP_RELAY_RPM and OHTTP_DIRECT_RPM must be at least 1.");
+  if (e.OHTTP_PAD_BYTES < 0 || e.OHTTP_PAD_BYTES > 65_536) throw new Error("OHTTP_PAD_BYTES must be between 0 and 65536.");
+  if (e.OHTTP_MIN_RELAY_OPERATORS < 0) throw new Error("OHTTP_MIN_RELAY_OPERATORS must not be negative.");
+  let raw: unknown = [];
+  if (e.RELAY_OPERATORS) {
+    try {
+      raw = JSON.parse(e.RELAY_OPERATORS);
+    } catch {
+      throw new Error("RELAY_OPERATORS must be a JSON array of {operator,url,key_id,secret_sha256}.");
+    }
+  }
+  const parsed = z.array(relayEntry).max(20).safeParse(raw);
+  if (!parsed.success) throw new Error(`RELAY_OPERATORS must be a JSON array of {operator,url,key_id,secret_sha256}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "list"}: ${i.message}`).join("; ")}`);
+  const relays: RelayOperator[] = parsed.data.map((r) => {
+    let u: URL;
+    try {
+      u = new URL(r.url);
+    } catch {
+      throw new Error(`RELAY_OPERATORS: "${r.key_id}" has an invalid url.`);
+    }
+    if (u.protocol !== "https:" && (production || u.protocol !== "http:")) throw new Error(`RELAY_OPERATORS: the url of "${r.key_id}" must be https.`);
+    if (u.username || u.password || u.hash) throw new Error(`RELAY_OPERATORS: the url of "${r.key_id}" must not carry credentials or a fragment.`);
+    return { operator: r.operator, url: u.toString(), keyId: r.key_id, secretSha256: r.secret_sha256.toLowerCase() };
+  });
+  if (new Set(relays.map((r) => r.keyId)).size !== relays.length) throw new Error("RELAY_OPERATORS: key_id values must be unique.");
+  if (new Set(relays.map((r) => r.secretSha256)).size !== relays.length) throw new Error("RELAY_OPERATORS: every relay needs its own secret.");
+  const gatewayOperator = off.gatewayOperator;
+  const others = new Set(relays.filter((r) => r.operator.toLowerCase() !== gatewayOperator.toLowerCase()).map((r) => r.operator.toLowerCase()));
+  if (production && others.size < e.OHTTP_MIN_RELAY_OPERATORS)
+    throw new Error(`OHTTP_ENABLED in production needs relays from at least ${e.OHTTP_MIN_RELAY_OPERATORS} operators other than "${gatewayOperator}" in RELAY_OPERATORS (found ${others.size}).`);
+  return { ...off, enabled: true, relays };
 }
 
 // ---- $ANYR holder perks ------------------------------------------------------------------------

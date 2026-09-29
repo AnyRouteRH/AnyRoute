@@ -17,6 +17,8 @@ import { requestHash } from "./chat.ts";
 import { payPerCall } from "../pay/percall.ts";
 import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
+import { gatewayOrigin } from "../ohttp/origin.ts";
+import { requireUnlinkable } from "../ohttp/lane.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken } from "../blind/redeem.ts";
 
 // POST /api/v1/embeddings — prepaid keys, or no key at all: an unpaid call gets the same 402 as chat
@@ -29,9 +31,11 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null; // $ANYR holders get a higher rpm
     const lim = key
       ? await ctx.limiter.take(`k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), 60_000)
-      : isBlindRequest(ctx, c.req.header("authorization"))
-        ? await ctx.limiter.take(`blind-ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.blind.redeemRpm, 60_000) // a token carries its own quota
-        : await ctx.limiter.take(`ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, 60_000);
+      : gatewayOrigin(c.req.raw)
+        ? { ok: true, retryAfterMs: 0 } // dispatched by the Oblivious HTTP gateway, which limited it per relay: there is no client address here
+        : isBlindRequest(ctx, c.req.header("authorization"))
+          ? await ctx.limiter.take(`blind-ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.blind.redeemRpm, 60_000) // a token carries its own quota
+          : await ctx.limiter.take(`ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, 60_000);
     if (!lim.ok) fail(429, "Rate limit exceeded.", "rate_limited", undefined, { "retry-after": String(Math.ceil(lim.retryAfterMs / 1000)) });
     // A Privacy Pass token (Authorization: PrivateToken) instead of a key, when ANYROUTE_FEATURE_BLIND is on.
     const pass = key ? null : await presentBlindToken(ctx, c.req.header("authorization"));
@@ -47,7 +51,8 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const promptTokens = Math.ceil(chars / 3) + 8;
     // Same disclosure ceiling and lane as chat (`provider.disclosure`, `provider.lane`, X-Anyroute-Disclosure-Max, X-Anyroute-Lane).
     const { disclosure: _wantDisclosure, lane: _wantLane, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs;
-    const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") });
+    const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") }, { unlinkable: ctx.cfg.ohttp.enabled });
+    if (disc.lane === "unlinkable") requireUnlinkable(ctx, c, { hasKey: !!key, hasToken: !!pass });
     const strict = disc.max !== "any";
     const plan = (p: ProviderPrefs) =>
       selectProviders({

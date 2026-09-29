@@ -101,7 +101,7 @@ export function classAllowed(cls: DisclosureClass, max: DisclosureMax): boolean 
 
 /** Why a candidate is excluded under a strict request (used in the `excluded` list of an error). */
 export function disclosureExclusion(max: DisclosureMax, lane: Lane, cls: DisclosureClass): string {
-  const asked = lane === "attested" ? 'lane "attested"' : `disclosure "${max}"`;
+  const asked = lane !== "public" ? `lane "${lane}"` : `disclosure "${max}"`;
   return max === "none"
     ? `${asked} requires attested retention with a fresh attestation (this provider is ${cls})`
     : `${asked} requires a documented no-retention policy with no legal hold (this provider is ${cls})`;
@@ -126,7 +126,7 @@ function parseOption<T extends string>(values: readonly T[], raw: unknown, name:
   return fail(400, `${name} must be one of: ${values.join(", ")}.`, "invalid_request");
 }
 
-/** `unlinkable` needs the blind-token payment and relay path, which this router does not run yet. */
+/** `unlinkable` needs the blind-token payment and relay path, which a router only runs with OHTTP_ENABLED. */
 export const unlinkableUnavailable = () =>
   new ApiError(
     501,
@@ -135,29 +135,36 @@ export const unlinkableUnavailable = () =>
     { lane: "unlinkable", available_lanes: ["public", "attested"] },
   );
 
-/** A lane from a body field, header or query string: null when unset, 400 when unrecognised, 501 for `unlinkable`. */
-export function parseLane(raw: unknown, name: string): Lane | null {
+export type LaneOptions = {
+  /** True when this router runs the Oblivious HTTP gateway and blind tokens (OHTTP_ENABLED). Otherwise `unlinkable` is a 501. */
+  unlinkable?: boolean;
+};
+
+/** A lane from a body field, header or query string: null when unset, 400 when unrecognised, 501 for `unlinkable` unless it is served. */
+export function parseLane(raw: unknown, name: string, opts: LaneOptions = {}): Lane | null {
   const lane = parseOption(LANES, raw, name);
-  if (lane === "unlinkable") throw unlinkableUnavailable();
+  if (lane === "unlinkable" && !opts.unlinkable) throw unlinkableUnavailable();
   return lane;
 }
 
 /**
  * Resolve `provider.disclosure` / `provider.lane` and the `X-Anyroute-Disclosure-Max` / `X-Anyroute-Lane`
  * headers into one request. When both a body field and a header are given, the stricter one wins: a
- * restriction is never relaxed by a second setting. Lane "attested" implies disclosure "none". Lane
- * "unlinkable" is refused.
+ * restriction is never relaxed by a second setting. Lanes "attested" and "unlinkable" imply disclosure "none".
+ * Lane "unlinkable" is refused (501) unless `opts.unlinkable`; when it is served, whether the request may use it
+ * (relay, token) is decided by the caller (ohttp/lane.ts), not here.
  */
 export function resolveDisclosureRequest(
   prefs: { disclosure?: unknown; lane?: unknown } | undefined,
   headers: { disclosureMax?: string | null; lane?: string | null },
+  opts: LaneOptions = {},
 ): DisclosureRequest {
   const disclosures = [parseOption(DISCLOSURE_MAX_VALUES, prefs?.disclosure, "`provider.disclosure`"), parseOption(DISCLOSURE_MAX_VALUES, headers.disclosureMax, "X-Anyroute-Disclosure-Max")];
-  const lanes = [parseLane(prefs?.lane, "`provider.lane`"), parseLane(headers.lane, "X-Anyroute-Lane")];
+  const lanes = [parseLane(prefs?.lane, "`provider.lane`", opts), parseLane(headers.lane, "X-Anyroute-Lane", opts)];
   const strictest = <T extends string>(xs: (T | null)[], rank: Record<T, number>, base: T): T => xs.reduce<T>((a, x) => (x && rank[x] > rank[a] ? x : a), base);
   const lane = strictest(lanes, LANE_RANK, "public");
   const max = strictest(disclosures, DISCLOSURE_RANK, "any");
-  return { max: lane === "attested" ? "none" : max, lane };
+  return { max: lane !== "public" ? "none" : max, lane };
 }
 
 /** The exclusion reason select.ts records for a provider that is in an outage (it is checked after the disclosure filter). */
@@ -177,7 +184,7 @@ export function disclosureRefusal(
   otherwiseServable: () => boolean,
 ): ApiError | null {
   if (req.max === "any") return null;
-  const wanted = req.lane === "attested" ? 'lane "attested"' : `provider.disclosure "${req.max}"`;
+  const wanted = req.lane !== "public" ? `lane "${req.lane}"` : `provider.disclosure "${req.max}"`;
   const requested = { disclosure: req.max, lane: req.lane };
   if (excluded.some((e) => e.reason === OUTAGE_REASON))
     return new ApiError(
@@ -192,7 +199,7 @@ export function disclosureRefusal(
   return new ApiError(
     409,
     `No provider for ${models.join(", ")} meets ${wanted}: it needs ${needs}. Nothing was sent to any provider and nothing was charged. Relax the option, or see GET /api/v1/models?lane=attested and GET /api/v1/disclosure/{providerId}.`,
-    req.lane === "attested" ? "lane_unavailable" : "disclosure_unavailable",
+    req.lane !== "public" ? "lane_unavailable" : "disclosure_unavailable",
     { requested, excluded: excluded.slice(0, 50) },
   );
 }

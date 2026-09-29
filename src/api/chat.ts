@@ -26,6 +26,8 @@ import { payPerCall } from "../pay/percall.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import type { HolderTier } from "../config.ts";
 import { COUNCIL_MODEL, applyDualDecoding, runCouncil, runDual, validateMulti } from "./council.ts";
+import { gatewayOrigin } from "../ohttp/origin.ts";
+import { requireUnlinkable } from "../ohttp/lane.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken, type BlindPass } from "../blind/redeem.ts";
 
 export type Kind = "chat" | "completion";
@@ -222,9 +224,12 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     await limitOrThrow(ctx, `k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), "requests");
   } else {
     // A token carries its own quota (one request), so token callers get their own, larger per-address limit:
-    // behind a relay many strangers share an address.
-    if (isBlindRequest(ctx, c.req.header("authorization"))) await limitOrThrow(ctx, `blind-ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.blind.redeemRpm, "requests");
-    else await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
+    // behind a relay many strangers share an address. A request the Oblivious HTTP gateway dispatched has no client
+    // address (the gateway already limited it per relay), so it has no per-address bucket here.
+    if (!gatewayOrigin(c.req.raw)) {
+      if (isBlindRequest(ctx, c.req.header("authorization"))) await limitOrThrow(ctx, `blind-ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.blind.redeemRpm, "requests");
+      else await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
+    }
     pass = await presentBlindToken(ctx, c.req.header("authorization"));
     const wa = c.req.header("x-wallet-auth");
     if (wa && !pass) wallet = await walletAuth(ctx, wa, bodySha);
@@ -245,7 +250,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   // Disclosure ceiling and lane: `provider.disclosure` / `provider.lane` and the X-Anyroute-* headers, the
   // stricter of the two winning. Defaults (any, public) add nothing to `prefs`, so existing requests route as before.
   const { disclosure: _wantDisclosure, lane: _wantLane, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs;
-  const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") });
+  const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") }, { unlinkable: ctx.cfg.ohttp.enabled });
+  // Lane "unlinkable" (OHTTP_ENABLED): only through a relay, only with a blind token. Checked before anything is priced or spent.
+  if (disc.lane === "unlinkable") requireUnlinkable(ctx, c, { hasKey: !!key, hasWallet: !!wallet, hasToken: !!pass });
   const strict = disc.max !== "any";
   const prefs: ProviderPrefs = { ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) };
 

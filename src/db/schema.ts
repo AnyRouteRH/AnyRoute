@@ -795,3 +795,25 @@ export const laneClaims = pgTable(
   },
   (t) => [index("lane_claims_model_idx").on(t.modelId, t.createdAt)],
 );
+
+// ---- Oblivious HTTP gateway keys (OHTTP_ENABLED) --------------------------------------------------------
+// One HPKE key per epoch. The public half (and its RFC 9458 key configuration) stays forever, so the published
+// key history never loses an entry; the private half is AES-GCM encrypted with APP_SECRET and destroyed when
+// the epoch's acceptance window ends, after which recorded traffic for that epoch can no longer be opened.
+export const ohttpKeys = pgTable(
+  "ohttp_keys",
+  {
+    epoch: integer("epoch").primaryKey(),
+    keyId: integer("key_id").notNull(), // the 8-bit key identifier of the key configuration: epoch mod 256
+    kemId: integer("kem_id").notNull(),
+    publicKey: text("public_key").notNull(), // base64url, raw 32 bytes
+    config: text("config").notNull(), // base64url, the encoded key configuration (RFC 9458 section 3.1)
+    configSha256: text("config_sha256").notNull(),
+    privateEnc: text("private_enc"), // raw private key, encrypted; null once destroyed
+    validFrom: ts("valid_from").notNull(),
+    acceptUntil: ts("accept_until").notNull(), // requests to this key are opened until here
+    revokedAt: ts("revoked_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("ohttp_keys_key_id_idx").on(t.keyId)],
+);
