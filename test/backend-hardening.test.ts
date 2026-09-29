@@ -119,6 +119,40 @@ describe("M-02: provider approval activates only the reviewed application revisi
     }
   });
 
+  test("setStaticModels is operator-only, pending-only, validated, and moves the review hash", async () => {
+    const setModels = (json: Record<string, unknown>, headers: Record<string, string> = admin) => h.request("/trpc/providers.setStaticModels", { method: "POST", headers, json });
+    const model = { id: "acme/tiny", context_length: 8192, pricing: { prompt: "0.000001", completion: 0.000002 } };
+    expect((await apply(spec("static-list"))).status).toBe(201);
+    const reviewed = await review("static-list");
+    expect((await setModels({ id: "static-list", models: [model] }, {})).status).toBe(401);
+    expect((await setModels({ id: "missing-provider", models: [model] })).status).toBe(404);
+    expect((await setModels({ id: "static-list", models: [{ id: "acme/bad" }] })).status).toBe(400);
+    expect((await setModels({ id: "static-list", models: [] })).status).toBe(400);
+    expect((await setModels({ id: "static-list", models: Array.from({ length: 501 }, (_, i) => ({ ...model, id: `acme/m${i}` })) })).status).toBe(400);
+    expect((await row("static-list")).staticModels).toBeNull();
+    const set = await setModels({ id: "static-list", models: [model] });
+    expect(set.status).toBe(200);
+    const stored = (await row("static-list")).staticModels as Array<{ id: string; pricing: { prompt: string; completion: string } }>;
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ id: "acme/tiny", pricing: { prompt: "0.000001", completion: "0.000002" } });
+    const changed = await review("static-list");
+    expect(changed.reviewHash).not.toBe(reviewed.reviewHash);
+    expect((await set.json()).result.data.reviewHash).toBe(changed.reviewHash);
+    // An approval issued against the earlier revision is refused; the current hash works.
+    expect((await approve({ id: "static-list", review_hash: reviewed.reviewHash })).status).toBe(409);
+    expect((await row("static-list")).status).toBe("applied");
+    // null clears the list and restores the original hash.
+    expect((await setModels({ id: "static-list", models: null })).status).toBe(200);
+    expect((await row("static-list")).staticModels).toBeNull();
+    expect((await review("static-list")).reviewHash).toBe(reviewed.reviewHash);
+    expect((await setModels({ id: "static-list", models: [model] })).status).toBe(200);
+    const current = await review("static-list");
+    expect((await approve({ id: "static-list", review_hash: current.reviewHash })).status).toBe(200);
+    // Once approved, the list can no longer change.
+    expect((await setModels({ id: "static-list", models: null })).status).toBe(409);
+    expect((await row("static-list")).staticModels).toHaveLength(1);
+  });
+
   test("approval requires a review hash, a pending application, and cannot be bypassed with setStatus", async () => {
     expect((await apply({ ...spec("needs-hash"), api_key: "applicant-upstream-key" })).status).toBe(201);
     expect((await approve({ id: "needs-hash" })).status).toBe(400);

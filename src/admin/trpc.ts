@@ -19,6 +19,7 @@ import { disclosureInput, writeDisclosure } from "../api/disclosure.ts";
 import { laneInput, writeModelLane } from "../api/lane.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { chainKeyHashOf } from "../chain/keys.ts";
+import { parseProviderModels } from "../services/registry.ts";
 
 // Admin / account API over tRPC v11 at /trpc. Operator procedures need the ADMIN_TOKEN
 // (Authorization: Bearer <ADMIN_TOKEN> or x-admin-token); account procedures accept an API key.
@@ -89,6 +90,24 @@ export const adminRouter = t.router({
       });
       await ctx.app.jobs.run("provider-registry").catch(() => undefined);
       return { id: input.id, status, review_hash: input.review_hash };
+    }),
+    /** Set (or clear with null) the provider-spec model list used instead of GET /models, for APIs whose
+     * catalogue lacks pricing. The list is part of the review hash, so it can change only while the
+     * application is pending, and any earlier approval hash is then refused. */
+    setStaticModels: operator.input(z.object({ id: z.string(), models: z.array(z.unknown()).min(1).max(500).nullable() })).mutation(async ({ ctx, input }) => {
+      let staticModels: unknown[] | null = null;
+      if (input.models) {
+        const parsed = parseProviderModels({ data: input.models });
+        if (parsed.errors.length) throw new TRPCError({ code: "BAD_REQUEST", message: `Invalid models: ${parsed.errors.slice(0, 5).join("; ")}` });
+        staticModels = parsed.ok;
+      }
+      return ctx.app.db.transaction(async (tx) => {
+        const [provider] = await tx.select().from(providers).where(eq(providers.id, input.id)).for("update");
+        if (!provider) throw new TRPCError({ code: "NOT_FOUND" });
+        if (provider.status !== "applied") throw new TRPCError({ code: "CONFLICT", message: "Static models can change only while the application is pending." });
+        const [updated] = await tx.update(providers).set({ staticModels, updatedAt: new Date() }).where(eq(providers.id, input.id)).returning();
+        return { id: input.id, models: staticModels?.length ?? 0, reviewHash: applicationReviewHash(updated!) };
+      });
     }),
     setStatus: operator.input(z.object({ id: z.string(), status: z.enum(["applied", "shadow", "live", "suspended", "delisted"]) })).mutation(async ({ ctx, input }) => {
       // A pending application becomes active only through `approve`, which binds it to the reviewed revision.
