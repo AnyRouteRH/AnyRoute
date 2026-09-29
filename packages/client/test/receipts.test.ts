@@ -71,6 +71,25 @@ describe("router receipts and the published key set", () => {
     expect((await verifyReceipt(r, { keys: { keys: [other] } })).valid).toBe(false);
   });
 
+  test("a receipt that records the provider's attestation (attested council, attested dual verification) verifies, and the record is signed", async () => {
+    const k = makeRouterKey();
+    const jwk = await k.ready;
+    const ref = { provider: "p", tee: "tdx", report_hash: "aa".repeat(32), attested_at: "2026-09-15T09:59:00.000Z", tls_pin: { spki_sha256: "bb".repeat(32), attestation_ref: "cc".repeat(32) } };
+    const withRef = { ...payload, attestation: ref.report_hash, attestation_ref: ref, council: { role: "judge", attested: true, attestation_refs: [{ role: "judge", receipt_id: "gen-1", ...ref }] } };
+    const r = await signReceipt(k.privateKey, jwk.kid, withRef);
+    expect((await verifyReceipt(r, { keys: { keys: [jwk] } })).valid).toBe(true);
+    // Receipts made before the field existed verify the same way.
+    expect((await verifyReceipt(await signReceipt(k.privateKey, jwk.kid, payload), { keys: { keys: [jwk] } })).valid).toBe(true);
+    // Changing the reference, or the council's list of them, breaks the signature.
+    const forgedOwn = { ...r, payload: { ...withRef, attestation_ref: { ...ref, report_hash: "00".repeat(32) } } };
+    const forgedList = { ...r, payload: { ...withRef, council: { ...withRef.council, attestation_refs: [] } } };
+    for (const forged of [forgedOwn, forgedList]) {
+      const v = await verifyReceipt(forged, { keys: { keys: [jwk] } });
+      expect(v.valid).toBe(false);
+      expect(ok(v, "signature")).toBe("fail");
+    }
+  });
+
   test("a key entry whose id does not match its bytes is rejected", async () => {
     const k = makeRouterKey();
     const jwk = await k.ready;

@@ -19,6 +19,7 @@ import {
   COUNCIL_MODEL,
   DUAL_SEED,
   JUDGE_MAX_TOKENS,
+  attestationRefOf,
   compareOutputs,
   judgeMessages,
   labelFor,
@@ -27,6 +28,7 @@ import {
   parseJudgeChoice,
   transcript,
   weakestServed,
+  type AttestationRef,
 } from "../router/council.ts";
 import type { KeyRow } from "./auth.ts";
 import { servedDisclosure } from "./disclosure.ts";
@@ -39,6 +41,12 @@ import type * as Chat from "./chat.ts";
 // billed and receipted on its own. The worst case of all calls is held before anything is sent, so the
 // caller's balance and key budget bound the whole request, and every hold that is not settled is
 // released on every exit.
+//
+// Attested mode (`council.attested: true`, or lane "attested" on either request): every call, the judge included, goes
+// only to providers whose retention is declared "attested" and whose attestation the router holds fresh (the same test
+// as the attested lane). Nothing is downgraded or dropped: a council with any member, or a judge, that has no attested
+// provider, or a dual verification without two different attested providers of the model, is refused with a 409 before
+// anything is held or sent. Each call's receipt records the attestation reference the router verified for its provider.
 
 export { COUNCIL_MODEL };
 export type Toolkit = typeof Chat.toolkit;
@@ -188,6 +196,10 @@ function prepare(leg: Leg, out: Extract<LegResult, { ok: true }>, guardCfg: Guar
   return { leg, r: out.r, json, usage, text, redactions, doneAt: out.doneAt };
 }
 
+/** The attestation reference of the provider that served a call (the router's own record of it), or null when it holds none. */
+const refOf = (cand: Candidate): AttestationRef | null =>
+  attestationRefOf({ id: cand.providerId, teeKind: cand.provider.teeKind, attestationHash: cand.provider.attestationHash, attestedAt: cand.provider.attestedAt, tlsPin: cand.provider.tlsPin });
+
 /** A member or leg receipt row for the `council` / `verification` blocks. */
 const rowOf = (label: string, d: Done, fin: Fin) => ({
   label,
@@ -199,6 +211,12 @@ const rowOf = (label: string, d: Done, fin: Fin) => ({
   latency_ms: Math.round(d.r.latencyMs),
   status: "ok" as const,
 });
+
+/** A call's receipt field for its provider's attestation reference: only in attested mode, so other receipts are unchanged. */
+const refPayload = (attested: boolean, cand: Candidate) => {
+  const ref = attested ? refOf(cand) : null;
+  return ref ? { attestation_ref: ref } : {};
+};
 
 /** What the caller was billed across all calls, in the shape of a normal `usage` object. */
 function aggregateUsage(fins: Fin[], withHolder: boolean) {
@@ -231,10 +249,17 @@ const firstFinish = (json: any) => ({ finish: json?.choices?.[0]?.finish_reason 
 const FREE_TEXT_ONLY = ["tools", "tool_choice", "response_format", "structured_outputs"];
 
 export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
-  const { ctx, c, kind, body, bodySha, t0, key, wallet, prefs, disc } = p;
-  let tier = p.tier;
+  const { ctx, c, kind, body, bodySha, t0, key, wallet } = p;
+  let { tier, prefs, disc } = p;
   validateMulti(ctx, kind, body);
   const spec = parseCouncilSpec(body.council, ctx.cfg.council);
+  // Attested council: `council.attested: true` or lane "attested". Either way it is the attested lane for every member and
+  // the judge (retention declared attested, attestation fresh), so a request that only set the flag is held to it here.
+  const attested = spec.attested === true || disc.lane === "attested";
+  if (attested && disc.lane === "public") {
+    disc = { max: "none", lane: "attested" };
+    prefs = { ...prefs, disclosure: "none", lane: "attested" };
+  }
   if (spec.mode === "fuse")
     for (const k of FREE_TEXT_ONLY) if (body[k] != null) fail(400, `Fuse mode writes free text, so \`${k}\` is not supported; use council.mode "judge".`, "invalid_council");
 
@@ -262,9 +287,18 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
   const { council: _council, model: _model, ...shared } = body;
   const promptTokens = estimatePromptTokens(shared);
   const excludedAll: unknown[] = [];
+  // An attested council never drops or downgrades a seat: a member or the judge with no attested provider refuses the whole
+  // request (the same 409, or 503 while attested providers are down, a single attested request gets), before anything is held.
+  const seatError = (e: unknown, seat: string) => (attested && isApiError(e) && (e.status === 409 || e.status === 503) ? Object.assign(e, { metadata: { ...e.metadata, council_seat: seat } }) : e);
   const legs: Leg[] = seats.map((s, i) => {
     const memberBody = { ...shared, model: s.requested };
-    const { targets, excluded } = tk.selectTargets(ctx, { resolved: [s], prefs, params: tk.requestParams(memberBody), promptTokens, byok, disc });
+    let planned: ReturnType<Toolkit["selectTargets"]>;
+    try {
+      planned = tk.selectTargets(ctx, { resolved: [s], prefs, params: tk.requestParams(memberBody), promptTokens, byok, disc });
+    } catch (e) {
+      throw seatError(e, `member ${labelFor(i)}`);
+    }
+    const { targets, excluded } = planned;
     if (!targets.length) fail(404, `No providers match council member ${s.requested} under this request's routing preferences.`, "no_providers", { excluded: excluded.slice(0, 50) });
     excludedAll.push(...excluded.slice(0, 10));
     return { label: labelFor(i), model: s.model, requested: s.requested, body: memberBody, targets, promptTokens, holdId: genId(), hold: holdFor(ctx, targets, memberBody, promptTokens, modeForPrice, byok) };
@@ -281,10 +315,16 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
     ...(body.provider !== undefined ? { provider: body.provider } : {}),
   };
   const skeletonTokens = estimatePromptTokens({ messages: skeleton });
+  let judgePlan: ReturnType<Toolkit["selectTargets"]>;
+  try {
+    judgePlan = tk.selectTargets(ctx, { resolved: [judgeSeat], prefs, params: tk.requestParams(judgeBase), promptTokens: skeletonTokens, byok, disc });
+  } catch (e) {
+    throw seatError(e, "judge");
+  }
+  const { targets: judgeTargets, excluded: judgeExcluded } = judgePlan;
+  if (!judgeTargets.length) fail(404, `No providers match the council judge ${spec.judge} under this request's routing preferences.`, "no_providers", { excluded: judgeExcluded.slice(0, 50) });
   const answerTokens = legs.reduce((sum, l) => sum + Math.ceil((maxOutFor(ctx, l.targets, l.body, l.promptTokens) * 4) / 3) + 40, 0);
   const judgeWorstTokens = skeletonTokens + answerTokens;
-  const { targets: judgeTargets, excluded: judgeExcluded } = tk.selectTargets(ctx, { resolved: [judgeSeat], prefs, params: tk.requestParams(judgeBase), promptTokens: skeletonTokens, byok, disc });
-  if (!judgeTargets.length) fail(404, `No providers match the council judge ${spec.judge} under this request's routing preferences.`, "no_providers", { excluded: judgeExcluded.slice(0, 50) });
   const judgeHoldId = genId();
   const judgeHold = holdFor(ctx, judgeTargets, { ...judgeBase, messages: skeleton }, judgeWorstTokens, modeForPrice, byok);
 
@@ -322,6 +362,7 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
     if (abort.signal.aborted) throw abort.signal.reason;
 
     const members: Record<string, unknown>[] = [];
+    const memberRefs: Record<string, unknown>[] = [];
     const answered: { leg: Leg; done: Done }[] = [];
     const fins: Fin[] = [];
     let membersCharged = 0n;
@@ -343,12 +384,14 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
         nativeFinish: firstFinish(done.json).native,
         generationMs: done.doneAt - t0,
         cancelled: false,
-        extra: { payload: { council: { role: "member", label: leg.label, mode: spec.mode, parent: judgeHoldId } }, budget: budget(leg) },
+        extra: { payload: { council: { role: "member", label: leg.label, mode: spec.mode, parent: judgeHoldId }, ...refPayload(attested, done.r.candidate) }, budget: budget(leg) },
       });
       open.delete(leg.holdId);
       fins.push(fin);
       membersCharged += fin.charged;
       members.push(rowOf(leg.label, done, fin));
+      const memberRef = attested ? refOf(done.r.candidate) : null;
+      if (memberRef) memberRefs.push({ role: "member", label: leg.label, receipt_id: fin.id, ...memberRef });
       answered.push({ leg, done });
     }
     const failureMeta = () => ({ members, members_cost_usd: picoToUsd(membersCharged), receipts: fins.map((f) => f.id) });
@@ -384,20 +427,31 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
     }
     const answerText = source?.text ?? "";
     const outcome = spec.mode === "fuse" ? "fused" : selected ? "selected" : "invalid_verdict";
+    // The top-level receipt stands for every call, so it never claims more than the weakest of them.
+    const judgeServed = servedDisclosure(ctx, judged.r.candidate);
+    const served = weakestServed([...fins.map((f) => ({ class: f.disclosure, simulated: f.simulated })), judgeServed]);
+    // Attested council: what the router checked for every provider that took part, in the signed block. `attested` is true only
+    // when every call was served under the attested class and has a reference, so it is a fact about these calls and not a request echo.
+    const judgeRef = attested ? refOf(judged.r.candidate) : null;
+    const attestedBlock = attested
+      ? {
+          attested: served.class === "attested" && !!judgeRef && memberRefs.length === answered.length,
+          ...(served.simulated ? { attestation_simulated: true } : {}),
+          attestation_refs: [...memberRefs, ...(judgeRef ? [{ role: "judge", receipt_id: judgeHoldId, ...judgeRef }] : [])],
+        }
+      : {};
     const signedBlock = {
       role: "judge",
       mode: spec.mode,
       requested: COUNCIL_MODEL,
       members,
       members_cost: picoToUsdString(membersCharged),
-      judge: { model: judged.r.model.id, provider: judged.r.candidate.providerId, disclosure: servedDisclosure(ctx, judged.r.candidate).class, receipt_id: judgeHoldId, request_sha256: tk.requestHash(judgeBody) },
+      judge: { model: judged.r.model.id, provider: judged.r.candidate.providerId, disclosure: judgeServed.class, receipt_id: judgeHoldId, request_sha256: tk.requestHash(judgeBody) },
       selected,
       outcome,
       answer_sha256: source ? sha256(answerText) : null,
+      ...attestedBlock,
     };
-    // The top-level receipt stands for every call, so it never claims more than the weakest of them.
-    const judgeServed = servedDisclosure(ctx, judged.r.candidate);
-    const served = weakestServed([...fins.map((f) => ({ class: f.disclosure, simulated: f.simulated })), judgeServed]);
     const judgeFin = await tk.finalize({
       ...common(judgeLeg, bodySha),
       r: judged.r,
@@ -407,7 +461,7 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
       nativeFinish: firstFinish(delivered ?? judged.json).native,
       generationMs: Date.now() - t0,
       cancelled: false,
-      extra: { payload: { council: signedBlock }, budget: budget(judgeLeg), served },
+      extra: { payload: { council: signedBlock, ...(judgeRef ? { attestation_ref: judgeRef } : {}) }, budget: budget(judgeLeg), served },
     });
     open.delete(judgeHoldId);
     fins.push(judgeFin);
@@ -472,15 +526,26 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
   validateMulti(ctx, kind, body);
   if (resolved.length !== 1 || targets.length !== 1) fail(400, "`verify: \"dual\"` works on exactly one model; remove `models`.", "invalid_verify");
   const target = targets[0];
+  // Lane "attested": `disc` already limits every candidate to providers that are attested now (retention declared attested,
+  // fresh attestation); the two legs must also be two different providers, and each receipt records its provider's attestation.
+  const attested = disc.lane === "attested";
 
   // Two providers of the same model, taken alternately from the routing order so each call keeps its own fallbacks.
-  const eligible = target.ordered.filter(decodesDeterministically);
+  const eligible = target.ordered.filter(decodesDeterministically).filter((cand, i, all) => !attested || all.findIndex((x) => x.providerId === cand.providerId) === i);
   if (eligible.length < 2)
-    fail(409, `Dual verification needs two providers of ${target.model.id} that support temperature and seed; ${eligible.length} found under this request's routing preferences.`, "verification_unavailable", {
-      model: target.model.id,
-      eligible: eligible.map((cand) => cand.providerId),
-      excluded: [...p.excluded, ...target.ordered.filter((cand) => !decodesDeterministically(cand)).map((cand) => ({ model: target.model.id, provider: cand.providerId, reason: "does not support temperature and seed" }))].slice(0, 50),
-    });
+    fail(
+      409,
+      attested
+        ? `Dual verification on lane "attested" needs two different attested providers of ${target.model.id} (retention declared "attested" and a fresh attestation) that support temperature and seed; ${eligible.length} found. Nothing was sent to any provider, no provider that is not attested was substituted, and nothing was charged. See GET /api/v1/models?lane=attested.`
+        : `Dual verification needs two providers of ${target.model.id} that support temperature and seed; ${eligible.length} found under this request's routing preferences.`,
+      "verification_unavailable",
+      {
+        model: target.model.id,
+        eligible: eligible.map((cand) => cand.providerId),
+        excluded: [...p.excluded, ...target.ordered.filter((cand) => !decodesDeterministically(cand)).map((cand) => ({ model: target.model.id, provider: cand.providerId, reason: "does not support temperature and seed" }))].slice(0, 50),
+        ...(attested ? { requested: { lane: "attested", disclosure: "none" } } : {}),
+      },
+    );
   const modeForPrice: Mode = billing?.mode ?? "per_call";
   const legs: Leg[] = [0, 1].map((i) => {
     const targetsOf = [{ model: target.model, ordered: eligible.filter((_, j) => j % 2 === i) }];
@@ -507,8 +572,18 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
     return tk.finalize({
       ctx, c, body, billing: bill, holdId: leg.holdId, t0, bodySha, stream: false, kind, byok, meta, guardCfg, promptTokens, tier, disc, planned: null,
       r: done.r, usage: done.usage, responseText: done.text, finishReason: f.finish, nativeFinish: f.native, generationMs: done.doneAt - t0, cancelled: false,
-      extra: { payload: { verification } },
+      extra: { payload: { verification, ...refPayload(attested, done.r.candidate) } },
     });
+  };
+  // What the router checked for the providers that answered, for the `verification` block (attested lane only).
+  const attestedBlock = (ran: { label: string; receiptId: string; done: Done }[]) => {
+    if (!attested) return {};
+    const refs = ran.flatMap((x) => {
+      const ref = refOf(x.done.r.candidate);
+      return ref ? [{ label: x.label, receipt_id: x.receiptId, ...ref }] : [];
+    });
+    const every = ran.every((x) => servedDisclosure(ctx, x.done.r.candidate).class === "attested");
+    return { attested: every && refs.length === ran.length, attestation_refs: refs };
   };
 
   try {
@@ -522,7 +597,7 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
       const fins: Fin[] = [];
       for (const [i, d] of done.entries()) {
         if (!d) continue;
-        fins.push(await settle(legs[i], d, { mode: "dual", agree: null, complete: false, receipts: ids }));
+        fins.push(await settle(legs[i], d, { mode: "dual", agree: null, complete: false, receipts: ids, ...attestedBlock([{ label: legs[i].label, receiptId: ids[i], done: d }]) }));
         open.delete(legs[i].holdId);
       }
       const failed = outcomes.flatMap((o, i) => (o.ok ? [] : [{ leg: legs[i].label, providers: legs[i].targets[0].ordered.map((cand) => cand.providerId), error: reasonOf(tk, o) }]));
@@ -546,6 +621,10 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
       seed,
       temperature: 0,
       quantizations: [a.r.candidate.quant, b.r.candidate.quant],
+      ...attestedBlock([
+        { label: legs[0].label, receiptId: ids[0], done: a },
+        { label: legs[1].label, receiptId: ids[1], done: b },
+      ]),
     };
     const finA = await settle(legs[0], a, verification);
     open.delete(legs[0].holdId);

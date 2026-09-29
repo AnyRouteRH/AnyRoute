@@ -446,8 +446,11 @@ export type Common = {
 
 /** Extra inputs for calls made on behalf of a larger request (council members, dual verification). */
 export type FinalizeExtra = {
-  /** Extra signed receipt fields (`council`, `verification`); never replaces a base field. */
-  payload?: { council?: unknown; verification?: unknown };
+  /**
+   * Extra signed receipt fields; never replaces a base field. `attestation_ref` is set only for calls made under an
+   * attested council or attested dual verification (see router/council.ts `attestationRefOf`); other receipts omit it.
+   */
+  payload?: { council?: unknown; verification?: unknown; attestation_ref?: unknown };
   /** The most this call may charge: usage above it is not billed to the caller (reported as `over_budget`). */
   budget?: Pico;
   /**

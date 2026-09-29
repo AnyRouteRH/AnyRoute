@@ -8,8 +8,11 @@ import type { DisclosureClass } from "./disclosure.ts";
 // What these features do and do not establish:
 // - A council answer is chosen (judge) or written (fuse) by a model. It is a second opinion, not a proof.
 // - Dual verification shows that two providers produced the same output for the same request under
-//   deterministic settings. It says nothing about whether either provider is attested; that is
-//   reported separately per call, from the same fields a normal receipt uses.
+//   deterministic settings. It says nothing about whether either provider is attested unless the request
+//   asked for lane "attested"; that is reported separately per call, from the same fields a normal receipt uses.
+// - An attested council (`council.attested: true`, or lane "attested") only ever uses providers the router
+//   currently holds a fresh, verified attestation for, and it is refused rather than downgraded. The attestation
+//   references it reports are the ones the router checked, never a provider's own claim.
 
 export const COUNCIL_MODEL = "anyroute/council";
 export const MIN_MEMBERS = 2;
@@ -20,10 +23,18 @@ export const DUAL_SEED = 1_234_567;
 export const JUDGE_MAX_TOKENS = 512;
 
 export type CouncilMode = "judge" | "fuse";
-export type CouncilSpec = { models: string[]; judge: string; mode: CouncilMode; maxCostUsd: number | null; minMembers: number };
+export type CouncilSpec = {
+  models: string[];
+  judge: string;
+  mode: CouncilMode;
+  maxCostUsd: number | null;
+  minMembers: number;
+  /** Present (true) only when the request set `council.attested: true`; absent otherwise. */
+  attested?: true;
+};
 export type CouncilDefaults = { models: string[]; judge: string | null; mode: CouncilMode };
 
-const SPEC_KEYS = new Set(["models", "judge", "mode", "max_cost_usd", "min_members"]);
+const SPEC_KEYS = new Set(["models", "judge", "mode", "max_cost_usd", "min_members", "attested"]);
 
 /** Read `body.council` over the configured defaults. Every problem is a 400: nothing is guessed. */
 export function parseCouncilSpec(raw: unknown, defaults: CouncilDefaults): CouncilSpec {
@@ -60,7 +71,8 @@ export function parseCouncilSpec(raw: unknown, defaults: CouncilDefaults): Counc
       bad(`\`council.min_members\` must be an integer from ${MIN_MEMBERS} to the number of members.`);
     minMembers = c.min_members as number;
   }
-  return { models: list, judge: (judge as string).trim(), mode: mode as CouncilMode, maxCostUsd, minMembers };
+  if (c.attested != null && typeof c.attested !== "boolean") bad("`council.attested` must be true or false.");
+  return { models: list, judge: (judge as string).trim(), mode: mode as CouncilMode, maxCostUsd, minMembers, ...(c.attested === true ? { attested: true as const } : {}) };
 }
 
 // ---- Text of a conversation and of a completion ------------------------------------------------
@@ -114,6 +126,44 @@ const DISCLOSURE_ORDER: Record<DisclosureClass, number> = { attested: 0, policy:
 export function weakestServed(calls: { class: DisclosureClass; simulated: boolean }[]): { class: DisclosureClass; simulated: boolean } {
   const cls = calls.reduce<DisclosureClass>((w, c) => (DISCLOSURE_ORDER[c.class] > DISCLOSURE_ORDER[w] ? c.class : w), calls[0]?.class ?? "vendor-forwarded");
   return { class: cls, simulated: calls.some((c) => c.simulated) };
+}
+
+// ---- Attestation references ---------------------------------------------------------------------------
+
+/**
+ * What a receipt records about the attestation behind one call: the hash of the report the router verified, and the
+ * TLS key the router's connection to the provider was pinned to. Both come from the router's own checks
+ * (services/attestor.ts), not from anything the provider sent with the response. `tls_pin` is null when the provider
+ * did not attest through a self-signed certificate. `simulated` marks development evidence (never accepted in production).
+ */
+export type AttestationRef = {
+  provider: string;
+  tee: string | null;
+  report_hash: string;
+  attested_at: string | null;
+  tls_pin: { spki_sha256: string; attestation_ref: string | null } | null;
+  simulated?: true;
+};
+
+export type AttestableProvider = {
+  id: string;
+  teeKind: string | null;
+  attestationHash: string | null;
+  attestedAt: Date | null;
+  tlsPin?: { spkiSha256: string; attestationRef: string } | null;
+};
+
+/** The reference for a provider the router holds an attestation for, or null when it holds none (nothing is invented). */
+export function attestationRefOf(p: AttestableProvider): AttestationRef | null {
+  if (!p.attestationHash) return null;
+  return {
+    provider: p.id,
+    tee: p.teeKind,
+    report_hash: p.attestationHash,
+    attested_at: p.attestedAt?.toISOString() ?? null,
+    tls_pin: p.tlsPin ? { spki_sha256: p.tlsPin.spkiSha256, attestation_ref: p.tlsPin.attestationRef || null } : null,
+    ...(p.teeKind === "dev" ? { simulated: true as const } : {}),
+  };
 }
 
 // ---- Dual verification ---------------------------------------------------------------------------
