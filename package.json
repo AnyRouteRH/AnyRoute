@@ -22,7 +22,11 @@
     "key": "bun scripts/key.ts",
     "deploy:local": "bun scripts/deploy-local.ts",
     "services:up": "scripts/services.sh up",
-    "services:down": "scripts/services.sh down"
+    "services:down": "scripts/services.sh down",
+    "monitor": "bun scripts/monitor.ts",
+    "alert:drill": "bun scripts/alert-drill.ts",
+    "backup:offsite": "bun scripts/backup-offsite.ts",
+    "compose:check": "bun scripts/compose-graph-check.ts"
   },
   "engines": {
     "bun": ">=1.3.0"
