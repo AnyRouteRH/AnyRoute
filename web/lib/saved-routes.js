@@ -13,6 +13,27 @@ export const SORTS = [
   ["latency", "Lowest latency first"],
   ["throughput", "Highest throughput first"],
 ];
+/**
+ * Privacy of a route, as one choice. "attested" pins provider.lane (the router serves it only from providers with a
+ * fresh, verified attestation and refuses otherwise); "none" and "policy" pin provider.disclosure.
+ */
+export const PRIVACY = [
+  ["", "Standard: any provider"],
+  ["policy", "No-retention policy or better"],
+  ["none", "Attested retention only"],
+  ["attested", "Private (attested lane)"],
+];
+const PRIVACY_LABEL = { attested: "Private: attested lane", none: "Attested retention only", policy: "No-retention policy or better" };
+/** The choices that the model list of GET /api/v1/models?lane=attested can be checked against. */
+export const usesAttestedList = (privacy) => privacy === "attested" || privacy === "none";
+/** The route's models (as typed) that are missing from `ids`, a Set of catalog ids available on the lane. */
+export const modelsOffList = (models, ids) => (models || []).filter((m) => !ids.has(baseModelId(m)));
+
+/** The privacy choice a stored provider section amounts to. */
+export function privacyOf(provider) {
+  if (provider?.lane === "attested") return "attested";
+  return provider?.disclosure === "none" || provider?.disclosure === "policy" ? provider.disclosure : "";
+}
 const SORT_LABEL = { price: "Cheapest provider first", latency: "Fastest first token", throughput: "Highest throughput" };
 
 /** Default parameters the form edits; any other stored parameter is kept as-is. */
@@ -73,13 +94,13 @@ export function stopToText(stop) {
 const emptyParams = () => Object.fromEntries(PARAM_FIELDS.map((f) => [f.key, ""]));
 
 export function emptyDraft() {
-  return { slug: "", name: "", description: "", models: [], sort: "", allowFallbacks: true, zdr: false, maxPrompt: "", maxCompletion: "", params: emptyParams(), stop: "", extraProvider: {}, extraParams: {}, extraMaxPrice: {} };
+  return { slug: "", name: "", description: "", models: [], privacy: "", sort: "", allowFallbacks: true, zdr: false, maxPrompt: "", maxCompletion: "", params: emptyParams(), stop: "", extraProvider: {}, extraParams: {}, extraMaxPrice: {} };
 }
 
 /** Form state for an existing route. Fields the form does not edit are carried through unchanged. */
 export function routeToDraft(route) {
   const c = route?.config || {};
-  const { sort, allow_fallbacks, zdr, max_price, ...extraProvider } = c.provider || {};
+  const { sort, allow_fallbacks, zdr, max_price, lane, disclosure, ...extraProvider } = c.provider || {};
   const { prompt, completion, ...extraMaxPrice } = max_price || {};
   const params = emptyParams();
   const extraParams = {};
@@ -97,6 +118,7 @@ export function routeToDraft(route) {
     name: route?.name || "",
     description: route?.description || "",
     models: [...(c.models || [])],
+    privacy: privacyOf({ lane, disclosure }),
     sort: typeof sort === "string" ? sort : "",
     allowFallbacks: allow_fallbacks !== false,
     zdr: zdr === true,
@@ -135,6 +157,8 @@ export function draftToRoute(draft, { catalogIds } = {}) {
 
   const provider = { ...draft.extraProvider };
   if (draft.sort) provider.sort = draft.sort;
+  if (draft.privacy === "attested") provider.lane = "attested";
+  else if (draft.privacy === "none" || draft.privacy === "policy") provider.disclosure = draft.privacy;
   if (!draft.allowFallbacks) provider.allow_fallbacks = false;
   if (draft.zdr) provider.zdr = true;
   const maxPrice = { ...draft.extraMaxPrice };
@@ -165,6 +189,15 @@ export function draftToRoute(draft, { catalogIds } = {}) {
   return { ok: !Object.keys(errors).length, errors, slug, name, description, config };
 }
 
+/**
+ * The message for a save the router refused because the route's privacy setting cannot be met (409
+ * route_lane_unavailable), or null for any other error.
+ */
+export function laneRefusal(err) {
+  const off = err?.type === "route_lane_unavailable" && Array.isArray(err.metadata?.unavailable_models) ? err.metadata.unavailable_models : null;
+  return off?.length ? `Not available under this setting right now: ${off.join(", ")}. Remove ${off.length === 1 ? "it" : "them"} or choose Standard.` : null;
+}
+
 /** POST /api/v1/routes body. */
 export const createBody = (r) => ({ slug: r.slug, name: r.name, description: r.description, config: r.config });
 
@@ -186,6 +219,7 @@ export function policySummary(config) {
   const p = config?.provider || {};
   const out = [];
   out.push(SORT_LABEL[typeof p.sort === "string" ? p.sort : p.sort?.by] || "Balanced provider choice");
+  if (PRIVACY_LABEL[privacyOf(p)]) out.push(PRIVACY_LABEL[privacyOf(p)]);
   if (p.allow_fallbacks === false) out.push("No provider fallback");
   if (p.zdr) out.push("Zero data retention");
   if (p.data_collection === "deny") out.push("No data collection");
@@ -256,6 +290,13 @@ export const sampleRoutes = [
     name: "Zero-retention reasoning",
     description: "Sample route: zero-data-retention providers only, no provider fallback.",
     config: { models: ["qwen/qwen3-32b", "deepseek/deepseek-r1"], provider: { zdr: true, allow_fallbacks: false, data_collection: "deny" }, params: { temperature: 0.6 } },
+    sample: true,
+  },
+  {
+    slug: "private-chat",
+    name: "Private chat",
+    description: "Sample route: the attested lane only. A request cannot loosen it, and the router refuses rather than use a provider that is not attested.",
+    config: { models: ["meta-llama/llama-3.3-70b-instruct"], provider: { lane: "attested" }, params: { temperature: 0.3 } },
     sample: true,
   },
 ];

@@ -7,12 +7,15 @@ import {
   MAX_MODELS,
   MAX_ROUTES,
   PARAM_FIELDS,
+  PRIVACY,
   ROUTE_PREFIX,
   SORTS,
   baseModelId,
   createBody,
   draftToRoute,
   emptyDraft,
+  laneRefusal,
+  modelsOffList,
   moveItem,
   paramSummary,
   patchBody,
@@ -21,6 +24,7 @@ import {
   sampleRoutes,
   slugify,
   snippet,
+  usesAttestedList,
 } from "../../lib/saved-routes";
 import styles from "./SavedRoutes.module.css";
 
@@ -49,6 +53,12 @@ function Field({ label, id, error, hint, children }) {
 }
 
 const described = (id, error, hint) => ({ "aria-invalid": error ? true : undefined, "aria-describedby": error ? id + "-error" : hint ? id + "-hint" : undefined });
+const PRIVACY_HINT = {
+  "": "Any provider that meets the other settings.",
+  policy: "Only providers with a documented no-retention policy and no legal hold, or attested ones. The router refuses a call rather than use any other.",
+  none: "Only providers whose retention is declared attested and whose attestation is fresh. The router refuses a call rather than use any other.",
+  attested: "Sets provider.lane to attested: calls are served only by providers with a fresh, verified attestation, or refused. A request can tighten this, never loosen it. Every model in the route must be available on the lane to save.",
+};
 const priceText = (m) => (m ? `$${money(m.price, 2)} in · $${money(m.output, 2)} out /1M` : "Not in the catalog");
 
 function Tags({ items, empty }) {
@@ -70,12 +80,28 @@ function RouteEditor({ existing, catalog, apiKey, onClose, onSaved }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const form = useRef(null);
+  // Models with a live attested endpoint (GET /api/v1/models?lane=attested), loaded when the privacy choice needs them.
+  const [laneList, setLaneList] = useState({ state: "idle", ids: new Set() });
+  const needsList = usesAttestedList(draft.privacy);
+  useEffect(() => {
+    if (!needsList) return;
+    let alive = true;
+    setLaneList({ state: "loading", ids: new Set() });
+    api("/api/v1/models?lane=attested", { key: apiKey })
+      .then((r) => alive && setLaneList({ state: "ok", ids: new Set((r?.data || []).map((m) => m.id)) }))
+      .catch(() => alive && setLaneList({ state: "error", ids: new Set() }));
+    return () => {
+      alive = false;
+    };
+  }, [needsList, apiKey]);
+  const laneKnown = needsList && laneList.state === "ok";
+  const offLane = laneKnown ? modelsOffList(draft.models, laneList.ids) : [];
   const byId = new Map(catalog.map((m) => [m.id, m]));
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
   const setParam = (key, value) => setDraft((d) => ({ ...d, params: { ...d.params, [key]: value } }));
   const full = draft.models.length >= MAX_MODELS;
   const q = query.trim().toLowerCase();
-  const pickable = catalog.filter((m) => m.type !== "Embeddings" && !draft.models.includes(m.id));
+  const pickable = catalog.filter((m) => m.type !== "Embeddings" && !draft.models.includes(m.id) && (!laneKnown || laneList.ids.has(m.id)));
   const matches = pickable.filter((m) => !q || m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)).slice(0, 6);
   // Settings made through the API that this form does not edit; saving keeps them as they are.
   const extraPrice = Object.keys(draft.extraMaxPrice).length ? { max_price: draft.extraMaxPrice } : {};
@@ -108,6 +134,8 @@ function RouteEditor({ existing, catalog, apiKey, onClose, onSaved }) {
     } catch (err) {
       const unknown = err?.metadata?.unknown_models;
       if (unknown?.length) setErrors((x) => ({ ...x, models: "Not in the live catalog: " + unknown.join(", ") + "." }));
+      const refused = laneRefusal(err);
+      if (refused) setErrors((x) => ({ ...x, models: refused }));
       if (err?.type === "route_exists") setErrors((x) => ({ ...x, slug: "This account already has a route with that slug." }));
       setError(err?.message || String(err));
       setBusy(false);
@@ -168,7 +196,10 @@ function RouteEditor({ existing, catalog, apiKey, onClose, onSaved }) {
                   </span>
                   <span className={styles.pickedName}>
                     <span className="mono">{id}</span>
-                    <small>{priceText(byId.get(baseModelId(id)))}</small>
+                    <small>
+                      {priceText(byId.get(baseModelId(id)))}
+                      {offLane.includes(id) && <span className={styles.warn}> · not on the attested lane now</span>}
+                    </small>
                   </span>
                   <span className={styles.moves}>
                     <button type="button" className="icon-button" aria-label={`Move ${id} up`} disabled={i === 0} onClick={() => set({ models: moveItem(draft.models, i, -1) })}>
@@ -190,6 +221,13 @@ function RouteEditor({ existing, catalog, apiKey, onClose, onSaved }) {
               {errors.models}
             </div>
           )}
+          {offLane.length > 0 && !errors.models && (
+            <div className={styles.fieldError} role="status">
+              The router will not save this route while {offLane.join(", ")} {offLane.length === 1 ? "has" : "have"} no attested provider. Remove {offLane.length === 1 ? "it" : "them"} or choose Standard privacy.
+            </div>
+          )}
+          {needsList && laneList.state === "error" && <p className="help-text">The attested model list did not load; the router checks the models when you save.</p>}
+          {laneKnown && <p className="help-text">Only models with a live attested provider are offered while privacy is set to {draft.privacy === "attested" ? "the attested lane" : "attested retention"}.</p>}
           <Field label={`Add a model · ${draft.models.length}/${MAX_MODELS}`} id="route-model-search">
             <input id="route-model-search" type="search" autoComplete="off" value={query} disabled={full} aria-invalid={errors.models ? true : undefined} aria-describedby={errors.models ? "route-models-error" : undefined} placeholder={full ? "Eight models is the maximum" : `Search ${pickable.length} model${pickable.length === 1 ? "" : "s"}…`} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -217,6 +255,15 @@ function RouteEditor({ existing, catalog, apiKey, onClose, onSaved }) {
 
         <fieldset className={styles.group}>
           <legend>Provider policy</legend>
+          <Field label="Privacy" id="route-privacy" hint={PRIVACY_HINT[draft.privacy]}>
+            <select id="route-privacy" value={draft.privacy} onChange={(e) => set({ privacy: e.target.value })} {...described("route-privacy", null, true)}>
+              {PRIVACY.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="Provider order" id="route-sort">
             <select id="route-sort" value={draft.sort} onChange={(e) => set({ sort: e.target.value })}>
               {SORTS.map(([value, label]) => (
@@ -385,7 +432,7 @@ export default function SavedRoutes({ live, apiKey, ws, catalog = [], notify }) 
       {heading}
       {!live && (
         <div className="note">
-          Saved routes live on the router, one set per account. This sample workspace has no account, so the two routes below are fixed examples: they cannot be called, edited or deleted here.{" "}
+          Saved routes live on the router, one set per account. This sample workspace has no account, so the routes below are fixed examples: they cannot be called, edited or deleted here.{" "}
           <button
             className="text-button"
             onClick={() => {
@@ -515,7 +562,7 @@ export default function SavedRoutes({ live, apiKey, ws, catalog = [], notify }) 
           <span className="eyebrow">How a route resolves</span>
           <ol>
             <li>
-              <strong>The request wins.</strong> Any parameter, <code className="mono">provider</code> field or <code className="mono">models</code> list the call sets overrides the route’s default.
+              <strong>The request wins.</strong> Any parameter, <code className="mono">provider</code> field or <code className="mono">models</code> list the call sets overrides the route’s default. The exception is privacy: for <code className="mono">lane</code> and <code className="mono">disclosure</code> the stricter of the two applies, so a request can tighten a route but never loosen it.
             </li>
             <li>
               <strong>Then the route.</strong> Its first model is primary, the rest are fallbacks; its provider policy and defaults fill the gaps.

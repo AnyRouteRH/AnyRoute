@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MAX_MODELS,ROUTE_PREFIX,baseModelId,createBody,draftToRoute,emptyDraft,moveItem,paramSummary,parseStop,patchBody,policySummary,routeToDraft,sampleRoutes,slugify,snippet,stopToText} from '../lib/saved-routes.js';
+import {MAX_MODELS,PRIVACY,ROUTE_PREFIX,baseModelId,createBody,draftToRoute,emptyDraft,laneRefusal,modelsOffList,moveItem,paramSummary,parseStop,patchBody,policySummary,privacyOf,routeToDraft,sampleRoutes,slugify,snippet,stopToText,usesAttestedList} from '../lib/saved-routes.js';
 
 const LLAMA='meta-llama/llama-3.3-70b-instruct',QWEN='qwen/qwen3-32b';
 const draft=(patch={})=>({...emptyDraft(),slug:'fast-chat',name:'Fast chat',models:[QWEN,LLAMA],...patch});
@@ -90,4 +90,59 @@ test('sample routes are labelled, valid and hold no prompt text',()=>{
   assert.doesNotMatch(JSON.stringify(r.config),/"(messages|system|content)"/);
  }
  assert.equal(ROUTE_PREFIX,'@route/');
+});
+
+test('the privacy choice becomes provider.lane or provider.disclosure, and Standard sends neither',()=>{
+ assert.deepEqual(PRIVACY.map(([v])=>v),['','policy','none','attested']);
+ assert.equal(emptyDraft().privacy,'');
+ assert.deepEqual(draftToRoute(draft()).config,{models:[QWEN,LLAMA]});
+ assert.deepEqual(draftToRoute(draft({privacy:'attested'})).config,{models:[QWEN,LLAMA],provider:{lane:'attested'}});
+ assert.deepEqual(draftToRoute(draft({privacy:'none'})).config.provider,{disclosure:'none'});
+ assert.deepEqual(draftToRoute(draft({privacy:'policy',sort:'price'})).config.provider,{sort:'price',disclosure:'policy'});
+ assert.deepEqual(draftToRoute(draft({privacy:'sometimes'})).config,{models:[QWEN,LLAMA]},'an unknown choice adds nothing');
+ assert.equal(draftToRoute(draft({privacy:'attested'})).ok,true);
+});
+
+test('editing a private route keeps its lane, and choosing Standard clears it with the rest of the policy',()=>{
+ const route={slug:'private-chat',name:'Private chat',description:'',config:{models:[LLAMA],provider:{lane:'attested',sort:'price',only:['alpha']}}};
+ const d=routeToDraft(route);
+ assert.equal(d.privacy,'attested');assert.equal(d.sort,'price');assert.deepEqual(d.extraProvider,{only:['alpha']});
+ assert.deepEqual(draftToRoute(d).config,route.config);
+ assert.deepEqual(patchBody(draftToRoute(d),'private-chat').config.provider,route.config.provider);
+ const standard=draftToRoute({...d,privacy:''});
+ assert.deepEqual(standard.config.provider,{sort:'price',only:['alpha']});
+ const cleared=draftToRoute({...routeToDraft({slug:'p',name:'P',config:{models:[LLAMA],provider:{lane:'attested'}}}),privacy:''});
+ assert.deepEqual(patchBody(cleared,'p').config,{models:[LLAMA],provider:null,params:null});
+ assert.equal(routeToDraft({slug:'d',name:'D',config:{models:[LLAMA],provider:{disclosure:'none'}}}).privacy,'none');
+ assert.equal(routeToDraft({slug:'d',name:'D',config:{models:[LLAMA],provider:{disclosure:'policy'}}}).privacy,'policy');
+ assert.equal(routeToDraft({slug:'d',name:'D',config:{models:[LLAMA],provider:{lane:'public',disclosure:'any'}}}).privacy,'');
+ assert.deepEqual(routeToDraft({slug:'d',name:'D',config:{models:[LLAMA],provider:{lane:'public',disclosure:'any'}}}).extraProvider,{});
+ assert.equal(privacyOf(undefined),'');
+});
+
+test('privacy shows in the policy summary and the sample routes include a private one',()=>{
+ assert.deepEqual(policySummary({provider:{lane:'attested'}}),['Balanced provider choice','Private: attested lane']);
+ assert.deepEqual(policySummary({provider:{disclosure:'none'}}),['Balanced provider choice','Attested retention only']);
+ assert.deepEqual(policySummary({provider:{disclosure:'policy',zdr:true}}),['Balanced provider choice','No-retention policy or better','Zero data retention']);
+ assert.deepEqual(policySummary({provider:{lane:'public'}}),['Balanced provider choice']);
+ const priv=sampleRoutes.find((r)=>r.config.provider?.lane==='attested');
+ assert.ok(priv&&priv.sample);
+});
+
+test('models missing from the attested list are named, with routing suffixes ignored, and only some choices need the list',()=>{
+ const ids=new Set([LLAMA]);
+ assert.deepEqual(modelsOffList([LLAMA,QWEN],ids),[QWEN]);
+ assert.deepEqual(modelsOffList([LLAMA+':floor',QWEN+':nitro'],ids),[QWEN+':nitro']);
+ assert.deepEqual(modelsOffList([],ids),[]);
+ assert.deepEqual(modelsOffList(undefined,ids),[]);
+ assert.deepEqual(['','policy','none','attested'].map(usesAttestedList),[false,false,true,true]);
+});
+
+test("the router's refusal to save is turned into a message that names the models",()=>{
+ assert.match(laneRefusal({type:'route_lane_unavailable',metadata:{unavailable_models:[QWEN]}}),new RegExp(QWEN));
+ assert.match(laneRefusal({type:'route_lane_unavailable',metadata:{unavailable_models:[QWEN,LLAMA]}}),/Remove them/);
+ assert.match(laneRefusal({type:'route_lane_unavailable',metadata:{unavailable_models:[QWEN]}}),/Remove it /);
+ assert.equal(laneRefusal({type:'route_exists'}),null);
+ assert.equal(laneRefusal({type:'route_lane_unavailable',metadata:{}}),null);
+ assert.equal(laneRefusal(null),null);
 });
