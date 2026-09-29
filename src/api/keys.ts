@@ -13,7 +13,7 @@ import { picoToUsd, usdToPico } from "../lib/money.ts";
 import { balanceOf, ensureAccount } from "../ledger/ledger.ts";
 import { encrypt, uid, randomHex } from "../lib/util.ts";
 import { SENTINEL_NEIGHBOUR, SpentTree, type SpentNeighbour } from "../receipts/merkle.ts";
-import { clientIp, readJson } from "./common.ts";
+import { addressBucket, readJson } from "./common.ts";
 import { bearer, registerRootKey, requireKey, requireRole, walletAccountId, type KeyRow } from "./auth.ts";
 
 const keySpec = z.object({
@@ -152,7 +152,8 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     const auth = c.req.header("authorization");
     const secret = generateApiKey();
     if (!auth) {
-      const r = await ctx.limiter.take(`newkey:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.newKeysPerHour, 3_600_000);
+      const from = addressBucket(c, ctx.cfg);
+      const r = await ctx.limiter.take(`newkey:${from.id}`, 1, from.scale(ctx.cfg.limits.newKeysPerHour), 3_600_000);
       if (!r.ok) fail(429, "Too many new keys from this address. Try again later.", "rate_limited");
       const k = await registerRootKey(ctx, secret, spec.name ?? "");
       const patch = applySpec({ ...spec, management: undefined, team: undefined });
@@ -456,7 +457,8 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
   // Server-issued, single-use wallet login challenges. Origin, action and chain are signed.
   app.post("/api/v1/auth/wallet/challenge", async (c) => {
     const v = z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/) }).parse(await readJson(c));
-    const limit = await ctx.limiter.take(`wallet-login:${clientIp(c, ctx.cfg.trustProxy)}`, 1, 30, 60_000);
+    const from = addressBucket(c, ctx.cfg);
+    const limit = await ctx.limiter.take(`wallet-login:${from.id}`, 1, from.scale(30), 60_000);
     if (!limit.ok) fail(429, "Too many wallet challenges.", "rate_limit");
     const nonce = randomHex(24);
     const expires = Date.now() + 300_000;

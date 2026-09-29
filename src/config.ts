@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { usdToPico } from "./lib/money.ts";
+import { parseOnionAddress, parseOnionSecrets } from "./lib/onion.ts";
 
 // Every setting comes from the environment. Missing optional services produce
 // an explicit "unavailable" state at runtime; they never fake success.
@@ -304,6 +305,13 @@ const schema = z.object({
   OHTTP_GATEWAY_OPERATOR: z.string().default("AnyRoute"), // the name this router's own operator goes by in RELAY_OPERATORS
   OHTTP_MIN_RELAY_OPERATORS: int(2), // production refuses to start with fewer relay operators than this that are not the gateway operator
   RELAY_OPERATORS: opt, // JSON [{operator,url,key_id,secret_sha256}]: the relays clients may use; published at GET /api/v1/relays
+
+  // ---- Tor. Optional. ONION_ADDRESS is the v3 onion hostname of deploy/onion, published at GET /api/v1/status. Requests
+  // that the onion proxy forwards carry ONION_PROXY_SECRET in X-Anyroute-Onion; they have no client address, so their
+  // per-address rate limits are shared pools ONION_POOL_MULTIPLIER times a single address's limit.
+  ONION_ADDRESS: opt,
+  ONION_PROXY_SECRET: opt,
+  ONION_POOL_MULTIPLIER: int(10),
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -592,7 +600,16 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     ipx: ipxSettings(e),
     blind: blindSettings(e),
     ohttp: ohttpSettings(e, production),
+    onion: onionSettings(e),
   };
+}
+
+function onionSettings(e: Env) {
+  const secrets = parseOnionSecrets(e.ONION_PROXY_SECRET);
+  const address = e.ONION_ADDRESS ? parseOnionAddress(e.ONION_ADDRESS) : null;
+  if (address && !secrets.length) throw new Error("ONION_ADDRESS requires ONION_PROXY_SECRET, the secret the onion proxy sends, so requests that arrive over Tor are not limited as one client.");
+  if (!Number.isInteger(e.ONION_POOL_MULTIPLIER) || e.ONION_POOL_MULTIPLIER < 1 || e.ONION_POOL_MULTIPLIER > 1000) throw new Error("ONION_POOL_MULTIPLIER must be an integer from 1 to 1000.");
+  return { address, secrets, poolMultiplier: e.ONION_POOL_MULTIPLIER };
 }
 
 // ---- The Lane -------------------------------------------------------------------------------------------

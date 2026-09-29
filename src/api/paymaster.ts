@@ -12,7 +12,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import type { Ctx } from "../context.ts";
 import { fail } from "../lib/errors.ts";
-import { readJson, clientIp } from "./common.ts";
+import { readJson, addressBucket } from "./common.ts";
 
 // ERC-7677 paymaster web service for AnyrPaymaster (ERC-4337 v0.7 VerifyingPaymaster).
 // Sponsors gas only for user operations whose every call is an Anyroute action:
@@ -141,7 +141,8 @@ export function paymasterRoutes(app: Hono, ctx: Ctx) {
     const pm = ctx.cfg.chain.paymaster;
     const signerKey = ctx.cfg.chain.paymasterSignerKey;
     if (!pm || !signerKey) return error(-32601, "Paymaster is not configured on this router.");
-    const lim = await ctx.limiter.take(`pm:${clientIp(c, ctx.cfg.trustProxy)}`, 1, 120, 60_000);
+    const from = addressBucket(c, ctx.cfg);
+    const lim = await ctx.limiter.take(`pm:${from.id}`, 1, from.scale(120), 60_000);
     if (!lim.ok) return error(-32005, "Rate limited.");
     const method = String(body.method ?? "");
     const params = Array.isArray(body.params) ? body.params : [];

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { keccak256, toBytes, type Hex } from "viem";
+import type { AddressBucket } from "../api/common.ts";
 import type { Ctx } from "../context.ts";
 import { laneClaims, models, modelsLane } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
@@ -71,11 +72,11 @@ const view = (c: typeof laneClaims.$inferSelect, file: string) => ({
   onchain_tx: c.onchainTx,
 });
 
-export async function issueClaim(ctx: Ctx, input: { model: string; address: string; handle?: string }, ip: string) {
+export async function issueClaim(ctx: Ctx, input: { model: string; address: string; handle?: string }, from: AddressBucket) {
   const modelId = input.model.toLowerCase();
   if (!ADDRESS.test(input.address) || /^0x0{40}$/.test(input.address)) fail(400, "`address` must be a 0x address.", "invalid_request");
   const lim = await ctx.limiter.take(`claim-issue:${modelId}`, 1, 10, 3_600_000);
-  const limIp = await ctx.limiter.take(`claim-issue-ip:${ip}`, 1, 30, 3_600_000);
+  const limIp = await ctx.limiter.take(`claim-issue-ip:${from.id}`, 1, from.scale(30), 3_600_000);
   if (!lim.ok || !limIp.ok) fail(429, "Too many claim attempts.", "rate_limited");
   const { repo, handle } = await claimableRepo(ctx, modelId);
   if (input.handle && input.handle.toLowerCase() !== handle.toLowerCase()) fail(400, `The weights source of this model belongs to ${handle}, not ${input.handle}.`, "handle_mismatch");
@@ -102,10 +103,10 @@ export async function readClaim(ctx: Ctx, id: string) {
   return { ...view(row, ctx.cfg.lane.claim.file), expired: row.status === "pending" && row.expiresAt.getTime() <= Date.now() };
 }
 
-export async function verifyClaim(ctx: Ctx, id: string, ip: string, deps: { fetch?: typeof fetch } = {}) {
+export async function verifyClaim(ctx: Ctx, id: string, from: AddressBucket, deps: { fetch?: typeof fetch } = {}) {
   const f = deps.fetch ?? ctx.hfFetch ?? fetch;
   const lim = await ctx.limiter.take(`claim-verify:${id}`, 1, 20, 3_600_000);
-  const limIp = await ctx.limiter.take(`claim-verify-ip:${ip}`, 1, 60, 3_600_000);
+  const limIp = await ctx.limiter.take(`claim-verify-ip:${from.id}`, 1, from.scale(60), 3_600_000);
   if (!lim.ok || !limIp.ok) fail(429, "Too many verification attempts.", "rate_limited");
   const [claim] = await ctx.db.select().from(laneClaims).where(eq(laneClaims.id, id));
   if (!claim) fail(404, "Unknown claim.", "not_found");

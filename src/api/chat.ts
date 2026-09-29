@@ -20,7 +20,7 @@ import { applyGuardrails, mergeGuardrails, redactOutput, type GuardrailConfig } 
 import { middleOut } from "../gateway/transforms.ts";
 import type { CacheMode } from "../gateway/cache.ts";
 import { bearer, requireRole, resolveKey, walletAuth, type KeyRow } from "./auth.ts";
-import { clientIp, readJson } from "./common.ts";
+import { addressBucket, readJson } from "./common.ts";
 import { grantFor, recordDebt, type PaywithGrant } from "../pay/paywith.ts";
 import { resolveSavedRoute } from "../routing/saved-routes.ts";
 import { payPerCall } from "../pay/percall.ts";
@@ -227,9 +227,11 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     // A token carries its own quota (one request), so token callers get their own, larger per-address limit:
     // behind a relay many strangers share an address. A request the Oblivious HTTP gateway dispatched has no client
     // address (the gateway already limited it per relay), so it has no per-address bucket here.
+    // A request that came over Tor has no client address: it counts against the shared onion bucket (see addressBucket).
     if (!gatewayOrigin(c.req.raw)) {
-      if (isBlindRequest(ctx, c.req.header("authorization"))) await limitOrThrow(ctx, `blind-ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.blind.redeemRpm, "requests");
-      else await limitOrThrow(ctx, `ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, "requests");
+      const from = addressBucket(c, ctx.cfg);
+      if (isBlindRequest(ctx, c.req.header("authorization"))) await limitOrThrow(ctx, `blind-ip:${from.id}`, 1, from.scale(ctx.cfg.blind.redeemRpm), "requests");
+      else await limitOrThrow(ctx, `ip:${from.id}`, 1, from.scale(ctx.cfg.limits.unauthRpm), "requests");
     }
     pass = await presentBlindToken(ctx, c.req.header("authorization"));
     const wa = c.req.header("x-wallet-auth");

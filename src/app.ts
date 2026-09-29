@@ -1,4 +1,5 @@
 import { siteCsp } from "./lib/csp.ts";
+import { viaOnion } from "./api/common.ts";
 import { kv } from "./db/schema.ts";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
@@ -100,7 +101,14 @@ export async function createApp(opts: AppOptions = {}) {
     c.header("x-content-type-options", "nosniff");
     c.header("referrer-policy", "no-referrer");
     c.header("x-frame-options", "DENY");
-    if (c.res.headers.get("content-type")?.includes("text/html")) c.header("content-security-policy", csp);
+    if (c.res.headers.get("content-type")?.includes("text/html")) {
+      c.header("content-security-policy", csp);
+      // Tell Tor Browser this page has an onion twin (only on the clearnet site; it does nothing without ONION_ADDRESS).
+      if (cfg.onion.address && c.req.method === "GET" && !viaOnion(c, cfg)) {
+        const url = new URL(c.req.url);
+        c.header("onion-location", `http://${cfg.onion.address}${url.pathname}${url.search}`);
+      }
+    }
     if (cfg.production) c.header("strict-transport-security", "max-age=31536000; includeSubDomains");
   });
 

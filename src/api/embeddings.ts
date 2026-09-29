@@ -12,7 +12,7 @@ import { priceUsage, readUsage } from "../router/pricing.ts";
 import { callUpstream, providerKey, upstreamBody } from "../providers/upstream.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
 import { bearer, requireKey, requireRole } from "./auth.ts";
-import { clientIp, readJson } from "./common.ts";
+import { addressBucket, readJson } from "./common.ts";
 import { requestHash } from "./chat.ts";
 import { payPerCall } from "../pay/percall.ts";
 import type { Attempt } from "../router/execute.ts";
@@ -29,13 +29,14 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const key = bearer(c.req.header("authorization")) ? await requireKey(ctx, c.req.header("authorization")) : null;
     if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
     let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null; // $ANYR holders get a higher rpm
+    const from = addressBucket(c, ctx.cfg); // over Tor: the shared onion bucket, not a client address
     const lim = key
       ? await ctx.limiter.take(`k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), 60_000)
       : gatewayOrigin(c.req.raw)
         ? { ok: true, retryAfterMs: 0 } // dispatched by the Oblivious HTTP gateway, which limited it per relay: there is no client address here
         : isBlindRequest(ctx, c.req.header("authorization"))
-          ? await ctx.limiter.take(`blind-ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.blind.redeemRpm, 60_000) // a token carries its own quota
-          : await ctx.limiter.take(`ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, ctx.cfg.limits.unauthRpm, 60_000);
+          ? await ctx.limiter.take(`blind-ip:${from.id}`, 1, from.scale(ctx.cfg.blind.redeemRpm), 60_000) // a token carries its own quota
+          : await ctx.limiter.take(`ip:${from.id}`, 1, from.scale(ctx.cfg.limits.unauthRpm), 60_000);
     if (!lim.ok) fail(429, "Rate limit exceeded.", "rate_limited", undefined, { "retry-after": String(Math.ceil(lim.retryAfterMs / 1000)) });
     // A Privacy Pass token (Authorization: PrivateToken) instead of a key, when ANYROUTE_FEATURE_BLIND is on.
     const pass = key ? null : await presentBlindToken(ctx, c.req.header("authorization"));

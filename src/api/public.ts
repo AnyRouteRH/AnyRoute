@@ -290,6 +290,9 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.
         holders: holdersStatus(ctx),
         telemetry: ctx.telemetry.enabled,
+        // The onion service that reaches this router over Tor (null when none is configured). Clients that reach it hide
+        // their network address from the router; requests carry no address here, so limits for unkeyed calls are shared.
+        onion: ctx.cfg.onion.address ? { address: ctx.cfg.onion.address, url: `http://${ctx.cfg.onion.address}` } : null,
         jobs: ctx.jobs.status().map((job) => ({ ...job, last_error: job.last_error ? "Job failed" : null })),
         catalog: { models: ctx.catalog.models.size, providers: ctx.catalog.providers.size },
       },

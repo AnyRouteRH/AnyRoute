@@ -3,7 +3,7 @@ import type { Context, Hono } from "hono";
 import type { Ctx } from "../context.ts";
 import { ApiError } from "../lib/errors.ts";
 import { log, safeEqual, sha256 } from "../lib/util.ts";
-import { clientIp } from "../api/common.ts";
+import { addressBucket } from "../api/common.ts";
 import { BhttpError, DEFAULT_LIMITS, decodeRequest, encodeResponse, utf8, type HeaderList } from "./bhttp.ts";
 import { GENESIS_HASH, OhttpKeys, keyLog, type GatewayKey } from "./keys.ts";
 import { markFromGateway, type RelayIdentity } from "./origin.ts";
@@ -206,7 +206,8 @@ export function ohttpRoutes(app: Hono, ctx: Ctx) {
       return plain(err.status, err.type, err.message);
     }
     // Relays are limited by identity, everyone else by address (a relay's address means nothing to the client behind it).
-    const limit = await ctx.limiter.take(relay ? `ohttp-gw:relay:${relay.keyId}` : `ohttp-gw:ip:${clientIp(c, ctx.cfg.trustProxy)}`, 1, relay ? cfg.relayRpm : cfg.directRpm, 60_000);
+    const from = addressBucket(c, ctx.cfg);
+    const limit = await ctx.limiter.take(relay ? `ohttp-gw:relay:${relay.keyId}` : `ohttp-gw:ip:${from.id}`, 1, relay ? cfg.relayRpm : from.scale(cfg.directRpm), 60_000);
     if (!limit.ok) return plain(429, "rate_limited", "Too many requests.", { "retry-after": String(Math.ceil(limit.retryAfterMs / 1000)) });
 
     if (Number(raw.headers.get("content-length") ?? 0) > cfg.maxRequestBytes) return plain(413, "payload_too_large", "Request body is too large.");
