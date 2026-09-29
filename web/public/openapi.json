@@ -3,8 +3,12 @@
   "info": {
     "title": "Anyroute API",
     "version": "1.0.0",
-    "description": "A documented subset of Anyroute's implemented public API. Endpoint availability and model capabilities are deployment-specific."
+    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts. Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, teams, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
+    "contact": { "name": "AnyRoute support", "email": "Anyroute1@atomicmail.io" },
+    "license": { "name": "PolyForm Noncommercial License 1.0.0", "identifier": "PolyForm-Noncommercial-1.0.0" },
+    "x-api-coverage": "subset"
   },
+  "externalDocs": { "description": "Developer documentation and endpoint overview", "url": "/docs/" },
   "servers": [{ "url": "/", "description": "Current router origin" }],
   "security": [{}],
   "tags": [
@@ -33,7 +37,7 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatRequest" } } } },
         "responses": {
           "200": { "description": "Completion JSON, or SSE events followed by data: [DONE] when stream is true.", "content": { "application/json": { "schema": { "type": "object" } }, "text/event-stream": { "schema": { "type": "string", "description": "SSE data events; event data carries JSON chunks." } } } },
-          "402": { "$ref": "#/components/responses/ApiError" }, "429": { "$ref": "#/components/responses/ApiError" }, "default": { "$ref": "#/components/responses/ApiError" }
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "402": { "$ref": "#/components/responses/PaymentRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "429": { "$ref": "#/components/responses/TooManyRequests" }, "default": { "$ref": "#/components/responses/ApiError" }
         }
       }
     },
@@ -43,7 +47,7 @@
         "description": "Requires an authenticated prepaid API key. Input may be a string or a non-empty array with at most 2048 items.",
         "security": [{ "BearerAuth": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmbeddingRequest" } } } },
-        "responses": { "200": { "description": "Embedding response with usage and signed receipt.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "receipt"], "properties": { "data": { "type": "array", "items": { "type": "object" } }, "receipt": { "$ref": "#/components/schemas/Receipt" } } } } } }, "402": { "$ref": "#/components/responses/ApiError" }, "default": { "$ref": "#/components/responses/ApiError" } }
+        "responses": { "200": { "description": "Embedding response with usage and signed receipt.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "receipt"], "properties": { "data": { "type": "array", "items": { "type": "object" } }, "receipt": { "$ref": "#/components/schemas/Receipt" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "402": { "$ref": "#/components/responses/PaymentRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "429": { "$ref": "#/components/responses/TooManyRequests" }, "default": { "$ref": "#/components/responses/ApiError" } }
       }
     },
     "/api/v1/keys": {
@@ -52,12 +56,12 @@
         "description": "Without Authorization, creates an independent root key with an empty balance. With an authorized management or admin key, creates a virtual sub-key under that account. The response includes the new secret once; store it securely. Root-key creation does not fund the key. Never send a secret in a query string.",
         "security": [{ "BearerAuth": [] }, {}],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyCreateRequest" } } } },
-        "responses": { "201": { "description": "New key metadata and one-time key secret.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "key", "deposit"], "properties": { "data": { "$ref": "#/components/schemas/Key" }, "key": { "type": "string", "readOnly": true, "description": "Secret returned only on creation." }, "deposit": { "type": "object" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+        "responses": { "201": { "description": "New key metadata and one-time key secret.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "key", "deposit"], "properties": { "data": { "$ref": "#/components/schemas/Key" }, "key": { "type": "string", "readOnly": true, "description": "Secret returned only on creation." }, "deposit": { "type": "object" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "429": { "$ref": "#/components/responses/TooManyRequests" }, "default": { "$ref": "#/components/responses/ApiError" } }
       },
       "get": {
         "tags": ["Keys"], "operationId": "listKeys", "summary": "List keys for the authenticated account",
         "security": [{ "BearerAuth": [] }],
-        "responses": { "200": { "description": "Key metadata for the authenticated account.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Key" } } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+        "responses": { "200": { "description": "Key metadata for the authenticated account.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Key" } } } } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "default": { "$ref": "#/components/responses/ApiError" } }
       }
     },
     "/api/v1/generations": {
@@ -69,7 +73,7 @@
           { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 } },
           { "name": "before", "in": "query", "required": false, "description": "Opaque cursor returned in next. Pass it through without parsing; current versions may return a legacy ISO-8601 timestamp.", "schema": { "type": "string" } }
         ],
-        "responses": { "200": { "description": "Generation summaries and the next page cursor, if any.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "next"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/GenerationSummary" } }, "next": { "type": ["string", "null"] } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+        "responses": { "200": { "description": "Generation summaries and the next page cursor, if any.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "next"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/GenerationSummary" } }, "next": { "type": ["string", "null"] } } } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "default": { "$ref": "#/components/responses/ApiError" } }
       }
     },
     "/api/v1/generation": {
@@ -78,7 +82,7 @@
         "description": "Returns a full record only to the account owner or the authenticated paying wallet. The id is supplied as a query parameter because that is the implemented route; do not put API keys or other credentials in URLs.",
         "security": [{ "BearerAuth": [] }, { "WalletAuth": [] }],
         "parameters": [{ "name": "id", "in": "query", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Generation record and receipt details.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object", "properties": { "receipt": { "$ref": "#/components/schemas/Receipt" } } } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+        "responses": { "200": { "description": "Generation record and receipt details.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object", "properties": { "receipt": { "$ref": "#/components/schemas/Receipt" } } } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "default": { "$ref": "#/components/responses/ApiError" } }
       }
     },
     "/api/v1/status": {
@@ -91,14 +95,14 @@
       "post": {
         "tags": ["Receipts"], "operationId": "verifyReceipt", "summary": "Verify a signed receipt",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReceiptVerificationRequest" } } } },
-        "responses": { "200": { "description": "Receipt verification result.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+        "responses": { "200": { "description": "Receipt verification result.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "type": "object" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "default": { "$ref": "#/components/responses/ApiError" } }
       }
     },
     "/api/v1/receipts/{id}": {
       "get": {
         "tags": ["Receipts"], "operationId": "getReceipt", "summary": "Read a public receipt proof",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Signed receipt and optional anchor proof.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "$ref": "#/components/schemas/Receipt" } } } } } }, "default": { "$ref": "#/components/responses/ApiError" } }
+        "responses": { "200": { "description": "Signed receipt and optional anchor proof.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "$ref": "#/components/schemas/Receipt" } } } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "default": { "$ref": "#/components/responses/ApiError" } }
       }
     }
   },
@@ -114,7 +118,13 @@
       "PayWith": { "name": "X-Pay-With", "in": "header", "required": false, "schema": { "type": "string" }, "description": "Configured Stock Token symbol for a key with an active session." }
     },
     "responses": {
-      "ApiError": { "description": "OpenRouter-shaped API error. A 402 payment response may include payment metadata and is not a signal to repeat payment automatically.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+      "ApiError": { "description": "OpenRouter-shaped API error. A 402 payment response may include payment metadata and is not a signal to repeat payment automatically.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "BadRequest": { "description": "The request body, JSON or parameters failed validation. error.type is, for example, invalid_request, invalid_json or invalid_guardrails; do not retry the same request unchanged.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Unauthorized": { "description": "Authentication is missing or was rejected: no API key, an unknown, disabled or expired key, or invalid wallet authentication. error.type is missing_key, invalid_key, key_disabled, key_expired or invalid_wallet_auth.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "PaymentRequired": { "description": "The call cannot be paid: the balance or the key's budget is insufficient (insufficient_credits, key_budget_exceeded), or a per-call payment is required or was not accepted (payment_required, payment_pending, payment_insufficient, payment_unknown_quote, payment_failed). A payment_required quote is in error.metadata and binds to this exact request; never repeat a payment automatically.", "headers": { "X-Payment-Required": { "description": "Present on a per-call payment quote; names the payment asset.", "schema": { "type": "string" } }, "WWW-Authenticate": { "description": "Present on a per-call payment quote; carries the chain and quote nonce.", "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "Forbidden": { "description": "The key is valid but may not do this: its role does not allow the action, or its model allowlist excludes the model. error.type is forbidden or model_not_allowed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "NotFound": { "description": "The model, provider route, key, team, generation or receipt does not exist or is not visible to the caller. error.type is, for example, not_found, model_not_found or no_providers.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+      "TooManyRequests": { "description": "A rate limit was reached (rate_limited). Wait for the Retry-After interval before retrying.", "headers": { "Retry-After": { "description": "Seconds to wait before retrying, when the limit reports it.", "schema": { "type": "integer", "minimum": 0 } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
     },
     "schemas": {
       "ApiError": { "type": "object", "required": ["error"], "properties": { "error": { "type": "object", "required": ["code", "message", "type"], "properties": { "code": { "type": "integer" }, "message": { "type": "string" }, "type": { "type": "string" }, "metadata": { "type": "object", "additionalProperties": true } } } } },
