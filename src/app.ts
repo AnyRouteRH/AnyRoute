@@ -44,6 +44,7 @@ import { paymasterRoutes } from "./api/paymaster.ts";
 import { registerJobs } from "./services/register.ts";
 import { mcpRoutes } from "./api/mcp.ts";
 import { anthropicRoutes } from "./api/anthropic.ts";
+import { responsesRoutes } from "./api/responses.ts";
 import { siteRoutes } from "./api/site.ts";
 import { badgeRoutes } from "./api/badge.ts";
 import { BlindIssuer } from "./blind/issuer.ts";
@@ -141,6 +142,7 @@ export async function createApp(opts: AppOptions = {}) {
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);
+  responsesRoutes(app, ctx);
   paymasterRoutes(app, ctx);
   adminRoutes(app, ctx);
   // The website (web/out, a static Next.js export) is served at / when it has been built; otherwise
