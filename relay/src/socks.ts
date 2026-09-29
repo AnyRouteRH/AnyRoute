@@ -126,6 +126,16 @@ class Reader {
     }
   }
 
+  /** Whatever has arrived, at most `max` bytes, waiting until something has; empty once the peer closed. */
+  async takeSome(max: number): Promise<Buffer> {
+    while (this.length === 0) {
+      this.check(false);
+      if (this.closed) return Buffer.alloc(0);
+      await this.changed();
+    }
+    return this.consume(Math.min(max, this.length));
+  }
+
   /** Everything until the peer closes the connection. */
   async takeToEnd(): Promise<Buffer> {
     while (!this.closed) {
@@ -181,21 +191,82 @@ async function readChunked(reader: Reader, max: number): Promise<Buffer> {
   const parts: Buffer[] = [];
   let total = 0;
   for (;;) {
-    const line = (await reader.takeUntil("\r\n", 1024)).toString("latin1");
-    const m = /^([0-9a-fA-F]{1,8})(?:;[^\r\n]*)?\r\n$/.exec(line);
-    if (!m) throw new Error("The response has a malformed chunk.");
-    const size = parseInt(m[1], 16);
-    if (size === 0) {
-      for (;;) if ((await reader.takeUntil("\r\n", 8192)).length === 2) return Buffer.concat(parts);
-    }
-    total += size;
-    if (total > max) throw new Error("The response is larger than allowed.");
-    parts.push(await reader.take(size));
-    if ((await reader.take(2)).toString("latin1") !== "\r\n") throw new Error("The response has a malformed chunk.");
+    const chunk = await nextChunk(reader, max - total);
+    if (chunk === null) return Buffer.concat(parts);
+    total += chunk.length;
+    parts.push(chunk);
   }
 }
 
-export type SocksFetchInit = { method?: string; headers?: Record<string, string>; body?: Uint8Array; signal?: AbortSignal };
+/** One chunk of a chunked transfer coding, or null after the last chunk and the trailer section. Refuses a chunk larger than `room`. */
+async function nextChunk(reader: Reader, room: number): Promise<Buffer | null> {
+  const line = (await reader.takeUntil("\r\n", 1024)).toString("latin1");
+  const m = /^([0-9a-fA-F]{1,8})(?:;[^\r\n]*)?\r\n$/.exec(line);
+  if (!m) throw new Error("The response has a malformed chunk.");
+  const size = parseInt(m[1], 16);
+  if (size === 0) {
+    for (;;) if ((await reader.takeUntil("\r\n", 8192)).length === 2) return null;
+  }
+  if (size > room) throw new Error("The response is larger than allowed.");
+  const data = await reader.take(size);
+  if ((await reader.take(2)).toString("latin1") !== "\r\n") throw new Error("The response has a malformed chunk.");
+  return data;
+}
+
+/** The payload as a stream, read from the socket only as the consumer asks for it, cut off past `max` bytes. */
+function payloadStream(reader: Reader, framing: { chunked: true } | { length: number } | { toEnd: true }, max: number, release: () => void): ReadableStream<Uint8Array> {
+  let total = 0;
+  let left = "length" in framing ? framing.length : 0;
+  let finished = false;
+  const finish = () => {
+    if (!finished) {
+      finished = true;
+      release();
+    }
+  };
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(ctl) {
+        try {
+          let piece: Buffer | null;
+          if ("chunked" in framing) piece = await nextChunk(reader, max - total);
+          else if ("length" in framing) {
+            piece = left > 0 ? await reader.takeSome(Math.min(left, 65_536)) : null;
+            if (piece && !piece.length) throw new Error("The connection closed before the message was complete.");
+            if (piece) left -= piece.length;
+          } else {
+            piece = await reader.takeSome(65_536);
+            if (!piece.length) piece = null;
+          }
+          if (piece === null) {
+            finish();
+            ctl.close();
+            return;
+          }
+          total += piece.length;
+          if (total > max) throw new Error("The response is larger than allowed.");
+          ctl.enqueue(new Uint8Array(piece));
+        } catch (e) {
+          finish();
+          ctl.error(e);
+        }
+      },
+      cancel() {
+        finish();
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
+export type SocksFetchInit = {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: Uint8Array;
+  signal?: AbortSignal;
+  /** Return as soon as the response head is read, with a body that is read from the tunnel as it is consumed. */
+  stream?: boolean;
+};
 
 /**
  * A `fetch` for http:// URLs through the proxy. Supports what a relay needs: one request with a body, one response, no
@@ -217,6 +288,12 @@ export function createSocksFetch(proxy: SocksProxy, opts: { maxResponseBytes: nu
     const abort = () => socket.destroy();
     if (init.signal?.aborted) abort();
     init.signal?.addEventListener("abort", abort, { once: true });
+    // A streamed body owns the tunnel from the moment it is returned, and closes it when it ends.
+    let handedOff = false;
+    const release = () => {
+      init.signal?.removeEventListener("abort", abort);
+      socket.destroy();
+    };
     try {
       try {
         socket.setNoDelay(true);
@@ -251,9 +328,24 @@ export function createSocksFetch(proxy: SocksProxy, opts: { maxResponseBytes: nu
         headers.append(name, value);
       }
 
+      const chunkedCoding = /(^|,)\s*chunked\s*$/i.test(headers.get("transfer-encoding") ?? "");
+      if (init.stream && !(method === "HEAD" || status === 204 || status === 304)) {
+        let framing: { chunked: true } | { length: number } | { toEnd: true } = { toEnd: true };
+        if (chunkedCoding) framing = { chunked: true };
+        else if (lengths.size) {
+          const [only] = [...lengths];
+          if (lengths.size !== 1 || !/^\d{1,10}$/.test(only) || Number(only) > opts.maxResponseBytes) throw new Error("The response has an invalid Content-Length.");
+          framing = { length: Number(only) };
+        }
+        headers.delete("transfer-encoding");
+        headers.delete("content-length");
+        handedOff = true;
+        return new Response(payloadStream(reader, framing, opts.maxResponseBytes, release), { status, headers });
+      }
+
       let payload: Buffer;
       if (method === "HEAD" || status === 204 || status === 304) payload = Buffer.alloc(0);
-      else if (/(^|,)\s*chunked\s*$/i.test(headers.get("transfer-encoding") ?? "")) payload = await readChunked(reader, opts.maxResponseBytes);
+      else if (chunkedCoding) payload = await readChunked(reader, opts.maxResponseBytes);
       else if (lengths.size) {
         const [only] = [...lengths];
         if (lengths.size !== 1 || !/^\d{1,10}$/.test(only) || Number(only) > opts.maxResponseBytes) throw new Error("The response has an invalid Content-Length.");
@@ -268,8 +360,7 @@ export function createSocksFetch(proxy: SocksProxy, opts: { maxResponseBytes: nu
       if (init.signal?.aborted) throw init.signal.reason;
       throw e;
     } finally {
-      init.signal?.removeEventListener("abort", abort);
-      socket.destroy();
+      if (!handedOff) release();
     }
   };
 }

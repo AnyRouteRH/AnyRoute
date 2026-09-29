@@ -6,11 +6,19 @@ import { RELAY_VERSION } from "./version.ts";
 // configured with, then returns the encapsulated response. It cannot read either. What it must not do is pass on
 // anything that identifies the client, so the forwarded request is built from scratch (never from the incoming
 // headers), and it keeps no per-client state and writes no log lines while handling requests: only counters.
+//
+// With RELAY_CHUNKED_ENABLED it also carries chunked Oblivious HTTP (draft-ietf-ohai-chunked-ohttp): the request is read
+// and forwarded under the same rules, and the response is passed on chunk by chunk as the gateway sends it, never held
+// whole, under the same size limit and timeout. The relay cannot read those chunks either, nor tell where one ends.
 
 /** How much larger than a request a response may be: the gateway adds padding, a nonce and a tag. */
 const RESPONSE_SLACK = 64 * 1024;
 const REQ = "message/ohttp-req";
 const RES = "message/ohttp-res";
+const CHUNKED_REQ = "message/ohttp-chunked-req";
+const CHUNKED_RES = "message/ohttp-chunked-res";
+/** Asks the next hop to forward a chunked message as it arrives rather than buffer it (RFC 10036). */
+const INCREMENTAL = { incremental: "?1" };
 
 /** Reasons a request is refused before it is forwarded. A fixed list, so a counter never carries anything a client chose. */
 export const REJECT_REASONS = ["method", "media_type", "gateway_unknown", "gateway_ambiguous", "empty_body", "body_too_large", "busy"] as const;
@@ -91,7 +99,62 @@ async function readCapped(body: ReadableStream<Uint8Array> | null, max: number):
   return out;
 }
 
-const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type", "access-control-max-age": "86400" };
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type, incremental", "access-control-max-age": "86400" };
+
+/**
+ * A response body passed on as it is read, and cut off once more than `max` bytes went through or when the gateway's
+ * stream fails. A cut ends the stream (the HTTP server would end it the same way on an error, and print the error
+ * besides); the client sees the final chunk missing and knows the response is incomplete. `done` runs once: when the
+ * body ends, is cut off, or the client goes away. Nothing is read ahead of the client.
+ */
+function passThrough(body: ReadableStream<Uint8Array>, max: number, onBytes: (n: number) => void, done: (outcome: "ok" | "error" | "cancelled") => void): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let total = 0;
+  let settled = false;
+  const settle = (outcome: "ok" | "error" | "cancelled") => {
+    if (settled) return;
+    settled = true;
+    done(outcome);
+  };
+  const end = (ctl: ReadableStreamDefaultController<Uint8Array>) => {
+    try {
+      ctl.close();
+    } catch {
+      /* the client already went away */
+    }
+  };
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(ctl) {
+        try {
+          const { done: finished, value } = await reader.read();
+          if (finished) {
+            settle("ok");
+            end(ctl);
+            return;
+          }
+          total += value.length;
+          if (total > max) {
+            void reader.cancel().catch(() => undefined);
+            settle("error");
+            end(ctl);
+            return;
+          }
+          onBytes(value.length);
+          ctl.enqueue(value);
+        } catch {
+          settle("error");
+          end(ctl);
+        }
+      },
+      cancel(reason) {
+        settle("cancelled");
+        void reader.cancel(reason).catch(() => undefined);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
 
 function reply(status: number, type: string, message: string, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify({ error: { code: status, type, message } }), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...CORS, ...extra } });
@@ -116,7 +179,9 @@ export function createRelay(cfg: RelayConfig, fetchImpl: typeof fetch = fetch) {
 
   async function relay(req: Request, url: URL): Promise<Response> {
     counters.requests++;
-    if (mediaType(req.headers.get("content-type")) !== REQ) return reject("media_type", 415, "unsupported_media_type", `Expected content-type ${REQ}.`);
+    const type = mediaType(req.headers.get("content-type"));
+    const chunked = cfg.chunked && type === CHUNKED_REQ;
+    if (type !== REQ && !chunked) return reject("media_type", 415, "unsupported_media_type", cfg.chunked ? `Expected content-type ${REQ} or ${CHUNKED_REQ}.` : `Expected content-type ${REQ}.`);
     const gateway = chooseGateway(cfg, url.searchParams.get("gateway"));
     // Only a gateway in the allow-list is ever contacted. The check happens before the body is read.
     if (gateway === "unknown") return reject("gateway_unknown", 403, "gateway_not_allowed", "This relay does not forward to that gateway.");
@@ -124,6 +189,8 @@ export function createRelay(cfg: RelayConfig, fetchImpl: typeof fetch = fetch) {
     if (Number(req.headers.get("content-length") ?? 0) > cfg.maxBodyBytes) return reject("body_too_large", 413, "payload_too_large", "Request body is too large.");
     if (counters.inflight >= cfg.maxInflight) return reject("busy", 503, "busy", "The relay is at capacity. Try again shortly.");
     counters.inflight++;
+    // A streamed response keeps its slot until the stream is over; everything else frees it on return.
+    let streaming = false;
     try {
       const body = await readCapped(req.body, cfg.maxBodyBytes);
       if (!body) return reject("body_too_large", 413, "payload_too_large", "Request body is too large.");
@@ -133,12 +200,14 @@ export function createRelay(cfg: RelayConfig, fetchImpl: typeof fetch = fetch) {
 
       // The forwarded request is built from nothing but the configured pieces and the body: no header, address, cookie
       // or query string from the client's request is copied into it.
-      const headers: Record<string, string> = { "content-type": REQ, accept: RES, "user-agent": `anyroute-ohttp-relay/${RELAY_VERSION}` };
+      const headers: Record<string, string> = chunked
+        ? { "content-type": CHUNKED_REQ, accept: CHUNKED_RES, ...INCREMENTAL, "user-agent": `anyroute-ohttp-relay/${RELAY_VERSION}` }
+        : { "content-type": REQ, accept: RES, "user-agent": `anyroute-ohttp-relay/${RELAY_VERSION}` };
       if (gateway.credential) headers.authorization = `Bearer ${gateway.credential}`;
       let res: Response;
       try {
         const signal = AbortSignal.any([req.signal, AbortSignal.timeout(cfg.timeoutMs)]);
-        if (onionGateways.has(gateway.name) && socksFetch) res = await socksFetch(gateway.url, { method: "POST", headers, body, signal });
+        if (onionGateways.has(gateway.name) && socksFetch) res = await socksFetch(gateway.url, { method: "POST", headers, body, signal, stream: chunked });
         else res = await fetchImpl(gateway.url, { method: "POST", headers, body, redirect: "manual", signal });
       } catch (e) {
         if ((e as Error)?.name === "TimeoutError") {
@@ -151,7 +220,22 @@ export function createRelay(cfg: RelayConfig, fetchImpl: typeof fetch = fetch) {
         return reply(502, "gateway_unreachable", "The gateway could not be reached.");
       }
 
-      if (res.status === 200 && mediaType(res.headers.get("content-type")) === RES) {
+      if (chunked && res.status === 200 && mediaType(res.headers.get("content-type")) === CHUNKED_RES && res.body) {
+        // Passed on chunk by chunk under the same limit as a whole response; the response is rebuilt as below.
+        streaming = true;
+        const out = passThrough(
+          res.body,
+          cfg.maxBodyBytes + RESPONSE_SLACK,
+          (n) => (counters.bytesOut += n),
+          (outcome) => {
+            if (outcome === "ok") counters.gateway.ok++;
+            else if (outcome === "error") counters.gateway.error++;
+            counters.inflight--;
+          },
+        );
+        return new Response(out, { status: 200, headers: { "content-type": CHUNKED_RES, "cache-control": "no-store", ...INCREMENTAL, ...CORS } });
+      }
+      if (!chunked && res.status === 200 && mediaType(res.headers.get("content-type")) === RES) {
         // A little more than the request limit: the gateway pads and wraps what it sends back.
         const out = await readCapped(res.body, cfg.maxBodyBytes + RESPONSE_SLACK).catch(() => null);
         if (!out) {
@@ -178,7 +262,7 @@ export function createRelay(cfg: RelayConfig, fetchImpl: typeof fetch = fetch) {
       counters.gateway.error++;
       return reply(502, "bad_gateway_response", "The gateway returned an unexpected response.");
     } finally {
-      counters.inflight--;
+      if (!streaming) counters.inflight--;
     }
   }
 

@@ -15,9 +15,10 @@ That only holds if **the relay is run by someone other than the router's operato
 
 - Accepts `POST` of `message/ohttp-req` on one fixed path (`/relay` by default) and nothing else.
 - Forwards the body, unchanged, to a gateway from its **allow-list** and returns the `message/ohttp-res`. The client names the gateway with `?gateway=<name>` (or its exact URL); with one gateway configured it can be omitted. Any other target is refused before a connection is made. Redirects are never followed.
+- With `RELAY_CHUNKED_ENABLED=true`, also carries **chunked Oblivious HTTP** (`message/ohttp-chunked-req` in, `message/ohttp-chunked-res` out, draft-ietf-ohai-chunked-ohttp): the request is forwarded under the same rules, and the response is passed on chunk by chunk as the gateway sends it, never held whole, under the same size limit and timeout, so a streamed model response reaches the client as it is produced. A response cut off at the limit ends without its final chunk, which the client detects. Off by default.
 - Reaches a gateway that is an **onion service** through a SOCKS5 proxy (a local Tor client) when `RELAY_SOCKS5_PROXY` is set. See [Reaching a gateway over Tor](#reaching-a-gateway-over-tor).
-- Builds the forwarded request from scratch: it does not copy a single header, cookie, address or query string from the client's request. It sends `content-type`, `accept`, its own `user-agent`, and, if configured, `Authorization: Bearer <credential>` so the gateway can tell relay traffic from direct traffic.
-- Rebuilds the response too: only the `message/ohttp-res` body reaches the client. When the gateway refuses before unwrapping (stale key, size, rate limit) it passes on the status code and a fixed message, never the gateway's headers or body.
+- Builds the forwarded request from scratch: it does not copy a single header, cookie, address or query string from the client's request. It sends `content-type`, `accept`, its own `user-agent` (and `incremental: ?1` on a chunked request), and, if configured, `Authorization: Bearer <credential>` so the gateway can tell relay traffic from direct traffic.
+- Rebuilds the response too: only the `message/ohttp-res` (or `message/ohttp-chunked-res`) body reaches the client. When the gateway refuses before unwrapping (stale key, size, rate limit) it passes on the status code and a fixed message, never the gateway's headers or body.
 - **Never logs a request, a body or a client address.** It writes one line at start-up (its own configuration: port, path, gateway names) and nothing while serving. What it keeps is counters, in memory, at `GET /metrics`: request, forwarded and refused counts by a fixed list of reasons, gateway response classes, bytes and requests in flight. They carry no client detail and reset on restart.
 - Holds no state between requests, so several copies can run side by side.
 
@@ -60,6 +61,7 @@ The relay reads its allow-list from the environment. Put the credential in a fil
 | `RELAY_TIMEOUT_MS` | 120000 | How long the gateway may take (model responses are slow). Up to 250000. |
 | `RELAY_MAX_INFLIGHT` | 256 | Requests forwarded at once; more get a 503 rather than a queue. |
 | `RELAY_METRICS` | `true` | Serve `/metrics`. Restrict it at your proxy if you prefer. |
+| `RELAY_CHUNKED_ENABLED` | `false` | Also carry chunked Oblivious HTTP, passing the response on as it arrives (see above). Turn it on when the gateway lists `gateway.chunked` in `GET /api/v1/relays`, and make sure whatever proxies to the relay does not buffer responses. |
 | `RELAY_TLS_CERT_FILE`, `RELAY_TLS_KEY_FILE` | unset | Terminate TLS in the relay. Otherwise put a TLS-terminating proxy in front. |
 
 ### 3. Run it

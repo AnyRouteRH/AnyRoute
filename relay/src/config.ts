@@ -28,6 +28,8 @@ export type RelayConfig = {
   /** Requests being forwarded at once; beyond this the relay answers 503 instead of queueing. */
   maxInflight: number;
   metrics: boolean;
+  /** Also carry chunked Oblivious HTTP (message/ohttp-chunked-req and -res), passing the response on as it arrives. Off by default. */
+  chunked: boolean;
   tls?: { certFile: string; keyFile: string };
 };
 
@@ -37,6 +39,13 @@ const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** A version 3 onion service name: 56 base32 characters. (A gateway is never a subdomain of one.) */
 export const isOnionHost = (hostname: string) => /^[a-z2-7]{56}\.onion$/.test(hostname);
+
+function flag(env: Record<string, string | undefined>, name: string): boolean {
+  const raw = (env[name] ?? "").trim().toLowerCase();
+  if (raw === "" || raw === "false" || raw === "0") return false;
+  if (raw === "true" || raw === "1") return true;
+  throw new ConfigError(`${name} must be true or false.`);
+}
 
 function int(env: Record<string, string | undefined>, name: string, dflt: number, min: number, max: number): number {
   const raw = env[name];
@@ -128,6 +137,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     timeoutMs: int(env, "RELAY_TIMEOUT_MS", 120_000, 1000, 250_000),
     maxInflight: int(env, "RELAY_MAX_INFLIGHT", 256, 1, 100_000),
     metrics: (env.RELAY_METRICS ?? "true").toLowerCase() !== "false",
+    chunked: flag(env, "RELAY_CHUNKED_ENABLED"),
     ...(certFile && keyFile ? { tls: { certFile, keyFile } } : {}),
   };
 }

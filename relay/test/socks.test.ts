@@ -448,3 +448,82 @@ describe("the relay with an onion gateway", () => {
     }
   });
 });
+
+describe("streamed responses through the proxy (chunked Oblivious HTTP)", () => {
+  const HEAD = "HTTP/1.1 200 OK\r\nContent-Type: message/ohttp-chunked-res\r\nTransfer-Encoding: chunked\r\n\r\n";
+
+  test("with `stream` the body is read from the tunnel as it is consumed: the first chunk arrives while the target holds the rest", async () => {
+    let finish!: () => void;
+    const t = await rawTarget((_r, s) => {
+      s.write(HEAD + "5\r\nfirst\r\n");
+      finish = () => s.end("7\r\n, again\r\n0\r\n\r\n");
+    });
+    targetPort = t.port;
+    try {
+      const res = await via()(`http://${ONION}/g`, { method: "POST", body: REQ_BODY, stream: true });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("transfer-encoding")).toBeNull();
+      const reader = res.body!.getReader();
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe("first");
+      finish();
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe(", again");
+      expect((await reader.read()).done).toBe(true);
+    } finally {
+      t.close();
+    }
+  });
+
+  test("a streamed body keeps the rules: its declared length, the end of the connection, and the size limit", async () => {
+    const read = async (wire: string, max = 1 << 20) => {
+      const t = await rawTarget((_r, s) => s.end(wire));
+      targetPort = t.port;
+      try {
+        const res = await via({}, max)(`http://${ONION}/g`, { method: "POST", body: REQ_BODY, stream: true });
+        return await res.text();
+      } finally {
+        t.close();
+      }
+    };
+    expect(await read("HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nhello world")).toBe("hello world");
+    expect(await read("HTTP/1.1 200 OK\r\n\r\nno length given")).toBe("no length given");
+    await expect(read("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nabc")).rejects.toThrow(/closed before/);
+    await expect(read(HEAD + "800\r\n" + "a".repeat(2048) + "\r\n0\r\n\r\n", 1000)).rejects.toThrow(/larger than allowed/);
+    await expect(read(HEAD + "zz\r\nabc\r\n0\r\n\r\n")).rejects.toThrow(/malformed chunk/);
+  });
+
+  test("the relay passes an onion gateway's chunked response on as it arrives, with only its own headers on the request", async () => {
+    let finish!: () => void;
+    const t = await rawTarget((_r, s) => {
+      s.write(HEAD + "3\r\nabc\r\n");
+      finish = () => s.end("3\r\ndef\r\n0\r\n\r\n");
+    });
+    targetPort = t.port;
+    const relay = createRelay(loadConfig({ RELAY_GATEWAYS: JSON.stringify([{ name: "hidden", url: `http://${ONION}/api/v1/ohttp/gateway`, credential: "relay-1:s3cret-value" }]), RELAY_SOCKS5_PROXY: `socks5h://127.0.0.1:${proxyPort}`, RELAY_CHUNKED_ENABLED: "true" }));
+    const server = Bun.serve({ port: 0, fetch: relay.handle });
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/relay`, { method: "POST", headers: { "content-type": "message/ohttp-chunked-req", cookie: "sess=abc123", "user-agent": "client-ua-mark" }, body: REQ_BODY });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("message/ohttp-chunked-res");
+      const reader = res.body!.getReader();
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe("abc");
+      expect(relay.counters.inflight).toBe(1);
+      finish();
+      let rest = "";
+      for (;;) {
+        const r = await reader.read();
+        if (r.done) break;
+        rest += new TextDecoder().decode(r.value);
+      }
+      expect(rest).toBe("def");
+      const head = t.requests[0].subarray(0, t.requests[0].indexOf("\r\n\r\n")).toString();
+      expect(head).toContain("content-type: message/ohttp-chunked-req");
+      expect(head).toContain("incremental: ?1");
+      expect(head).not.toMatch(/sess=abc123|client-ua-mark/);
+      for (let i = 0; i < 100 && relay.counters.inflight; i++) await Bun.sleep(5);
+      expect(relay.counters).toMatchObject({ inflight: 0, gateway: { ok: 1 } });
+    } finally {
+      server.stop(true);
+      t.close();
+    }
+  });
+});
