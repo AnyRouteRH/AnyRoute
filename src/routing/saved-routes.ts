@@ -4,6 +4,7 @@ import type { Catalog } from "../catalog/catalog.ts";
 import type { Db, Tx } from "../db/client.ts";
 import { savedRoutes } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
+import { DISCLOSURE_MAX_VALUES, LANES, classAllowed, type DisclosureClass, type DisclosureMax } from "../router/disclosure.ts";
 
 // Saved Routes: a named routing policy an account calls as `model: "@route/<slug>"` (like
 // OpenRouter presets). A route holds ordered fallback models, provider preferences and default
@@ -16,6 +17,12 @@ import { fail } from "../lib/errors.ts";
 //   3. the saved route
 //   4. the key's default provider preferences (keys.routing.provider)
 // The key's allowed_models and guardrails still apply to whatever the route resolves to.
+//
+// The two privacy settings, `provider.lane` and `provider.disclosure`, are the exception to "the request wins":
+// there the STRICTEST of the route and the request applies (a request may make a route stricter, never looser),
+// and the X-Anyroute-Lane / X-Anyroute-Disclosure-Max headers are folded in the same way by the chat path.
+// A route that asks for them is also checked when it is saved: every model in its fallback list must have a
+// provider that meets the ceiling right now.
 
 export const ROUTE_PREFIX = "@route/";
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,47}$/;
@@ -43,19 +50,32 @@ const providerSlug = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9][A-Za-
 const providerList = z.array(providerSlug).max(32);
 const usdPerMillion = z.number().finite().nonnegative().max(1_000_000);
 
-/** OpenRouter provider preferences a route may pin. */
-export const routeProviderSchema = z.strictObject({
-  order: providerList.optional(),
-  only: providerList.optional(),
-  ignore: providerList.optional(),
-  allow_fallbacks: z.boolean().optional(),
-  sort: z.enum(["price", "latency", "throughput"]).optional(),
-  data_collection: z.enum(["allow", "deny"]).optional(),
-  zdr: z.boolean().optional(),
-  require_parameters: z.boolean().optional(),
-  // USD per 1M tokens for prompt/completion, USD per request/image (as in `provider.max_price`).
-  max_price: z.strictObject({ prompt: usdPerMillion.optional(), completion: usdPerMillion.optional(), request: usdPerMillion.optional(), image: usdPerMillion.optional() }).optional(),
-});
+/** Lanes a route may pin. `unlinkable` needs a blind-token payment and a relay, which a saved route cannot carry. */
+export const ROUTE_LANES = ["public", "attested"] as const satisfies readonly (typeof LANES)[number][];
+export type RouteLane = (typeof ROUTE_LANES)[number];
+
+/** OpenRouter provider preferences a route may pin, plus the router's privacy lane and disclosure ceiling. */
+export const routeProviderSchema = z
+  .strictObject({
+    order: providerList.optional(),
+    only: providerList.optional(),
+    ignore: providerList.optional(),
+    allow_fallbacks: z.boolean().optional(),
+    sort: z.enum(["price", "latency", "throughput"]).optional(),
+    data_collection: z.enum(["allow", "deny"]).optional(),
+    zdr: z.boolean().optional(),
+    require_parameters: z.boolean().optional(),
+    // USD per 1M tokens for prompt/completion, USD per request/image (as in `provider.max_price`).
+    max_price: z.strictObject({ prompt: usdPerMillion.optional(), completion: usdPerMillion.optional(), request: usdPerMillion.optional(), image: usdPerMillion.optional() }).optional(),
+    // Privacy: the same values as the request's `provider.lane` / `provider.disclosure`; see the resolution rules above.
+    lane: z.enum(ROUTE_LANES).optional(),
+    disclosure: z.enum(DISCLOSURE_MAX_VALUES).optional(),
+  })
+  .superRefine((p, ctx) => {
+    // Lane "attested" already means disclosure "none"; a looser ceiling next to it would only mislead the reader.
+    if (p.lane === "attested" && p.disclosure !== undefined && p.disclosure !== "none")
+      ctx.addIssue({ code: "custom", path: ["disclosure"], message: 'lane "attested" already requires disclosure "none"; remove `disclosure` or set it to "none"' });
+  });
 
 const stopSequence = z.string().min(1).max(32);
 /** Default request parameters a route may set: sampling controls only, never message content. */
@@ -106,10 +126,18 @@ export const routePatchSchema = z.object({
 });
 export type RoutePatch = z.infer<typeof routePatchSchema>;
 
-/** Drop empty sections so stored configs stay minimal and comparable. */
+/**
+ * Drop empty sections so stored configs stay minimal and comparable. The defaults of the privacy settings
+ * (lane "public", disclosure "any") and a disclosure that lane "attested" already implies are not stored.
+ */
 export function normalizeConfig(config: RouteConfig): RouteConfig {
   const out: RouteConfig = { models: [...config.models] };
-  if (config.provider && Object.keys(config.provider).length) out.provider = config.provider;
+  if (config.provider) {
+    const provider = { ...config.provider };
+    if (provider.lane === "public") delete provider.lane;
+    if (provider.disclosure === "any" || provider.lane === "attested") delete provider.disclosure;
+    if (Object.keys(provider).length) out.provider = provider;
+  }
   if (config.params && Object.keys(config.params).length) out.params = config.params;
   return out;
 }
@@ -147,21 +175,75 @@ export async function findSavedRoute(db: Db, accountId: string, routeSlug: strin
   return row ?? null;
 }
 
+// ---- Privacy settings: the strictest of route and request wins --------------------------------------
+
+const LANE_RANK: Record<string, number> = { public: 0, attested: 1, unlinkable: 2 };
+const DISCLOSURE_RANK: Record<string, number> = { any: 0, policy: 1, none: 2 };
+
+/**
+ * The value a privacy setting takes when a route asks for `routeValue` and the request sent `requestValue`:
+ * the stricter of the two. A request value that is unset (missing, null, "") yields the route's; one the router
+ * does not recognise is returned unchanged so the chat path still answers it with its own 400.
+ */
+export function strictest(rank: Record<string, number>, routeValue: string | undefined, requestValue: unknown): unknown {
+  if (routeValue === undefined) return requestValue;
+  if (requestValue == null || requestValue === "") return routeValue;
+  const asked = typeof requestValue === "string" ? requestValue.trim().toLowerCase() : requestValue;
+  if (typeof asked !== "string" || !(asked in rank)) return requestValue;
+  return rank[asked]! > (rank[routeValue] ?? 0) ? requestValue : routeValue;
+}
+
+/** What a route's privacy settings amount to: the lane it pins and the disclosure ceiling that implies. */
+export function routeCeiling(provider: { lane?: string; disclosure?: string } | undefined): { lane: RouteLane; max: DisclosureMax } {
+  const lane: RouteLane = provider?.lane === "attested" ? "attested" : "public";
+  const disclosure = (DISCLOSURE_MAX_VALUES as readonly string[]).includes(provider?.disclosure ?? "") ? (provider!.disclosure as DisclosureMax) : "any";
+  return { lane, max: lane === "attested" ? "none" : disclosure };
+}
+
 /**
  * Fill a request body in place from a route config. Values the request sets explicitly win:
  * `models` (the whole fallback list), each top-level `provider` field, and each parameter.
  * `max_tokens` counts as set when the request sends either `max_tokens` or `max_completion_tokens`.
+ * The exception is the privacy settings: `provider.lane` and `provider.disclosure` take the stricter of the
+ * route's and the request's value, so a request can tighten a route but never loosen it.
  */
 export function applyRouteConfig(body: Record<string, unknown>, config: RouteConfig) {
   body.model = config.models[0];
   if (body.models == null) body.models = [...config.models];
-  if (config.provider) body.provider = { ...structuredClone(config.provider), ...((body.provider as object | undefined) ?? {}) };
+  if (config.provider) {
+    const sent = body.provider !== null && typeof body.provider === "object" && !Array.isArray(body.provider) ? (body.provider as Record<string, unknown>) : {};
+    const merged: Record<string, unknown> = { ...structuredClone(config.provider), ...sent };
+    for (const [field, rank] of [["lane", LANE_RANK], ["disclosure", DISCLOSURE_RANK]] as const) {
+      const value = strictest(rank, config.provider[field], sent[field]);
+      if (value === undefined) delete merged[field];
+      else merged[field] = value;
+    }
+    body.provider = merged;
+  }
   for (const [k, v] of Object.entries(config.params ?? {})) {
     if (v === undefined || body[k] !== undefined) continue;
     if (k === "max_tokens" && body.max_completion_tokens !== undefined) continue;
     body[k] = structuredClone(v);
   }
   return body;
+}
+
+// ---- Availability on the lane -----------------------------------------------------------------------
+
+/** The disclosure classes a model's live, eligible endpoints are served under right now; null when the model is not in the catalog. */
+export type ClassesOf = (modelId: string) => DisclosureClass[] | null;
+
+/**
+ * The models of a route that no provider can serve under the route's ceiling right now (unknown models are not
+ * reported here: the catalog check has already refused those). Empty when the route asks for no ceiling.
+ */
+export function modelsOffLane(config: Pick<RouteConfig, "models" | "provider">, classesOf: ClassesOf): string[] {
+  const { max } = routeCeiling(config.provider);
+  if (max === "any") return [];
+  return config.models.filter((id) => {
+    const classes = classesOf(id);
+    return classes !== null && !classes.some((cls) => classAllowed(cls, max));
+  });
 }
 
 /**
