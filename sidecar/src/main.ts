@@ -11,6 +11,7 @@ const USAGE = `anyroute-sidecar ${SIDECAR_VERSION}
 usage:
   main.ts serve [--config sidecar.yaml]     hash the weights, check the pins, attest, then serve
   main.ts digest <path> [--exclude glob]... print the model digest of a weights directory (add it to the allow-list)
+  main.ts healthcheck                       exit 0 when the local /healthz answers 200 (used by the container HEALTHCHECK)
   main.ts version
 `;
 
@@ -32,6 +33,18 @@ async function serve(args: string[]) {
   process.on("SIGINT", stop);
 }
 
+async function healthcheck(args: string[]) {
+  const cfg = loadConfig(process.env, flag(args, "--config"));
+  const scheme = cfg.server.tls === "off" ? "http" : "https";
+  try {
+    // Loopback probe of our own listener: the certificate is self-signed and is not what is being checked here.
+    const res = await fetch(`${scheme}://127.0.0.1:${cfg.server.port}/healthz`, { tls: { rejectUnauthorized: false }, signal: AbortSignal.timeout(5000) });
+    process.exit(res.status === 200 ? 0 : 1);
+  } catch {
+    process.exit(1);
+  }
+}
+
 async function digest(args: string[]) {
   const path = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--exclude");
   if (!path) throw new SidecarError("USAGE", "usage: main.ts digest <path> [--exclude glob]...");
@@ -48,6 +61,8 @@ async function main() {
       return serve(args);
     case "digest":
       return digest(args);
+    case "healthcheck":
+      return healthcheck(args);
     case "version":
     case "--version":
       process.stdout.write(`${SIDECAR_VERSION}\n`);

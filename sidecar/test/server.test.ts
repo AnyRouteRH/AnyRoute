@@ -250,6 +250,10 @@ auth:
       const doc = await (await fetch(`http://127.0.0.1:${port}/attest`)).json();
       expect(verifyReceipt(env, doc.receipt_key.public_key)).toBe(true);
       expect(err).toContain("DEV ATTESTATION");
+      const hc = await run(["healthcheck", "--config", join(dir, "sidecar.yaml")], { SIDECAR_PORT: String(port) });
+      expect(hc.code).toBe(0);
+      const none = await run(["healthcheck", "--config", join(dir, "sidecar.yaml")], { SIDECAR_PORT: "1" });
+      expect(none.code).toBe(1);
     } finally {
       const exited = new Promise<number | null>((r) => child.on("exit", (c) => r(c)));
       child.kill("SIGTERM");

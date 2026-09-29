@@ -1,0 +1,56 @@
+# The sidecar in front of vLLM.
+#
+# Set these before `docker compose up`, using digest-pinned references you have checked:
+#   SIDECAR_IMAGE   the sidecar image, e.g. <registry>/sidecar@sha256:...   (built from ./Dockerfile)
+#   VLLM_IMAGE      the model server image, e.g. vllm/vllm-openai@sha256:...
+#   MODELS_DIR      host directory holding the weights (mounted read-only into both containers)
+#   SIDECAR_ADDR    where to listen on the host, e.g. 0.0.0.0:8443
+#
+# The compose file itself is part of what gets attested: keep the image references pinned, keep the model
+# server off any network that can reach the internet, and do not publish the model server's port.
+
+services:
+  vllm:
+    image: ${VLLM_IMAGE:?set VLLM_IMAGE to a digest-pinned vLLM image}
+    command: ["--model", "/models/model", "--served-model-name", "my-model", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${MODELS_DIR:?set MODELS_DIR}:/models:ro
+    networks: [backend]
+    expose: ["8000"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  sidecar:
+    image: ${SIDECAR_IMAGE:?set SIDECAR_IMAGE to a digest-pinned sidecar image}
+    depends_on: [vllm]
+    environment:
+      SIDECAR_CONFIG: /etc/sidecar/sidecar.yaml
+      # The same digest that SIDECAR_IMAGE pins; it is bound into the attestation as declared by the operator.
+      SIDECAR_IMAGE_DIGEST: ${SIDECAR_IMAGE_DIGEST:?set SIDECAR_IMAGE_DIGEST to the digest in SIDECAR_IMAGE}
+      # Never set SIDECAR_DEV_ATTESTATION outside local development.
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - ./sidecar.yaml:/etc/sidecar/sidecar.yaml:ro
+      # dstack guest agent socket (attestation.provider: dstack):
+      - /var/run/dstack.sock:/var/run/dstack.sock
+    ports:
+      - "${SIDECAR_ADDR:-127.0.0.1:8443}:8443"
+    networks: [backend, frontend]
+    restart: unless-stopped
+    # For attestation.provider: tdx, the configfs-tsm interface needs root and the host's configfs:
+    # user: root
+    # volumes: ["/sys/kernel/config:/sys/kernel/config"]
+
+networks:
+  # No route out: the model server cannot reach the internet, and nothing outside can reach it directly.
+  backend:
+    internal: true
+  frontend: {}

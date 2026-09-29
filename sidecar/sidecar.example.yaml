@@ -1,0 +1,111 @@
+# sidecar.yaml: everything the sidecar reads. Unknown keys are rejected, so a typo cannot silently turn a
+# security setting off. Copy this file to sidecar.yaml and edit it. Values marked REPLACE must be yours.
+
+server:
+  host: 0.0.0.0
+  port: 8443
+  # "self_signed": a TLS key is generated at boot, its public key is bound into the attestation report data and
+  # the hash of the attestation is placed in the certificate's SAN. "off" serves plain HTTP and is only for a
+  # listener that sits inside the same trust boundary; the transport is then not covered by the attestation.
+  tls: self_signed
+  # Extra names or IP addresses to put in the certificate (localhost and 127.0.0.1 when empty).
+  hostnames: []
+  cert_validity_days: 90
+
+upstream:
+  # The OpenAI-compatible server (for example vLLM). Give the origin, without /v1.
+  base_url: http://vllm:8000
+  # Name of the environment variable holding the upstream's own API key, if it needs one.
+  api_key_env: SIDECAR_UPSTREAM_API_KEY
+  timeout_ms: 600000
+  stream_idle_timeout_ms: 120000
+  max_request_bytes: 8388608
+  max_response_bytes: 67108864
+  # Extra client request headers to pass through. Only these (plus content-type and accept) are ever
+  # forwarded. Names that carry client addresses, credentials or cookies are refused.
+  forward_headers: []
+
+model:
+  # The directory (or single file) the model server loads. It is hashed at boot; mount it read-only into both
+  # containers. Print the digest with: bun src/main.ts digest /models/model
+  path: /models/model
+  # Optionally assert the digest you expect (must equal the measured one). Without `path`, this digest is only
+  # declared, not measured, and /attest says so.
+  # digest: sha256:REPLACE
+  # Globs (relative to `path`) to leave out of the digest, e.g. a README.
+  exclude: []
+  # If set, requests must name exactly this model.
+  # served_name: my-model
+
+# Boot refuses to start unless the measured model digest is listed here (or in the file / SIDECAR_MODEL_ALLOWLIST).
+allowlist:
+  model_digests:
+    - sha256:0000000000000000000000000000000000000000000000000000000000000000 # REPLACE
+  # model_digests_file: /etc/sidecar/models.txt     # one digest per line, # comments allowed
+  # If set, the deployment (compose) hash must be listed too.
+  compose_hashes: []
+  # compose_hashes_file: /etc/sidecar/compose-hashes.txt
+
+# The digest of this image as you pin it in your compose file. Bound into the attestation as declared.
+# image_digest: sha256:REPLACE
+
+compose:
+  # sha256 of the deployment manifest. On dstack the platform reports it and this is not needed; if both are
+  # given they must agree. `file` hashes a file mounted into the container.
+  # file: /etc/sidecar/app-compose.json
+  # hash: sha256:REPLACE
+
+attestation:
+  # dstack: the confidential-VM guest agent socket. tdx: Linux configfs-tsm (Intel TDX, run as root).
+  # dev: simulated evidence; refused unless SIDECAR_DEV_ATTESTATION=true, and marked dev on every response.
+  provider: dstack
+  dstack:
+    endpoint: /var/run/dstack.sock
+  tdx:
+    tsm_path: /sys/kernel/config/tsm/report
+  # Fresh quotes requested with /attest?nonce=... cost a hardware call; cap them.
+  fresh_quotes_per_minute: 30
+
+# Optional cross-check of the served model digest against the router's record for this provider.
+# router:
+#   url: https://router.example
+#   provider_id: my-provider
+#   api_key_env: SIDECAR_ROUTER_API_KEY
+#   fail_closed: true
+
+auth:
+  # SHA-256 (hex) of each API key you hand out:  printf %s "$KEY" | sha256sum
+  # Keep the digest in quotes so YAML reads it as text.
+  keys:
+    - id: example
+      sha256: "0000000000000000000000000000000000000000000000000000000000000000" # REPLACE
+      quota:
+        requests_per_minute: 120
+        burst: 20
+        tokens_per_minute: 200000
+        token_burst: 400000
+  # Serve without keys (all callers share one quota identity). Refused at startup unless set explicitly.
+  allow_anonymous: false
+
+quota:
+  # Applied to a key that has no quota of its own, and across all keys.
+  default:
+    requests_per_minute: 60
+    burst: 10
+  global: {}
+
+classifier:
+  enabled: false # no classifier ships in this version; true is refused at startup
+
+royalty:
+  # Published in /.well-known/anyroute-sidecar.json. Does not change what the sidecar does.
+  # recipient: "0x0000000000000000000000000000000000000000"
+
+receipts:
+  # Signed receipts wait here for the router's anchor to pull them; the oldest are dropped when it is full.
+  queue_capacity: 100000
+
+anchor:
+  # Name of the environment variable holding the bearer token for /anchor/leaves and /anchor/ack. Unset: those
+  # endpoints are off.
+  token_env: SIDECAR_ANCHOR_TOKEN

@@ -53,7 +53,7 @@ function known(o: Obj, keys: string[], path: string) {
 function str(o: Obj, k: string, path: string): string | undefined {
   const v = o[k];
   if (v === undefined || v === null) return undefined;
-  if (typeof v !== "string" || !v.trim()) return bad(`${path}.${k}`, "expected a non-empty string");
+  if (typeof v !== "string" || !v.trim()) return bad(`${path}.${k}`, "expected a non-empty string (put hex values in quotes so YAML does not read them as numbers)");
   return v.trim();
 }
 function num(o: Obj, k: string, path: string, min: number, max: number): number | undefined {
@@ -76,7 +76,7 @@ function bool(o: Obj, k: string, path: string): boolean | undefined {
 function strList(o: Obj, k: string, path: string): string[] {
   const v = o[k];
   if (v === undefined || v === null) return [];
-  if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !x.trim())) return bad(`${path}.${k}`, "expected a list of strings");
+  if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !x.trim())) return bad(`${path}.${k}`, "expected a list of strings (put hex values in quotes so YAML does not read them as numbers)");
   return (v as string[]).map((x) => x.trim());
 }
 
