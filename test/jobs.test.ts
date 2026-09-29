@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { Queue } from "bullmq";
 import { Jobs } from "../src/services/jobs.ts";
 
 test("in-process jobs run on schedule, never overlap, and report status", async () => {
@@ -30,11 +31,19 @@ test.skipIf(!process.env.TEST_REDIS_URL)("BullMQ: two replicas share one schedul
   };
   const a = mk("a");
   const b = mk("b");
-  await a.start();
-  await b.start();
-  await Bun.sleep(1500);
-  await a.stop();
-  await b.stop();
+  try {
+    await a.start();
+    await b.start();
+    await Bun.sleep(1500);
+  } finally {
+    await a.stop();
+    await b.stop();
+    // The schedule lives in Redis and outlives this process: remove it, or every later run on the same Redis
+    // finds this run's leftover schedule competing for the queue and counts fewer ticks.
+    const queue = new Queue("anyroute-jobs-all", { connection: { url: process.env.TEST_REDIS_URL } as never });
+    await queue.removeJobScheduler("bull-tick-" + process.pid);
+    await queue.close();
+  }
   const total = counts.a + counts.b;
   expect(total).toBeGreaterThanOrEqual(4);
   expect(total).toBeLessThanOrEqual(9); // ~1500/200 ticks, not doubled by two replicas
