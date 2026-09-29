@@ -14,3 +14,4 @@ config/providers.local.yaml
 config/providers.yaml
 web/out/
 web/.next/
+/release-evidence/

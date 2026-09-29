@@ -2,11 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { desc, eq } from "drizzle-orm";
 import type { Address, Hex } from "viem";
 import { parse } from "yaml";
 import { verifyDeployment, type ChainReader, type DeploymentManifest } from "../scripts/deployment-verification";
+import { collectEvidence, lastMigration, writeEvidence } from "../scripts/release-evidence.ts";
 import { recordEvents } from "../src/chain/indexer.ts";
 import { loadConfig } from "../src/config.ts";
 import { openDatabase } from "../src/db/client.ts";
@@ -344,3 +345,56 @@ describe("M-04: spent roots cover every funded key", () => {
     }
   }, 60_000);
 });
+
+describe("H-06: release evidence", () => {
+  let h: Harness;
+  beforeAll(async () => {
+    h = await startRouter({ env: { RELEASE_COMMIT: RELEASE } });
+  });
+  afterAll(async () => h.close());
+  const viaApp = (url: string, init?: RequestInit) => {
+    const u = new URL(url);
+    return Promise.resolve(h.app.request(u.pathname + u.search, init));
+  };
+
+  test("public status names the running commit", async () => {
+    const status = (await (await h.request("/api/v1/status")).json()).data;
+    expect(status.release).toEqual({ commit: RELEASE, deployment: { status: "none", manifest_sha256: null, manifest_block: null, verified_at_block: null, verifier_revision: null } });
+  });
+
+  test("the collector records health, readiness, status, headers and migration, then writes the bundle and its SHA-256", async () => {
+    const bundle = await collectEvidence("http://127.0.0.1:8787", { fetch: viaApp, expectCommit: RELEASE.slice(0, 12) });
+    expect(bundle.release).toMatchObject({ live_commit: RELEASE, expected_commit: RELEASE.slice(0, 12), live_matches_expected: true });
+    expect(bundle.health).toMatchObject({ status: 200, body: { ok: true } });
+    expect(bundle.readiness.checks).toHaveProperty("database");
+    expect(bundle.readiness_metrics.reachable).toBe(true);
+    expect(bundle.status).not.toHaveProperty("launch");
+    expect(JSON.stringify(bundle.status)).not.toContain("public_rpc");
+    expect(bundle.catalog.models).toBeGreaterThan(0);
+    expect(bundle.security_headers.map((x) => x.path)).toEqual(["/", "/docs/", "/dashboard/"]);
+    expect(bundle.security_headers[0]).toMatchObject({ x_content_type_options: "nosniff", x_frame_options: "DENY", referrer_policy: "no-referrer" });
+    // A non-production app sends no HSTS, and the evidence says so.
+    expect(bundle.findings.some((f) => f.id === "headers/.hsts_missing")).toBe(true);
+    expect(bundle.findings.some((f) => f.id === "ready" && f.severity === "high")).toBe(true);
+    expect(bundle.migrations).toEqual(lastMigration());
+    expect(bundle.migrations.hash).toBe(sha256(readFileSync(resolve(root, `drizzle/${bundle.migrations.tag}.sql`), "utf8")));
+
+    const dir = mkdtempSync(join(tmpdir(), "anyroute-evidence-"));
+    try {
+      const { path, sha256: digest } = writeEvidence(bundle, dir);
+      expect(sha256(readFileSync(path, "utf8"))).toBe(digest);
+      expect(readFileSync(`${path}.sha256`, "utf8")).toBe(`${digest}  ${basename(path)}\n`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    const mismatch = await collectEvidence("http://127.0.0.1:8787", { fetch: viaApp, expectCommit: "deadbeef" });
+    expect(mismatch.findings.find((f) => f.id === "release.commit_mismatch")?.severity).toBe("high");
+    await expect(collectEvidence("http://router.example")).rejects.toThrow(/https/);
+  });
+
+  test("evidence output stays out of git", () => {
+    const check = Bun.spawnSync(["git", "check-ignore", "-q", "release-evidence/bundle.json"], { cwd: root });
+    expect(check.exitCode).toBe(0);
+  });
+});
+
