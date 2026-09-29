@@ -11,6 +11,7 @@ import BatchStudio from "./features/BatchStudio";
 import AgentSessions from "./features/AgentSessions";
 import SpendWatch from "./features/SpendWatch";
 import Holders from "./features/Holders";
+import PayAnyrDialog from "./PayAnyr";
 
 const tabs = ["Overview", "Playground", "Saved Routes", "Eval Lab", "Batch Studio", "Models", "API keys", "Agent Sessions", "Receipts", "Spend Watch", "Payments", "Holders", "Providers", "Settings"];
 const tabId = (t) => t.toLowerCase().replace(" ", "-");
@@ -425,6 +426,13 @@ const DEPOSIT_STATUS = {
   orphaned: ["Dropped by the chain · not credited", ""],
   reversed: ["Reversed", ""],
 };
+// The router's `stage` says more than `status`: a final deposit either waits for a price or is about to be credited.
+const DEPOSIT_STAGE = {
+  confirming: ["Waiting for finality", ""],
+  awaiting_price: ["Waiting for a price", ""],
+  crediting: ["Crediting", ""],
+  ...DEPOSIT_STATUS,
+};
 
 /** ERC-20 transfer(to, raw) calldata, built without a library. */
 const transferData = (to, raw) => "0xa9059cbb" + to.slice(2).toLowerCase().padStart(64, "0") + BigInt(raw).toString(16).padStart(64, "0");
@@ -574,7 +582,7 @@ function StockDeposits({ deposits }) {
                 {d.credited_usd != null ? "$" + money(d.credited_usd, 2) : "—"}
               </td>
               <td data-label="Status">
-                <span className={"badge" + (DEPOSIT_STATUS[d.status]?.[1] ?? "")}>{DEPOSIT_STATUS[d.status]?.[0] ?? "Waiting"}</span>
+                <span className={"badge" + ((DEPOSIT_STAGE[d.stage] ?? DEPOSIT_STATUS[d.status])?.[1] ?? "")}>{(DEPOSIT_STAGE[d.stage] ?? DEPOSIT_STATUS[d.status])?.[0] ?? "Waiting"}</span>
                 {d.note && <small>{d.note}</small>}
               </td>
             </tr>
@@ -852,6 +860,14 @@ export default function Dashboard() {
   stateRef.current = state;
   const live = mode === "live";
   const escrowOn = live && !!ws?.escrow; // PAYMENTS_MODE=escrow: Stock Tokens sent to an escrow wallet become credits
+  // A link to /dashboard/?pay=anyr#payments opens the $ANYR payment dialog once the workspace is loaded.
+  useEffect(() => {
+    if (!escrowOn || !ws.escrow.anyr || new URLSearchParams(window.location.search).get("pay") !== "anyr") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("pay");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    setModal({ type: "anyr" });
+  }, [escrowOn, ws?.escrow?.anyr]);
 
   async function refresh(key = apiKey) {
     const next = await loadWorkspace(key);
@@ -1481,9 +1497,17 @@ export default function Dashboard() {
                       {live && errorKind === "insufficient_credits" && (
                         <>
                           {" "}
-                          <button type="button" className="text-button" onClick={() => setModal({ type: escrowOn ? "stock" : "credits" })}>
-                            {escrowOn ? "Pay with stock →" : "Deposit USDG →"}
+                          <button type="button" className="text-button" onClick={() => setModal({ type: escrowOn ? (ws?.escrow?.anyr ? "anyr" : "stock") : "credits" })}>
+                            {escrowOn ? (ws?.escrow?.anyr ? `Pay with $${ws.escrow.anyr.symbol} →` : "Pay with stock →") : "Deposit USDG →"}
                           </button>
+                          {escrowOn && ws?.escrow?.anyr && (
+                            <>
+                              {" "}
+                              <button type="button" className="text-button" onClick={() => setModal({ type: "stock" })}>
+                                Pay with stock →
+                              </button>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -1687,7 +1711,16 @@ export default function Dashboard() {
                   <p>{`Held for calls in progress: $${money(ws?.credits?.held ?? 0, 6)} · Credited in total: $${money(ws?.credits?.total_credits ?? 0, 2)}.`}</p>
                 </div>
                 <div className="button-row">
-                  <Button onClick={() => setModal({ type: "stock" })}>{ws.escrow.anyr ? `Pay with stock or $${ws.escrow.anyr.symbol}` : "Pay with stock"}</Button>
+                  {ws.escrow.anyr ? (
+                    <>
+                      <Button onClick={() => setModal({ type: "anyr" })}>{`Pay with $${ws.escrow.anyr.symbol}`}</Button>
+                      <Button secondary onClick={() => setModal({ type: "stock" })}>
+                        Pay with stock
+                      </Button>
+                    </>
+                  ) : (
+                    <Button onClick={() => setModal({ type: "stock" })}>Pay with stock</Button>
+                  )}
                 </div>
               </div>
               <div className="panel-heading">
@@ -2064,6 +2097,23 @@ export default function Dashboard() {
               setErrorKind("");
             }
             setModal(null);
+          }}
+        />
+      )}
+      {modal?.type === "anyr" && ws?.escrow?.anyr && (
+        <PayAnyrDialog
+          escrow={ws.escrow}
+          stock={ws.stock}
+          chain={chainOf(status)}
+          apiKey={apiKey}
+          balance={view.balance}
+          onClose={() => setModal(null)}
+          onCredited={() => {
+            refresh().catch(() => undefined);
+            if (errorKind === "insufficient_credits") {
+              setError("");
+              setErrorKind("");
+            }
           }}
         />
       )}

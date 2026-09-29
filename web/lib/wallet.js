@@ -67,6 +67,27 @@ export async function personalSign(address, message) {
   return provider().request({ method: "personal_sign", params: [hex, address] });
 }
 
+/** The account the wallet has already shared with this site, or null (never prompts). */
+export async function connectedAccount() {
+  try {
+    const [address] = (await provider()?.request({ method: "eth_accounts" })) ?? [];
+    return address || null;
+  } catch {
+    return null;
+  }
+}
+
+/** A wallet's balance of an ERC-20 token (raw units), read through the wallet's own connection. Null when it cannot be read. */
+export async function tokenBalance(owner, token) {
+  try {
+    const data = "0x70a08231" + owner.slice(2).toLowerCase().padStart(64, "0");
+    const r = await provider().request({ method: "eth_call", params: [{ to: token, data }, "latest"] });
+    return /^0x[0-9a-fA-F]+$/.test(r) ? BigInt(r) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const shortAddress = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "");
 
 /** Wallet sign-in: sign the router's one-time challenge and receive this wallet's API key. No password, no email. */
