@@ -1,0 +1,24 @@
+# An Oblivious HTTP relay.
+#
+# Set these before `docker compose up`:
+#   RELAY_IMAGE       the relay image by digest, e.g. <registry>/ohttp-relay@sha256:...   (built from ./Dockerfile)
+#   RELAY_GATEWAYS    JSON list of the gateways this relay forwards to, with the credential the gateway gave you
+#                     (or mount a file and set RELAY_GATEWAYS_FILE; see the README)
+#   RELAY_ADDR        where to listen on the host, e.g. 127.0.0.1:8080 behind a TLS proxy
+#
+# This file keeps the relay from writing anything down: no container log driver, a read-only root filesystem,
+# no volumes, no capabilities. Keep it that way, and turn off access logging in whatever terminates TLS in front of it.
+
+services:
+  relay:
+    image: ${RELAY_IMAGE:?set RELAY_IMAGE to a digest-pinned relay image}
+    environment:
+      RELAY_GATEWAYS: ${RELAY_GATEWAYS:?set RELAY_GATEWAYS}
+    ports:
+      - "${RELAY_ADDR:-127.0.0.1:8080}:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: none
+    restart: unless-stopped

@@ -1,0 +1,21 @@
+{
+  "name": "@anyroute/relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stateless Oblivious HTTP relay (RFC 9458): forwards encapsulated requests to an allow-listed gateway without logging bodies or client addresses.",
+  "scripts": {
+    "start": "bun src/main.ts serve",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  },
+  "license": "Apache-2.0"
+}
