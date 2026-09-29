@@ -698,6 +698,7 @@ describe("the attested lane", () => {
     const streamed = await ask(PLAIN.slug, { "x-anyroute-lane": "attested" }, { stream: true });
     expect(streamed.status).toBe(409);
     expect(streamed.headers.get("content-type")).toContain("application/json");
+    expect(((await streamed.json()) as any).anyroute.type).toBe("lane_unavailable");
   });
 
   test("a lane the router does not run is a 501 that is not retried", async () => {
@@ -767,7 +768,9 @@ describe("the attested lane, streamed, with a policy hash bound by the endpoint'
     expect(s.list[0]!.data.message.id).toBe(stream.headers.get("x-receipt-id")!);
     expect(s.list[s.list.length - 2]!.data.anyroute).toMatchObject({ lane: "attested", policy_hash: POLICY, disclosure: "attested" });
     // The lane in the body works the same.
-    expect((await ask({}, { provider: { lane: "attested" }, stream: true })).headers.get("x-anyroute-lane")).toBe("attested");
+    const viaBody = await ask({}, { provider: { lane: "attested" }, stream: true });
+    expect(viaBody.headers.get("x-anyroute-lane")).toBe("attested");
+    expect((await events(viaBody)).types.slice(-1)).toEqual(["message_stop"]);
   });
 });
 
