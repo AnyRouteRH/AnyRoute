@@ -32,6 +32,7 @@ import { embeddingsRoutes } from "./api/embeddings.ts";
 import { adminRoutes } from "./admin/trpc.ts";
 import { paymasterRoutes } from "./api/paymaster.ts";
 import { registerJobs } from "./services/register.ts";
+import { mcpRoutes } from "./api/mcp.ts";
 import { siteRoutes } from "./api/site.ts";
 
 export type AppOptions = {
@@ -96,6 +97,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
   publicRoutes(app, ctx);
+  mcpRoutes(app, ctx);
   paymasterRoutes(app, ctx);
   adminRoutes(app, ctx);
   // The website (web/out, a static Next.js export) is served at / when it has been built; otherwise

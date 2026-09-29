@@ -21,7 +21,8 @@
     { "name": "Receipts", "description": "Public signed receipt retrieval and verification." },
     {"name": "Saved Routes", "description": "Named routing policies callable as model @route/<slug>."},
     {"name": "Agent Sessions", "description": "Short-lived, budget-capped session keys for agent runs."},
-    {"name": "Spend Watch", "description": "Spend reports, key budgets and alert rules."}
+    {"name": "Spend Watch", "description": "Spend reports, key budgets and alert rules."},
+    {"name": "MCP", "description": "Remote Model Context Protocol server: every live model as a tool."}
   ],
   "paths": {
     "/api/v1/models": {
@@ -106,6 +107,18 @@
         "tags": ["Receipts"], "operationId": "getReceipt", "summary": "Read a public receipt proof",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "Signed receipt and optional anchor proof.", "content": { "application/json": { "schema": { "type": "object", "required": ["data"], "properties": { "data": { "$ref": "#/components/schemas/Receipt" } } } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "default": { "$ref": "#/components/responses/ApiError" } }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": ["MCP"], "operationId": "mcp", "summary": "AnyRoute MCP (Streamable HTTP, stateless JSON-RPC 2.0)",
+        "description": "One JSON-RPC 2.0 message per request: initialize, ping, tools/list and tools/call (list_models, chat, get_receipt, verify_receipt), plus notifications, which get an empty 202. Replies are JSON, never a stream; there are no sessions. Only the chat tool needs an API key, which it spends like /api/v1/chat/completions. Malformed JSON or a batch gets HTTP 400, a request carrying a foreign Origin header gets 403 and GET gets 405; all three carry a JSON-RPC error body.",
+        "security": [{"BearerAuth": []}, {}],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["jsonrpc", "method"], "properties": { "jsonrpc": { "const": "2.0" }, "id": { "type": ["string", "integer"] }, "method": { "type": "string" }, "params": { "type": "object" } } } } } },
+        "responses": {
+          "200": { "description": "A JSON-RPC 2.0 response: a result, or an error object with a JSON-RPC code.", "content": { "application/json": { "schema": { "type": "object", "required": ["jsonrpc", "id"], "properties": { "jsonrpc": { "const": "2.0" }, "id": { "type": ["string", "integer", "null"] }, "result": { "type": "object" }, "error": { "type": "object", "required": ["code", "message"], "properties": { "code": { "type": "integer" }, "message": { "type": "string" } } } } } } } },
+          "202": { "description": "Notification accepted; the body is empty." }
+        }
       }
     },
     "/api/v1/routes": {"get": {"tags": ["Saved Routes"], "operationId": "listRoutes", "summary": "List the account's saved routes", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "Saved routes, sorted by slug.", "content": {"application/json": {"schema": {"type": "object", "properties": {"data": {"type": "array", "items": {"$ref": "#/components/schemas/SavedRoute"}}, "limit": {"type": "integer"}}}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}}}, "post": {"tags": ["Saved Routes"], "operationId": "createRoute", "summary": "Save a routing policy callable as model @route/<slug>", "description": "Owner or admin. No prompt text is stored.", "security": [{"BearerAuth": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SavedRouteInput"}}}}, "responses": {"201": {"description": "Created.", "content": {"application/json": {"schema": {"type": "object", "required": ["data"], "properties": {"data": {"$ref": "#/components/schemas/SavedRoute"}}}}}}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "409": {"description": "route_exists or route_limit_reached (100 per account).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiError"}}}}}}},

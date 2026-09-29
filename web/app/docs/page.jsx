@@ -1,6 +1,7 @@
 import PageFrame from "../../components/PageFrame";
 import { Button, Code } from "../../components/UI";
 import { sampleRequest } from "../../components/Extensions";
+import { API_BASE } from "../../lib/api";
 export const metadata = { title: "Developer documentation — Anyroute" };
 const receipt = {
   id: "gen-1790461071-M1D5SJxd7YpD5A",
@@ -27,6 +28,19 @@ const receipt = {
     paid_with: { token: "NVDA", raw_units: "<units>", fair_price: "<18-decimal USD>", swap_tx: "<tx once swapped>" },
   },
 };
+const BASE = API_BASE || "<your router>";
+const claudeCode = `claude mcp add --transport http anyroute ${BASE}/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY"`;
+const cursorConfig = JSON.stringify({ mcpServers: { anyroute: { url: `${BASE}/mcp`, headers: { Authorization: "Bearer sk-ar-v1-…" } } } }, null, 2);
+const desktopConfig = JSON.stringify(
+  { mcpServers: { anyroute: { command: "npx", args: ["-y", "mcp-remote", `${BASE}/mcp`, "--header", "Authorization:${ANYROUTE_AUTH}"], env: { ANYROUTE_AUTH: "Bearer sk-ar-v1-…" } } } },
+  null,
+  2,
+);
+const mcpCurl = `curl -s ${BASE}/mcp \\
+  -H "content-type: application/json" \\
+  -H "accept: application/json, text/event-stream" \\
+  -H "Authorization: Bearer $ANYROUTE_API_KEY" \\
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'`;
 const endpoints = [
   ["POST /api/v1/chat/completions", "Chat, tools and streaming (OpenAI/OpenRouter shape); X-Pay-With, X-Payment, X-Wallet-Auth headers"],
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
@@ -43,6 +57,7 @@ const endpoints = [
   ["POST · GET · DELETE /api/v1/sessions · GET /sessions/current", "Agent Sessions: short-lived, budget-capped keys for agent runs"],
   ["GET /api/v1/spend · /spend/alerts", "Spend Watch: totals, projection, breakdowns, key budgets and alert rules"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt’s signature and anchor inclusion; signing keys (JWKS)"],
+  ["POST /mcp", "AnyRoute MCP: list_models, chat, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; provider registry; router configuration"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
@@ -66,6 +81,7 @@ export default function Docs() {
             <a href="#routing">Routing</a>
             <a href="#payments">Payments</a>
             <a href="#receipts">Receipts</a>
+            <a href="#mcp">MCP</a>
             <a href="#endpoints">Endpoints</a>
             <a href="#limits">Limits</a>
           </nav>
@@ -131,6 +147,16 @@ export default function Docs() {
             are published on-chain. Signed is not the same as anchored: the dashboard and /api/v1/receipts/verify report each separately.
           </p>
           <Code label="Response shape">{JSON.stringify(receipt, null, 2)}</Code>
+          <h2 id="mcp">Use every model as a tool.</h2>
+          <p>
+            The router hosts a remote MCP server at /mcp (Streamable HTTP, stateless, JSON replies). Connect it to Claude, Cursor or any MCP client with your Anyroute key. Four tools: list_models (live models, context length and price per 1M
+            tokens), chat (call any model; returns the reply, a receipt id, cost and latency), get_receipt and verify_receipt. Chat goes through /api/v1/chat/completions with your key, so balance, limits and signed receipts are the same.
+            Only chat needs a key.
+          </p>
+          <Code label="Claude Code">{claudeCode}</Code>
+          <Code label="Cursor · ~/.cursor/mcp.json">{cursorConfig}</Code>
+          <Code label="Claude Desktop · claude_desktop_config.json (through the mcp-remote bridge)">{desktopConfig}</Code>
+          <Code label="Check it with curl">{mcpCurl}</Code>
           <h2 id="endpoints">Endpoint map</h2>
           <div className="table-wrap">
             <table className="docs-table endpoint-table">
