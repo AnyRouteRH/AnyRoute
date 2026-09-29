@@ -498,6 +498,51 @@ export const attestations = pgTable(
   (t) => [index("attestations_provider_ts").on(t.providerId, t.ts)],
 );
 
+// The image, compose and model digests a provider's confidential endpoint has been seen running, each bound
+// into a hardware quote a configured verifier accepted. One row per (provider, image digest); rows are created
+// only from a verified, non-simulated attestation. Status: observed (attested, not yet found in Rekor),
+// ready (attested and found in Rekor with a verified inclusion proof; register() calldata may be built),
+// registered (an operator recorded the transaction that registered it), revoked.
+export const measurements = pgTable(
+  "measurements",
+  {
+    id: serial("id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    imageDigest: text("image_digest").notNull(), // 0x + 32 bytes
+    composeHash: text("compose_hash").notNull(),
+    modelDigest: text("model_digest").notNull(),
+    status: text("status").notNull().default("observed"),
+    verifier: text("verifier").notNull(), // verifiers that accepted the quote, comma separated
+    teeKind: text("tee_kind"),
+    quote: text("quote").notNull(), // hex of the verified quote: the proof whose hash the registry stores
+    quoteProofHash: text("quote_proof_hash").notNull(), // keccak256 of the quote bytes
+    reportHash: text("report_hash"), // attestations.report_hash of the attestation that produced the row
+    attestedAt: ts("attested_at").notNull(),
+    lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+    rekorUuid: text("rekor_uuid"),
+    rekorEntry: text("rekor_entry"), // 0x + the 32-byte entry hash inside the uuid
+    rekorLogIndex: bigint("rekor_log_index", { mode: "number" }),
+    rekorKind: text("rekor_kind"),
+    rekorIntegratedAt: ts("rekor_integrated_at"),
+    rekorInclusionVerified: boolean("rekor_inclusion_verified").notNull().default(false),
+    rekorCheckpointVerified: boolean("rekor_checkpoint_verified").notNull().default(false),
+    rekorCheckedAt: ts("rekor_checked_at"),
+    rekorError: text("rekor_error"),
+    calldata: text("calldata"),
+    calldataTarget: text("calldata_target"),
+    calldataBuiltAt: ts("calldata_built_at"),
+    txHash: text("tx_hash"),
+    registeredAt: ts("registered_at"),
+    revokedAt: ts("revoked_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("measurements_provider_image_uq").on(t.providerId, t.imageDigest),
+    index("measurements_status_idx").on(t.status, t.updatedAt),
+  ],
+);
+
 export const kv = pgTable("kv", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),

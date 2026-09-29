@@ -64,6 +64,13 @@
       "when": 1790664783477,
       "tag": "0008_v3_disclosure",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790667027250,
+      "tag": "0009_v3_measurement",
+      "breakpoints": true
     }
   ]
 }

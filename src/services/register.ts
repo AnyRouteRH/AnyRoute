@@ -6,6 +6,7 @@ import { pollEscrow } from "../pay/escrow.ts";
 import { runSpendWatch } from "./spend-watch.ts";
 import { retryAnchors, runAnchor, runKeyRotation } from "./anchor.ts";
 import { runAttestor } from "./attestor.ts";
+import { runMeasurements } from "./measurements.ts";
 import { runCanaries } from "./canaries.ts";
 import { runProbes } from "./probes.ts";
 import { runRegistry } from "./registry.ts";
@@ -25,6 +26,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall) {
   if (cfg.routing.probes) jobs.register("health-probes", cfg.routing.probeIntervalMs, () => runProbes(ctx), { atStart: true });
   if (cfg.canaries.enabled) jobs.register("canaries", cfg.canaries.intervalMs, () => runCanaries(ctx));
   jobs.register("attestor", cfg.attestation.intervalMs, () => runAttestor(ctx), { atStart: true });
+  // Off unless MEASUREMENTS_ENABLED: Rekor lookups and register() calldata for attested measurements. Sends nothing.
+  if (cfg.measurements.enabled) jobs.register("measurements", cfg.measurements.intervalMs, () => runMeasurements(ctx));
   jobs.register("receipts-anchor", cfg.receipts.anchorIntervalMs, async () => ({ anchor: await runAnchor(ctx), retry: await retryAnchors(ctx) }), { atStart: true });
   jobs.register("receipt-key-rotation", 3_600_000, () => runKeyRotation(ctx), { atStart: true });
   jobs.register("settlement", cfg.workers.settlementIntervalMs, () => runSettlement(ctx), { atStart: true });

@@ -6,6 +6,7 @@ import { attestationFresh } from "../router/select.ts";
 import { escrowFinality, escrowReviewsOpen } from "../pay/escrow.ts";
 import { reconcileSpentRoots } from "./root-completeness.ts";
 import { backupFresh } from "./backup.ts";
+import { verifiersConfigured } from "./attestor-verifiers.ts";
 
 // One-day production timelock plus one day for review/execution. Submission failures retain the 2-minute bound.
 export const ROOT_REVIEW_SLA_MS = 48 * 3_600_000;
@@ -50,10 +51,10 @@ export async function readiness(ctx: Ctx) {
             ? await ctx.db.select({ teeKind: providers.teeKind }).from(providers).where(and(eq(providers.status, "live"), isNotNull(providers.teeKind)))
             : [];
           const privateRoutingEnabled = livePrivateProviders.some((p) => !!p.teeKind && p.teeKind !== "dev");
-          // Every non-dev report passes through the DCAP verifier; NVIDIA confidential-computing
+          // Every non-dev report passes through the configured quote verifiers (DCAP by default); NVIDIA confidential-computing
           // reports also require the separate NRAS verification endpoint.
           checks.private_attestation_verifiers = !privateRoutingEnabled || (
-            configuredEndpoint(ctx.cfg.attestation.tdxVerifierUrl) &&
+            verifiersConfigured(ctx.cfg.attestation) &&
             (!livePrivateProviders.some((p) => p.teeKind === "nvidia-cc") || configuredEndpoint(ctx.cfg.attestation.nrasUrl))
           );
           if (privateRoutingEnabled) {

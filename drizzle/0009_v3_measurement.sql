@@ -1,0 +1,35 @@
+CREATE TABLE "measurements" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"provider_id" text NOT NULL,
+	"image_digest" text NOT NULL,
+	"compose_hash" text NOT NULL,
+	"model_digest" text NOT NULL,
+	"status" text DEFAULT 'observed' NOT NULL,
+	"verifier" text NOT NULL,
+	"tee_kind" text,
+	"quote" text NOT NULL,
+	"quote_proof_hash" text NOT NULL,
+	"report_hash" text,
+	"attested_at" timestamp with time zone NOT NULL,
+	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"rekor_uuid" text,
+	"rekor_entry" text,
+	"rekor_log_index" bigint,
+	"rekor_kind" text,
+	"rekor_integrated_at" timestamp with time zone,
+	"rekor_inclusion_verified" boolean DEFAULT false NOT NULL,
+	"rekor_checkpoint_verified" boolean DEFAULT false NOT NULL,
+	"rekor_checked_at" timestamp with time zone,
+	"rekor_error" text,
+	"calldata" text,
+	"calldata_target" text,
+	"calldata_built_at" timestamp with time zone,
+	"tx_hash" text,
+	"registered_at" timestamp with time zone,
+	"revoked_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX "measurements_provider_image_uq" ON "measurements" USING btree ("provider_id","image_digest");--> statement-breakpoint
+CREATE INDEX "measurements_status_idx" ON "measurements" USING btree ("status","updated_at");

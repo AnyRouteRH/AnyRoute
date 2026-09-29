@@ -4,6 +4,8 @@ import { randomBytes } from "node:crypto";
 import type { Ctx } from "../context.ts";
 import { attestations, kv, providers } from "../db/schema.ts";
 import { canonicalJson, log, sha256 } from "../lib/util.ts";
+import { createVerifiers, verifyWithAll, type VerifierInput, type VerifyOutcome } from "./attestor-verifiers.ts";
+import { bindingsCommittedIn, digestsFromBindings, recordMeasurement, type Digests } from "./measurements.ts";
 
 // attestor: every 10 minutes, for each provider with a TEE, fetch a fresh attestation bound to our
 // nonce and verify it. Fail closed: anything unverifiable leaves the provider un-attested, and the
@@ -14,9 +16,13 @@ import { canonicalJson, log, sha256 } from "../lib/util.ts";
 //     nonce: hex32 } — "dev" providers return { kind: "dev", nonce, measurement } (non-production only).
 // Verification:
 //   - the nonce must be bound into the TEE report_data (TDX: bytes 568..632 of the quote)
-//   - the quote's certificate chain is checked by a DCAP verification service (TDX_VERIFIER_URL)
+//   - the quote's certificate chain is checked by the verifiers ATTESTATION_VERIFIERS names: the DCAP service
+//     (TDX_VERIFIER_URL, the default), Intel Trust Authority and/or a dstack verifier (attestor-verifiers.ts)
 //   - GPU evidence is checked by NVIDIA NRAS (overall attestation result must be true)
 //   - measurements (MRTD / RTMR3) must be in the provider's allowlist when one is configured
+// A sidecar attestation document ({ type: "anyroute.sidecar.attestation", evidence, bindings }) is accepted as
+// well: its quote must also commit to sha256(canonical_json(bindings)) in report_data, and with
+// MEASUREMENTS_ENABLED the bound image/compose/model digests are recorded (services/measurements.ts).
 
 export type TdxFields = { mrtd: string; rtmr0: string; rtmr1: string; rtmr2: string; rtmr3: string; reportData: string };
 
@@ -41,20 +47,25 @@ export function nonceBound(reportData: string, nonce: string, signingAddress?: s
   return false;
 }
 
-async function verifyQuote(ctx: Ctx, quoteHex: string) {
-  if (!ctx.cfg.attestation.tdxVerifierUrl) return { ok: false, reason: "no DCAP verifier configured (TDX_VERIFIER_URL)" };
-  const res = await fetch(ctx.cfg.attestation.tdxVerifierUrl, {
-    method: "POST",
-    redirect: "error",
-    headers: { "content-type": "application/json", ...(ctx.cfg.attestation.tdxVerifierKey ? { authorization: `Bearer ${ctx.cfg.attestation.tdxVerifierKey}` } : {}) },
-    body: JSON.stringify({ quote: quoteHex.replace(/^0x/, "") }),
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!res.ok) return { ok: false, reason: `verifier HTTP ${res.status}` };
-  const j = (await boundedJson(res)) as { verified?: boolean; status?: string; tcb_status?: string };
-  const status = j.tcb_status ?? j.status;
-  const ok = j.verified === true || status === "UpToDate" || status === "SWHardeningNeeded";
-  return { ok, reason: ok ? undefined : `quote not verified (${status ?? "unknown"})`, status };
+/** Run every configured verifier over the quote. Rejections from any one of them fail the attestation. */
+async function verifyQuote(ctx: Ctx, input: VerifierInput): Promise<VerifyOutcome> {
+  return verifyWithAll(createVerifiers(ctx.cfg.attestation), input);
+}
+
+/** Map a sidecar attestation document onto the report fields this attestor reads. Anything else passes through. */
+export function normalizeSidecarReport(report: Record<string, any>): Record<string, any> {
+  if (report?.type !== "anyroute.sidecar.attestation") return report;
+  const ev = (report.evidence ?? {}) as Record<string, any>;
+  const dev = report.dev === true || ev.dev === true;
+  return {
+    ...report,
+    kind: dev ? "dev" : report.kind,
+    nonce: ev.nonce ?? report.nonce,
+    measurement: ev.measurements?.measurement ?? report.measurement,
+    intel_quote: typeof ev.quote === "string" && !dev ? ev.quote : undefined,
+    event_log: typeof ev.event_log === "string" ? ev.event_log : undefined,
+    sidecar_bindings: report.bindings,
+  };
 }
 
 async function verifyNvidia(ctx: Ctx, payload: string) {
@@ -88,13 +99,16 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   try {
     const res = await providerFetch(url, { redirect: "error", signal: AbortSignal.timeout(20_000) }, { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production });
     if (!res.ok) return fail(`attestation endpoint HTTP ${res.status}`);
-    report = (await boundedJson(res)) as Record<string, any>;
+    report = normalizeSidecarReport((await boundedJson(res)) as Record<string, any>);
   } catch (e) {
     return fail(`attestation endpoint unreachable: ${(e as Error).message}`);
   }
   const [allow] = await ctx.db.select().from(kv).where(eq(kv.key, `attest-allow:${p.id}`));
   const allowlist = (allow?.value ?? null) as { mrtd?: string[]; rtmr3?: string[]; measurement?: string[] } | null;
   const measurements: Record<string, string> = {};
+  let verifiedBy: string[] = [];
+  let bound: Digests | null = null;
+  let quoteHex: string | null = null;
 
   if (p.teeKind === "dev" || report.kind === "dev") {
     if (!ctx.cfg.attestation.allowDev) return fail("dev attestation is disabled");
@@ -112,13 +126,23 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
       }
       Object.assign(measurements, { mrtd: f.mrtd, rtmr0: f.rtmr0, rtmr1: f.rtmr1, rtmr2: f.rtmr2, rtmr3: f.rtmr3 });
       if (!nonceBound(f.reportData, nonce, report.signing_address)) return fail("nonce is not bound into report_data", measurements);
-      const q = await verifyQuote(ctx, report.intel_quote);
+      if (report.sidecar_bindings !== undefined) {
+        bound = digestsFromBindings(report.sidecar_bindings);
+        if (!bound) return fail("sidecar bindings carry no valid image, compose and model digests", measurements);
+        if (!bindingsCommittedIn(f.reportData, report.sidecar_bindings)) return fail("sidecar bindings are not committed in report_data", measurements);
+      }
+      const q = await verifyQuote(ctx, { kind: "tdx", quoteHex: report.intel_quote, registers: f, eventLog: report.event_log ?? null, vmConfig: typeof report.vm_config === "string" ? report.vm_config : null });
       if (!q.ok) return fail(q.reason!, measurements);
+      // A compose hash recovered from evidence a verifier validated must be the one the bindings commit to.
+      if (bound && q.composeHash && q.composeHash !== bound.composeHash.slice(2)) return fail("compose hash in the bindings does not match the verified event log", measurements);
+      verifiedBy = q.verifiers;
+      quoteHex = report.intel_quote;
       if (allowlist?.mrtd?.length && !allowlist.mrtd.includes(f.mrtd)) return fail("MRTD not in allowlist", measurements);
       if (allowlist?.rtmr3?.length && !allowlist.rtmr3.includes(f.rtmr3)) return fail("RTMR3 not in allowlist", measurements);
     } else {
-      const q = await verifyQuote(ctx, report.snp_report);
+      const q = await verifyQuote(ctx, { kind: "snp", quoteHex: report.snp_report, registers: null });
       if (!q.ok) return fail(q.reason!);
+      verifiedBy = q.verifiers;
     }
     if (p.teeKind === "nvidia-cc" || report.nvidia_payload) {
       if (!report.nvidia_payload) return fail("GPU evidence missing");
@@ -129,7 +153,15 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
     }
   }
   const reportHash = "0x" + sha256(canonicalJson({ report, nonce }));
-  await ctx.db.insert(attestations).values({ providerId: p.id, ok: true, teeKind: p.teeKind ?? report.kind ?? null, reportHash, nonce, measurements, detail: { signing_address: report.signing_address ?? null } });
+  await ctx.db.insert(attestations).values({ providerId: p.id, ok: true, teeKind: p.teeKind ?? report.kind ?? null, reportHash, nonce, measurements, detail: { signing_address: report.signing_address ?? null, verifiers: verifiedBy, simulated: p.teeKind === "dev" || report.kind === "dev" } });
+  // A measurement is recorded only from a hardware quote a verifier accepted; never from simulated evidence.
+  if (ctx.cfg.measurements.enabled && bound && quoteHex && verifiedBy.length) {
+    try {
+      await recordMeasurement(ctx, { providerId: p.id, digests: bound, verifiers: verifiedBy, teeKind: p.teeKind ?? report.kind ?? null, quoteHex, reportHash });
+    } catch (e) {
+      log.error("recording the measurement failed", { provider: p.id, error: (e as Error).message });
+    }
+  }
   await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), updatedAt: new Date() }).where(eq(providers.id, p.id));
   return { provider: p.id, ok: true, hash: reportHash };
 }
