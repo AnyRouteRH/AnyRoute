@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-import { createHandler } from "./app.ts";
 import { boot } from "./boot.ts";
 import { loadConfig } from "./config.ts";
 import { hashModelPath } from "./digest.ts";
+import { startServer } from "./server.ts";
 import { SidecarError, stderrLogger } from "./util.ts";
 import { SIDECAR_VERSION } from "./version.ts";
 
@@ -22,15 +22,7 @@ function flag(args: string[], name: string): string | undefined {
 async function serve(args: string[]) {
   const cfg = loadConfig(process.env, flag(args, "--config"));
   const rt = await boot(cfg);
-  const handler = createHandler(rt);
-  const server = Bun.serve({
-    hostname: cfg.server.host,
-    port: cfg.server.port,
-    maxRequestBodySize: cfg.upstream.maxRequestBytes + 1024,
-    idleTimeout: 255,
-    ...(rt.tls ? { tls: { key: rt.tls.keyPem, cert: rt.tls.certPem } } : {}),
-    fetch: handler,
-  });
+  const server = startServer(rt);
   stderrLogger("info", "listening", { host: cfg.server.host, port: server.port, tls: rt.tls ? "self_signed" : "off" });
   const stop = () => {
     void server.stop().then(() => process.exit(0));
