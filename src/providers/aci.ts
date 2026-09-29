@@ -493,14 +493,21 @@ export async function recordGpuAttested(db: Db | Tx, modelId: string, providerId
 // ---- The static model list ----------------------------------------------------------------------------------
 
 /**
- * The provider-spec model list (admin providers.setStaticModels) for a gateway's public catalogue (GET /v1/models):
- * only models it offers inside a TEE (`is_tee`), none whose name marks refusal-removed weights (router/lane.ts),
- * priced exactly as the catalogue prices them. Descriptions and the catalogue's serving-route names are left out.
+ * The provider-spec model list (admin providers.setStaticModels / proposeStaticModels) for a gateway's public
+ * catalogues (GET /v1/models, and GET /v1/embeddings/models for embedding models): only models it offers inside a
+ * TEE (`is_tee`), none whose name marks refusal-removed weights (router/lane.ts), priced exactly as the catalogue
+ * prices them. Input and output modalities are carried as the catalogue states them, so a model that accepts images
+ * is advertised as such; an embedding model (output "embeddings") takes text and has no completion-token limit.
+ * Descriptions and the catalogue's serving-route names are left out.
  */
 export function aciStaticModels(catalogue: unknown, opts: { only?: Set<string> } = {}) {
   const list = Array.isArray((catalogue as { data?: unknown })?.data) ? (catalogue as { data: unknown[] }).data : [];
   const out: Record<string, unknown>[] = [];
   const skipped: { id: string; reason: string }[] = [];
+  const strings = (v: unknown, fallback: string[]) => {
+    const a = Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : [];
+    return a.length ? a : fallback;
+  };
   for (const raw of list) {
     const m = raw as Record<string, any>;
     const id = typeof m?.id === "string" ? m.id : "";
@@ -522,6 +529,10 @@ export function aciStaticModels(catalogue: unknown, opts: { only?: Set<string> }
       skipped.push({ id, reason: "no price or context length" });
       continue;
     }
+    const outputs = strings(m.output_modalities, ["text"]);
+    const embedding = outputs.includes("embeddings");
+    // The gateway lists "embeddings" among an embedding model's inputs; what such a model takes is text.
+    const inputs = embedding ? strings(strings(m.input_modalities, ["text"]).filter((x) => x !== "embeddings"), ["text"]) : strings(m.input_modalities, ["text"]);
     const params = [...new Set([...(m.supported_parameters ?? []), ...(m.supported_sampling_parameters ?? [])])].filter((x) => typeof x === "string").sort();
     out.push({
       id,
@@ -529,11 +540,12 @@ export function aciStaticModels(catalogue: unknown, opts: { only?: Set<string> }
       ...(Number.isInteger(m.created) ? { created: m.created } : {}),
       ...(typeof m.hugging_face_id === "string" ? { hugging_face_id: m.hugging_face_id } : {}),
       anyroute: { slug: id.toLowerCase() },
-      input_modalities: Array.isArray(m.input_modalities) ? m.input_modalities : ["text"],
-      output_modalities: Array.isArray(m.output_modalities) ? m.output_modalities : ["text"],
+      input_modalities: inputs,
+      output_modalities: embedding ? ["embeddings"] : outputs,
       ...(typeof m.quantization === "string" ? { quantization: m.quantization } : {}),
       context_length: m.context_length,
-      ...(Number.isInteger(m.max_output_length) && m.max_output_length > 0 ? { max_completion_tokens: Math.min(m.max_output_length, m.context_length) } : {}),
+      // An embedding model's "max output" is its vector size, not a token limit.
+      ...(!embedding && Number.isInteger(m.max_output_length) && m.max_output_length > 0 ? { max_completion_tokens: Math.min(m.max_output_length, m.context_length) } : {}),
       pricing: { prompt: String(p.prompt), completion: String(p.completion), ...(p.input_cache_read != null ? { input_cache_read: String(p.input_cache_read) } : {}) },
       ...(params.length ? { supported_parameters: params } : {}),
       ...(Array.isArray(m.supported_features) && m.supported_features.length ? { supported_features: m.supported_features } : {}),

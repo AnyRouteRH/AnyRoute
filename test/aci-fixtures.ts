@@ -171,6 +171,8 @@ export function signedReceipt(o: {
   upstream: { result: string; required: boolean; session_id?: string; claims?: Claims };
   servedAt: number;
   model?: string;
+  /** The gateway endpoint the receipt names (default chat completions). */
+  endpoint?: string;
 }) {
   const unsigned = {
     api_version: "aci/1",
@@ -178,7 +180,7 @@ export function signedReceipt(o: {
     chat_id: "chatcmpl-test",
     model: o.model ?? "demo-model",
     workload_keyset_digest: o.keysetDigest,
-    endpoint: "/v1/chat/completions",
+    endpoint: o.endpoint ?? "/v1/chat/completions",
     method: "POST",
     served_at: o.servedAt,
     event_log: [

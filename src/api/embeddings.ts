@@ -3,17 +3,17 @@ import type { Ctx } from "../context.ts";
 import { generations } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
 import { maxPico, picoToUsd, picoToUsdString } from "../lib/money.ts";
-import { genId, sha256 } from "../lib/util.ts";
+import { genId, log, sha256 } from "../lib/util.ts";
 import { reserve, release, settle } from "../ledger/ledger.ts";
 import { selectProviders, type ProviderPrefs } from "../router/select.ts";
 import { disclosureRefusal, profileOf, resolveDisclosureRequest } from "../router/disclosure.ts";
-import { servedDisclosure } from "./disclosure.ts";
 import { priceUsage, readUsage } from "../router/pricing.ts";
 import { callUpstream, providerKey, upstreamBody } from "../providers/upstream.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
 import { bearer, requireKey, requireRole } from "./auth.ts";
 import { addressBucket, readJson } from "./common.ts";
-import { requestHash } from "./chat.ts";
+import { requestHash, requiresAttestedUpstream, toolkit, unattestedUpstream } from "./chat.ts";
+import { compactUpstream, recordGpuAttested } from "../providers/aci.ts";
 import { payPerCall } from "../pay/percall.ts";
 import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
@@ -23,6 +23,12 @@ import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken
 
 // POST /api/v1/embeddings — prepaid keys, or no key at all: an unpaid call gets the same 402 as chat
 // (CallPay and/or x402, whichever this router has configured) and the paid retry is served.
+//
+// An attested aci/1 gateway is held to the same rule as for chat (providers/aci.ts): the router fetches the gateway's
+// receipt for the call and checks it against the exact request and response bytes. On lane "attested" (any
+// disclosure ceiling of "none", or `:private`) the vectors are returned only when the receipt shows an upstream the
+// gateway verified inside a TEE; otherwise they are withheld, the call is billed, and the signed receipt says why.
+// On other lanes the vectors are returned and the receipt records that they were not attested.
 export function embeddingsRoutes(app: Hono, ctx: Ctx) {
   const handler = async (c: import("hono").Context) => {
     const t0 = Date.now();
@@ -124,7 +130,11 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         const usage = readUsage(res.json.usage, { prompt: promptTokens, completion: 0 });
         const cost = priceUsage(cand, r.model, { ...usage, completion: 0 }, mode, { ...fees, discountBps: tier?.discountBps ?? 0 }, false);
         const { charged } = await settle(ctx.db, id, cost.total, { description: `${r.model.id} embeddings via ${cand.providerId}`, generationId: id });
-        const served = servedDisclosure(ctx, cand);
+        // An attested gateway's receipt for this exchange: checked before anything is returned.
+        const ua = await toolkit.upstreamAttestationOf(ctx, { candidate: cand, exchange: res.exchange }, new Map());
+        const refused = !!ua && requiresAttestedUpstream(body, disc) && !ua.attested;
+        const served = toolkit.servedWith(ctx, cand, ua);
+        if (ua) await recordGpuAttested(ctx.db, r.model.id, cand.providerId, ua).catch((e) => log.error("recording gpu attestation failed", { error: (e as Error).message }));
         const payload = {
           v: 1,
           id,
@@ -147,6 +157,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           ...(pass ? { nullifier: pass.nullifier, token_key_id: pass.keyId } : {}), // no account: the receipt names the spent token by its hash
           request_sha256: sha256(JSON.stringify(body)),
           response_sha256: sha256(JSON.stringify(res.json.data)),
+          ...(ua ? { upstream_attestation: compactUpstream(ua) } : {}),
         };
         const signed = ctx.signer.sign(payload);
         await ctx.db.insert(generations).values({
@@ -175,16 +186,21 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           responseSha256: payload.response_sha256,
         });
         if (pass) await confirmToken(ctx, pass, id);
+        const usageJson = { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) } };
+        const receiptJson = { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload };
+        const headers = { "x-anyroute-disclosure": served.class, "x-anyroute-lane": disc.lane, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) };
+        // The gateway had already done (and billed) the work: the vectors are withheld, and the receipt records why.
+        if (refused) return c.json({ ...unattestedUpstream(ua!).toJSON(), id, usage: usageJson, receipt: receiptJson }, 502, { "x-generation-id": id, ...headers });
         return c.json({
           ...res.json,
           id,
           model: r.model.id,
           provider: cand.provider.name,
-          usage: { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) } },
+          usage: usageJson,
           ...(tier ? { holder: { tier: tier.name, rpm_multiplier: tier.rpmMultiplier, discount_bps: tier.discountBps } } : {}),
           ...(pass ? { blind: redemptionSummary(pass, charged) } : {}),
-          receipt: { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload },
-        }, 200, { "x-anyroute-disclosure": served.class, "x-anyroute-lane": disc.lane, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) });
+          receipt: receiptJson,
+        }, 200, headers);
       }
     } catch (e) {
       await release(ctx.db, id);

@@ -1,0 +1,48 @@
+{
+ "data": [
+  {
+   "id": "sentence-transformers/all-minilm-l6-v2",
+   "name": "Sentence Transformers: all-MiniLM-L6-v2",
+   "created": 1764108526,
+   "input_modalities": [
+    "text",
+    "embeddings"
+   ],
+   "output_modalities": [
+    "embeddings"
+   ],
+   "context_length": 512,
+   "max_output_length": 512,
+   "pricing": {
+    "prompt": "0.000000005",
+    "completion": "0"
+   },
+   "supported_parameters": [],
+   "supported_sampling_parameters": [],
+   "supported_features": [],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen3-embedding-8b",
+   "name": "Qwen: Qwen3 Embedding 8B",
+   "created": 1768428445,
+   "input_modalities": [
+    "text",
+    "embeddings"
+   ],
+   "output_modalities": [
+    "embeddings"
+   ],
+   "context_length": 32768,
+   "max_output_length": 32768,
+   "pricing": {
+    "prompt": "0.00000001",
+    "completion": "0"
+   },
+   "supported_parameters": [],
+   "supported_sampling_parameters": [],
+   "supported_features": [],
+   "is_tee": true
+  }
+ ]
+}

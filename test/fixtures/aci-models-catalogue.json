@@ -1,0 +1,1248 @@
+{
+ "data": [
+  {
+   "id": "deepseek/deepseek-v4-flash-0731",
+   "name": "DeepSeek: DeepSeek V4 Flash 0731",
+   "created": 1785805281,
+   "hugging_face_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 1048576,
+   "max_output_length": 393216,
+   "pricing": {
+    "prompt": "0.00000044",
+    "completion": "0.00000132",
+    "input_cache_read": "0.000000028"
+   },
+   "supported_parameters": [],
+   "supported_sampling_parameters": [],
+   "supported_features": [],
+   "is_tee": true
+  },
+  {
+   "id": "meta-llama/llama-3.3-70b-instruct",
+   "name": "Meta: Llama 3.3 70B Instruct",
+   "created": 1764320401,
+   "hugging_face_id": "meta-llama/Llama-3.3-70B-Instruct",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 131072,
+   "max_output_length": 16384,
+   "pricing": {
+    "prompt": "0.000002",
+    "completion": "0.000002"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen3.8-27b",
+   "name": "Qwen: Qwen3.8 27B",
+   "created": 1787560779,
+   "hugging_face_id": "Qwen/Qwen3.8-27B",
+   "input_modalities": [
+    "text",
+    "image",
+    "video"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 1000000,
+   "max_output_length": 262144,
+   "pricing": {
+    "prompt": "0.0000002",
+    "completion": "0.0000025",
+    "input_cache_read": "0.00000005"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "meta/muse-glimmer-30b",
+   "name": "Meta: Muse Glimmer 30B",
+   "created": 1786593197,
+   "hugging_face_id": "meta-models/Muse-Glimmer-30B",
+   "input_modalities": [
+    "text",
+    "image"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 131072,
+   "max_output_length": 131072,
+   "pricing": {
+    "prompt": "0.0000003",
+    "completion": "0.0000011",
+    "input_cache_read": "0.00000004"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "z-ai/glm-5.2",
+   "name": "Z.ai: GLM 5.2",
+   "created": 1781637446,
+   "hugging_face_id": "zai-org/GLM-5.2",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "quantization": "fp8",
+   "context_length": 1048576,
+   "max_output_length": 131072,
+   "pricing": {
+    "prompt": "0.00000126",
+    "completion": "0.000003",
+    "input_cache_read": "0.00000022"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "max_tokens",
+    "min_p",
+    "parallel_tool_calls",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen3.5-397b-a17b",
+   "name": "Qwen: Qwen3.5 397B A17B",
+   "created": 1772249193,
+   "hugging_face_id": "Qwen/Qwen3.5-397B-A17B",
+   "input_modalities": [
+    "text",
+    "image",
+    "video"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 262144,
+   "pricing": {
+    "prompt": "0.00000055",
+    "completion": "0.0000035",
+    "input_cache_read": "0.000000225"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen3.5-27b",
+   "name": "Qwen: Qwen3.5-27B",
+   "created": 1773395704,
+   "hugging_face_id": "Qwen/Qwen3.5-27B",
+   "input_modalities": [
+    "text",
+    "image",
+    "video"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 65536,
+   "pricing": {
+    "prompt": "0.0000003",
+    "completion": "0.0000024",
+    "input_cache_read": "0.00000015"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "z-ai/glm-5.3-flash",
+   "name": "Z.ai: GLM 5.3 Flash",
+   "created": 1787873595,
+   "hugging_face_id": "zai-org/GLM-5.3-Flash",
+   "input_modalities": [
+    "text",
+    "image"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "quantization": "fp8",
+   "context_length": 1048576,
+   "max_output_length": 131072,
+   "pricing": {
+    "prompt": "0.00000015",
+    "completion": "0.00000050",
+    "input_cache_read": "0.00000003"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logprobs",
+    "max_completion_tokens",
+    "max_tokens",
+    "min_p",
+    "parallel_tool_calls",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "nvidia/nemotron-3.5-lightning",
+   "name": "NVIDIA: Nemotron 3.5 Lightning",
+   "created": 1789120395,
+   "hugging_face_id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 262144,
+   "pricing": {
+    "prompt": "0.00000007",
+    "completion": "0.00000020",
+    "input_cache_read": "0.00000004"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "z-ai/glm-5.3",
+   "name": "Z.ai: GLM 5.3",
+   "created": 1788145378,
+   "hugging_face_id": "zai-org/GLM-5.3",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 1048576,
+   "max_output_length": 1048576,
+   "pricing": {
+    "prompt": "0.0000014",
+    "completion": "0.0000044",
+    "input_cache_read": "0.00000026"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_completion_tokens",
+    "max_tokens",
+    "min_p",
+    "parallel_tool_calls",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen3.6-27b",
+   "name": "Qwen: Qwen3.6 27B",
+   "created": 1780549917,
+   "hugging_face_id": "Qwen/Qwen3.6-27B",
+   "input_modalities": [
+    "text",
+    "image",
+    "video"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 262140,
+   "pricing": {
+    "prompt": "0.00000032",
+    "completion": "0.0000027",
+    "input_cache_read": "0.00000015"
+   },
+   "supported_parameters": [],
+   "supported_sampling_parameters": [],
+   "supported_features": [],
+   "is_tee": true
+  },
+  {
+   "id": "phala/qwen3.8-27b-uncensored",
+   "name": "Phala: Qwen3.8 27B Uncensored (Aggressive)",
+   "created": 1789549583,
+   "input_modalities": [
+    "text",
+    "image"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 262144,
+   "pricing": {
+    "prompt": "0.0000003",
+    "completion": "0.0000015"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "openai/gpt-oss-120b",
+   "name": "OpenAI: GPT OSS 120B",
+   "created": 1759532710,
+   "hugging_face_id": "openai/gpt-oss-120b",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 131072,
+   "max_output_length": 131072,
+   "pricing": {
+    "prompt": "0.00000015",
+    "completion": "0.0000006"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "phala/gemma-4-26b-a4b-uncensored",
+   "name": "Phala: Gemma-4 26B-A4B Uncensored (Heretic)",
+   "created": 1779562961,
+   "input_modalities": [
+    "text",
+    "image"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 262144,
+   "pricing": {
+    "prompt": "0.00000015",
+    "completion": "0.0000007"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "moonshotai/kimi-k2.6",
+   "name": "MoonshotAI: Kimi K2.6",
+   "created": 1776747825,
+   "hugging_face_id": "moonshotai/Kimi-K2.6",
+   "input_modalities": [
+    "text",
+    "image"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 262144,
+   "pricing": {
+    "prompt": "0.00000109",
+    "completion": "0.0000046",
+    "input_cache_read": "0.00000037"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "parallel_tool_calls",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "google/gemma-4-31b-it",
+   "name": "Google: Gemma 4 31B",
+   "created": 1779762858,
+   "hugging_face_id": "google/gemma-4-31B-it",
+   "input_modalities": [
+    "image",
+    "text",
+    "video"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 262144,
+   "pricing": {
+    "prompt": "0.00000015",
+    "completion": "0.00000046",
+    "input_cache_read": "0.000000075"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_a",
+    "top_k",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_a",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen3-32b",
+   "name": "Qwen: Qwen3 32B",
+   "created": 1779762873,
+   "hugging_face_id": "Qwen/Qwen3-32B",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 40960,
+   "max_output_length": 16384,
+   "pricing": {
+    "prompt": "0.00000012",
+    "completion": "0.0000005",
+    "input_cache_read": "0.000000052"
+   },
+   "supported_parameters": [],
+   "supported_sampling_parameters": [],
+   "supported_features": [],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen3.6-35b-a3b",
+   "name": "Qwen: Qwen3.6 35B A3B",
+   "created": 1779762842,
+   "hugging_face_id": "Qwen/Qwen3.6-35B-A3B",
+   "input_modalities": [
+    "text",
+    "image",
+    "video"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 262144,
+   "max_output_length": 262144,
+   "pricing": {
+    "prompt": "0.0000002",
+    "completion": "0.00000127"
+   },
+   "supported_parameters": [],
+   "supported_sampling_parameters": [],
+   "supported_features": [],
+   "is_tee": true
+  },
+  {
+   "id": "z-ai/glm-5.1",
+   "name": "Z.ai: GLM 5.1",
+   "created": 1776694000,
+   "hugging_face_id": "zai-org/GLM-5.1",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 202752,
+   "max_output_length": 128000,
+   "pricing": {
+    "prompt": "0.00000121",
+    "completion": "0.0000042",
+    "input_cache_read": "0.0000006"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "parallel_tool_calls",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "deepseek/deepseek-v3.2",
+   "name": "DeepSeek: DeepSeek V3.2",
+   "created": 1764804811,
+   "hugging_face_id": "deepseek-ai/DeepSeek-V3.2",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 163840,
+   "max_output_length": 64000,
+   "pricing": {
+    "prompt": "0.000001",
+    "completion": "0.000001",
+    "input_cache_read": "0.0000005"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen3-vl-30b-a3b-instruct",
+   "name": "Qwen: Qwen3 VL 30B A3B Instruct",
+   "created": 1764320402,
+   "hugging_face_id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+   "input_modalities": [
+    "text",
+    "image"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 128000,
+   "max_output_length": 32768,
+   "pricing": {
+    "prompt": "0.0000002",
+    "completion": "0.0000007"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "qwen/qwen-2.5-7b-instruct",
+   "name": "Qwen2.5 7B Instruct",
+   "created": 1759532719,
+   "hugging_face_id": "Qwen/Qwen2.5-7B-Instruct",
+   "input_modalities": [
+    "text"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 32768,
+   "max_output_length": 32768,
+   "pricing": {
+    "prompt": "0.0000001",
+    "completion": "0.0000002"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "tools"
+   ],
+   "is_tee": true
+  },
+  {
+   "id": "moonshotai/kimi-k3",
+   "name": "MoonshotAI: Kimi K3",
+   "created": 1785294047,
+   "hugging_face_id": "moonshotai/Kimi-K3",
+   "input_modalities": [
+    "text",
+    "image",
+    "video"
+   ],
+   "output_modalities": [
+    "text"
+   ],
+   "context_length": 1048576,
+   "max_output_length": 1048576,
+   "pricing": {
+    "prompt": "0.000003",
+    "completion": "0.000015",
+    "input_cache_read": "0.0000003"
+   },
+   "supported_parameters": [
+    "frequency_penalty",
+    "include_reasoning",
+    "logit_bias",
+    "logprobs",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "reasoning",
+    "reasoning_effort",
+    "repetition_penalty",
+    "response_format",
+    "seed",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_logprobs",
+    "top_p"
+   ],
+   "supported_sampling_parameters": [
+    "frequency_penalty",
+    "logit_bias",
+    "max_tokens",
+    "min_p",
+    "presence_penalty",
+    "repetition_penalty",
+    "seed",
+    "stop",
+    "temperature",
+    "top_k",
+    "top_p"
+   ],
+   "supported_features": [
+    "json_mode",
+    "logprobs",
+    "reasoning",
+    "structured_outputs",
+    "tools"
+   ],
+   "is_tee": true
+  }
+ ]
+}

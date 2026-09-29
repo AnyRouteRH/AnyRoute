@@ -14,7 +14,7 @@ import { servedDisclosure } from "./disclosure.ts";
 import { estimatePromptTokens, maxOutputTokens, priceUsage, readUsage, worstCase, type Mode, type Usage } from "../router/pricing.ts";
 import { route, type Attempt, type RouteSuccess, type RouteTarget } from "../router/execute.ts";
 import { providerKey } from "../providers/upstream.ts";
-import { compactUpstream, recordGpuAttested, verifyAciExchange, type UpstreamAttestation } from "../providers/aci.ts";
+import { compactUpstream, recordGpuAttested, unverifiedUpstream, verifyAciExchange, type UpstreamAttestation } from "../providers/aci.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
 import { applyGuardrails, mergeGuardrails, redactOutput, type GuardrailConfig } from "../gateway/guardrails.ts";
 import { middleOut } from "../gateway/transforms.ts";
@@ -438,10 +438,14 @@ export function requiresAttestedUpstream(body: Record<string, unknown>, disc: Di
   return disc.max === "none" || (body.provider as ProviderPrefs | undefined)?.private === true || String(body.model ?? "").includes(":private");
 }
 
-/** The receipt check for a call an attested aci/1 gateway served (providers/aci.ts); null for every other provider. */
-async function upstreamAttestationOf(ctx: Ctx, r: RouteSuccess, byok: Map<string, string>): Promise<UpstreamAttestation | null> {
+/**
+ * The receipt check for a call an attested aci/1 gateway served (providers/aci.ts); null for every other provider.
+ * A gateway call the router kept no record of cannot be checked, so it counts as not attested.
+ */
+async function upstreamAttestationOf(ctx: Ctx, r: Pick<RouteSuccess, "candidate" | "exchange">, byok: Map<string, string>): Promise<UpstreamAttestation | null> {
   const g = r.candidate.provider.aci;
-  if (!g || !r.exchange) return null;
+  if (!g) return null;
+  if (!r.exchange) return unverifiedUpstream(g, null, "the router kept no record of the exchange to check");
   return verifyAciExchange({
     baseUrl: r.candidate.provider.baseUrl,
     gateway: g,
@@ -466,7 +470,7 @@ function servedWith(ctx: Ctx, cand: Candidate, ua: UpstreamAttestation | null | 
  * upstream already did (and billed) the work, so the call is settled like any finished call, but its output is
  * withheld and the signed receipt records why.
  */
-function unattestedUpstream(ua: UpstreamAttestation): ApiError {
+export function unattestedUpstream(ua: UpstreamAttestation): ApiError {
   return new ApiError(
     502,
     `The provider's receipt does not show an attested upstream (${ua.reason ?? "not attested"}). The response was withheld. The upstream had already generated it, so the call is billed as usual; the signed receipt records the verification result.`,
@@ -746,7 +750,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
       const base = chunkBase(p.holdId, created, r.model, r.candidate.provider.name, kind);
       // What an attested gateway streams for a request that requires attested hardware is held back until its
       // receipt shows an attested upstream (providers/aci.ts); every other stream is relayed as it arrives.
-      const hold = !!r.exchange && !!r.candidate.provider.aci && requiresAttestedUpstream(p.body, p.disc);
+      const hold = !!r.candidate.provider.aci && requiresAttestedUpstream(p.body, p.disc);
       const held: unknown[] = [];
       const relay = (obj: unknown) => (hold ? held.push(obj) : event(obj));
       const holdKeepalive = hold ? setInterval(() => send(": ANYROUTE PROCESSING\n\n"), 5_000) : undefined;
