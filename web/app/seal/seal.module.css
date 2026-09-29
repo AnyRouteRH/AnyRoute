@@ -1,0 +1,133 @@
+/* SEAL page. Built on the global tokens (app/globals.css): ink, paper, one signal green, Host Grotesk and Martian Mono. */
+
+.nav { max-height: calc(100vh - var(--header) - 56px); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+
+.body { min-width: 0; }
+.body > h2:first-child { margin-top: 0; }
+.body h2 { scroll-margin-top: calc(var(--header) + 28px); }
+.body :not(pre) > code { overflow-wrap: anywhere; }
+.body :global(.case-steps) { margin-top: 40px; }
+.body :global(.case-step) h3 { margin: 0 0 14px; font-size: 22px; }
+
+/* ---------- four questions ---------- */
+.questions { counter-reset: q; list-style: none; margin: 0 0 32px !important; padding: 0 !important; border-bottom: 1px solid var(--line); }
+.questions li { counter-increment: q; position: relative; margin: 0 !important; padding: 16px 0 16px 64px; border-top: 1px solid var(--line); font-size: clamp(19px, 2vw, 24px); line-height: 1.3; letter-spacing: -.025em; font-weight: 520; }
+.questions li::before { content: "Q" counter(q); position: absolute; left: 0; top: 21px; font: 500 11px/1 var(--mono); letter-spacing: .06em; color: var(--signal-deep); }
+
+/* ---------- lanes ---------- */
+.lanes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 8px 0 20px; }
+.lane { display: grid; align-content: start; gap: 12px; padding: 18px 18px 20px; border: 1px solid var(--line-strong); background: var(--white); min-width: 0; }
+.lane h3 { margin: 0; font-size: 22px; }
+.lane h3 code { padding: 0; border: 0; background: none; font-size: .9em; }
+.lane dl { margin: 0; display: grid; gap: 10px; }
+.lane dt { font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.lane dd { margin: 2px 0 0; font-size: 14px; line-height: 1.45; }
+.floor { margin: 0 0 12px; padding: 16px 20px; border: 1px solid var(--line); border-left: 3px solid var(--signal-deep); background: var(--white); }
+.floor p { margin: 10px 0 0 !important; font-size: 15px !important; line-height: 1.55 !important; }
+
+.pull { margin: 8px 0 40px; padding: 4px 0 4px 20px; border-left: 3px solid var(--signal); font-size: clamp(22px, 2.6vw, 30px); line-height: 1.25; letter-spacing: -.035em; font-weight: 540; }
+
+.letter { display: inline-grid; place-items: center; width: 1.3em; height: 1.3em; margin-right: .3em; background: var(--ink); color: var(--signal); font: 500 .72em/1 var(--mono); letter-spacing: 0; vertical-align: .12em; }
+
+/* ---------- per-part status line ---------- */
+.partStatus { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 8px 0 0; padding: 12px 14px; border: 1px solid var(--line); background: var(--white); font: 500 11px/1.4 var(--mono); letter-spacing: .03em; }
+.partLabel { color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 10px; }
+.marks { display: flex; flex-wrap: wrap; gap: 8px; }
+.partLinks { display: flex; gap: 14px; margin-left: auto; }
+.partLinks a { color: var(--ink); text-decoration-color: var(--signal-deep); text-underline-offset: 4px; }
+
+/* state marks: always words, never colour alone */
+.mark, .state { display: inline-flex; align-items: baseline; gap: 7px; padding: 3px 8px; border: 1px solid var(--line); background: var(--paper-2); color: var(--muted); }
+.mark::before, .state::before { content: ""; flex: none; width: 6px; height: 6px; background: currentColor; transform: translateY(-1px); }
+.mark[data-state="implemented"], .state[data-state="implemented"] { background: var(--signal-tint); border-color: rgba(10, 125, 49, .35); color: var(--signal-deep); }
+.mark[data-state="partial"], .state[data-state="partial"] { background: #fff6e0; border-color: rgba(190, 130, 10, .4); color: #7a5300; }
+.mark[data-state="planned"]::before, .state[data-state="planned"]::before { background: transparent; border: 1px solid currentColor; }
+
+/* ---------- parties, limits, targets ---------- */
+.parties { margin: 8px 0 24px; }
+.parties td { vertical-align: top; line-height: 1.45; }
+.parties td:first-child { min-width: 180px; font-weight: 540; }
+.partyCell { display: flex; align-items: flex-start; gap: 10px; }
+.symbol { flex: none; display: inline-grid; place-items: center; min-width: 30px; height: 22px; padding: 0 4px; background: var(--ink); color: var(--paper); font: 500 11px/1 var(--mono); }
+.none { color: var(--muted); }
+
+.limits { list-style: none; padding: 0 !important; margin: 0 0 24px !important; border-top: 1px solid var(--line); }
+.limits li { position: relative; margin: 0 !important; padding: 12px 0 12px 28px; border-bottom: 1px solid var(--line); font-size: 16px; line-height: 1.5; }
+.limits li::before { content: ""; position: absolute; left: 4px; top: 21px; width: 8px; height: 8px; border: 1.5px solid var(--ink); transform: rotate(45deg); }
+
+.targets { display: grid; margin: 0 0 24px; border-top: 1px solid var(--line); }
+.targets > div { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.targets dt { font: 500 12px/1.9 var(--mono); color: var(--signal-deep); }
+.targets dd { margin: 0; font-size: 15.5px; line-height: 1.5; }
+
+/* ---------- status table ---------- */
+.tally { font-size: 15px !important; color: var(--muted); }
+.statusWrap { margin: 8px 0 24px; }
+.status td { vertical-align: top; line-height: 1.45; }
+.status tr { scroll-margin-top: calc(var(--header) + 28px); }
+.status tr:target { background: var(--signal-tint); }
+.status td:first-child { min-width: 280px; }
+.part { display: block; font-size: 14.5px; }
+.where { display: block; margin-top: 8px; font: 400 11px/1.6 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.where a { color: var(--muted); }
+.where a:hover { color: var(--ink); }
+.where code { padding: 0 !important; border: 0 !important; background: none !important; font-size: 1em !important; }
+.specCell { white-space: nowrap; }
+.specCell a { display: block; font: 500 12px/1.9 var(--mono); }
+.status td:last-child { min-width: 180px; max-width: 240px; }
+.state { display: flex; align-items: baseline; gap: 8px; padding: 0; border: 0; background: none !important; font: 540 13.5px/1.45 var(--sans); }
+.state::before { transform: translateY(-2px); }
+.state code { padding: 0 !important; border: 0 !important; background: none !important; font-size: 1em !important; }
+
+/* ---------- live panel ---------- */
+.live { margin: 8px 0 24px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); font: 400 12px/1.5 var(--mono); }
+.liveHead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 18px; border-bottom: 1px solid var(--line-dark); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.liveHead code { margin-left: auto; padding: 0 !important; border: 0 !important; background: none !important; color: var(--muted-dark); text-transform: none; letter-spacing: 0; font-size: 11px !important; }
+.pulse { width: 8px; height: 8px; background: var(--muted-dark); }
+.pulse[data-phase="ready"] { background: var(--signal); box-shadow: 0 0 0 4px rgba(31, 225, 90, .18); }
+.pulse[data-phase="error"] { background: var(--danger); }
+.liveNote { margin: 0 !important; padding: 16px 18px; font-size: 13px !important; color: var(--muted-dark); }
+.liveList { margin: 0; padding: 4px 18px 8px; }
+.liveList > div { display: grid; grid-template-columns: minmax(150px, 200px) minmax(0, 1fr); gap: 4px 20px; padding: 10px 0; border-bottom: 1px dashed var(--line-dark); }
+.liveList > div:last-child { border-bottom: 0; }
+.liveList dt { color: var(--muted-dark); text-transform: uppercase; letter-spacing: .05em; font-size: 11px; line-height: 1.7; }
+.liveList dd { margin: 0; overflow-wrap: anywhere; color: var(--paper); }
+.liveList [data-state="on"] dd { color: var(--signal); }
+.liveList [data-state="off"] dd, .liveList [data-state="unknown"] dd { color: var(--muted-dark); }
+.liveList dd code { padding: 0 !important; border: 0 !important; background: none !important; color: inherit; font-size: 1em !important; }
+.liveList ul { list-style: none; margin: 0 !important; padding: 0 !important; display: grid; gap: 4px; }
+.liveList li { margin: 0 !important; }
+.liveList li span { color: var(--paper); }
+.liveList a { color: var(--signal); }
+
+/* ---------- public spec ---------- */
+.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 8px 0 24px; }
+.three article { padding: 18px; border: 1px solid var(--line-strong); background: var(--white); min-width: 0; }
+.three p { margin: 12px 0 0 !important; font-size: 15px !important; line-height: 1.5 !important; }
+.builders { margin: 0 0 24px; padding: 18px 20px; border: 1px solid var(--line); border-left: 3px solid var(--signal-deep); background: var(--white); }
+.builders ul { margin: 10px 0 0 !important; }
+.builders li { font-size: 15px; }
+
+@media (max-width: 1000px) {
+  .nav { max-height: none; overflow: visible; }
+}
+@media (max-width: 860px) {
+  .lanes, .three { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .questions li { padding-left: 44px; }
+  .partLinks { margin-left: 0; }
+  .targets > div { grid-template-columns: 40px minmax(0, 1fr); gap: 10px; }
+  .liveList > div { grid-template-columns: 1fr; }
+  .liveHead code { margin-left: 0; }
+
+  /* the status and parties tables become one card per row */
+  .statusWrap, .parties { overflow: visible; border: 0; background: none; }
+  .statusWrap table, .statusWrap tbody, .statusWrap tr, .statusWrap td, .parties table, .parties tbody, .parties tr, .parties td { display: block; }
+  .statusWrap thead, .parties thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .statusWrap tr, .parties tr { margin-bottom: 10px; padding: 14px 16px; border: 1px solid var(--line); background: var(--white); }
+  .statusWrap td, .statusWrap tr:last-child td, .parties td, .parties tr:last-child td { min-width: 0; padding: 0; border: 0; }
+  .statusWrap td + td, .parties td + td { margin-top: 10px; }
+  .specCell a { display: inline; margin-right: 10px; }
+  .statusWrap td[data-label]::before, .parties td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; font: 500 10px/1.6 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+}
