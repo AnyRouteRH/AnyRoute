@@ -374,7 +374,7 @@ async function settleKey(ctx: Ctx, chainKeyHash: string) {
  *  charge may settle (a single call larger than that is proposed to the wallet instead). */
 async function claimDebts(ctx: Ctx, chainKeyHash: string, swapId: string, token: string, limitPico: Pico | null): Promise<Claimed | null> {
   return ctx.db.transaction(async (tx) => {
-    const debts = await tx.select().from(paywithDebts).where(and(eq(paywithDebts.chainKeyHash, chainKeyHash), isNull(paywithDebts.swapId))).orderBy(asc(paywithDebts.createdAt)).for("update");
+    const debts = await tx.select().from(paywithDebts).where(and(eq(paywithDebts.chainKeyHash, chainKeyHash), isNull(paywithDebts.swapId))).orderBy(asc(paywithDebts.createdAt), asc(paywithDebts.id)).for("update");
     if (!debts.length) return null;
     const gens = await tx.select({ id: generations.id, leaf: generations.receiptLeaf }).from(generations).where(inArray(generations.id, debts.map((d) => d.generationId)));
     const leafOf = new Map(gens.filter((g) => g.leaf).map((g) => [g.id, g.leaf as Hex]));

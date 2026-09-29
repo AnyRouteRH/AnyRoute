@@ -22,7 +22,8 @@ describe("PayWithStock charge authorizations", () => {
 
   const chat = (k: { auth: Record<string, string> }, n = 0) =>
     h.request("/api/v1/chat/completions", { method: "POST", headers: { ...k.auth, "x-pay-with": "NVDA" }, json: { model: LLAMA, max_tokens: 20, messages: [{ role: "user", content: `authorized ${n}` }] } });
-  const ageDebts = () => h.ctx.db.execute(sql`UPDATE paywith_debts SET created_at = now() - interval '25 hours' WHERE swap_id IS NULL`);
+  // Shift rather than overwrite, so debts keep their call order (equal timestamps would sort arbitrarily).
+  const ageDebts = () => h.ctx.db.execute(sql`UPDATE paywith_debts SET created_at = created_at - interval '25 hours' WHERE swap_id IS NULL`);
   const charges = async (k: { auth: Record<string, string> }) => (await (await h.request("/api/v1/paywith/charges", { headers: k.auth })).json()).data as any[];
   const postSignature = (k: { auth: Record<string, string> }, id: string, signature: Hex) => h.request(`/api/v1/paywith/charges/${id}/signature`, { method: "POST", headers: k.auth, json: { signature } });
 
@@ -255,6 +256,9 @@ describe("PayWithStock charge authorizations", () => {
     for (let i = 0; i < 3; i++) expect((await chat(k, i)).status).toBe(200);
     const debts = await h.ctx.db.select().from(paywithDebts).where(eq(paywithDebts.chainKeyHash, k.chainKeyHash));
     const biggest = debts.reduce((a, d) => (d.amount > a ? d.amount : a), 0n);
+    // The mock provider's completion lengths vary, so make the three calls cost the same: then no two fit
+    // one charge, whatever order the debts are claimed in.
+    await h.ctx.db.update(paywithDebts).set({ amount: biggest }).where(eq(paywithDebts.chainKeyHash, k.chainKeyHash));
     // Per-charge limit worth about 1.5 calls (at fair value, plus the slippage headroom the router uses).
     const fair = 225n * 10n ** 18n;
     const raw = (biggest * 3n * 10n ** 36n) / (2n * fair * 10n ** 12n);
