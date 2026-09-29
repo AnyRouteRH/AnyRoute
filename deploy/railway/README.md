@@ -35,7 +35,7 @@ Reference Railway variables instead of copying values, for example `${{Postgres.
 |---|---|
 | `migrate` | `DATABASE_URL` (the migration owner, normally `${{Postgres.DATABASE_URL}}`) |
 | `grants` | `MIGRATION_DATABASE_URL` (the same owner URL as `migrate`), `RUNTIME_DB_PASSWORD` (at least 24 URL-safe characters, e.g. `openssl rand -hex 32`; keep it as one shared variable) |
-| `provider-init` | `DATABASE_URL` (runtime role), `APP_SECRET`, the upstream provider's API key variable |
+| `provider-init` | `DATABASE_URL` (runtime role), `APP_SECRET`, `UPSTREAM_API_KEY`, `UPSTREAM_BASE_URL` (optional: `UPSTREAM_PROVIDER_ID`, `UPSTREAM_PROVIDER_NAME`, `UPSTREAM_SMOKE_TEST`) |
 | `api` | `RUNTIME_ROLE=api`, `DATABASE_URL` (runtime role: user `anyroute_runtime` with password `RUNTIME_DB_PASSWORD`), `REDIS_URL`, `APP_SECRET`, `ADMIN_TOKEN`, `PUBLIC_BASE_URL`, `PAYMENTS_MODE`, the escrow/chain variables, `BACKUP_REQUIRED` |
 | `worker` | as `api`, plus `RUNTIME_ROLE=worker`, `WORKER_JOBS` (add `alert-notifier`), optional `ALERT_WEBHOOK_URL` and `ALERT_WEBHOOK_FORMAT` |
 | `backup` | `DATABASE_URL` (runtime role), `BACKUP_AGE_RECIPIENTS`, `BACKUP_S3_ENDPOINT`, `BACKUP_S3_REGION`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`; optional `BACKUP_S3_PREFIX`, `BACKUP_S3_VIRTUAL_HOSTED`, `POSTGRES_CLIENT_IMAGE` |
