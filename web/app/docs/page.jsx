@@ -95,6 +95,7 @@ const endpoints = [
   ["GET · POST · PATCH · DELETE /api/v1/routes", "Saved Routes: named routing policies you call as model \"@route/<slug>\""],
   ["POST · GET · DELETE /api/v1/sessions · GET /sessions/current", "Agent Sessions: short-lived, budget-capped keys for agent runs"],
   ["GET /api/v1/spend · /spend/alerts", "Spend Watch: totals, projection, breakdowns, key budgets and alert rules"],
+  ["GET /api/v1/disclosure/:providerId", "A provider’s documented retention, jurisdiction, legal hold and training use, each with a source and date, and the class it is served under now"],
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt’s signature and anchor inclusion; signing keys (JWKS)"],
   ["POST /mcp", "AnyRoute MCP: list_models, chat, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
@@ -119,6 +120,7 @@ export default function Docs() {
             <span className="side-nav-label">On this page</span>
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
+            <a href="#disclosure">Disclosure</a>
             <a href="#payments">Payments</a>
             <a href="#x402">x402</a>
             <a href="#receipts">Receipts</a>
@@ -148,6 +150,32 @@ export default function Docs() {
                 models: ["qwen/qwen3-32b"],
                 messages: [{ role: "user", content: "Your prompt" }],
                 provider: { allow_fallbacks: true, data_collection: "deny", sort: "latency", private: true },
+              },
+              null,
+              2,
+            )}
+          </Code>
+          <h2 id="disclosure">Route by what a provider discloses.</h2>
+          <p>
+            Each provider has a disclosure profile its operator documents: retention (attested, policy or logs), jurisdiction, legal-hold status and training use, each with a source and a date. Anything undocumented reads as the conservative
+            default (logs, unknown). GET /api/v1/disclosure/:providerId returns the profile and the class the provider is served under right now. It reports what was documented and, for attested, what the router verified; it is not a guarantee of a
+            provider’s behaviour.
+          </p>
+          <p>
+            Set provider.disclosure (or the X-Anyroute-Disclosure-Max header) to none, policy or any, the default. none routes only to providers whose retention is declared attested and whose TEE attestation is fresh; policy also accepts a
+            documented no-retention policy with no legal hold. provider.lane (or X-Anyroute-Lane) is public, the default, or attested, which implies none; if both are set the stricter applies. When nothing qualifies the request fails with 409, or
+            503 when qualifying providers are down. It is never sent to a provider that does not qualify, and nothing is charged. The unlinkable lane is not available yet and returns 501. A request with a disclosure setting never uses the response cache.
+          </p>
+          <p>
+            Responses carry X-Anyroute-Disclosure (attested, policy or vendor-forwarded) and X-Anyroute-Lane, and the signed receipt records disclosure and lane. On a stream the header is sent only when every reachable provider shares one class; the
+            receipt always states it. A development attestation is marked attestation_simulated and is refused in production. GET /api/v1/models?lane=attested lists the models that have an attested endpoint now.
+          </p>
+          <Code label="Attested providers only">
+            {JSON.stringify(
+              {
+                model: "meta-llama/llama-3.3-70b-instruct",
+                messages: [{ role: "user", content: "Your prompt" }],
+                provider: { disclosure: "none" },
               },
               null,
               2,
