@@ -1,5 +1,7 @@
 import { createApp } from "./app.ts";
 import { DEFAULT_HEARTBEAT_FILE, WorkerHeartbeat } from "./services/worker-heartbeat.ts";
+import { installProcessGuard } from "./lib/process-guard.ts";
+installProcessGuard();
 const { ctx, close } = await createApp();
 if (ctx.cfg.runtimeRole !== "worker") { await close(); throw new Error("Worker entrypoint requires RUNTIME_ROLE=worker."); }
 // In-process timers are unref'd; keep the worker alive independently of queue transports.

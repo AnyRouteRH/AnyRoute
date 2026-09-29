@@ -1,6 +1,8 @@
 import { createApp } from "./app.ts";
 import { log } from "./lib/util.ts";
+import { installProcessGuard } from "./lib/process-guard.ts";
 
+installProcessGuard();
 const { app, ctx, close } = await createApp();
 
 if (ctx.cfg.runtimeRole === "worker") throw new Error("Use src/worker.ts for worker-only workloads.");

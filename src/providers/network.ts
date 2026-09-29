@@ -181,7 +181,8 @@ export async function peekProviderCertificate(input: string | URL, policy: Netwo
       const raw = socket.getPeerCertificate(true)?.raw;
       done(raw && raw.length ? null : new Error("Provider presented no certificate."), raw ? Buffer.from(raw) : undefined);
     });
-    socket.once("error", (e: Error) => done(e));
+    // "on", not "once": a failed connect can emit more than one error, and an unhandled one crashes the process.
+    socket.on("error", (e: Error) => done(e));
   });
 }
 
@@ -219,7 +220,7 @@ export async function providerFetch(input: string | URL, init: RequestInit = {},
     const req = request(url, requestOptions, (res) => {
       // Readable.toWeb forwards cancellation to the IncomingMessage, which destroys its socket;
       // errors discovered after headers must also tear down the request side immediately.
-      res.once("error", () => req.destroy());
+      res.on("error", () => req.destroy());
       const encoding = String(res.headers["content-encoding"] ?? "").toLowerCase();
       if (encoding && encoding !== "identity") {
         const error = new Error(`Provider sent ${encoding} despite Accept-Encoding: identity.`);
@@ -232,7 +233,9 @@ export async function providerFetch(input: string | URL, init: RequestInit = {},
       const responseBody = status === 204 || status === 304 ? null : Readable.toWeb(res) as ReadableStream<Uint8Array>;
       resolve(new Response(responseBody, { status, statusText: res.statusMessage, headers: new Headers(res.headers as unknown as ConstructorParameters<typeof Headers>[0]) }));
     });
-    req.once("error", reject);
+    // "on", not "once": the client can emit a second error (e.g. while trying the next address after a refused
+    // connect), and an unhandled error event would crash the worker. Later errors are ignored once settled.
+    req.on("error", reject);
     if (body instanceof ArrayBuffer) req.end(Buffer.from(body));
     else if (body instanceof Uint8Array) req.end(Buffer.from(body));
     else req.end(body == null ? undefined : body.toString());
