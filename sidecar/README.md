@@ -6,7 +6,9 @@ receipt-signing key and a TLS key, asks the platform for a quote that binds both
 hash of that evidence in its TLS certificate. Every request to `/v1/chat/completions` and `/v1/embeddings` is
 proxied with client network identifiers removed, and every response comes back with an Ed25519-signed receipt.
 
-Apache-2.0. Bun and TypeScript, one runtime dependency (`@noble/hashes`, for the receipt leaf hash).
+Apache-2.0. Bun and TypeScript, two runtime dependencies, both pinned to an exact version: `@noble/hashes` (the receipt
+leaf hash) and `@hpke/core` (RFC 9180 HPKE for the optional encrypted transport; it drives the runtime's WebCrypto and
+has no dependencies of its own beyond its internal `@hpke/common`).
 
 ## Quickstart (local, simulated evidence)
 
@@ -54,24 +56,28 @@ To run against real weights and hardware, use `docker-compose.example.yml` (vLLM
 * `auth.keys` to the SHA-256 of each API key you issue (`printf %s "$KEY" | sha256sum`), or `auth.allow_anonymous: true`.
 
 Nothing is enabled by accident: an empty model allow-list, an unknown setting, a missing key list, a classifier
-that is switched on but not present, and simulated evidence without the flag all stop the process at startup with a
-stable error code.
+that is switched on without its settings, weights or allow-list entry, and simulated evidence without the flag all
+stop the process at startup with a stable error code. The classifier and the encrypted transport are both off unless
+`classifier.enabled` / `hpke.enabled` say otherwise.
 
 ## What happens at boot
 
 In this order, cheapest first; any failure exits non-zero before anything listens.
 
-1. The attestation provider is built. `dev` is refused unless `SIDECAR_DEV_ATTESTATION=true`. A classifier that is
-   switched on (`classifier.enabled: true`) is refused too, since none ships in this version.
-2. The model allow-list must be non-empty.
+1. The attestation provider is built. `dev` is refused unless `SIDECAR_DEV_ATTESTATION=true`.
+2. The model allow-list must be non-empty; with the classifier on, so must `allowlist.classifier_digests`.
 3. The weights are hashed (see below) and the digest must be on the allow-list. If `model.digest` is also given it
-   must equal the measured value.
+   must equal the measured value. With the classifier on, its weights (`classifier.model`) are measured the same way
+   and must be on `allowlist.classifier_digests`; a digest that is only on the model list does not qualify.
 4. The compose hash is collected from the platform (dstack reports it), `compose.hash` and `compose.file`. They must
    agree. If a compose allow-list is configured, the hash must be on it.
 5. Optionally (`router.url`), the router's record for this provider must name the served model digest.
-6. An Ed25519 receipt key and a P-256 TLS key are generated in memory. They are never written anywhere.
+6. An Ed25519 receipt key and a P-256 TLS key are generated in memory, and an X25519 HPKE key when `hpke.enabled`.
+   They are never written anywhere.
 7. A quote is requested whose 64-byte report data is `sha256(canonical_json(bindings)) || 32-byte nonce` (zero nonce
-   at boot), where `bindings` is `{tls_pubkey, receipt_pubkey, image_digest, compose_hash, model_digest}`.
+   at boot), where `bindings` is `{tls_pubkey, receipt_pubkey, image_digest, compose_hash, model_digest}` plus, only
+   when the feature is on, `{classifier_enabled: true, classifier_digest, classifier_policy}` and `{hpke_pubkey}`. A
+   deployment with neither feature derives exactly the report data it did before they existed.
 8. The certificate is issued for the TLS key with a SAN `<first 32 hex>.<last 32 hex>.attest.anyroute`, where the 64
    hex characters are `sha256(quote bytes)`: the attestation reference.
 
@@ -88,8 +94,8 @@ uses it as declared and `/attest` reports `digest_source: "declared"`.
 | `GET /healthz` | none | Readiness, whether the model server answers, receipt queue depth. `503` when the model server is unreachable. |
 | `GET /attest` | none | The boot evidence and everything needed to check it. `?nonce=<64 hex>` returns a fresh quote whose report data ends in your nonce (rate limited). |
 | `GET /.well-known/anyroute-sidecar.json` | none | Discovery: endpoints, receipt key and format, digests, `dev` flag. |
-| `POST /v1/chat/completions` | API key | Proxied JSON or SSE. |
-| `POST /v1/embeddings` | API key | Proxied JSON. |
+| `POST /v1/chat/completions` | API key | Proxied JSON or SSE; `application/anyroute-hpke` when `hpke.enabled` (see "Encrypted transport"). |
+| `POST /v1/embeddings` | API key | Proxied JSON; the same encrypted option. |
 | `GET /v1/models` | API key | The model server's model list, passed through (no receipt, no quota charge). |
 | `GET /v1/receipts/{id}` | API key | A receipt by id, for the key that earned it (useful when an SSE reader stops at `[DONE]`). |
 | `GET /anchor/leaves?after=&limit=`, `POST /anchor/ack` | anchor token | Batches of receipt leaves for the router's anchor; off unless `SIDECAR_ANCHOR_TOKEN` is set. |
@@ -123,9 +129,14 @@ For each successful response the sidecar signs a JSON payload:
   "resp_hash": "sha256:<hash of the exact response body>",
   "model_digest": "sha256:<...>", "attestation_ref": "<64 hex>", "nullifier": "",
   "usage": { "prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7 },
-  "dev": false
+  "dev": false,
+  "classifier": { "enabled": true, "digest": "sha256:<classifier weights>", "blocked": false },
+  "e2ee": "anyroute-hpke-v1"
 }
 ```
+
+`classifier` is present only when the classifier is on and `e2ee` only for an encrypted exchange; otherwise the
+fields are absent and the receipt is what it was before they existed.
 
 The signature is Ed25519 over the canonical JSON of the payload (keys sorted recursively, no whitespace). The
 envelope is `{payload, sig (base64), key_id, alg: "Ed25519", leaf}`, where `leaf = keccak256(keccak256(canonical ||
@@ -143,6 +154,99 @@ signature))`, the same leaf the router builds for its own receipts.
   `stream_options.include_usage`; the sidecar does not edit the request.
 * Upstream error responses are passed through without a receipt.
 * `nullifier` is reserved for unlinkable-access tokens and is always empty in this version.
+* A refusal by the classifier carries a receipt too (status `400`, `classifier.blocked: true`, no usage), in the
+  `x-anyroute-receipt` header of the refusal. A request refused because the classifier could not answer (`503`) is not
+  signed: no decision was made.
+* Encrypted exchanges: `req_hash` and `resp_hash` are hashes of the encrypted bytes on the wire, which the client can
+  recompute (for a stream, `resp_hash` covers everything before the last frame, which carries the receipt). Errors the
+  sidecar makes itself, including a classifier refusal, are plain JSON and hashed as sent.
+
+## In-enclave classifier
+
+Off by default (`classifier.enabled: false`). With it on, the sidecar checks the text of each request before anything
+is forwarded, using a second model served inside the same VM and pinned the same way as the main one: its weights are
+hashed at boot and must be on `allowlist.classifier_digests`, and the digest is bound into the report data and
+published at `/attest`.
+
+* **What it asks.** One chat-completions call to `classifier.base_url` per chunk of text, with a fixed system prompt
+  built from the category list (`anyroute-classifier-v1`) and the text between unguessable boundary lines. The reply
+  must be exactly one label: `SAFE` or a category id. Anything else, an HTTP error, a timeout, an unreachable server,
+  or more text than `classifier.max_chunks` allows, refuses the request (`503 content_check_unavailable`, or
+  `413 content_too_large`). There is no fail-open path. Nothing about the caller is sent to the classifier.
+* **What it checks.** Every request field that is not a plain setting: message text and tool-call arguments, `prompt`,
+  `input`, `system`, tool descriptions and schemas, stop strings and vendor extensions (`model`, sampling parameters
+  and the like are skipped). Long text is split into overlapping pieces. Images, audio and files are not text and are not
+  examined: by default a request carrying them is refused (`classifier.non_text_input: refuse`); `allow` lets them
+  through and the operator owns that choice. With `classifier.check_response: true` the generated text is checked
+  before it is released; a stream is then read to the end first, so a flagged stream is never partly sent.
+* **Categories.** Categories that are illegal everywhere are built in and always enforced; today that is sexual
+  content involving minors (`minor_sexual_content`). `classifier.categories` adds more (`id` and a one-line
+  `description`); there is no setting that removes or redefines a built-in one, and the sidecar refuses a classifier
+  that does not enforce them all. The full list and a hash of the prompt template and options
+  (`classifier.policy_hash`, bound into the report data) are in `/attest`, so the receipt bit has a defined meaning.
+* **What is recorded.** A hit answers `400 content_policy_violation` with a generic message: no category, no echo.
+  The receipt gets `classifier: {enabled, digest, blocked}`, one bit. `/healthz` reports counters only
+  (`blocked_requests`, `blocked_responses`, `unavailable`) and turns `503` when the classifier is unreachable. The
+  text, the label and the category are not logged or stored, and the operator has no interface that returns them.
+  A refused request still spends a unit of the key's request quota, so the check cannot be probed for free.
+* **What it is not.** A small model is a backstop, not a guarantee: it has false negatives and false positives, and a
+  crafted text can try to talk it into `SAFE` (the prompt tells it to treat the text as data, which helps and proves
+  nothing). It is not a legal compliance program. The classifier server receives request text in the clear, so it
+  must be reachable only from inside the VM (the example compose has a `classifier` profile that puts it on the
+  internal network with no ports; put its weights under `${MODELS_DIR}/classifier`).
+
+## Encrypted transport
+
+Off by default (`hpke.enabled: false`). With it on, the sidecar generates an X25519 key pair at boot, publishes the
+public key in `/attest` (`hpke.public_key`) and binds it into the report data (`bindings.hpke_pubkey`), so the quote
+vouches for that key. A client that verified the attestation can encrypt a request so that only this process can read
+it: anything in between (a load balancer, a router, the host) sees ciphertext. Requests are otherwise handled exactly
+as plain ones: authentication, quota, the classifier and the proxy apply to the decrypted body. No outer request
+header is forwarded in this mode, since headers are not covered by the encryption.
+
+The construction is RFC 9180 (HPKE) in base mode with DHKEM(X25519, HKDF-SHA256), HKDF-SHA256 and AES-128-GCM. It is
+implemented by `@hpke/core`; the tests run that suite against the RFC 9180 A.1.1 vector. `src/hpke-client.ts` is a
+working client to port.
+
+**Request** (`content-type: application/anyroute-hpke`), the body is:
+
+| Bytes | Content |
+| --- | --- |
+| 0 | version, `0x01` |
+| 1 to 8 | client time in milliseconds since the Unix epoch, unsigned 64-bit big-endian |
+| 9 to 40 | `enc`, the 32-byte encapsulated key |
+| 41 to end | `ct`, the HPKE ciphertext (the JSON request body, then a 16-byte tag) |
+
+HPKE `info` is the ASCII string `anyroute-hpke/v1`; `aad` is bytes 0 to 8 followed by the ASCII request path (for
+example `/v1/chat/completions`). The path in the `aad` stops a ciphertext from being replayed against another
+endpoint; the time bounds replay to `hpke.clock_skew_seconds` and a request whose `enc` was already seen inside that
+window is refused (`request_replayed`). Other refusals are `request_expired`, `decryption_failed` (wrong or outdated
+key, altered bytes) and `invalid_encryption`, all `400`, all before anything reaches the model server.
+
+**Response** (`application/anyroute-hpke` for JSON, `application/anyroute-hpke-stream` for an event stream; the model
+server's own content type is in `x-anyroute-inner-content-type`; the HTTP status is the model server's). Following
+RFC 9180 section 9.8 and the response construction of RFC 9458 section 4.4:
+
+```
+secret         = context.Export("anyroute-hpke/v1 response", 16)     # the request's HPKE context
+response_nonce = 16 random bytes, sent first
+prk            = HKDF-Extract(salt = enc || response_nonce, ikm = secret)
+key            = HKDF-Expand(prk, "key", 16)
+base_nonce     = HKDF-Expand(prk, "nonce", 12)
+```
+
+After the 16 nonce bytes come frames: `flag (1 byte) || length (4 bytes, big-endian) || ciphertext`, where the ciphertext
+is AES-128-GCM under `key` with nonce `base_nonce XOR i` (the frame index as a big-endian integer in the nonce's last
+4 bytes) and `aad` equal to the flag byte. The flag is `1` on the last frame only, so a response cut short is
+detectable and a client must reject a response that does not end in a `1` frame, or has bytes after it. A JSON
+response is a single last frame. For a stream, each chunk from the model server becomes a frame as it arrives, and
+the last frame holds the `anyroute.receipt` event. The nonce is fresh for every response, so a replayed request never
+reuses a key stream.
+
+Limits of the mode: HPKE base mode does not authenticate the sender (the API key does that, in the clear), the
+response key comes from the request's own HPKE context so it is exactly as private as the client's copy of that
+context, and request timing and size are visible. The replay cache lives in memory and restarts with the process;
+the key changes at restart too, so older ciphertexts stop opening anyway.
 
 ## Verifying an endpoint
 
@@ -157,6 +261,13 @@ Everything is in `GET /attest`. A verifier should:
 4. Connect over TLS, pin the certificate, and check that its public key equals `bindings.tls_pubkey` and that
    `sha256(quote bytes)` equals the reference in the certificate's `attest.anyroute` SAN.
 5. Verify receipts with `bindings.receipt_pubkey`.
+6. If you rely on the classifier, require `bindings.classifier_enabled` and check `bindings.classifier_digest` and
+   `bindings.classifier_policy` against the classifier weights and the policy you expect (the `/attest` document
+   lists the categories from which the policy hash is derived); a deployment without a classifier has no
+   `classifier_*` keys, and its receipts have no `classifier` field. Check that a receipt's `classifier.digest`
+   equals the bound one.
+7. If you encrypt requests, take the key from `bindings.hpke_pubkey` (the same value as `hpke.public_key`), never
+   from an unverified copy.
 
 A response carrying `x-anyroute-attestation: dev-simulated`, `"dev": true`, `format: "dev-simulated"` or a
 certificate with a `dev-simulated.attest.anyroute` name is simulated and must be rejected outside development.
@@ -169,7 +280,10 @@ The file is the source of truth; these override it, so a container can start fro
 `SIDECAR_MODEL_ALLOWLIST` (comma-separated digests, added to the file's list), `SIDECAR_COMPOSE_ALLOWLIST`,
 `SIDECAR_IMAGE_DIGEST`, `SIDECAR_COMPOSE_FILE`, `SIDECAR_COMPOSE_HASH`, `SIDECAR_ATTESTATION`
 (`dstack`, `tdx` or `dev`), `SIDECAR_DSTACK_ENDPOINT`, `SIDECAR_DEV_ATTESTATION`, `SIDECAR_ROUTER_API_KEY`,
-`SIDECAR_ANCHOR_TOKEN`. When you put hex values in YAML, quote them.
+`SIDECAR_ANCHOR_TOKEN`. For the classifier: `SIDECAR_CLASSIFIER_URL`, `SIDECAR_CLASSIFIER_MODEL_PATH`,
+`SIDECAR_CLASSIFIER_MODEL_DIGEST`, `SIDECAR_CLASSIFIER_ALLOWLIST` (comma-separated digests, added to the file's
+list) and `SIDECAR_CLASSIFIER_API_KEY` (name set by `classifier.api_key_env`). When you put hex values in YAML,
+quote them.
 
 ## Reproducible image
 
@@ -189,9 +303,13 @@ image for you.
 * `image_digest` is declared by the operator, not measured. The compose hash is measured only where the platform
   reports it (dstack); on bare-metal TDX it comes from the file or hash you supply.
 * Confidential-GPU evidence (NVIDIA) is not collected. Only the CPU-side quote is bound.
-* There is no request encryption to the enclave beyond TLS, no in-enclave classifier (`classifier.enabled: true` is
-  refused), no blind-token redemption, and the sidecar does not publish to a transparency log or an on-chain
+* There is no blind-token redemption, and the sidecar does not publish to a transparency log or an on-chain
   registry. `sidecar.yaml`, the compose file and the endpoints above are the whole interface today.
+* The classifier is a best-effort text filter (see "In-enclave classifier"): it does not examine images or audio,
+  and it can be wrong in both directions. Its digest is measured the same way as the main model's, at boot only.
+* Encrypted requests protect the body against everything outside this process. They do not hide who is calling, when,
+  or how much, and the model server, the classifier server and the sidecar itself see the plaintext, so the
+  confidentiality claim is exactly as strong as the attestation of the machine they run on.
 * Keys and the certificate are regenerated on every start. The certificate lives `server.cert_validity_days`
   (default 90); restart before then. `/healthz` reports `tls_not_after`.
 * With `server.tls: off` the transport is outside the attestation, and `/attest` says `tls: null`.
