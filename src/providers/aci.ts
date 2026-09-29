@@ -434,14 +434,26 @@ export async function verifyAciExchange(o: { baseUrl: string; gateway: AciGatewa
   const first = checkAciReceipt(doc, g, inputs);
   const up = eventOf((doc ?? {}) as Record<string, any>, "upstream.verified");
   if (!first.upstream.session_id || (up?.claims && typeof up.claims === "object")) return first;
-  let session: unknown;
-  try {
-    session = await getJson(`${base}/aci/sessions/${encodeURIComponent(first.upstream.session_id)}`, { apiKey: o.apiKey, tlsPin: o.tlsPin, production: o.production, tries: 2 });
-  } catch (e) {
-    return { ...first, attested: false, gpu_attested: false, reason: first.reason ?? `the cited session could not be fetched (${(e as Error).message})` };
+  const sid = first.upstream.session_id;
+  let session = sessionCache.get(sessionKey(sid));
+  if (session === undefined) {
+    try {
+      session = await getJson(`${base}/aci/sessions/${encodeURIComponent(sid)}`, { apiKey: o.apiKey, tlsPin: o.tlsPin, production: o.production, tries: 2 });
+    } catch (e) {
+      return { ...first, attested: false, gpu_attested: false, reason: first.reason ?? `the cited session could not be fetched (${(e as Error).message})` };
+    }
+    // Content-addressed: a record that hashes to its id can be reused for every receipt that cites it.
+    if (sha256Hex(jcs(session)) === sessionKey(sid)) {
+      if (sessionCache.size >= SESSION_CACHE_SIZE) sessionCache.delete(sessionCache.keys().next().value!);
+      sessionCache.set(sessionKey(sid), session);
+    }
   }
   return checkAciReceipt(doc, g, inputs, session);
 }
+
+/** Session records by id. Many receipts cite the same session while it is valid; each is checked against it anyway. */
+const sessionCache = new Map<string, unknown>();
+const SESSION_CACHE_SIZE = 512;
 
 // ---- GPU attestation, per model, over time ------------------------------------------------------------------
 
