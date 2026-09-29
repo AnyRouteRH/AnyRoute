@@ -111,7 +111,7 @@ async function withProof(f: typeof fetch, base: string, e: { uuid: string; raw: 
 
 // ---- Inputs --------------------------------------------------------------------------------------------------
 
-type Measured = { composeHash: string | null; imageDigest: string | null; modelDigest: string | null; mrtd: string | null; rtmr3: string | null; source: string };
+type Measured = { composeHash: string | null; /** other spellings of the same document that hash differently */ composeAlternatives?: string[]; imageDigest: string | null; modelDigest: string | null; mrtd: string | null; rtmr3: string | null; source: string };
 
 function fromAttestDocument(text: string): Measured {
   let doc: any;
@@ -243,13 +243,19 @@ async function publish(o: PublishOptions, deps: Deps): Promise<number> {
     if (!existsSync(o["app-compose"])) return stop(`no such file: ${o["app-compose"]}`);
     const app = readAppCompose(readFileSync(o["app-compose"], "utf8"));
     if (app.docker_compose_file !== composeText) return stop("the app-compose's docker_compose_file is not the compose file given (byte for byte)");
-    measured.push({ composeHash: `sha256:${app.rawSha256}`, imageDigest: null, modelDigest: null, mrtd: null, rtmr3: null, source: "--app-compose" });
+    measured.push({ composeHash: `sha256:${app.rawSha256}`, composeAlternatives: app.sortedSha256 === app.rawSha256 ? [] : [`sha256:${app.sortedSha256}`], imageDigest: null, modelDigest: null, mrtd: null, rtmr3: null, source: "--app-compose" });
   }
   if (!measured.length) return stop("no source for the compose hash: give --router-url, --compose-hash, --app-compose or --attest");
   const pick = <K extends keyof Measured>(k: K): Measured[K] => measured.find((m) => m[k])?.[k] ?? (null as Measured[K]);
-  for (const k of ["composeHash", "imageDigest", "modelDigest"] as const)
+  for (const k of ["imageDigest", "modelDigest"] as const)
     for (const a of measured) for (const b of measured) if (!same(a[k], b[k])) return stop(`${a.source} and ${b.source} disagree about the ${k}: ${a[k]} / ${b[k]}`);
+  // The compose hash: the first source in the order router, attestation document, --compose-hash, --app-compose. The others
+  // must agree with it; an app-compose.json agrees when its text, as given or with sorted keys, hashes to it.
   const composeHash = pick("composeHash") ?? stop("no source gave the compose hash");
+  const spellings = (m: Measured) => [m.composeHash, ...(m.composeAlternatives ?? [])];
+  for (const m of measured) if (m.composeHash && !spellings(m).includes(composeHash)) return stop(`${m.source} does not give the compose hash ${composeHash} (it gives ${spellings(m).join(" or ")})`);
+  const only = measured.filter((m) => m.composeHash);
+  if (only.length === 1 && only[0]!.composeAlternatives?.length) return stop(`the app-compose document alone does not fix the compose hash: its sha256 depends on how the text was serialised (as given ${only[0]!.composeHash}, keys sorted ${only[0]!.composeAlternatives[0]}). Also give --router-url or --compose-hash`);
   const imageDigest = pick("imageDigest");
   const measuredModel = pick("modelDigest");
   if (imageDigest && !pins.images.some((i) => i.digest === imageDigest)) return stop(`the image digest the quote committed to (${imageDigest}) is not an image in the compose file: the deployment is not running this file`);

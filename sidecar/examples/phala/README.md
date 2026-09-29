@@ -165,6 +165,12 @@ ADMIN_TOKEN=<operator token> REKOR_PUBLIC_KEY="$(curl -s https://rekor.sigstore.
   bun scripts/publish-measurement.ts --provider <id> --router-url https://<router> --handover
 ```
 
+To make the compose hash independent of the router's record, also pass the deployment's own `app-compose.json`
+(`npx -y phala cvms attestation <name> --json > attestation.json`, then `--app-compose attestation.json`). The script then
+requires that it embeds this compose file byte for byte and that its hash is the one the router recorded. This matters
+because the router records a measurement once per provider and image digest and does not overwrite it: after a redeploy
+that changes the compose file but not the image, the record can be out of date.
+
 A log entry is permanent. The script refuses to publish when the router already holds a verified bundle for the same
 compose hash (`--force` overrides), and never overwrites an output file. If the hand-over fails after the entry is
 logged, repeat only that step: `ADMIN_TOKEN=... bun scripts/publish-measurement.ts --resume <record> --router-url ...`.

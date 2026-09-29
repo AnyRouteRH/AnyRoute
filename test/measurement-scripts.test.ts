@@ -62,6 +62,9 @@ describe("the Phala example compose file", () => {
     const wrapped = readAppCompose(JSON.stringify({ tcb_info: { app_compose: text } }));
     expect(wrapped).toMatchObject({ rawSha256: sha(text), docker_compose_file: COMPOSE_TEXT });
     expect(readAppCompose(JSON.stringify({ app_compose: app })).docker_compose_file).toBe(COMPOSE_TEXT);
+    // tcb_info may itself be a JSON string, and the compose may be under compose_file
+    expect(readAppCompose(JSON.stringify({ tcb_info: JSON.stringify({ app_compose: text }) }))).toMatchObject({ rawSha256: sha(text), docker_compose_file: COMPOSE_TEXT });
+    expect(readAppCompose(JSON.stringify({ compose_file: app })).docker_compose_file).toBe(COMPOSE_TEXT);
     // pretty-printing changes the hash of the text but not of the key-sorted form
     const pretty = readAppCompose(JSON.stringify({ name: "x", docker_compose_file: COMPOSE_TEXT, runner: "docker-compose", manifest_version: 2, kms_enabled: true }, null, 2));
     expect(pretty.rawSha256).not.toBe(sha(text));
@@ -348,17 +351,38 @@ describe("publish-measurement", () => {
     expect(stderr()).toContain("ADMIN_TOKEN");
     expect(await run(args(["--handover", "--dry-run"]), { MEASUREMENT_SIGNING_KEY: signer.privatePem })).toBe(1);
   });
-  test("the compose hash can come from the app-compose.json, and it must embed the compose file byte for byte", async () => {
-    router.measurement = null;
-    const app = JSON.stringify({ manifest_version: 2, name: "x", runner: "docker-compose", docker_compose_file: COMPOSE_TEXT });
+  test("the compose hash can come from the app-compose.json, which must embed the compose file byte for byte and agree with every other source", async () => {
     const file = join(dir, "app-compose.json");
-    writeFileSync(file, app);
     const noRouter = ["--provider", "phala-test", "--compose", COMPOSE_FILE, "--app-compose", file, "--mrtd", MRTD, "--dry-run"];
+    // keys already sorted and compact: the text, as given or sorted, has one hash
+    const sortedText = JSON.stringify({ docker_compose_file: COMPOSE_TEXT, manifest_version: 2, name: "x", runner: "docker-compose" });
+    writeFileSync(file, sortedText);
     expect(await run(noRouter)).toBe(0);
-    expect(JSON.parse(stdout()).bundle.compose_hash).toBe(`sha256:${sha(app)}`);
-    writeFileSync(file, JSON.stringify({ docker_compose_file: COMPOSE_TEXT + "#" }));
+    expect(JSON.parse(stdout()).bundle.compose_hash).toBe(`sha256:${sha(sortedText)}`);
+
+    // a document whose hash depends on how it was serialised is not enough on its own
+    const app = JSON.stringify({ manifest_version: 2, name: "x", runner: "docker-compose", docker_compose_file: COMPOSE_TEXT }, null, 1);
+    writeFileSync(file, app);
     err.length = 0;
     expect(await run(noRouter)).toBe(1);
+    expect(stderr()).toContain("alone does not fix the compose hash");
+    // ... but it is with a second source that names one of the two hashes
+    out.length = 0;
+    expect(await run([...noRouter, "--compose-hash", `sha256:${sha(app)}`])).toBe(0);
+    expect(JSON.parse(stdout()).bundle.compose_hash).toBe(`sha256:${sha(app)}`);
+    out.length = 0;
+    router.measurement = { ...router.measurement!, compose_hash: "0x" + readAppCompose(app).sortedSha256 };
+    expect(await run(args(["--app-compose", file, "--dry-run"]))).toBe(0);
+    expect(JSON.parse(stdout()).bundle.compose_hash).toBe(`sha256:${readAppCompose(app).sortedSha256}`);
+    // the router's record (here: a stale one) and the deployment's document must not disagree
+    router.measurement = { ...router.measurement, compose_hash: "0x" + "ab".repeat(32) };
+    err.length = 0;
+    expect(await run(args(["--app-compose", file, "--dry-run"]))).toBe(1);
+    expect(stderr()).toContain("--app-compose does not give the compose hash");
+
+    writeFileSync(file, JSON.stringify({ docker_compose_file: COMPOSE_TEXT + "#" }));
+    err.length = 0;
+    expect(await run([...noRouter, "--compose-hash", COMPOSE_HASH])).toBe(1);
     expect(stderr()).toContain("not the compose file given");
   });
   test("an attestation document supplies the compose hash and MRTD, and RTMR3 is pinned only on request", async () => {
@@ -388,7 +412,7 @@ describe("publish-measurement", () => {
     router.measurement = { ...router.measurement, image_digest: "0x" + SIDECAR_IMAGE.slice(7), model_digest: "0x" + "98".repeat(32) };
     await refused(dry(), "is not the one this compose file allows");
     router.measurement = { ...router.measurement, model_digest: "0x" + MODEL_DIGEST.slice(7) };
-    await refused(dry(["--compose-hash", "sha256:" + "dd".repeat(32)]), "disagree about the composeHash");
+    await refused(dry(["--compose-hash", "sha256:" + "dd".repeat(32)]), "--compose-hash does not give the compose hash");
     router.status = "unverified";
     await refused(dry(), "does not currently call phala-test attested");
     router.status = "attested";

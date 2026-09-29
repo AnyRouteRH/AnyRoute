@@ -99,8 +99,8 @@ export type AppCompose = { raw: string; docker_compose_file: string | null; rawS
 const sortKeys = (v: unknown): unknown => (Array.isArray(v) ? v.map(sortKeys) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys((v as Record<string, unknown>)[k])])) : v);
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-/** An app-compose.json, given as the file itself or wrapped in a platform attestation document (`tcb_info.app_compose` or
- *  `app_compose`, an object or the JSON string). dstack's compose hash is the sha256 of the app-compose string. The hash is
+/** An app-compose.json, given as the file itself or wrapped in a platform attestation document (`tcb_info.app_compose`,
+ *  `app_compose` or `compose_file`; an object or the JSON string; `tcb_info` may itself be a JSON string). dstack's compose hash is the sha256 of the app-compose string. The hash is
  *  reported over the text exactly as given, and over a key-sorted re-serialisation, since a wrapper may reformat it. */
 export function readAppCompose(text: string): AppCompose {
   let doc: any;
@@ -109,7 +109,15 @@ export function readAppCompose(text: string): AppCompose {
   } catch {
     throw new Error("app-compose is not JSON");
   }
-  const wrapped = doc?.tcb_info?.app_compose ?? doc?.app_compose ?? null;
+  let tcb = doc?.tcb_info;
+  if (typeof tcb === "string") {
+    try {
+      tcb = JSON.parse(tcb);
+    } catch {
+      tcb = null;
+    }
+  }
+  const wrapped = tcb?.app_compose ?? doc?.app_compose ?? doc?.compose_file ?? null;
   const inner = typeof doc?.docker_compose_file === "string" ? doc : typeof wrapped === "string" ? JSON.parse(wrapped) : wrapped;
   if (!inner || typeof inner !== "object") throw new Error("no app-compose document found");
   const raw = typeof doc?.docker_compose_file === "string" ? text : typeof wrapped === "string" ? wrapped : JSON.stringify(inner);
