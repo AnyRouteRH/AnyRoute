@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
 import { parseSignature, serializeSignature } from "viem";
-import { MODELS, NVDA, fakeTx, startRouter, type Harness } from "./helpers.ts";
+import { MODELS, NVDA, fakeTx, paywithKey, startRouter, type Harness } from "./helpers.ts";
 import { balanceOf, release, reserve, verifyInvariants } from "../src/ledger/ledger.ts";
 import { keys, paywithDebts, providers, quotes } from "../src/db/schema.ts";
 import { recordEvents, processEvents } from "../src/chain/indexer.ts";
@@ -94,23 +94,18 @@ describe("payments", () => {
 
   test("pay-with: a call finishing while a swap is mined stays open for the next swap", async () => {
     clearFairCache();
-    const k = await h.newKey();
-    const wallet = "0x0000000000000000000000000000000000002222";
-    await h.request("/api/v1/paywith/open", { method: "POST", headers: k.auth, json: { token: "NVDA", cap_raw_per_day: (10n ** 18n).toString(), wallet } });
-    h.chain.sessions.set(k.chainKeyHash, { wallet, token: NVDA, capRawPerDay: 10n ** 18n, spentRawToday: 0n, dayStart: BigInt(Math.floor(Date.now() / 86_400_000) * 86_400), active: true });
-    await recordEvents(h.ctx, [{ contract: "payWithStock", event: "SessionOpened", args: { keyHash: k.chainKeyHash, wallet, token: NVDA, capRawPerDay: 10n ** 18n }, txHash: fakeTx(), logIndex: 0, blockNumber: 60n }]);
-    await processEvents(h.ctx);
+    const k = await paywithKey(h, { allowance: true });
     const call = () => h.request("/api/v1/chat/completions", { method: "POST", headers: { ...k.auth, "x-pay-with": "NVDA" }, json: { model: LLAMA, max_tokens: 20, messages: [{ role: "user", content: "x" }] } });
     await call();
     await call();
     await h.ctx.db.execute(sql`UPDATE paywith_debts SET created_at = now() - interval '25 hours'`);
-    const orig = h.chain.payCall.bind(h.chain);
-    h.chain.payCall = (async (...a: Parameters<typeof orig>) => {
+    const orig = h.chain.payCallWithAllowance.bind(h.chain);
+    h.chain.payCallWithAllowance = (async (...a: Parameters<typeof orig>) => {
       expect((await call()).status).toBe(200); // finishes while the swap is in flight
       return orig(...a);
     }) as typeof orig;
     await runPaywithAggregator(h.ctx);
-    h.chain.payCall = orig;
+    h.chain.payCallWithAllowance = orig;
     const debts = await h.ctx.db.select().from(paywithDebts).where(eq(paywithDebts.chainKeyHash, k.chainKeyHash));
     expect(debts.filter((d) => d.swapId).length).toBe(2);
     expect(debts.filter((d) => !d.swapId).length).toBe(1);

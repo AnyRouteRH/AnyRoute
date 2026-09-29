@@ -12,7 +12,7 @@ import { readinessMetrics } from "../services/readiness-metrics.ts";
 import { readJson } from "./common.ts";
 import { requireKey } from "./auth.ts";
 import { verifyReceipt, anchorProof } from "./generation.ts";
-import { fairPrice, openDebt, rawToPico, statement } from "../pay/paywith.ts";
+import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAllowance, openDebt, rawToPico, saveAllowance, signCharge, statement, typedDataJson } from "../pay/paywith.ts";
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 
 export { providerApplication } from "../providers/application.ts";
@@ -112,15 +112,21 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
     const [s] = await ctx.db.select().from(paywithSessions).where(eq(paywithSessions.keyHash, k.chainKeyHash));
     if (!s) return c.json({ data: null });
     const tok = ctx.cfg.paywith.tokens.find((t) => t.address.toLowerCase() === s.token.toLowerCase());
-    // Today's spend comes from the contract (UTC day window); the indexed row is the fallback.
+    // Today's spend, the authorization epoch and the allowance come from the contract (UTC day window);
+    // the indexed row is the fallback.
     let spentToday = s.spentRawToday;
+    let epoch: string | null = null;
+    let allowance: Awaited<ReturnType<typeof allowanceView>> = null;
     try {
       const onchain = await ctx.chain.session(k.chainKeyHash as Hex);
       const today = BigInt(Math.floor(Date.now() / 86_400_000) * 86_400);
       spentToday = onchain.dayStart < today ? 0n : onchain.spentRawToday;
+      epoch = onchain.epoch.toString();
+      allowance = await allowanceView(ctx, k.chainKeyHash, onchain);
     } catch {
       /* chain unavailable: indexed value */
     }
+    const charges = await chargeProposals(ctx, k.chainKeyHash);
     return c.json({
       data: {
         token: s.token,
@@ -133,6 +139,9 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         pay_with_default: k.payWithDefault ?? null,
         open_debt_usd: picoToUsd(await openDebt(ctx, k.chainKeyHash)),
         opened_tx: s.openedTx,
+        epoch,
+        allowance,
+        charges_awaiting_signature: charges.filter((x) => x.status === "awaiting_signature").length,
       },
     });
   });
@@ -143,7 +152,7 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
     const tok = ctx.cfg.paywith.tokens.find((t) => t.symbol.toLowerCase() === v.token.toLowerCase() || t.address.toLowerCase() === v.token.toLowerCase());
     if (!tok) fail(404, `${v.token} is not a registered Stock Token.`, "not_found");
     const pws = ctx.chain.require("payWithStock");
-    // The router may spend up to the session's daily cap without a per-charge signature, so the API
+    // Every charge needs the wallet's own authorization; the daily cap stays an extra bound, and the API
     // only builds sessions worth at most PAYWITH_MAX_DAILY_CAP_USD a day (required in production).
     const maxCapUsd = ctx.cfg.paywith.maxDailyCapUsd;
     if (maxCapUsd !== null) {
@@ -163,13 +172,47 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
           { to: tok.address, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [pws, BigInt(v.cap_raw_per_day) * 31n] }), description: `Approve ${tok.symbol} for PayWithStock (31 days of cap)` },
           { to: pws, data: encodeFunctionData({ abi: PayWithStockAbi, functionName: "openSession", args: [k.chainKeyHash as Hex, tok.address as Hex, BigInt(v.cap_raw_per_day)] }), description: `Open a ${tok.symbol} session for this key` },
         ],
+        next: "Once the session is indexed, sign a bounded allowance (POST /api/v1/paywith/allowance/typed-data, then POST /api/v1/paywith/allowance), or sign each charge from GET /api/v1/paywith/charges.",
       },
     });
+  });
+  // EIP-712 AllowanceAuthorization for the session wallet to sign once: a total and a per-charge token limit,
+  // at most 7 days, at most $5 per charge on-chain, every charge tied to the receipts it pays.
+  app.post("/api/v1/paywith/allowance/typed-data", async (c) => {
+    const k = await requireKey(ctx, c.req.header("authorization"));
+    const v = z
+      .object({ max_raw_total: z.string().regex(/^\d{1,78}$/).optional(), max_raw_per_charge: z.string().regex(/^\d{1,78}$/).optional(), valid_seconds: z.number().int().positive().optional() })
+      .parse(await readJson(c));
+    const p = await allowanceProposal(ctx, k, { maxRawTotal: v.max_raw_total ? BigInt(v.max_raw_total) : undefined, maxRawPerCharge: v.max_raw_per_charge ? BigInt(v.max_raw_per_charge) : undefined, validSeconds: v.valid_seconds });
+    return c.json({ data: { wallet: p.wallet, symbol: p.symbol, decimals: p.decimals, typed_data: typedDataJson(p.typedData) } });
+  });
+  app.post("/api/v1/paywith/allowance", async (c) => {
+    const k = await requireKey(ctx, c.req.header("authorization"));
+    const v = z.object({ message: z.record(z.string(), z.unknown()), signature: z.string().regex(/^0x[0-9a-fA-F]+$/) }).parse(await readJson(c));
+    return c.json({ data: await saveAllowance(ctx, k, { message: v.message, signature: v.signature as Hex }) }, 201);
+  });
+  // Charges the router proposes (exact USDG, token maximum, usage commitment) for the wallet to sign.
+  app.get("/api/v1/paywith/charges", async (c) => {
+    const k = await requireKey(ctx, c.req.header("authorization"));
+    return c.json({ data: await chargeProposals(ctx, k.chainKeyHash) });
+  });
+  app.post("/api/v1/paywith/charges/:id/signature", async (c) => {
+    const k = await requireKey(ctx, c.req.header("authorization"));
+    const v = z.object({ signature: z.string().regex(/^0x[0-9a-fA-F]+$/) }).parse(await readJson(c));
+    return c.json({ data: await signCharge(ctx, k, c.req.param("id"), v.signature as Hex) });
+  });
+  // One transaction voids every outstanding charge signature and the allowance (the session stays open).
+  app.post("/api/v1/paywith/revoke", async (c) => {
+    const k = await requireKey(ctx, c.req.header("authorization"));
+    const pws = ctx.chain.require("payWithStock");
+    await forgetAllowance(ctx, k.chainKeyHash);
+    return c.json({ data: { chain: ctx.cfg.chain.id, transactions: [{ to: pws, data: encodeFunctionData({ abi: PayWithStockAbi, functionName: "revokeAuthorizations", args: [k.chainKeyHash as Hex] }), description: "Revoke every charge authorization and the allowance (instant)" }] } });
   });
   app.post("/api/v1/paywith/close", async (c) => {
     const k = await requireKey(ctx, c.req.header("authorization"));
     const pws = ctx.chain.require("payWithStock");
-    return c.json({ data: { chain: ctx.cfg.chain.id, transactions: [{ to: pws, data: encodeFunctionData({ abi: PayWithStockAbi, functionName: "closeSession", args: [k.chainKeyHash as Hex] }), description: "Close the session (instant)" }] } });
+    await forgetAllowance(ctx, k.chainKeyHash);
+    return c.json({ data: { chain: ctx.cfg.chain.id, transactions: [{ to: pws, data: encodeFunctionData({ abi: PayWithStockAbi, functionName: "closeSession", args: [k.chainKeyHash as Hex] }), description: "Close the session and revoke its authorizations (instant)" }] } });
   });
   app.get("/api/v1/paywith/statement", async (c) => {
     const k = await requireKey(ctx, c.req.header("authorization"));

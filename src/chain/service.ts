@@ -6,10 +6,13 @@ import {
   decodeEventLog,
   defineChain,
   encodeFunctionData,
+  hashTypedData,
   http,
+  recoverTypedDataAddress,
   type Abi,
   type Hex,
   type PublicClient,
+  type TypedDataDefinition,
   type WalletClient,
   type Chain,
   type Account,
@@ -50,6 +53,14 @@ export type EscrowFinality = { head: bigint; headTime: number; final: bigint; fi
 export type FeedReading = { answer: bigint; decimals: number; updatedAt: number };
 const transferEvent = { type: "event", name: "Transfer", inputs: [{ name: "from", type: "address", indexed: true }, { name: "to", type: "address", indexed: true }, { name: "value", type: "uint256", indexed: false }] } as const;
 export type CallPayment = { nonce: Hex; payer: Hex; amount: bigint; blockNumber: bigint; confirmations: number; logIndex: number };
+/** PayWithStock session; `epoch` is named by every authorization and bumped by each revocation. */
+export type PaywithSession = { wallet: Hex; token: Hex; capRawPerDay: bigint; spentRawToday: bigint; dayStart: bigint; active: boolean; epoch: bigint };
+/** EIP-712 ChargeAuthorization: one settlement the session wallet signed. */
+export type ChargeAuthorization = { keyHash: Hex; token: Hex; usdgAmount: bigint; maxRaw: bigint; usageCommitment: Hex; nonce: bigint; epoch: bigint; deadline: bigint; router: Hex };
+/** EIP-712 AllowanceAuthorization: a bounded pre-authorization the session wallet signed. */
+export type AllowanceAuthorization = { keyHash: Hex; token: Hex; maxRawTotal: bigint; maxRawPerCharge: bigint; validUntil: bigint; nonce: bigint; epoch: bigint; router: Hex };
+export type OnchainAllowance = { maxRawTotal: bigint; maxRawPerCharge: bigint; spentRaw: bigint; nonce: bigint; validUntil: bigint; epoch: bigint; router: Hex; nextNonce: bigint };
+const erc1271Abi = [{ type: "function", name: "isValidSignature", stateMutability: "view", inputs: [{ name: "hash", type: "bytes32" }, { name: "signature", type: "bytes" }], outputs: [{ type: "bytes4" }] }] as const;
 
 type Role = "router" | "settlement" | "anchorer" | "slasher" | "keeper" | "faucet";
 
@@ -285,16 +296,85 @@ export class ChainService {
     }
   }
 
-  async session(chainKeyHash: Hex) {
+  async quoteMaxIn(token: Hex, usdgOwed: bigint, slipBps: number): Promise<{ maxIn: bigint; rawNeeded: bigint; fairPrice18: bigint } | null> {
     const pws = this.require("payWithStock");
-    const r = (await this.client.readContract({ address: pws, abi: PayWithStockAbi, functionName: "sessions", args: [chainKeyHash] })) as [Hex, Hex, bigint, bigint, bigint, boolean];
-    return { wallet: r[0], token: r[1], capRawPerDay: r[2], spentRawToday: r[3], dayStart: r[4], active: r[5] };
+    try {
+      const [maxIn, rawNeeded, fairPrice18] = (await this.client.readContract({ address: pws, abi: PayWithStockAbi, functionName: "quoteMaxIn", args: [token, usdgOwed, slipBps] })) as [bigint, bigint, bigint];
+      return { maxIn, rawNeeded, fairPrice18 };
+    } catch (e) {
+      log.warn("quoteMaxIn failed (oracle not ok?)", { token, error: (e as Error).message.slice(0, 200) });
+      return null;
+    }
   }
 
-  async payCall(chainKeyHash: Hex, usdgOwed: bigint, maxSlipBps: number) {
+  async session(chainKeyHash: Hex): Promise<PaywithSession> {
     const pws = this.require("payWithStock");
-    const { hash, receipt } = await this.send("router", pws, PayWithStockAbi as unknown as Abi, "payCall", [chainKeyHash, usdgOwed, maxSlipBps]);
-    const logs = this.decodeReceipt(receipt.logs as never);
+    const r = (await this.client.readContract({ address: pws, abi: PayWithStockAbi, functionName: "sessions", args: [chainKeyHash] })) as [Hex, Hex, bigint, bigint, bigint, boolean, bigint];
+    return { wallet: r[0], token: r[1], capRawPerDay: r[2], spentRawToday: r[3], dayStart: r[4], active: r[5], epoch: BigInt(r[6]) };
+  }
+
+  /** The key's registered allowance (zeros when none) and the nonce the next AllowanceAuthorization must use. */
+  async allowance(chainKeyHash: Hex): Promise<OnchainAllowance> {
+    const pws = this.require("payWithStock");
+    const [r, nextNonce] = await Promise.all([
+      this.client.readContract({ address: pws, abi: PayWithStockAbi, functionName: "allowances", args: [chainKeyHash] }) as Promise<[bigint, bigint, bigint, bigint, bigint, bigint, Hex]>,
+      this.client.readContract({ address: pws, abi: PayWithStockAbi, functionName: "allowanceNonces", args: [chainKeyHash] }) as Promise<bigint>,
+    ]);
+    return { maxRawTotal: r[0], maxRawPerCharge: r[1], spentRaw: r[2], nonce: r[3], validUntil: BigInt(r[4]), epoch: BigInt(r[5]), router: r[6], nextNonce };
+  }
+
+  /** Whether a usage commitment was already charged for this key (a charge that landed even if its receipt was lost). */
+  async commitmentCharged(chainKeyHash: Hex, usageCommitment: Hex): Promise<boolean> {
+    const pws = this.require("payWithStock");
+    return (await this.client.readContract({ address: pws, abi: PayWithStockAbi, functionName: "commitmentCharged", args: [chainKeyHash, usageCommitment] })) as boolean;
+  }
+
+  /** PayWithStock's EIP-712 domain (every charge / allowance signature is bound to this chain and contract). */
+  payWithStockDomain() {
+    return { name: "Anyroute PayWithStock", version: "1", chainId: this.cfg.chain.id, verifyingContract: this.require("payWithStock") } as const;
+  }
+
+  /** Whether `signature` over `typedData` is valid for `wallet`: ECDSA for EOAs, ERC-1271 for smart wallets.
+   *  An off-chain pre-check only; the contract verifies every authorization itself. */
+  async verifyWalletSignature(wallet: Hex, typedData: TypedDataDefinition, signature: Hex): Promise<boolean> {
+    try {
+      if ((await recoverTypedDataAddress({ ...typedData, signature } as never)).toLowerCase() === wallet.toLowerCase()) return true;
+    } catch {
+      // not a plain ECDSA signature: may still be a smart wallet's
+    }
+    try {
+      const code = await this.client.getCode({ address: wallet });
+      if (!code || code === "0x") return false;
+      const magic = await this.client.readContract({ address: wallet, abi: erc1271Abi, functionName: "isValidSignature", args: [hashTypedData(typedData as never), signature] });
+      return magic === "0x1626ba7e";
+    } catch {
+      return false;
+    }
+  }
+
+  /** Settle one charge the session wallet signed (PayWithStock.payCall). */
+  async payCall(auth: ChargeAuthorization, signature: Hex, maxSlipBps: number) {
+    const pws = this.require("payWithStock");
+    const { hash, receipt } = await this.send("router", pws, PayWithStockAbi as unknown as Abi, "payCall", [auth, signature, maxSlipBps]);
+    return this.paidResult(hash, receipt.logs as never);
+  }
+
+  /** Settle one charge (<= $5) within the key's registered allowance (PayWithStock.payCallWithAllowance). */
+  async payCallWithAllowance(chainKeyHash: Hex, usdgOwed: bigint, usageCommitment: Hex, maxSlipBps: number) {
+    const pws = this.require("payWithStock");
+    const { hash, receipt } = await this.send("router", pws, PayWithStockAbi as unknown as Abi, "payCallWithAllowance", [chainKeyHash, usdgOwed, usageCommitment, maxSlipBps]);
+    return this.paidResult(hash, receipt.logs as never);
+  }
+
+  /** Register a wallet-signed allowance (anyone may relay it; the router pays the gas). */
+  async setAllowance(auth: AllowanceAuthorization, signature: Hex) {
+    const pws = this.require("payWithStock");
+    const { hash } = await this.send("router", pws, PayWithStockAbi as unknown as Abi, "setAllowance", [auth, signature]);
+    return hash;
+  }
+
+  private paidResult(hash: Hex, receiptLogs: Parameters<ChainService["decodeReceipt"]>[0]) {
+    const logs = this.decodeReceipt(receiptLogs);
     const event = logs.find((l) => l.contract === "payWithStock" && l.event === "PaidWithStock");
     return { hash, logs, rawSpent: (event?.args.rawSpent as bigint) ?? 0n, fairPrice18: (event?.args.fairPrice18 as bigint) ?? 0n };
   }

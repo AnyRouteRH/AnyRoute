@@ -36,7 +36,8 @@ const endpoints = [
   ["GET /api/v1/key · /credits", "Current key; balance, held and total usage"],
   ["POST /api/v1/credits/deposit-tx · /withdraw-request", "Unsigned wallet transactions to deposit, or a key-signed withdrawal request"],
   ["GET /api/v1/credits/withdrawal-proof", "Merkle proof and calldata to finalize a withdrawal"],
-  ["POST /api/v1/paywith/open · /close · GET /session · /statement", "Stock Token sessions and monthly statements"],
+  ["POST /api/v1/paywith/open · /close · /revoke · GET /session · /statement", "Stock Token sessions and monthly statements"],
+  ["POST /api/v1/paywith/allowance/typed-data · /allowance · GET /charges · POST /charges/{id}/signature", "Wallet authorizations: a bounded allowance, or a signature per charge"],
   ["POST /api/v1/byok · /teams", "Bring your own provider key; team roles"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt’s signature and anchor inclusion; signing keys (JWKS)"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; provider registry; router configuration"],
@@ -112,7 +113,7 @@ export default function Docs() {
                 </tr>
                 <tr>
                   <td>Stock Token</td>
-                  <td>A wallet-capped session. Calls accrue in USDG; at $1 or 24 hours the router swaps exactly what is owed at the Chainlink fair value and records the token units on each receipt.</td>
+                  <td>A wallet-capped session. Calls accrue in USDG; at $1 or 24 hours the router swaps exactly what is owed at the Chainlink fair value and records the token units on each receipt. Every swap carries the wallet’s EIP-712 signature (a bounded allowance or the charge itself) naming the receipts it pays.</td>
                 </tr>
               </tbody>
             </table>

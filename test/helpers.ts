@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
-import { encodePacked, keccak256, toBytes, type Hex } from "viem";
+import { encodePacked, keccak256, recoverTypedDataAddress, toBytes, type Hex } from "viem";
+import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { createApp } from "../src/app.ts";
-import { ChainService, type DecodedLog, type EscrowReceipt, type EscrowTransfer, type FeedReading } from "../src/chain/service.ts";
+import { ChainService, type AllowanceAuthorization, type ChargeAuthorization, type DecodedLog, type EscrowReceipt, type EscrowTransfer, type FeedReading } from "../src/chain/service.ts";
+import { ALLOWANCE_TYPES, CHARGE_TYPES } from "../src/pay/paywith.ts";
 import { loadConfig } from "../src/config.ts";
 import { providers } from "../src/db/schema.ts";
 import { runRegistry } from "../src/services/registry.ts";
@@ -27,11 +29,16 @@ export const fakeTx = () => ("0x" + (++logCounter).toString(16).padStart(64, "0"
 export class FakeChain extends ChainService {
   payments = new Map<string, { nonce: Hex; payer: Hex; amount: bigint; pending?: boolean }>();
   fair18: bigint | null = 225n * 10n ** 18n;
-  sessions = new Map<string, { wallet: Hex; token: Hex; capRawPerDay: bigint; spentRawToday: bigint; dayStart: bigint; active: boolean }>();
+  sessions = new Map<string, { wallet: Hex; token: Hex; capRawPerDay: bigint; spentRawToday: bigint; dayStart: bigint; active: boolean; epoch?: bigint }>();
+  /** PayWithStock allowances (same checks as the contract) and used charge nonces / usage commitments. */
+  allowances = new Map<string, { auth: AllowanceAuthorization; spentRaw: bigint }>();
+  allowanceNonces = new Map<string, bigint>();
+  chargeNonces = new Set<string>();
+  commitments = new Set<string>();
   anchors: { root: Hex; fromTs: number; toTs: number; count: number }[] = [];
   spentRoots: { root: Hex; asOf: number; total: bigint }[] = [];
   keys = new Map<string, string>();
-  payCalls: { keyHash: Hex; usdg: bigint }[] = [];
+  payCalls: { keyHash: Hex; usdg: bigint; mode: "signature" | "allowance"; usageCommitment: Hex }[] = [];
   slashProposals: unknown[] = [];
   failPayCall = false;
 
@@ -60,21 +67,92 @@ export class FakeChain extends ChainService {
     if (!this.fair18) return null;
     return { rawNeeded: (usdgOwed * 10n ** 18n * 10n ** 18n) / (this.fair18 * 10n ** 6n), fairPrice18: this.fair18 };
   }
+  override async quoteMaxIn(token: Hex, usdgOwed: bigint, slipBps: number) {
+    const q = await this.quoteRaw(token, usdgOwed);
+    return q ? { maxIn: (q.rawNeeded * BigInt(10_000 + slipBps) + 9_999n) / 10_000n, rawNeeded: q.rawNeeded, fairPrice18: q.fairPrice18 } : null;
+  }
   override async session(keyHash: Hex) {
     const s = this.sessions.get(keyHash);
     if (!s) throw new Error("no session");
-    return s;
+    return { ...s, epoch: s.epoch ?? 1n };
   }
-  override async payCall(keyHash: Hex, usdgOwed: bigint) {
+  /** Revoke the session's authorizations (PayWithStock.revokeAuthorizations / closeSession). */
+  revoke(keyHash: Hex) {
+    const s = this.sessions.get(keyHash)!;
+    s.epoch = (s.epoch ?? 1n) + 1n;
+    this.allowances.delete(keyHash);
+  }
+  override async allowance(keyHash: Hex) {
+    const a = this.allowances.get(keyHash);
+    const nextNonce = this.allowanceNonces.get(keyHash) ?? 0n;
+    if (!a) return { maxRawTotal: 0n, maxRawPerCharge: 0n, spentRaw: 0n, nonce: 0n, validUntil: 0n, epoch: 0n, router: "0x0000000000000000000000000000000000000000" as Hex, nextNonce };
+    return { maxRawTotal: a.auth.maxRawTotal, maxRawPerCharge: a.auth.maxRawPerCharge, spentRaw: a.spentRaw, nonce: a.auth.nonce, validUntil: a.auth.validUntil, epoch: a.auth.epoch, router: a.auth.router, nextNonce };
+  }
+  override async commitmentCharged(keyHash: Hex, usageCommitment: Hex) {
+    return this.commitments.has(`${keyHash}:${usageCommitment}`.toLowerCase());
+  }
+  // EOA signatures only (no RPC in unit tests).
+  override async verifyWalletSignature(wallet: Hex, typedData: Parameters<ChainService["verifyWalletSignature"]>[1], signature: Hex) {
+    try {
+      return (await recoverTypedDataAddress({ ...typedData, signature } as never)).toLowerCase() === wallet.toLowerCase();
+    } catch {
+      return false;
+    }
+  }
+  override async setAllowance(auth: AllowanceAuthorization, signature: Hex) {
+    const s = await this.session(auth.keyHash);
+    const typed = { domain: this.payWithStockDomain(), types: ALLOWANCE_TYPES, primaryType: "AllowanceAuthorization" as const, message: auth };
+    if (!s.active || auth.epoch !== s.epoch || auth.token.toLowerCase() !== s.token.toLowerCase()) throw new Error("StaleEpoch()");
+    if (auth.nonce !== (this.allowanceNonces.get(auth.keyHash) ?? 0n)) throw new Error("InvalidNonce()");
+    if (!(await this.verifyWalletSignature(s.wallet, typed, signature))) throw new Error("BadSignature()");
+    this.allowanceNonces.set(auth.keyHash, auth.nonce + 1n);
+    this.allowances.set(auth.keyHash, { auth, spentRaw: 0n });
+    return fakeTx();
+  }
+  override async payCall(auth: ChargeAuthorization, signature: Hex, _maxSlipBps: number) {
     if (this.failPayCall) throw new Error("swap reverted: SlippageTooHigh");
-    this.payCalls.push({ keyHash, usdg: usdgOwed });
+    const s = await this.session(auth.keyHash);
+    const typed = { domain: this.payWithStockDomain(), types: CHARGE_TYPES, primaryType: "ChargeAuthorization" as const, message: auth };
+    if (!s.active || auth.epoch !== s.epoch) throw new Error("StaleEpoch()");
+    if (BigInt(Math.floor(Date.now() / 1000)) > auth.deadline) throw new Error("AuthorizationExpired()");
+    if (!(await this.verifyWalletSignature(s.wallet, typed, signature))) throw new Error("BadSignature()");
+    const nonceId = `${auth.keyHash}:${auth.nonce}`;
+    if (this.chargeNonces.has(nonceId)) throw new Error("NonceUsed()");
+    this.useCommitment(auth.keyHash, auth.usageCommitment);
+    this.chargeNonces.add(nonceId);
+    return this.paid(auth.keyHash, auth.usdgAmount, auth.usageCommitment, "signature");
+  }
+  override async payCallWithAllowance(keyHash: Hex, usdgOwed: bigint, usageCommitment: Hex, _maxSlipBps: number) {
+    if (this.failPayCall) throw new Error("swap reverted: SlippageTooHigh");
+    const s = await this.session(keyHash);
+    const a = this.allowances.get(keyHash);
+    if (!a) throw new Error("NoAllowance()");
+    if (usdgOwed > 5_000_000n) throw new Error("ChargeTooLarge()");
+    if (!s.active || a.auth.epoch !== s.epoch) throw new Error("StaleEpoch()");
+    if (BigInt(Math.floor(Date.now() / 1000)) > a.auth.validUntil) throw new Error("AuthorizationExpired()");
+    const raw = this.rawFor(usdgOwed);
+    if (raw > a.auth.maxRawPerCharge || a.spentRaw + raw > a.auth.maxRawTotal) throw new Error("SwapFailed()");
+    this.useCommitment(keyHash, usageCommitment);
+    a.spentRaw += raw;
+    return this.paid(keyHash, usdgOwed, usageCommitment, "allowance");
+  }
+  private useCommitment(keyHash: Hex, usageCommitment: Hex) {
+    const id = `${keyHash}:${usageCommitment}`.toLowerCase();
+    if (this.commitments.has(id)) throw new Error("CommitmentUsed()");
+    this.commitments.add(id);
+  }
+  private rawFor(usdgOwed: bigint) {
+    return (usdgOwed * 10n ** 18n * 10n ** 18n) / (this.fair18! * 10n ** 6n) + 1000n;
+  }
+  private paid(keyHash: Hex, usdgOwed: bigint, usageCommitment: Hex, mode: "signature" | "allowance") {
+    this.payCalls.push({ keyHash, usdg: usdgOwed, mode, usageCommitment });
     const hash = fakeTx();
-    const rawSpent = (usdgOwed * 10n ** 18n * 10n ** 18n) / (this.fair18! * 10n ** 6n) + 1000n;
+    const rawSpent = this.rawFor(usdgOwed);
     const s = this.sessions.get(keyHash);
     if (s) s.spentRawToday += rawSpent;
     const logs: DecodedLog[] = [
       { contract: "credits", event: "Credited", args: { keyHash, source: ADDR.payWithStock, amount: usdgOwed }, txHash: hash, logIndex: 0, blockNumber: 101n },
-      { contract: "payWithStock", event: "PaidWithStock", args: { keyHash, token: NVDA, rawSpent, fairPrice18: this.fair18!, usdgOwed }, txHash: hash, logIndex: 1, blockNumber: 101n },
+      { contract: "payWithStock", event: "PaidWithStock", args: { keyHash, wallet: s?.wallet, usageCommitment, token: NVDA, rawSpent, fairPrice18: this.fair18!, usdgOwed, nonce: 0n, viaAllowance: mode === "allowance" }, txHash: hash, logIndex: 1, blockNumber: 101n },
     ];
     return { hash, logs, rawSpent, fairPrice18: this.fair18! };
   }
@@ -203,6 +281,36 @@ export const MODELS = {
 };
 
 export type Harness = Awaited<ReturnType<typeof startRouter>>;
+
+type ApiTypedData = { domain: Record<string, unknown>; types: Record<string, { name: string; type: string }[]>; primaryType: string; message: Record<string, string> };
+
+/** Sign typed data as the API returns it for eth_signTypedData_v4 (integers as decimal strings). */
+export async function signApiTypedData(account: PrivateKeyAccount, td: ApiTypedData) {
+  const message = Object.fromEntries(td.types[td.primaryType].map((f) => [f.name, f.type.startsWith("uint") ? BigInt(td.message[f.name]) : td.message[f.name]]));
+  const { EIP712Domain: _, ...types } = td.types;
+  return account.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message } as never);
+}
+
+/** Ask the router for an allowance to sign, sign it with the session wallet and hand it back. */
+export async function signAllowance(h: Harness, k: { auth: Record<string, string> }, account: PrivateKeyAccount, body: Record<string, unknown> = {}) {
+  const td = (await (await h.request("/api/v1/paywith/allowance/typed-data", { method: "POST", headers: k.auth, json: body })).json()).data.typed_data as ApiTypedData;
+  const r = await h.request("/api/v1/paywith/allowance", { method: "POST", headers: k.auth, json: { message: td.message, signature: await signApiTypedData(account, td) } });
+  if (r.status !== 201) throw new Error(`allowance rejected: ${await r.text()}`);
+  return td;
+}
+
+/** A new key with a PayWithStock session opened (and indexed) from a real wallet, optionally with a signed allowance. */
+export async function paywithKey(h: Harness, opts: { capRaw?: bigint; allowance?: boolean } = {}) {
+  const account = privateKeyToAccount(generatePrivateKey());
+  const k = await h.newKey(); // empty prepaid balance: every call must be paid with NVDA
+  const capRaw = opts.capRaw ?? 10n ** 18n;
+  await h.request("/api/v1/paywith/open", { method: "POST", headers: k.auth, json: { token: "NVDA", cap_raw_per_day: capRaw.toString(), wallet: account.address } });
+  h.chain.sessions.set(k.chainKeyHash, { wallet: account.address, token: NVDA, capRawPerDay: capRaw, spentRawToday: 0n, dayStart: BigInt(Math.floor(Date.now() / 86_400_000) * 86_400), active: true, epoch: 1n });
+  await recordEvents(h.ctx, [{ contract: "payWithStock", event: "SessionOpened", args: { keyHash: k.chainKeyHash, wallet: account.address, token: NVDA, capRawPerDay: capRaw }, txHash: fakeTx(), logIndex: 0, blockNumber: 60n }]);
+  await processEvents(h.ctx);
+  if (opts.allowance) await signAllowance(h, k, account);
+  return { ...k, account };
+}
 
 /** With TEST_PG_URL set, every harness gets its own fresh database on a real Postgres server. */
 async function freshDatabase(): Promise<{ url: string; drop: () => Promise<void> }> {

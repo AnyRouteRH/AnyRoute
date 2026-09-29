@@ -232,7 +232,7 @@ async function applyEvent(ctx: Ctx, e: EventRow): Promise<boolean> {
       return true;
     }
     case "payWithStock.PaidWithStock": {
-      await allocateSwap(ctx, { keyHash: a.keyHash, token: a.token, rawSpent: BigInt(a.rawSpent), fairPrice18: a.fairPrice18, usdgOwed: BigInt(a.usdgOwed), tx: e.txHash });
+      await allocateSwap(ctx, { keyHash: a.keyHash, token: a.token, rawSpent: BigInt(a.rawSpent), fairPrice18: a.fairPrice18, usdgOwed: BigInt(a.usdgOwed), tx: e.txHash, usageCommitment: a.usageCommitment ?? undefined });
       return true;
     }
     case "receiptAnchor.Anchored": {
@@ -288,9 +288,16 @@ async function applyEvent(ctx: Ctx, e: EventRow): Promise<boolean> {
 
 /** Allocate a confirmed stock swap across the key's open pay-with debts, proportionally, so
  *  per-call raw allocations sum exactly to rawSpent. */
-export async function allocateSwap(ctx: Ctx, s: { keyHash: string; token: string; rawSpent: bigint; fairPrice18: string; usdgOwed: bigint; tx: string }) {
+export async function allocateSwap(ctx: Ctx, s: { keyHash: string; token: string; rawSpent: bigint; fairPrice18: string; usdgOwed: bigint; tx: string; usageCommitment?: string }) {
   await ctx.db.transaction(async (tx) => {
     let [swap] = await tx.select().from(paywithSwaps).where(eq(paywithSwaps.tx, s.tx));
+    if (!swap && s.usageCommitment) {
+      // A charge the aggregator claimed debts for but never saw land (e.g. its send timed out): its usage
+      // commitment names the claiming swap.
+      const [hit] = await tx.select().from(kv).where(eq(kv.key, `paywith-commitment:${s.usageCommitment.toLowerCase()}`));
+      const claimedBy = (hit?.value as { swapId?: string } | undefined)?.swapId;
+      if (claimedBy) [swap] = await tx.update(paywithSwaps).set({ tx: s.tx }).where(and(eq(paywithSwaps.id, claimedBy), eq(paywithSwaps.keyHash, s.keyHash), isNull(paywithSwaps.tx))).returning();
+    }
     if (!swap) {
       [swap] = await tx
         .insert(paywithSwaps)

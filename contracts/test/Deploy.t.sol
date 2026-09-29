@@ -14,6 +14,7 @@ import {Royalty} from "../src/Royalty.sol";
 import {ProviderBond} from "../src/ProviderBond.sol";
 import {AnyrStaking} from "../src/AnyrStaking.sol";
 import {PayWithStock} from "../src/PayWithStock.sol";
+import {IPayWithStock} from "../src/interfaces/IPayWithStock.sol";
 import {AnyrPaymaster} from "../src/AnyrPaymaster.sol";
 import {ChainlinkStockOracle} from "../src/oracle/ChainlinkStockOracle.sol";
 import {UniswapV4Adapter} from "../src/adapters/UniswapV4Adapter.sol";
@@ -192,10 +193,19 @@ contract DeployLocalTest is Test {
         vm.startPrank(wallet);
         IERC20(d.mockNvda).approve(d.payWithStock, type(uint256).max);
         PayWithStock(d.payWithStock).openSession(keyHash, d.mockNvda, 10e18);
+        // The wallet authorizes the router's charges itself (a bounded allowance, set directly here).
+        PayWithStock(d.payWithStock)
+            .setAllowance(
+                IPayWithStock.AllowanceAuthorization(
+                    keyHash, d.mockNvda, 1e18, 1e18, block.timestamp + 1 days, 0, 1, r.router
+                ),
+                ""
+            );
         vm.stopPrank();
 
         vm.prank(r.router);
-        uint256 spent = PayWithStock(d.payWithStock).payCall(keyHash, 5e6, 100);
+        uint256 spent =
+            PayWithStock(d.payWithStock).payCallWithAllowance(keyHash, 5e6, keccak256("usage"), 100);
         assertEq(spent, uint256(5e18) / 225 + 1); // ceil(5 / 225 NVDA)
         assertEq(Credits(d.credits).deposited(keyHash), 5e6);
         assertEq(IERC20(d.usdg).balanceOf(d.credits), 5e6);
@@ -412,9 +422,17 @@ contract DeployProductionForkTest is Test {
         vm.startPrank(wallet);
         IERC20(nvda).approve(d.payWithStock, type(uint256).max);
         PayWithStock(d.payWithStock).openSession(keyHash, nvda, 1e18);
+        PayWithStock(d.payWithStock)
+            .setAllowance(
+                IPayWithStock.AllowanceAuthorization(
+                    keyHash, nvda, 1e18, 1e18, block.timestamp + 1 days, 0, 1, r.router
+                ),
+                ""
+            );
         vm.stopPrank();
         vm.prank(r.router);
-        uint256 spent = PayWithStock(d.payWithStock).payCall(keyHash, 1e6, 300);
+        uint256 spent =
+            PayWithStock(d.payWithStock).payCallWithAllowance(keyHash, 1e6, keccak256("usage"), 300);
         assertGt(spent, 0);
         assertEq(Credits(d.credits).deposited(keyHash), 1e6);
     }

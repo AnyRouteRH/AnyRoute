@@ -56,6 +56,11 @@ export async function sendTransactions(from, txs, onStep) {
   return hashes;
 }
 
+/** EIP-712 signature (eth_signTypedData_v4) over typed data the router prepared; the wallet shows every field. */
+export async function signTypedData(address, typedData) {
+  return provider().request({ method: "eth_signTypedData_v4", params: [address, JSON.stringify(typedData)] });
+}
+
 export async function personalSign(address, message) {
   const hex = "0x" + Array.from(new TextEncoder().encode(message), (b) => b.toString(16).padStart(2, "0")).join("");
   return provider().request({ method: "personal_sign", params: [hex, address] });

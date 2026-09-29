@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { models as sampleModels, providers as sampleProviders, initialWorkspace, storageKey, routeCall, validWorkspace, money } from "../lib/demo";
 import { API_BASE, ApiError, api, clearKey, downloadJSON, getMode, loadKey, loadWorkspace, saveKey, setMode, streamChat, toCatalogModel, toProvider, toReceiptRow, validKey } from "../lib/api";
-import { connect, ensureChain, hasWallet, personalSign, sendTransactions, shortAddress } from "../lib/wallet";
+import { connect, ensureChain, hasWallet, personalSign, sendTransactions, shortAddress, signTypedData } from "../lib/wallet";
 import { Button, Modal, Code, CopyButton } from "./UI";
 import ModelCatalog from "./ModelCatalog";
 
@@ -273,7 +273,7 @@ function SessionDialog({ onSave, onClose, existing, live, tokens = [], paywith =
         </Field>
         <div className="note">
           {live
-            ? `Your wallet approves the token and opens a capped session for this key (two transactions). Calls accrue in USDG; at $${paywith.threshold_usd ?? 1} (or after ${paywith.max_age_hours ?? 24}h) the router swaps exactly what is owed at the Chainlink fair value, never more than your daily cap. Close it any time.`
+            ? `Your wallet approves the token and opens a capped session for this key (two transactions), then signs a bounded allowance: one day of the cap in total, about $5 per charge, for 7 days. Calls accrue in USDG; at $${paywith.threshold_usd ?? 1} (or after ${paywith.max_age_hours ?? 24}h) the router swaps exactly what is owed at the Chainlink fair value, never more than your daily cap, and only with your signature. Close it any time; closing revokes every authorization.`
             : "No wallet is connected. Sample conversion values are NVDA = 100 USDG and TSLA = 200 USDG, purely for testing. No swap or transfer occurs."}
         </div>
         <Button type="submit" disabled={!!step}>
@@ -967,6 +967,9 @@ export default function Dashboard() {
         open: ws.session.active,
         wallet: ws.session.wallet,
         debt: ws.session.open_debt_usd,
+        decimals: ws.session.decimals,
+        allowance: ws.session.allowance,
+        awaiting: ws.session.charges_awaiting_signature ?? 0,
         day: new Date().toISOString().slice(0, 10),
       }
     : null;
@@ -1093,8 +1096,42 @@ export default function Dashboard() {
       await new Promise((r) => setTimeout(r, 1000));
     }
     setPayWith(values.token);
-    setNotice(`${values.token} session is open with a daily cap of ${values.cap_text} ${values.token}.`);
+    try {
+      await signAllowance(wallet, onStep);
+      setNotice(`${values.token} session is open with a daily cap of ${values.cap_text} ${values.token}, and your wallet signed its allowance.`);
+    } catch (e) {
+      setNotice(`${values.token} session is open, but no allowance was signed (${e?.message || e}). Each charge will ask your wallet to sign it.`);
+    }
     setModal(null);
+  }
+  /** The wallet signs a bounded EIP-712 allowance the router prepared (limits, expiry, nonce, epoch, router). */
+  async function signAllowance(wallet, onStep) {
+    onStep?.("Sign the allowance in your wallet…");
+    const td = (await api("/api/v1/paywith/allowance/typed-data", { key: apiKey, method: "POST", body: {} })).data;
+    const signature = await signTypedData(wallet, td.typed_data);
+    await api("/api/v1/paywith/allowance", { key: apiKey, method: "POST", body: { message: td.typed_data.message, signature } });
+    await refresh();
+  }
+  /** The wallet signs each charge the router proposed (exact USDG, token maximum, usage commitment). */
+  async function authorizeSession(s) {
+    try {
+      const wallet = await connect();
+      await ensureChain(chainOf(status));
+      if (s.awaiting > 0) {
+        const pending = (await api("/api/v1/paywith/charges", { key: apiKey })).data.filter((c) => c.status === "awaiting_signature");
+        for (const c of pending) {
+          const signature = await signTypedData(wallet, c.typed_data);
+          await api(`/api/v1/paywith/charges/${c.id}/signature`, { key: apiKey, method: "POST", body: { signature } });
+        }
+        await refresh();
+        setNotice(`Signed ${pending.length} charge${pending.length === 1 ? "" : "s"}. The router settles them at its next run.`);
+      } else {
+        await signAllowance(wallet);
+        setNotice("Allowance signed. Charges within it settle without asking again until it runs out or expires.");
+      }
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
   }
   async function toggleSession(s) {
     if (!live) {
@@ -1147,7 +1184,7 @@ export default function Dashboard() {
         await new Promise((r) => setTimeout(r, 1000));
       }
       if (payWith !== "USDG") setPayWith("USDG");
-      setNotice("Session closed on-chain. Any accrued debt is still settled from it.");
+      setNotice("Session closed on-chain. Every charge authorization is revoked.");
     } else {
       update((s) => ({ ...s, sessions: s.sessions.filter((x) => x.id !== modal.data.id) }));
       setNotice("Sample session closed.");
@@ -1678,6 +1715,20 @@ export default function Dashboard() {
                             <dd>{money(s.debt ?? 0, 6)} USDG</dd>
                           </div>
                         )}
+                        {live && (
+                          <div>
+                            <dt>Allowance</dt>
+                            <dd>{s.allowance ? `${fromRaw(s.allowance.remaining_raw, s.decimals).toFixed(10)} units left · until ${s.allowance.valid_until.slice(0, 10)}` : "None: each charge asks your wallet"}</dd>
+                          </div>
+                        )}
+                        {live && s.awaiting > 0 && (
+                          <div>
+                            <dt>Awaiting your signature</dt>
+                            <dd>
+                              {s.awaiting} charge{s.awaiting === 1 ? "" : "s"}
+                            </dd>
+                          </div>
+                        )}
                       </dl>
                       <div className="button-row">
                         <button className="text-button" onClick={() => setModal({ type: "session", data: s })}>
@@ -1686,6 +1737,11 @@ export default function Dashboard() {
                         <button className="text-button" disabled={live && !s.open} onClick={() => toggleSession(s)}>
                           {s.active ? "Pause" : "Resume"}
                         </button>
+                        {live && (
+                          <button className="text-button" disabled={!s.open} onClick={() => authorizeSession(s)}>
+                            {s.awaiting > 0 ? "Sign charges" : s.allowance ? "Renew allowance" : "Sign allowance"}
+                          </button>
+                        )}
                         <button className="text-button" disabled={live && !s.open} onClick={() => setModal({ type: "close-session", data: s })}>
                           Close
                         </button>
@@ -1705,7 +1761,7 @@ export default function Dashboard() {
               )}
               <div className="note">
                 {live
-                  ? `Fair value comes from the token’s Chainlink feed on ${chainOf(status).name} (it already includes the token’s multiplier). Swaps are exact-output, slippage-bounded and never exceed your daily cap. Pausing keeps the session open but stops using it by default.`
+                  ? `Fair value comes from the token’s Chainlink feed on ${chainOf(status).name} (it already includes the token’s multiplier). Swaps are exact-output, slippage-bounded, never exceed your daily cap and happen only with your wallet’s signature: a bounded allowance or each charge. Pausing keeps the session open but stops using it by default.`
                   : "Conversion fixtures: NVDA = 100 USDG; TSLA = 200 USDG. These are fictional demo values, not market quotes. No wallet authorization, swap, transfer or settlement occurs."}
               </div>
               <div className="panel-heading">
@@ -1974,7 +2030,7 @@ export default function Dashboard() {
                   ? "This key stops working immediately. Existing receipts remain, and you can restore it later from a management key."
                   : "This key will stop working in the local playground. Existing receipts remain. You can restore the demo key later."
                 : live
-                  ? "Your wallet sends closeSession to the PayWithStock contract. It takes effect immediately; accrued debt is still settled."
+                  ? "Your wallet sends closeSession to the PayWithStock contract. It takes effect immediately and revokes every charge authorization; unpaid debt stays on this key."
                   : "This sample token session will be removed. Existing generation receipts remain."}
           </p>
           <div className="button-row modal-actions">

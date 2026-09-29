@@ -337,9 +337,31 @@ contract UniswapV4AdapterLocalTest is Test {
         vm.stopPrank();
     }
 
+    /// @dev A charge the wallet signed for exactly `usdgOwed` (EIP-712, no token maximum of its own).
+    function _charge(PayWithStock pws, bytes32 key, uint256 walletPk, uint256 usdgOwed, address router)
+        internal
+        view
+        returns (IPayWithStock.ChargeAuthorization memory a, bytes memory sig)
+    {
+        (,,,,,, uint64 epoch) = pws.sessions(key);
+        a = IPayWithStock.ChargeAuthorization(
+            key,
+            address(nvda),
+            usdgOwed,
+            type(uint256).max,
+            keccak256("usage"),
+            0,
+            epoch,
+            block.timestamp + 1 hours,
+            router
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(walletPk, pws.hashCharge(a));
+        sig = abi.encodePacked(r, s, v);
+    }
+
     function test_payWithStockThroughV4() public {
         (PayWithStock pws, MockCredits credits,, address router) = _pws();
-        address wallet = makeAddr("wallet");
+        (address wallet, uint256 walletPk) = makeAddrAndKey("wallet");
         bytes32 key = keccak256("key");
         IERC20(address(nvda)).safeTransfer(wallet, 10e18);
         vm.startPrank(wallet);
@@ -348,8 +370,10 @@ contract UniswapV4AdapterLocalTest is Test {
         vm.stopPrank();
 
         (uint256 raw,) = pws.quoteRaw(address(nvda), 50e6);
+        (IPayWithStock.ChargeAuthorization memory auth, bytes memory sig) =
+            _charge(pws, key, walletPk, 50e6, router);
         vm.prank(router);
-        uint256 spent = pws.payCall(key, 50e6, 100);
+        uint256 spent = pws.payCall(auth, sig, 100);
         assertGt(spent, raw, "pool fee paid on top of fair value");
         assertLe(spent, Math.mulDiv(raw, 10_100, 10_000, Math.Rounding.Ceil));
         assertEq(10e18 - nvda.balanceOf(wallet), spent);
@@ -363,7 +387,7 @@ contract UniswapV4AdapterLocalTest is Test {
         (PayWithStock pws, MockCredits credits, MockAggregator feed, address router) = _pws();
         feed.setAnswer(200e8); // oracle says $200, pool still at $180: V4 needs > maxIn at 1% slippage
         backup.setPrice(200e18); // the fallback venue trades at the oracle price
-        address wallet = makeAddr("wallet");
+        (address wallet, uint256 walletPk) = makeAddrAndKey("wallet");
         bytes32 key = keccak256("key");
         IERC20(address(nvda)).safeTransfer(wallet, 10e18);
         vm.startPrank(wallet);
@@ -371,10 +395,12 @@ contract UniswapV4AdapterLocalTest is Test {
         pws.openSession(key, address(nvda), 5e18);
         vm.stopPrank();
 
+        (IPayWithStock.ChargeAuthorization memory auth, bytes memory sig) =
+            _charge(pws, key, walletPk, 50e6, router);
         vm.prank(router);
         vm.expectEmit(true, true, false, false);
         emit PayWithStock.SwapAttemptFailed(key, address(adapter), "");
-        pws.payCall(key, 50e6, 100);
+        pws.payCall(auth, sig, 100);
         assertEq(credits.credited(key), 50e6);
         assertEq(backup.calls(), 1);
         assertEq(nvda.balanceOf(address(adapter)), 0, "failed V4 attempt fully rolled back");
@@ -500,11 +526,17 @@ contract RhcForkTest is Test {
         vm.startPrank(wallet);
         IERC20(NVDA).approve(address(pws), type(uint256).max);
         pws.openSession(key, NVDA, 1e18);
+        pws.setAllowance(
+            IPayWithStock.AllowanceAuthorization(
+                key, NVDA, 1e18, 1e18, block.timestamp + 1 days, 0, 1, router
+            ),
+            ""
+        );
         vm.stopPrank();
 
         (uint256 raw,) = pws.quoteRaw(NVDA, 1e6);
         vm.prank(router);
-        uint256 spent = pws.payCall(key, 1e6, 300);
+        uint256 spent = pws.payCallWithAllowance(key, 1e6, keccak256("fork usage"), 300);
         emit log_named_uint("rawNeeded at fair value", raw);
         emit log_named_uint("raw NVDA spent via V3", spent);
         assertEq(credits.credited(key), 1e6);
