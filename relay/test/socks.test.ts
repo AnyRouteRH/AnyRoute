@@ -217,6 +217,7 @@ describe("the SOCKS5 client", () => {
       ["not a number", "HTTP/1.1 200 OK\r\nContent-Length: 1e3\r\n\r\nab"],
       ["truncated body", "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nabc"],
       ["not http", "SSH-2.0-OpenSSH_9.6\r\n\r\n"],
+      ["header too large", "HTTP/1.1 200 OK\r\nX-Big: " + "a".repeat(20_000) + "\r\n\r\nx"],
       ["bad chunk", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\nabc\r\n0\r\n\r\n"],
       ["chunks over the limit", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n800\r\n" + "a".repeat(2048) + "\r\n0\r\n\r\n"],
     ];

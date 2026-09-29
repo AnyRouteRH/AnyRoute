@@ -119,8 +119,8 @@ class Reader {
     const d = Buffer.from(delimiter, "latin1");
     for (;;) {
       const at = this.flatten().indexOf(d);
-      if (at >= 0) return this.consume(at + d.length);
-      if (this.length > max) throw new Error("A header or line in the response is too long.");
+      if (at >= 0 && at + d.length <= max) return this.consume(at + d.length);
+      if (at >= 0 || this.length > max) throw new Error("A header or line in the response is too long.");
       this.check(true);
       await this.changed();
     }
