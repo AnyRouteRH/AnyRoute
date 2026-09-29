@@ -1,9 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { ADMIN, MODELS, startRouter, type Harness } from "./helpers.ts";
 import { providers } from "../src/db/schema.ts";
+import { openDatabase } from "../src/db/client.ts";
 import { cacheKey, lexicalVector } from "../src/gateway/cache.ts";
 import { upstreamBody } from "../src/providers/upstream.ts";
+import * as headerPhase from "../src/providers/headers.ts";
+import { encrypt } from "../src/lib/util.ts";
 
 const LLAMA = MODELS.llama.slug;
 
@@ -134,5 +138,122 @@ describe("M-02: provider approval activates only the reviewed application revisi
     for (const status of ["suspended", "live"]) expect((await h.request("/trpc/providers.setStatus", { method: "POST", headers: admin, json: { id: "needs-hash", status } })).status).toBe(200);
     // The review view never exposes the encrypted upstream key.
     expect(JSON.stringify(reviewed)).not.toContain("apiKeyEnc");
+  });
+});
+
+// M-03 --------------------------------------------------------------------------------------------
+const SECRET = "hardening-secret-hardening-secret-0123";
+const PLAINTEXT = "LEGACY_PLAINTEXT_FIXTURE_VALUE";
+const legacyRow = (id: string, headers: unknown, apiKey = true) => ({
+  id, name: id, baseUrl: "https://provider.example", status: "live", dataPolicy: {}, headers,
+  apiKeyEnc: apiKey ? encrypt(SECRET, `upstream-key-${id}`) : null,
+});
+
+describe("M-03: plaintext provider headers are a mandatory, idempotent deployment phase", () => {
+  test("the phase refuses plaintext rows without APP_SECRET, converts them with it, and is idempotent", async () => {
+    const handle = await openDatabase("pglite://memory");
+    try {
+      const { db } = handle;
+      await db.insert(providers).values([
+        legacyRow("legacy-a", { "x-api-key": PLAINTEXT }),
+        legacyRow("legacy-empty", {}),
+        legacyRow("sealed", headerPhase.sealProviderHeaders(SECRET, { "x-sealed": "fixture" })),
+        legacyRow("none", null),
+      ]);
+      const errorOf = async (p: Promise<unknown>) => { try { await p; } catch (e) { return (e as Error).message; } throw new Error("expected the header phase to fail"); };
+
+      const missing = await errorOf(headerPhase.enforceEncryptedProviderHeaders(db, undefined));
+      expect(missing).toContain("legacy-a");
+      expect(missing).toContain("APP_SECRET");
+      expect(missing).not.toContain(PLAINTEXT);
+      expect((await db.select().from(providers).where(eq(providers.id, "legacy-a")))[0].headers).toEqual({ "x-api-key": PLAINTEXT });
+
+      const wrong = await errorOf(headerPhase.enforceEncryptedProviderHeaders(db, "some-other-secret-some-other-secret-00"));
+      expect(wrong).toContain("does not decrypt");
+      expect((await db.select().from(providers).where(eq(providers.id, "legacy-a")))[0].headers).toEqual({ "x-api-key": PLAINTEXT });
+
+      const done = await headerPhase.enforceEncryptedProviderHeaders(db, SECRET);
+      expect(done.converted.sort()).toEqual(["legacy-a", "legacy-empty"]);
+      expect(done.remaining).toBe(0);
+      const rows = Object.fromEntries((await db.select().from(providers)).map((r) => [r.id, r.headers]));
+      expect(JSON.stringify(rows)).not.toContain(PLAINTEXT);
+      expect(headerPhase.openProviderHeaders(SECRET, rows["legacy-a"])).toEqual({ "x-api-key": PLAINTEXT });
+      expect(rows["legacy-empty"]).toBeNull();
+      expect(headerPhase.openProviderHeaders(SECRET, rows.sealed)).toEqual({ "x-sealed": "fixture" });
+
+      // Re-running needs no secret once nothing is left, and changes nothing.
+      const again = await headerPhase.enforceEncryptedProviderHeaders(db, undefined);
+      expect(again.converted).toEqual([]);
+      expect(Object.fromEntries((await db.select().from(providers)).map((r) => [r.id, r.headers]))).toEqual(rows);
+    } finally {
+      await handle.close();
+    }
+  });
+
+  test("malformed or mixed header values fail the phase by id and are refused at runtime", async () => {
+    const handle = await openDatabase("pglite://memory");
+    try {
+      const sealed = headerPhase.sealProviderHeaders(SECRET, { "x-sealed": "fixture" })!;
+      await handle.db.insert(providers).values([legacyRow("mixed", { ...sealed, authorization: PLAINTEXT }), legacyRow("nested", { authorization: { value: PLAINTEXT } })]);
+      let message = "";
+      try { await headerPhase.enforceEncryptedProviderHeaders(handle.db, SECRET); } catch (e) { message = (e as Error).message; }
+      expect(message).toContain("mixed");
+      expect(message).toContain("nested");
+      expect(message).not.toContain(PLAINTEXT);
+      expect(() => headerPhase.openProviderHeaders(SECRET, { ...sealed, authorization: PLAINTEXT })).toThrow();
+      expect(() => headerPhase.openProviderHeaders(SECRET, { authorization: PLAINTEXT })).toThrow();
+      expect(headerPhase.openProviderHeaders(SECRET, null)).toEqual({});
+    } finally {
+      await handle.close();
+    }
+  });
+
+  test("the migration job wires the header phase and the migrate image ships its imports", async () => {
+    const root = resolve(import.meta.dir, "..");
+    const migrate = await Bun.file(resolve(root, "scripts/migrate.ts")).text();
+    expect(migrate).toContain("enforceEncryptedProviderHeaders");
+    const dockerfile = await Bun.file(resolve(root, "deploy/railway/migrate.Dockerfile")).text();
+    for (const path of ["src/db", "src/lib/util.ts", "src/providers/headers.ts"]) expect(dockerfile).toContain(`COPY ${path} `);
+  });
+
+  // Runs the real migration job against PostgreSQL (TEST_PG_URL, see `bun run test:pg`).
+  test.skipIf(!process.env.TEST_PG_URL)("scripts/migrate.ts fails on plaintext headers without APP_SECRET and converts them with it", async () => {
+    const postgres = (await import("postgres")).default;
+    const base = process.env.TEST_PG_URL!;
+    const name = "ar_hdr_" + Math.random().toString(36).slice(2, 10);
+    const adminSql = postgres(base, { max: 1, onnotice: () => {} });
+    await adminSql.unsafe(`CREATE DATABASE ${name}`);
+    const url = new URL(base);
+    url.pathname = "/" + name;
+    const run = (secret?: string) => {
+      const env: Record<string, string | undefined> = { ...process.env, DATABASE_URL: url.toString(), APP_SECRET: secret };
+      if (!secret) delete env.APP_SECRET;
+      const p = Bun.spawnSync(["bun", "scripts/migrate.ts"], { cwd: resolve(import.meta.dir, ".."), env: env as Record<string, string> });
+      return { code: p.exitCode, out: p.stdout.toString() + p.stderr.toString() };
+    };
+    try {
+      expect(run().code).toBe(0); // fresh schema, nothing to convert, no secret needed
+      const handle = await openDatabase(url.toString(), { migrate: false });
+      try {
+        await handle.db.insert(providers).values(legacyRow("legacy-pg", { "x-api-key": PLAINTEXT }));
+        const refused = run();
+        expect(refused.code).not.toBe(0);
+        expect(refused.out).toContain("legacy-pg");
+        expect(refused.out).not.toContain(PLAINTEXT);
+        expect((await handle.db.select().from(providers))[0].headers).toEqual({ "x-api-key": PLAINTEXT });
+        const converted = run(SECRET);
+        expect(converted.code).toBe(0);
+        expect(converted.out).not.toContain(PLAINTEXT);
+        const [stored] = await handle.db.select().from(providers);
+        expect(JSON.stringify(stored.headers)).not.toContain(PLAINTEXT);
+        expect(headerPhase.openProviderHeaders(SECRET, stored.headers)).toEqual({ "x-api-key": PLAINTEXT });
+        expect(run().code).toBe(0); // idempotent; secret no longer required
+      } finally {
+        await handle.close();
+      }
+    } finally {
+      await adminSql.unsafe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      await adminSql.end();
+    }
   });
 });
