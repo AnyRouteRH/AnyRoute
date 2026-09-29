@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { z } from "zod";
 
 // Every setting comes from the environment. Missing optional services produce
@@ -152,6 +155,14 @@ const schema = z.object({
   DEFAULT_TPM: int(0),
   UNAUTH_RPM: int(60),
   NEW_KEYS_PER_HOUR: int(10),
+
+  // Release identity and contract-path launch guards (see contractPathGuards below)
+  RELEASE_COMMIT: opt, // git commit of the running build, shown at GET /api/v1/status
+  DEPLOYMENT_MANIFEST: opt, // the anyroute.deployments/v1 manifest of the configured contracts: a file path or inline JSON
+  DEPLOYMENT_VERIFICATION: opt, // the passing scripts/verify-deployment.ts report for that manifest: a file path or inline JSON
+  BUYBACK_ORACLE_ADDRESS: addr, // the reviewed buyback-floor oracle AnyrStaking uses; production refuses buybacks without it
+  PAYWITH_DELEGATION_ACCEPTED: bool.default(false),
+  PAYWITH_MAX_DAILY_CAP_USD: opt, // largest daily cap (USD at the fair price) the API will build a PayWithStock session for
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -220,6 +231,8 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
         }
     }
   }
+  // Contract-path guards: verified deployment (H-02), buyback oracle (M-05), PayWithStock delegation (M-06).
+  const contractPath = contractPathGuards(e, production, escrowMode);
   if (e.DEV_FAUCET) {
     if (production) throw new Error("DEV_FAUCET must be false in production.");
     let host = "";
@@ -276,6 +289,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     adminToken: e.ADMIN_TOKEN,
     logLevel: e.LOG_LEVEL,
     trustProxy: e.TRUST_PROXY,
+    release: { commit: contractPath.releaseCommit, deployment: contractPath.deployment },
     receipts: {
       signingKey: e.RECEIPT_SIGNING_KEY,
       rotationDays: e.RECEIPT_KEY_ROTATION_DAYS,
@@ -323,6 +337,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       maxDebtUsd: e.PAYWITH_MAX_DEBT_USD,
       maxSlipBps: e.PAYWITH_MAX_SLIP_BPS,
       capHaircutBps: e.PAYWITH_CAP_HAIRCUT_BPS,
+      maxDailyCapUsd: contractPath.maxDailyCapUsd,
       tokens: paywithTokens,
     },
     escrow: {
@@ -381,3 +396,153 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
 
 export type PaywithToken = { symbol: string; address: string; decimals: number; feed?: string; name?: string };
 export type EscrowToken = PaywithToken & { feed: string };
+
+// ---- Contract-path launch guards ---------------------------------------------------------------
+// H-02: production contract mode moves customer funds through the Anyroute contracts, so it starts
+//   only against a deployment that was independently verified: DEPLOYMENT_MANIFEST (written by
+//   contracts/script/Deploy.s.sol) must list exactly the configured addresses, and
+//   DEPLOYMENT_VERIFICATION must be the passing report of `bun scripts/verify-deployment.ts
+//   <manifest> --rpc-url <rpc>` for that manifest (same block, same chain, bytecode found at every
+//   manifest address). The report is a point-in-time snapshot: re-run the verifier for every release
+//   and whenever ownership or roles change. A disposable fixture whose public origin is on a reserved
+//   TLD (.example, .invalid, .test, .localhost; RFC 2606/6761) cannot serve real users or wallet
+//   sign-in; it may run without a manifest and reports deployment status "fixture".
+// M-05: buybacks stay off until BUYBACK_ORACLE_ADDRESS names the reviewed buyback-floor oracle, and
+//   (with a verified deployment) that oracle is the one AnyrStaking reads on-chain.
+// M-06: a PayWithStock session lets the router key spend up to the wallet's daily cap without a
+//   per-charge wallet authorization. Production requires an explicit PAYWITH_DELEGATION_ACCEPTED and
+//   keeps the exposure small: PAYWITH_MAX_DEBT_USD <= $5 and PAYWITH_MAX_DAILY_CAP_USD <= $25.
+
+type Env = z.infer<typeof schema>;
+export type DeploymentStatus = {
+  status: "none" | "unverified" | "fixture" | "verified";
+  manifestSha256: string | null;
+  manifestBlock: number | null;
+  verifiedAtBlock: string | null;
+  verifierRevision: string | null;
+};
+export const DEPLOYMENT_SCHEMA = "anyroute.deployments/v1";
+export const PAYWITH_MAX_DEBT_CEILING_USD = 5;
+export const PAYWITH_DAILY_CAP_CEILING_USD = 25;
+const RESERVED_TLDS = new Set(["example", "invalid", "test", "localhost"]);
+const MANIFEST_CONTRACTS = {
+  CREDITS_ADDRESS: "credits",
+  CALLPAY_ADDRESS: "callPay",
+  PAYWITHSTOCK_ADDRESS: "payWithStock",
+  PROVIDER_BOND_ADDRESS: "providerBond",
+  RECEIPT_ANCHOR_ADDRESS: "receiptAnchor",
+  ROYALTY_ADDRESS: "royalty",
+  ANYR_STAKING_ADDRESS: "anyrStaking",
+  PAYMASTER_ADDRESS: "paymaster",
+} as const;
+const sameAddress = (a: unknown, b: unknown) =>
+  typeof a === "string" && typeof b === "string" && /^0x[0-9a-fA-F]{40}$/.test(a) && !/^0x0{40}$/.test(a) && a.toLowerCase() === b.toLowerCase();
+
+/** A file path or inline JSON; errors never echo the value. */
+function readJsonSetting(name: string, value: string): { json: Record<string, any>; sha256: string } {
+  let text: string;
+  try {
+    text = value.trim().startsWith("{") ? value : readFileSync(resolve(value), "utf8");
+  } catch {
+    throw new Error(`${name} could not be read.`);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`${name} is not valid JSON.`);
+  }
+  if (!json || typeof json !== "object" || Array.isArray(json)) throw new Error(`${name} must be a JSON object.`);
+  return { json: json as Record<string, any>, sha256: createHash("sha256").update(text).digest("hex") };
+}
+
+function contractPathGuards(e: Env, production: boolean, escrowMode: boolean) {
+  if (e.RELEASE_COMMIT && !/^[0-9a-f]{7,40}$/i.test(e.RELEASE_COMMIT)) throw new Error("RELEASE_COMMIT must be a git commit id.");
+  const releaseCommit = e.RELEASE_COMMIT?.toLowerCase() ?? null;
+  const maxDailyCapUsd = e.PAYWITH_MAX_DAILY_CAP_USD === undefined ? null : Number(e.PAYWITH_MAX_DAILY_CAP_USD);
+  if (maxDailyCapUsd !== null && !(maxDailyCapUsd > 0)) throw new Error("PAYWITH_MAX_DAILY_CAP_USD must be a positive USD amount.");
+  const configured = (Object.keys(MANIFEST_CONTRACTS) as (keyof typeof MANIFEST_CONTRACTS)[]).filter((name) => e[name]);
+  const deployment: DeploymentStatus = { status: escrowMode || !configured.length ? "none" : "unverified", manifestSha256: null, manifestBlock: null, verifiedAtBlock: null, verifierRevision: null };
+  const result = { releaseCommit, maxDailyCapUsd, deployment };
+  if (!production) return result;
+
+  // M-05: no buyback job or keeper key without an explicit, reviewed buyback-floor oracle.
+  const jobs = e.RUNTIME_ROLE === "worker" ? e.WORKER_JOBS.split(",").map((n) => n.trim()) : [];
+  const buybacks = jobs.includes("buyback") || !!e.KEEPER_PRIVATE_KEY;
+  if (buybacks) {
+    if (escrowMode) throw new Error("Buybacks need the Anyroute contracts; PAYMENTS_MODE=escrow must not run the buyback job.");
+    if (!e.BUYBACK_ORACLE_ADDRESS || /^0x0{40}$/.test(e.BUYBACK_ORACLE_ADDRESS))
+      throw new Error("Buybacks stay disabled until BUYBACK_ORACLE_ADDRESS names the reviewed buyback-floor oracle; otherwise remove the buyback job and KEEPER_PRIVATE_KEY.");
+    if (!e.ANYR_STAKING_ADDRESS || !e.ANYR_POOL_LEGS) throw new Error("Buybacks require ANYR_STAKING_ADDRESS and ANYR_POOL_LEGS.");
+  }
+
+  // M-06: PayWithStock delegates router spending up to each session's daily cap.
+  if (e.PAYWITHSTOCK_ADDRESS) {
+    if (!e.PAYWITH_DELEGATION_ACCEPTED)
+      throw new Error("PayWithStock sessions let the router key spend up to each wallet's daily cap without a per-charge wallet authorization. Set PAYWITH_DELEGATION_ACCEPTED=true only after accepting that exposure.");
+    if (!(e.PAYWITH_MAX_DEBT_USD > 0 && e.PAYWITH_MAX_DEBT_USD <= PAYWITH_MAX_DEBT_CEILING_USD)) throw new Error(`PAYWITH_MAX_DEBT_USD must be above 0 and at most ${PAYWITH_MAX_DEBT_CEILING_USD} in production.`);
+    if (maxDailyCapUsd === null || maxDailyCapUsd > PAYWITH_DAILY_CAP_CEILING_USD || maxDailyCapUsd < e.PAYWITH_MAX_DEBT_USD)
+      throw new Error(`PayWithStock requires PAYWITH_MAX_DAILY_CAP_USD between PAYWITH_MAX_DEBT_USD and ${PAYWITH_DAILY_CAP_CEILING_USD} in production.`);
+  }
+
+  // H-02: contract mode runs only against a verified deployment.
+  if (escrowMode || !configured.length) return result;
+  let host = "";
+  try {
+    host = new URL(e.PUBLIC_BASE_URL).hostname;
+  } catch {
+    /* PUBLIC_BASE_URL is validated above */
+  }
+  if (!e.DEPLOYMENT_MANIFEST) {
+    if (RESERVED_TLDS.has(host.split(".").at(-1) ?? "")) {
+      deployment.status = "fixture";
+      return result;
+    }
+    throw new Error("Production contract mode requires DEPLOYMENT_MANIFEST (the anyroute.deployments/v1 manifest) and DEPLOYMENT_VERIFICATION (its passing scripts/verify-deployment.ts report).");
+  }
+  if (!releaseCommit || releaseCommit.length !== 40) throw new Error("Production contract mode requires RELEASE_COMMIT, the full git commit of this build.");
+
+  const { json: manifest, sha256 } = readJsonSetting("DEPLOYMENT_MANIFEST", e.DEPLOYMENT_MANIFEST);
+  const refuseManifest = (why: string): never => {
+    throw new Error(`DEPLOYMENT_MANIFEST ${why}`);
+  };
+  const contracts: Record<string, unknown> = manifest.contracts && typeof manifest.contracts === "object" ? manifest.contracts : {};
+  if (manifest.schema !== DEPLOYMENT_SCHEMA) refuseManifest(`must use schema ${DEPLOYMENT_SCHEMA}.`);
+  if (manifest.mode !== "production") refuseManifest("must describe a production deployment.");
+  if (Number(manifest.chainId) !== e.CHAIN_ID) refuseManifest(`is not for chain ${e.CHAIN_ID}.`);
+  if (!/^\d+$/.test(String(manifest.blockNumber))) refuseManifest("has no deployment block.");
+  for (const [name, key] of [...Object.entries(MANIFEST_CONTRACTS), ["USDG_ADDRESS", "usdg"]] as [keyof Env, string][]) {
+    if (e[name] && !sameAddress(e[name], contracts[key])) refuseManifest(`does not list ${name} as its ${key} contract.`);
+  }
+  if (e.CALLPAY_TREASURY && !sameAddress(e.CALLPAY_TREASURY, manifest.roles?.callPayTreasury)) refuseManifest("does not list CALLPAY_TREASURY as the CallPay treasury.");
+
+  if (!e.DEPLOYMENT_VERIFICATION) throw new Error("Production contract mode requires DEPLOYMENT_VERIFICATION, the passing scripts/verify-deployment.ts report for DEPLOYMENT_MANIFEST.");
+  const { json: report } = readJsonSetting("DEPLOYMENT_VERIFICATION", e.DEPLOYMENT_VERIFICATION);
+  const refuseReport = (why: string): never => {
+    throw new Error(`DEPLOYMENT_VERIFICATION ${why}`);
+  };
+  const checks: { id?: unknown; status?: unknown; evidence?: any }[] = Array.isArray(report.checks) ? report.checks : [];
+  if (report.ok !== true || !checks.length || checks.some((c) => !c || c.status === "fail")) refuseReport("is not a passing verifier report.");
+  if (!/^[0-9a-f]{40}$/.test(String(report.verifierRevision))) refuseReport("does not name the verifier's git revision.");
+  const certified = report.manifest ?? {};
+  if (certified.schema !== DEPLOYMENT_SCHEMA || certified.mode !== "production" || Number(certified.chainId) !== e.CHAIN_ID || Number(certified.blockNumber) !== Number(manifest.blockNumber))
+    refuseReport("was produced for a different manifest.");
+  const observedBlock = String(report.observed?.blockNumber);
+  if (Number(report.observed?.chainId) !== e.CHAIN_ID || !/^\d+$/.test(observedBlock) || BigInt(observedBlock) < BigInt(String(manifest.blockNumber)))
+    refuseReport("was not read from this chain after the deployment block.");
+  // Bind the report to this manifest: the verifier found runtime bytecode at every manifest address.
+  const bytecode = checks.find((c) => c.id === "contracts.bytecode_present");
+  const found: Record<string, { address?: unknown; present?: unknown }> = bytecode?.status === "pass" && bytecode.evidence && typeof bytecode.evidence === "object" ? bytecode.evidence : {};
+  for (const [key, address] of Object.entries(contracts)) {
+    if (typeof address === "string" && /^0x0{40}$/.test(address)) continue;
+    if (!sameAddress(found[key]?.address, address) || found[key]?.present !== true) refuseReport(`did not verify the manifest's ${key} contract.`);
+  }
+  if (buybacks) {
+    const oracle = checks.find((c) => c.id === "buybacks.oracle");
+    const oracleCode = checks.find((c) => c.id === "buybacks.oracle_code_present");
+    if (!sameAddress(oracle?.evidence, e.BUYBACK_ORACLE_ADDRESS) || oracleCode?.status !== "pass")
+      throw new Error("BUYBACK_ORACLE_ADDRESS must be the buyback-floor oracle AnyrStaking reads on-chain, as recorded by DEPLOYMENT_VERIFICATION.");
+  }
+  Object.assign(deployment, { status: "verified", manifestSha256: sha256, manifestBlock: Number(manifest.blockNumber), verifiedAtBlock: observedBlock, verifierRevision: String(report.verifierRevision) });
+  return result;
+}

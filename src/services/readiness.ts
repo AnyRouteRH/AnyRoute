@@ -4,6 +4,7 @@ import { anchors, spentRoots, chainCursor, kv, providers } from "../db/schema.ts
 import type { JobSnapshot } from "./jobs.ts";
 import { attestationFresh } from "../router/select.ts";
 import { escrowFinality, escrowReviewsOpen } from "../pay/escrow.ts";
+import { reconcileSpentRoots } from "./root-completeness.ts";
 
 // One-day production timelock plus one day for review/execution. Submission failures retain the 2-minute bound.
 export const ROOT_REVIEW_SLA_MS = 48 * 3_600_000;
@@ -104,6 +105,11 @@ export async function readiness(ctx: Ctx) {
     (async () => {
       if (escrowMode) return;
       try { checks.custody_controls = await bounded(() => ctx.chain.custodyControlsReady()); } catch { checks.custody_controls = false; }
+    })(),
+    (async () => {
+      // Every funded key is in the latest spent root and no leaf overspends its key (Credits cannot check either).
+      if (escrowMode) return;
+      try { checks.root_completeness = (await bounded(() => reconcileSpentRoots(ctx.db, { graceMs: ROOT_REVIEW_SLA_MS + 2 * ctx.cfg.workers.settlementIntervalMs }))).ok; } catch { checks.root_completeness = false; }
     })(),
     (async () => {
       try { await bounded(() => ctx.limiter.take("readiness", 0, 1, 60_000)); checks.rate_limiter = true; } catch { checks.rate_limiter = false; }

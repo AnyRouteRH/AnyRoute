@@ -19,6 +19,12 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: AnyRoute dependency or worker readiness failed
+      - alert: AnyRouteSpentRootIncomplete
+        expr: anyroute_readiness_check{job="anyroute",check="root_completeness"} == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: Latest Credits spent root omits a funded key, overspends a key or does not reconcile; approve no root until scripts/reconcile-roots.ts passes
       - alert: AnyRouteReadinessMetricsMissing
         expr: up{job="anyroute"} == 1 unless on(job, instance) anyroute_ready{job="anyroute"}
         for: 2m

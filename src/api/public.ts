@@ -12,7 +12,7 @@ import { readinessMetrics } from "../services/readiness-metrics.ts";
 import { readJson } from "./common.ts";
 import { requireKey } from "./auth.ts";
 import { verifyReceipt, anchorProof } from "./generation.ts";
-import { openDebt, statement } from "../pay/paywith.ts";
+import { fairPrice, openDebt, rawToPico, statement } from "../pay/paywith.ts";
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 
 export { providerApplication } from "../providers/application.ts";
@@ -143,6 +143,14 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
     const tok = ctx.cfg.paywith.tokens.find((t) => t.symbol.toLowerCase() === v.token.toLowerCase() || t.address.toLowerCase() === v.token.toLowerCase());
     if (!tok) fail(404, `${v.token} is not a registered Stock Token.`, "not_found");
     const pws = ctx.chain.require("payWithStock");
+    // The router may spend up to the session's daily cap without a per-charge signature, so the API
+    // only builds sessions worth at most PAYWITH_MAX_DAILY_CAP_USD a day (required in production).
+    const maxCapUsd = ctx.cfg.paywith.maxDailyCapUsd;
+    if (maxCapUsd !== null) {
+      const fair = await fairPrice(ctx, tok.address);
+      if (!fair) fail(503, `The ${tok.symbol} price is unavailable, so the session cap cannot be checked.`, "price_unavailable");
+      if (rawToPico(BigInt(v.cap_raw_per_day), tok.decimals, fair) > usdToPico(maxCapUsd)) fail(400, `cap_raw_per_day is worth more than this router's $${maxCapUsd} daily session limit.`, "cap_too_high");
+    }
     // Anyone can open a session on any key hash on-chain; the router only honours sessions whose
     // wallet the key holder registered here (authenticated by the key itself).
     const intent = { wallet: v.wallet.toLowerCase(), token: tok.address.toLowerCase(), at: new Date().toISOString() };
@@ -211,6 +219,17 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         launch: await launchMetrics(),
         router: ctx.cfg.publicUrl,
         env: ctx.cfg.env,
+        // The running build (RELEASE_COMMIT; null when unset) and whether its contracts were verified.
+        release: {
+          commit: ctx.cfg.release.commit,
+          deployment: {
+            status: ctx.cfg.release.deployment.status,
+            manifest_sha256: ctx.cfg.release.deployment.manifestSha256,
+            manifest_block: ctx.cfg.release.deployment.manifestBlock,
+            verified_at_block: ctx.cfg.release.deployment.verifiedAtBlock,
+            verifier_revision: ctx.cfg.release.deployment.verifierRevision,
+          },
+        },
         database: ctx.dbKind,
         redis: !!ctx.cfg.redisUrl,
         chain: ctx.chain.status(),
