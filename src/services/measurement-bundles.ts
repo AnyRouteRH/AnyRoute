@@ -4,6 +4,7 @@ import type { Ctx } from "../context.ts";
 import { measurementBundles, measurements, providers } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
 import { log } from "../lib/util.ts";
+import { keyPublished } from "../tlog/hooks.ts";
 import {
   asBytes32,
   bundleBytes,
@@ -112,6 +113,7 @@ export async function checkBundle(ctx: Ctx, row: BundleRow, key: KeyObject, f: F
   const now = new Date();
   const settle = async (status: BundleStatus, error: string | null, extra: Partial<typeof measurementBundles.$inferInsert> = {}) => {
     await ctx.db.update(measurementBundles).set({ status, error, checkedAt: now, updatedAt: now, ...extra }).where(eq(measurementBundles.id, row.id));
+    if (status === "verified") keyPublished(ctx.db, "measurement_bundle"); // transparency log (a no-op unless TLOG_ENABLED)
     return status;
   };
 

@@ -6,6 +6,7 @@ import { blindKeys, blindNullifiers } from "../db/schema.ts";
 import { ApiError } from "../lib/errors.ts";
 import type { Pico } from "../lib/money.ts";
 import { decrypt, encrypt, log } from "../lib/util.ts";
+import { keyPublished } from "../tlog/hooks.ts";
 import { generateIssuerKey, importIssuerPublicKey, parseIssuerSpki, Signer, suite, tokenKeyId } from "./rsa.ts";
 import { b64url, bytesEqual, challengeDigest, decodeToken, hex, nullifierOf, signedPart, tokenChallenge } from "./privacy-token.ts";
 
@@ -108,6 +109,7 @@ export class BlindIssuer {
         .returning({ keyId: blindKeys.keyId });
       created += rows.length; // another process may have created this (epoch, denomination) first: then nothing is added
     }
+    if (created) keyPublished(this.db, "blind_issuer_key"); // transparency log (a no-op unless TLOG_ENABLED)
     return created;
   }
 

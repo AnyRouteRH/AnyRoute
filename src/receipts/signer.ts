@@ -3,6 +3,7 @@ import { desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { receiptKeys } from "../db/schema.ts";
 import { canonicalJson, decrypt, encrypt, sha256 } from "../lib/util.ts";
+import { keyPublished } from "../tlog/hooks.ts";
 import { coseSign1, decodeCoseSign1, decodeClaims, encodeClaims, receiptLeafV2, COSE_ALG_EDDSA, type ClaimsV2 } from "./v2.ts";
 
 // Ed25519 receipt signing with weekly rotation. Every key ever used stays in receipt_keys
@@ -70,6 +71,7 @@ export class ReceiptSigner {
       if (current) await tx.update(receiptKeys).set({ retiredAt: validFrom }).where(eq(receiptKeys.id, current.id));
       await tx.insert(receiptKeys).values({ id, publicKey: publicKeyHex, privateKeyEnc: encrypt(this.secret, der), validFrom });
     });
+    keyPublished(this.db, "receipt_key"); // transparency log (a no-op unless TLOG_ENABLED)
     this.active = { id, publicKeyHex, privateKey, publicKey, validFrom, retiredAt: null };
     this.cache.set(id, this.active);
     return { rotated: true, key: this.active };

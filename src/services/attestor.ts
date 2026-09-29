@@ -11,6 +11,8 @@ import { classifierFromReport, policyHashFromReport } from "../router/lane.ts";
 import { clearAttestedPolicy, saveAttestedPolicy } from "../providers/attested-policy.ts";
 import { pruneAttestationEvents, recordAttestorRun } from "./attestation-events.ts";
 import { checkAciReport, clearAciGateway, isAciReport, saveAciGateway } from "../providers/aci.ts";
+import { keyPublished } from "../tlog/hooks.ts";
+import { attestationBindingEntry } from "../tlog/entries.ts";
 
 // attestor: every 10 minutes, for each provider with a TEE, fetch a fresh attestation bound to our
 // nonce and verify it. Fail closed: anything unverifiable leaves the provider un-attested, and the
@@ -211,6 +213,8 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   const policyHash = policyHashFromReport(report, evidence);
   const reportHash = "0x" + sha256(canonicalJson({ report, nonce }));
   await ctx.db.insert(attestations).values({ providerId: p.id, ok: true, teeKind: p.teeKind ?? report.kind ?? null, reportHash, nonce, measurements, detail: { signing_address: report.signing_address ?? null, verifiers: verifiedBy, simulated: p.teeKind === "dev" || report.kind === "dev", classifier_enabled: classifierEnabled } });
+  // Transparency log (a no-op unless TLOG_ENABLED): the keys a hardware-verified quote bound, never simulated evidence.
+  if (bindingsCommitted && verifiedBy.length && !simulated) keyPublished(ctx.db, "attestation_binding", attestationBindingEntry(p.id, report.sidecar_bindings, peer?.attestationRef ?? null));
   // A measurement is recorded only from a hardware quote a verifier accepted; never from simulated evidence.
   if (ctx.cfg.measurements.enabled && bound && quoteHex && verifiedBy.length) {
     try {

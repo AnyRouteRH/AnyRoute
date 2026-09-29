@@ -4,6 +4,7 @@ import type { Config } from "../config.ts";
 import type { Db } from "../db/client.ts";
 import { ohttpKeys } from "../db/schema.ts";
 import { decrypt, encrypt, log, sha256 } from "../lib/util.ts";
+import { keyPublished } from "../tlog/hooks.ts";
 import { KEM_X25519, generateGatewayKey, loadGatewayKey, parseKeyConfig, type KeyConfigWithPrivate, type PublicKeyConfig } from "./ohttp.ts";
 
 // Gateway HPKE keys, one per epoch.
@@ -97,6 +98,7 @@ export class OhttpKeys {
       })
       .onConflictDoNothing()
       .returning({ epoch: ohttpKeys.epoch });
+    if (rows.length) keyPublished(this.db, "ohttp_key_config"); // transparency log (a no-op unless TLOG_ENABLED)
     return rows.length; // another process may have created this epoch first: then nothing is added
   }
 
