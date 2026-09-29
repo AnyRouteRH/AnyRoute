@@ -35,7 +35,8 @@ export type RouterAttestation = {
     attested_now: boolean;
     first_attested_at: string;
     last_seen_at: string;
-    transparency_log: { found: boolean; inclusion_verified: boolean; checkpoint_signature_verified: boolean; entry?: string | null; uuid?: string | null; log_index?: number | null; checked_at?: string | null };
+    transparency_log: { found: boolean; inclusion_verified: boolean; checkpoint_signature_verified: boolean; entry?: string | null; uuid?: string | null; log_index?: number | null; checked_at?: string | null; subject?: "measurement_bundle" | "image_digest" | null; entry_url?: string | null; bundle?: { digest: string; signer_key_id: string; created_at: string | null; signature_verified: boolean; url: string } | null };
+    registers?: { mrtd: string; rtmr3: string } | null;
     registry: { address: string | null; state: string; tx_hash: string | null; registered_at: string | null };
   };
   checks: { quote_verified: boolean; digests_bound_to_quote: boolean; transparency_log_entry: boolean; transparency_log_checkpoint_signature: boolean; registered_on_chain: boolean };

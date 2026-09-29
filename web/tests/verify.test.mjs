@@ -235,3 +235,37 @@ test('pasted input: a receipt, a chat response, or a lookup response',()=>{
  assert.match(parseReceiptInput('[1,2]').error,/No receipt found/);
  assert.match(parseReceiptInput('null').error,/No receipt found/);
 });
+
+test('a logged measurement bundle is described as a bundle signed with the published key, and an image entry is not',()=>{
+ const withLog=(log)=>{const r=router();r.measurement.transparency_log={...r.measurement.transparency_log,...log};r.checks={...r.checks,transparency_log_entry:log.found===true,transparency_log_checkpoint_signature:log.checkpoint_signature_verified===true};return describeAttestation(r,NOW);};
+ const bundle={found:true,inclusion_verified:true,checkpoint_signature_verified:true,log_index:7,uuid:'ab'.repeat(40),subject:'measurement_bundle',entry_url:'https://rekor.example.test/api/v1/log/entries/'+'ab'.repeat(40),bundle:{digest:'0x'+'cd'.repeat(32),signature_verified:true}};
+ const v=withLog(bundle);
+ assert.equal(v.transparencyLog.state,'yes');
+ assert.match(v.transparencyLog.text,/signed measurement bundle for this compose hash/);
+ assert.match(v.transparencyLog.text,/signed with the measurement key it publishes/);
+ assert.equal(v.transparencyLog.subject,'measurement_bundle');
+ assert.equal(v.transparencyLog.entryUrl,bundle.entry_url);
+ assert.equal(v.transparencyLog.bundleDigest,bundle.bundle.digest);
+ const labels=Object.fromEntries(v.checks.map((c)=>[c.id,c]));
+ assert.equal(labels.transparency_log_entry.state,'yes');
+ assert.match(labels.transparency_log_entry.label,/measurement bundle/);
+ assert.equal(labels.transparency_log_checkpoint_signature.state,'yes');
+ // without the log's signature over the checkpoint it is partial, in the same words
+ const partial=withLog({...bundle,checkpoint_signature_verified:false}).transparencyLog;
+ assert.equal(partial.state,'partial');
+ assert.match(partial.text,/signed measurement bundle.*signature over the checkpoint was not/);
+ assert.doesNotMatch(partial.text,/publishes/);
+ assert.equal(withLog({...bundle,inclusion_verified:false,checkpoint_signature_verified:false}).transparencyLog.state,'partial');
+ // an entry for the image keeps its wording and shows no bundle
+ const image=withLog({...bundle,subject:'image_digest',bundle:null}).transparencyLog;
+ assert.match(image.text,/^An entry for the image was found/);
+ assert.equal(image.subject,null);
+ assert.equal(image.bundleDigest,'');
+ assert.match(withLog({...bundle,subject:'image_digest'}).checks.find((c)=>c.id==='transparency_log_entry').label,/The image has an entry/);
+});
+
+test('only an https entry link is passed on to the page',()=>{
+ const linkFor=(u)=>{const r=router();r.measurement.transparency_log={...r.measurement.transparency_log,found:true,subject:'measurement_bundle',entry_url:u};return describeAttestation(r,NOW).transparencyLog.entryUrl;};
+ assert.equal(linkFor('https://rekor.example.test/api/v1/log/entries/abc'),'https://rekor.example.test/api/v1/log/entries/abc');
+ for(const bad of ['http://rekor.example.test/x','javascript:alert(1)','//rekor.example.test/x','https://a.test/x y','https://a.test/"><script>','https://a.test/<b>',null,undefined,42,''])assert.equal(linkFor(bad),'',String(bad));
+});

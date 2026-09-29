@@ -66,6 +66,8 @@ export function relativeTime(iso, now = Date.now()) {
 export const shortDigest = (d) => (typeof d === "string" && d.length > 22 ? `${d.slice(0, 12)}…${d.slice(-8)}` : d || "");
 
 const yes = (v) => (v ? "yes" : "no");
+/** A link target the page will render: https only, no whitespace or markup characters. */
+const httpsUrl = (u) => (typeof u === "string" && /^https:\/\/[^\s"'<>]+$/.test(u) ? u : "");
 
 /**
  * A view model for the page from `GET /api/v1/attestation/:providerId` (the `data` object).
@@ -88,14 +90,18 @@ export function describeAttestation(data, now = Date.now()) {
   const registry = REGISTRY[reg?.state] || REGISTRY.not_recorded;
   const verifiers = Array.isArray(d.verifiers) ? d.verifiers : [];
 
+  // A signed measurement bundle (the router's record of what the compose hash, image and model digests stand for) or, older,
+  // an entry the router found for the image digest. The two are worded apart: only the first says who signed the entry.
+  const bundle = log?.subject === "measurement_bundle";
+  const what = bundle ? "A signed measurement bundle for this compose hash was found in the log" : "An entry for the image was found";
   const logState = !m
     ? { state: "no", text: "No measurement recorded, so no log lookup was made." }
     : log?.found && log.inclusion_verified && log.checkpoint_signature_verified
-      ? { state: "yes", text: "An entry for the image was found, its inclusion in the log was verified, and so was the log's signature over its checkpoint." }
+      ? { state: "yes", text: `${what}, its inclusion in the log was verified, and so was the log's signature over its checkpoint.${bundle ? " The router checked that it was signed with the measurement key it publishes." : ""}` }
       : log?.found && log.inclusion_verified
-        ? { state: "partial", text: "An entry for the image was found and its inclusion was verified, but the log's signature over the checkpoint was not." }
+        ? { state: "partial", text: `${what} and its inclusion was verified, but the log's signature over the checkpoint was not.` }
         : log?.found
-          ? { state: "partial", text: "An entry for the image was found, but its inclusion in the log has not been verified." }
+          ? { state: "partial", text: `${what}, but its inclusion in the log has not been verified.` }
           : { state: "no", text: "No transparency-log entry was found for the image." };
 
   const attestedAt = status === "unverified" ? null : d.attested_at || null;
@@ -127,13 +133,13 @@ export function describeAttestation(data, now = Date.now()) {
           ],
         }
       : { recorded: false, currentlyAttested: false, digests: [] },
-    transparencyLog: { ...logState, index: log?.log_index ?? null, uuid: log?.uuid || "", integratedAt: log?.integrated_at || "", checkedAt: log?.checked_at || "" },
+    transparencyLog: { ...logState, index: log?.log_index ?? null, uuid: log?.uuid || "", integratedAt: log?.integrated_at || "", checkedAt: log?.checked_at || "", subject: bundle ? "measurement_bundle" : null, entryUrl: httpsUrl(log?.entry_url), bundleDigest: bundle && typeof log.bundle?.digest === "string" ? log.bundle.digest : "" },
     registry: { ...registry, address: reg?.address || "", tx: reg?.tx_hash || "", registeredAt: reg?.registered_at || "" },
     checks: [
       // The first two only count while the router calls the provider attested, whatever the flags say.
       ["quote_verified", "The router verified a hardware quote", yes(status === "attested" && d.checks?.quote_verified)],
       ["digests_bound_to_quote", "The image, compose and model digests are committed inside that quote", yes(status === "attested" && d.checks?.digests_bound_to_quote)],
-      ["transparency_log_entry", "The image has an entry in a transparency log", yes(d.checks?.transparency_log_entry)],
+      ["transparency_log_entry", bundle ? "The measurement bundle has an entry in a transparency log" : "The image has an entry in a transparency log", yes(d.checks?.transparency_log_entry)],
       ["transparency_log_checkpoint_signature", "The log's signature over that entry was verified", yes(d.checks?.transparency_log_checkpoint_signature)],
       ["registered_on_chain", "The measurement is registered on chain", yes(d.checks?.registered_on_chain)],
     ].map(([id, label, state]) => ({ id, label, state })),
