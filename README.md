@@ -33,7 +33,7 @@ Choose a model. Set your routing policy. Inspect what happened.
 | **Flexible payments** | Prepaid USDG, per-call HTTP 402 payments (x402-compatible) and Stock Token payment sessions. |
 | **$ANYR holder perks** | Operator-run free inference credits for holders, and optional holder tiers with higher rate limits and lower fees. |
 | **Verifiable usage** | Signed generation receipts, public verification and on-chain receipt anchors. |
-| **Provider accountability** | Operator-reviewed onboarding, health probes, canaries and attestation checks. |
+| **Provider accountability** | Operator-reviewed onboarding, health probes, canaries and attestation checks, with a public proof-time record of how long each provider held a fresh attestation (`/status/`, `GET /api/v1/attestation/summary`). |
 | **A complete workspace** | Model catalog, API docs, playground and wallet-aware dashboard. |
 
 ## Run it locally
