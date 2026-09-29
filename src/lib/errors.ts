@@ -8,11 +8,13 @@ export class ApiError extends Error {
     public type = "invalid_request",
     public metadata?: Record<string, unknown>,
     public headers?: Record<string, string>,
+    /** Replaces the default error envelope (x402 responses have their own JSON shape). */
+    public body?: Record<string, unknown>,
   ) {
     super(message);
   }
   toJSON() {
-    return {
+    return this.body ?? {
       error: {
         code: this.status,
         message: this.message,

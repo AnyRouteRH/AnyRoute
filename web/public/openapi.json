@@ -35,12 +35,12 @@
     "/api/v1/chat/completions": {
       "post": {
         "tags": ["Chat"], "operationId": "createChatCompletion", "summary": "Create a chat completion",
-        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request.",
+        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request. When the router has x402 enabled, the 402 body is also an x402 v1 payment requirement (x402Version, accepts): sign the exact-scheme USDG authorization and retry with X-PAYMENT; the paid response carries X-PAYMENT-RESPONSE.",
         "security": [{ "BearerAuth": [] }, { "WalletAuth": [] }, {}],
         "parameters": [{ "$ref": "#/components/parameters/Referer" }, { "$ref": "#/components/parameters/Title" }, { "$ref": "#/components/parameters/Payment" }, { "$ref": "#/components/parameters/PayWith" }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatRequest" } } } },
         "responses": {
-          "200": { "description": "Completion JSON, or SSE events followed by data: [DONE] when stream is true.", "content": { "application/json": { "schema": { "type": "object" } }, "text/event-stream": { "schema": { "type": "string", "description": "SSE data events; event data carries JSON chunks." } } } },
+          "200": { "description": "Completion JSON, or SSE events followed by data: [DONE] when stream is true.", "headers": { "X-PAYMENT-RESPONSE": { "description": "Present when an x402 payment was settled for this call: base64 JSON {success, transaction, network, payer}.", "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "type": "object" } }, "text/event-stream": { "schema": { "type": "string", "description": "SSE data events; event data carries JSON chunks." } } } },
           "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "402": { "$ref": "#/components/responses/PaymentRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "429": { "$ref": "#/components/responses/TooManyRequests" }, "default": { "$ref": "#/components/responses/ApiError" }
         }
       }
@@ -48,8 +48,9 @@
     "/api/v1/embeddings": {
       "post": {
         "tags": ["Embeddings"], "operationId": "createEmbeddings", "summary": "Create embeddings",
-        "description": "Requires an authenticated prepaid API key. Input may be a string or a non-empty array with at most 2048 items.",
-        "security": [{ "BearerAuth": [] }],
+        "description": "Uses a prepaid API key, or no key with the per-call payment flow (HTTP 402, including x402 when enabled). Input may be a string or a non-empty array with at most 2048 items.",
+        "security": [{ "BearerAuth": [] }, {}],
+        "parameters": [{ "$ref": "#/components/parameters/Payment" }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmbeddingRequest" } } } },
         "responses": { "200": { "description": "Embedding response with usage and signed receipt.", "content": { "application/json": { "schema": { "type": "object", "required": ["data", "receipt"], "properties": { "data": { "type": "array", "items": { "type": "object" } }, "receipt": { "$ref": "#/components/schemas/Receipt" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "402": { "$ref": "#/components/responses/PaymentRequired" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "429": { "$ref": "#/components/responses/TooManyRequests" }, "default": { "$ref": "#/components/responses/ApiError" } }
       }
@@ -138,7 +139,7 @@
     "parameters": {
       "Referer": { "name": "HTTP-Referer", "in": "header", "required": false, "schema": { "type": "string" } },
       "Title": { "name": "X-Title", "in": "header", "required": false, "schema": { "type": "string" } },
-      "Payment": { "name": "X-Payment", "in": "header", "required": false, "schema": { "type": "string" }, "description": "Payment data returned by a router quote; do not replay blindly." },
+      "Payment": { "name": "X-Payment", "in": "header", "required": false, "schema": { "type": "string" }, "description": "Payment for this exact request: a CallPay transaction hash, or an x402 payment (base64 JSON {x402Version, scheme, network, payload}) from a 402 quote. Do not replay blindly." },
       "PayWith": { "name": "X-Pay-With", "in": "header", "required": false, "schema": { "type": "string" }, "description": "Configured Stock Token symbol for a key with an active session." }
     },
     "responses": {

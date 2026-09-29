@@ -41,6 +41,45 @@ const mcpCurl = `curl -s ${BASE}/mcp \\
   -H "accept: application/json, text/event-stream" \\
   -H "Authorization: Bearer $ANYROUTE_API_KEY" \\
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'`;
+const x402Example = `import { privateKeyToAccount } from "viem/accounts";
+import { toHex } from "viem";
+
+const account = privateKeyToAccount(process.env.AGENT_KEY);
+const url = "https://<router>/api/v1/chat/completions";
+const headers = { "content-type": "application/json" };
+const body = JSON.stringify({ model: "meta-llama/llama-3.3-70b-instruct", messages: [{ role: "user", content: "Hello" }] });
+
+// 1. Ask with no key. The router answers 402 with x402 payment requirements.
+const { accepts } = await (await fetch(url, { method: "POST", headers, body })).json();
+const req = accepts[0];
+
+// 2. Sign a USDG transfer authorization (EIP-3009) to req.payTo. The router relays it and pays the gas.
+const authorization = {
+  from: account.address,
+  to: req.payTo,
+  value: BigInt(req.maxAmountRequired),
+  validAfter: 0n,
+  validBefore: BigInt(Math.floor(Date.now() / 1000) + req.maxTimeoutSeconds),
+  nonce: toHex(crypto.getRandomValues(new Uint8Array(32))),
+};
+const signature = await account.signTypedData({
+  domain: { name: req.extra.name, version: req.extra.version, chainId: req.extra.chainId, verifyingContract: req.asset },
+  types: { TransferWithAuthorization: [
+    { name: "from", type: "address" }, { name: "to", type: "address" }, { name: "value", type: "uint256" },
+    { name: "validAfter", type: "uint256" }, { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" },
+  ] },
+  primaryType: "TransferWithAuthorization",
+  message: authorization,
+});
+const xPayment = btoa(JSON.stringify({
+  x402Version: 1, scheme: "exact", network: req.network,
+  payload: { signature, authorization: Object.fromEntries(Object.entries(authorization).map(([k, v]) => [k, String(v)])) },
+}));
+
+// 3. Retry the identical request with X-PAYMENT.
+const paid = await fetch(url, { method: "POST", headers: { ...headers, "X-PAYMENT": xPayment }, body });
+const completion = await paid.json(); // usage + signed receipt; receipt.payload.payment_tx is the settlement
+const settlement = JSON.parse(atob(paid.headers.get("X-PAYMENT-RESPONSE"))); // { success, transaction, network, payer }`;
 const endpoints = [
   ["POST /api/v1/chat/completions", "Chat, tools and streaming (OpenAI/OpenRouter shape); X-Pay-With, X-Payment, X-Wallet-Auth headers"],
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
@@ -80,6 +119,7 @@ export default function Docs() {
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
             <a href="#payments">Payments</a>
+            <a href="#x402">x402</a>
             <a href="#receipts">Receipts</a>
             <a href="#mcp">MCP</a>
             <a href="#endpoints">Endpoints</a>
@@ -128,7 +168,7 @@ export default function Docs() {
                 </tr>
                 <tr>
                   <td>Agent per-call</td>
-                  <td>No key: the router answers 402 with a quote. Pay with CallPay (gas can be sponsored) or sign a gasless USDG authorization, then retry with X-Payment. 1% margin, including gas.</td>
+                  <td>No key: the router answers 402 with a quote. Pay with CallPay (gas can be sponsored) or sign a gasless USDG authorization (see x402 below), then retry with X-Payment. 1% margin, including gas.</td>
                 </tr>
                 <tr>
                   <td>Stock Token</td>
@@ -141,6 +181,33 @@ export default function Docs() {
             Providers are paid their list price minus a 2% settlement fee; creator royalties appear as a separate cost line. Stock Token swaps are slippage-bounded and never exceed your daily cap. Prices are per token and come from each
             provider.
           </p>
+          <h2 id="x402">x402: pay per call with no account.</h2>
+          <p>
+            Where the router has x402 enabled, any x402 client or agent can pay for a call in USDG on Robinhood Chain (chain id 4663) with no account and no API key. Send the request without credentials: the 402 response is an x402 v1 body
+            (x402Version, error, accepts) with one exact-scheme requirement. Sign the USDG authorization it describes, retry the identical request with an X-PAYMENT header, and the router verifies the signature, amount, recipient, time
+            window and nonce, relays the transfer (it pays the gas) and serves the call. Chat, completions and embeddings all work this way; GET /api/v1/status reports per_call.x402.configured.
+          </p>
+          <ul>
+            <li>
+              <b>Requirement.</b> scheme exact, asset USDG, payTo the router’s receiving address, maxAmountRequired in USDG base units (6 decimals) from the same per-call price as the CallPay quote (worst case for this request, including the 1% margin), and extra
+              carrying USDG’s EIP-712 name and version plus the numeric chainId.
+            </li>
+            <li>
+              <b>Network name.</b> x402 v1 names chains with lowercase hyphenated strings and has no Robinhood Chain entry, so the requirement says robinhood-chain (and the router also accepts the CAIP-2 name eip155:4663 in the payment). A client that
+              only knows built-in networks needs that name mapped to chain 4663, or a v2 client with an eip155 handler.
+            </li>
+            <li>
+              <b>Response.</b> The paid response carries X-PAYMENT-RESPONSE (base64 JSON with success, transaction, network and payer) and the signed receipt records the same transaction as payment_tx.
+            </li>
+            <li>
+              <b>Change.</b> The whole payment is credited to the paying wallet’s account and the call is charged from it, so anything unused stays there as credit you can spend with X-Wallet-Auth. Paying more than maxAmountRequired is allowed; nothing is refunded on-chain.
+            </li>
+            <li>
+              <b>Rejections.</b> A payment that fails verification gets a 402 whose error is a reason such as invalid_exact_evm_payload_authorization_value (underpaid), invalid_exact_evm_payload_recipient_mismatch, invalid_exact_evm_payload_authorization_nonce_used
+              (replayed) or invalid_exact_evm_payload_signature, together with fresh requirements. Nothing moves on-chain for a rejected payment.
+            </li>
+          </ul>
+          <Code label="x402 client (JavaScript, viem)">{x402Example}</Code>
           <h2 id="receipts">The response is only the beginning.</h2>
           <p>
             Every generation returns normalized usage and an Ed25519-signed receipt with hashes of the request and response (never their content). Receipts are anchored in hourly merkle batches on Robinhood Chain, and the signing keys

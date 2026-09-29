@@ -367,7 +367,7 @@ export const quotes = pgTable(
     requestSha256: text("request_sha256").notNull(),
     modelId: text("model_id").notNull(),
     expiresAt: ts("expires_at").notNull(),
-    status: text("status").notNull().default("open"), // open | paid | used | expired
+    status: text("status").notNull().default("open"), // open | paid | used | expired | failed (x402 claims: nonce "x402:<payer>:<authorization nonce>")
     payer: text("payer"),
     txHash: text("tx_hash"),
     accountId: text("account_id"),

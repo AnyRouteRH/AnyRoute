@@ -19,13 +19,13 @@ import { bearer, requireRole, resolveKey, walletAuth, type KeyRow } from "./auth
 import { clientIp, readJson } from "./common.ts";
 import { grantFor, recordDebt, type PaywithGrant } from "../pay/paywith.ts";
 import { resolveSavedRoute } from "../routing/saved-routes.ts";
-import { parsePaymentHeader, paymentRequired, redeemPayment, relayAuthorization } from "../pay/percall.ts";
+import { payPerCall } from "../pay/percall.ts";
 
 type Kind = "chat" | "completion";
 type Billing =
   | { mode: "prepaid"; accountId: string; key: KeyRow }
   | { mode: "paywith"; accountId: string; key: KeyRow; grant: PaywithGrant }
-  | { mode: "per_call"; accountId: string; payer: string; paymentTx?: string; key?: undefined };
+  | { mode: "per_call"; accountId: string; payer: string; paymentTx?: string; paymentResponse?: string; key?: undefined };
 
 const ROLES = new Set(["system", "developer", "user", "assistant", "tool", "function"]);
 // Parameters that change what a provider must be able to do; never silently dropped.
@@ -87,6 +87,9 @@ async function byokFor(ctx: Ctx, accountId: string | undefined) {
   }
   return map;
 }
+
+/** x402: the settlement receipt rides on the served response. */
+const paymentHeaders = (b: Billing): Record<string, string> => (b.mode === "per_call" && b.paymentResponse ? { "x-payment-response": b.paymentResponse } : {});
 
 function chunkBase(id: string, created: number, model: ModelRow, provider: string, kind: Kind) {
   return { id, object: kind === "chat" ? "chat.completion.chunk" : "text_completion", created, model: model.id, provider };
@@ -245,12 +248,8 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const hold = maxPico(...attemptable.map(({ cand, model }) => worstCase(cand, model, body, promptTokens, modeForPrice, fees, byok.has(cand.providerId))));
 
   if (!billing) {
-    const pay = c.req.header("x-payment");
-    if (!pay) await paymentRequired(ctx, { pricePico: hold, bodySha, modelId: primary.id });
-    const header = parsePaymentHeader(pay!);
-    const txHash = header.kind === "tx" ? header.hash : await relayAuthorization(ctx, header.auth);
-    const r = await redeemPayment(ctx, txHash, bodySha, ctx.cfg.fees.paymentWaitMs);
-    billing = { mode: "per_call", accountId: r.accountId, payer: r.payer, paymentTx: r.txHash };
+    const r = await payPerCall(ctx, c, { pricePico: hold, bodySha, modelId: primary.id });
+    billing = { mode: "per_call", accountId: r.accountId, payer: r.payer, paymentTx: r.txHash, paymentResponse: r.paymentResponse };
   }
   if (billing.key?.tpm) await limitOrThrow(ctx, `kt:${billing.key.keyHash}`, promptTokens, billing.key.tpm, "tokens");
 
@@ -308,7 +307,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     ...(fin.extras(redactions) ?? {}),
   };
   if (cacheMode && !stream) await ctx.cache.put(cacheMode, cacheScope, body, out, fin.upstream, (body.cache as { ttl?: number } | undefined)?.ttl ?? ctx.cfg.gateway.cacheTtlS);
-  return c.json(out, 200, { "x-generation-id": fin.id });
+  return c.json(out, 200, { "x-generation-id": fin.id, ...paymentHeaders(billing) });
 }
 
 function allFailed(attempts: Attempt[], last?: { status?: number; errorKind: string; message: string }): ApiError {
@@ -607,7 +606,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
   });
   return new Response(body, {
     status: 200,
-    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-generation-id": p.holdId, "x-accel-buffering": "no" },
+    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-generation-id": p.holdId, "x-accel-buffering": "no", ...paymentHeaders(p.billing) },
   });
 }
 
@@ -662,7 +661,7 @@ async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, un
       receipt: { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload, leaf },
     },
     200,
-    { "x-generation-id": id, "x-anyroute-cache": "hit" },
+    { "x-generation-id": id, "x-anyroute-cache": "hit", ...paymentHeaders(p.billing) },
   );
 }
 

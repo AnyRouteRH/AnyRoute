@@ -45,7 +45,10 @@ export class FakeChain extends ChainService {
   constructor(env: Record<string, unknown>) {
     super(loadConfig(env));
   }
+  /** Run without the CallPay contract, as an x402-only router does. */
+  noCallPay = false;
   override address(name: string) {
+    if (name === "callPay" && this.noCallPay) return undefined;
     return (ADDR as Record<string, Hex>)[name];
   }
   override roleAddress() {
@@ -62,6 +65,30 @@ export class FakeChain extends ChainService {
     if (!p) throw Object.assign(new Error("not found"), {});
     if (p.pending) return { pending: true as const, confirmations: 0 };
     return [{ nonce: p.nonce, payer: p.payer, amount: p.amount, blockNumber: 1n, confirmations: 5, logIndex: 0 }];
+  }
+  /** x402: USDG balances, used EIP-3009 nonces and the authorizations relayed by transferWithAuthorization. */
+  usdgBalances = new Map<string, bigint>();
+  usedAuthorizations = new Set<string>();
+  x402Relays: { from: Hex; to: Hex; value: bigint; nonce: Hex; hash: Hex }[] = [];
+  failX402Relay = false;
+  override async usdgDomain() {
+    return { name: "Global Dollar", version: "1" };
+  }
+  override async usdgBalance(of: Hex) {
+    return this.usdgBalances.get(of.toLowerCase()) ?? 10n ** 12n;
+  }
+  override async authorizationUsed(authorizer: Hex, nonce: Hex) {
+    return this.usedAuthorizations.has(`${authorizer}:${nonce}`.toLowerCase());
+  }
+  override async transferWithAuthorization(a: { from: Hex; to: Hex; value: bigint; validAfter: bigint; validBefore: bigint; nonce: Hex; signature: Hex }) {
+    if (this.failX402Relay) throw new Error("execution reverted: transfer amount exceeds balance");
+    const id = `${a.from}:${a.nonce}`.toLowerCase();
+    if (this.usedAuthorizations.has(id)) throw new Error("AuthorizationUsed()");
+    this.usedAuthorizations.add(id);
+    const hash = fakeTx();
+    this.usdgBalances.set(a.from.toLowerCase(), (await this.usdgBalance(a.from)) - a.value);
+    this.x402Relays.push({ from: a.from, to: a.to, value: a.value, nonce: a.nonce, hash });
+    return { hash, blockNumber: 1n };
   }
   override async quoteRaw(_token: Hex, usdgOwed: bigint) {
     if (!this.fair18) return null;

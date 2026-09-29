@@ -30,7 +30,7 @@ Choose a model. Set your routing policy. Inspect what happened.
 | :--- | :--- |
 | **One API, multiple providers** | Chat, streaming, completions and embeddings with provider selection and fallback. |
 | **Spend controls** | Virtual keys, budgets, rate limits, model restrictions and key-enforced guardrails. |
-| **Flexible payments** | Prepaid USDG, per-call HTTP 402 payments and Stock Token payment sessions. |
+| **Flexible payments** | Prepaid USDG, per-call HTTP 402 payments (x402-compatible) and Stock Token payment sessions. |
 | **Verifiable usage** | Signed generation receipts, public verification and on-chain receipt anchors. |
 | **Provider accountability** | Operator-reviewed onboarding, health probes, canaries and attestation checks. |
 | **A complete workspace** | Model catalog, API docs, playground and wallet-aware dashboard. |

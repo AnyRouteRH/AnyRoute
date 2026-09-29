@@ -91,6 +91,10 @@ const schema = z.object({
   DEFAULT_ROYALTY_BPS: int(500),
   PER_CALL_QUOTE_TTL_S: int(300),
   PER_CALL_MAX_USD: num(25),
+  // x402 (exact scheme): agents sign a USDG EIP-3009 transferWithAuthorization to X402_PAY_TO and send it as
+  // X-PAYMENT; the router relays it (ROUTER_PRIVATE_KEY pays the gas). Enabled when X402_PAY_TO is set.
+  X402_PAY_TO: addr,
+  X402_NETWORK: z.string().min(1).default("robinhood-chain"),
   PAYMENT_WAIT_MS: int(8_000),
 
   // Pay with Stock Tokens
@@ -263,6 +267,8 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   }
   if (!(e.BACKUP_MAX_AGE_HOURS > 0)) throw new Error("BACKUP_MAX_AGE_HOURS must be positive.");
   if (e.PER_CALL_MARGIN_BPS > 100) throw new Error("PER_CALL_MARGIN_BPS must be <= 100 (1%).");
+  if (e.X402_PAY_TO && /^0x0{40}$/.test(e.X402_PAY_TO)) throw new Error("X402_PAY_TO must not be the zero address.");
+  if (production && e.X402_PAY_TO && e.RUNTIME_ROLE === "api" && !e.ROUTER_PRIVATE_KEY) throw new Error("X402_PAY_TO requires the router signing role (ROUTER_PRIVATE_KEY) to relay x402 settlements.");
   const tokenList = z.array(
     z.object({
       symbol: z.string().min(1).max(16),
@@ -349,6 +355,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       perCallMaxUsd: e.PER_CALL_MAX_USD,
       paymentWaitMs: e.PAYMENT_WAIT_MS,
     },
+    x402: { payTo: e.X402_PAY_TO?.toLowerCase() as `0x${string}` | undefined, network: e.X402_NETWORK },
     paywith: {
       thresholdUsd: e.PAYWITH_THRESHOLD_USD,
       maxAgeH: e.PAYWITH_MAX_AGE_H,

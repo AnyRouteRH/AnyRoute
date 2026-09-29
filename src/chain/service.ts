@@ -8,7 +8,9 @@ import {
   encodeFunctionData,
   hashTypedData,
   http,
+  parseSignature,
   recoverTypedDataAddress,
+  size,
   type Abi,
   type Hex,
   type PublicClient,
@@ -61,6 +63,13 @@ export type ChargeAuthorization = { keyHash: Hex; token: Hex; usdgAmount: bigint
 export type AllowanceAuthorization = { keyHash: Hex; token: Hex; maxRawTotal: bigint; maxRawPerCharge: bigint; validUntil: bigint; nonce: bigint; epoch: bigint; router: Hex };
 export type OnchainAllowance = { maxRawTotal: bigint; maxRawPerCharge: bigint; spentRaw: bigint; nonce: bigint; validUntil: bigint; epoch: bigint; router: Hex; nextNonce: bigint };
 const erc1271Abi = [{ type: "function", name: "isValidSignature", stateMutability: "view", inputs: [{ name: "hash", type: "bytes32" }, { name: "signature", type: "bytes" }], outputs: [{ type: "bytes4" }] }] as const;
+
+// EIP-3009 surface of USDG: both signature overloads exist on Robinhood Chain (v,r,s and bytes).
+const usdg3009Abi = [
+  { type: "function", name: "authorizationState", stateMutability: "view", inputs: [{ name: "authorizer", type: "address" }, { name: "nonce", type: "bytes32" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "transferWithAuthorization", stateMutability: "nonpayable", inputs: [{ name: "from", type: "address" }, { name: "to", type: "address" }, { name: "value", type: "uint256" }, { name: "validAfter", type: "uint256" }, { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" }, { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" }], outputs: [] },
+  { type: "function", name: "transferWithAuthorization", stateMutability: "nonpayable", inputs: [{ name: "from", type: "address" }, { name: "to", type: "address" }, { name: "value", type: "uint256" }, { name: "validAfter", type: "uint256" }, { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" }, { name: "signature", type: "bytes" }], outputs: [] },
+] as const;
 
 type Role = "router" | "settlement" | "anchorer" | "slasher" | "keeper" | "faucet";
 
@@ -281,6 +290,39 @@ export class ChainService {
     const callPay = this.require("callPay");
     const { hash } = await this.send("router", callPay, CallPayAbi as unknown as Abi, "payWithAuthorization", [a.nonce, a.amount, a.expiry, a.from, a.validAfter, a.validBefore, a.signature]);
     return hash;
+  }
+
+  /** Whether `authorizer` already used (or cancelled) this EIP-3009 nonce on USDG. */
+  async authorizationUsed(authorizer: Hex, nonce: Hex): Promise<boolean> {
+    return (await this.client.readContract({ address: this.cfg.chain.usdg, abi: usdg3009Abi, functionName: "authorizationState", args: [authorizer, nonce] })) as boolean;
+  }
+
+  private relayTail: Promise<unknown> = Promise.resolve();
+  /** x402 settlement: relay the payer's signed USDG transferWithAuthorization straight to `to` (no contract in
+   *  between; the router role only pays gas). Relays run one at a time per process so the router key's nonce
+   *  never races. Resolves once the transfer of exactly `value` is mined with CHAIN_CONFIRMATIONS on top. */
+  async transferWithAuthorization(a: { from: Hex; to: Hex; value: bigint; validAfter: bigint; validBefore: bigint; nonce: Hex; signature: Hex }): Promise<{ hash: Hex; blockNumber: bigint }> {
+    const head = [a.from, a.to, a.value, a.validAfter, a.validBefore, a.nonce] as const;
+    let args: unknown[] = [...head, a.signature];
+    if (size(a.signature) === 65) {
+      const { r, s, yParity } = parseSignature(a.signature);
+      args = [...head, 27 + (yParity ?? 0), r, s];
+    }
+    const run = this.relayTail.then(() => this.send("router", this.cfg.chain.usdg, usdg3009Abi as unknown as Abi, "transferWithAuthorization", args));
+    this.relayTail = run.catch(() => undefined);
+    const { hash, receipt } = await run;
+    const moved = receipt.logs.some((l) => {
+      if (l.address.toLowerCase() !== this.cfg.chain.usdg.toLowerCase()) return false;
+      try {
+        const d = decodeEventLog({ abi: [transferEvent], topics: l.topics as [Hex, ...Hex[]], data: l.data });
+        return d.args.from.toLowerCase() === a.from.toLowerCase() && d.args.to.toLowerCase() === a.to.toLowerCase() && d.args.value === a.value;
+      } catch {
+        return false;
+      }
+    });
+    if (!moved) fail(502, `Transaction ${hash} did not transfer the authorized USDG.`, "chain_reverted");
+    if (this.cfg.chain.confirmations > 1) await this.client.waitForTransactionReceipt({ hash, confirmations: this.cfg.chain.confirmations, timeout: 30_000 });
+    return { hash, blockNumber: receipt.blockNumber };
   }
 
   // ---- Pay with Stock Tokens ------------------------------------------------------------
