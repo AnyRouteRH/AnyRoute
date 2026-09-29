@@ -19,7 +19,8 @@ import { disclosureInput, writeDisclosure } from "../api/disclosure.ts";
 import { laneInput, writeModelLane } from "../api/lane.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { chainKeyHashOf } from "../chain/keys.ts";
-import { parseProviderModels } from "../services/registry.ts";
+import { parseProviderModels, slugFor, type ProviderModel } from "../services/registry.ts";
+import { clearPendingStaticModels, diffStaticModels, loadPendingStaticModels, savePendingStaticModels, staticModelsReviewHash } from "../providers/static-models.ts";
 import { submitBundle } from "../services/measurement-bundles.ts";
 
 // Admin / account API over tRPC v11 at /trpc. Operator procedures need the ADMIN_TOKEN
@@ -109,6 +110,57 @@ export const adminRouter = t.router({
         const [updated] = await tx.update(providers).set({ staticModels, updatedAt: new Date() }).where(eq(providers.id, input.id)).returning();
         return { id: input.id, models: staticModels?.length ?? 0, reviewHash: applicationReviewHash(updated!) };
       });
+    }),
+    /** Change the model list of a provider that is already approved (shadow, live, suspended), in two steps so it cannot
+     * change without a fresh review. `proposeStaticModels` validates and stores the candidate list beside the provider,
+     * serves nothing from it, and returns a `reviewHash` with a diff against the list in force. `approveStaticModels`
+     * applies the stored list only when given that hash, which also covers the provider's reviewed application: it is
+     * refused if the application or the list in force changed since, and a newer proposal replaces the older one. */
+    proposeStaticModels: operator.input(z.object({ id: z.string(), models: z.array(z.unknown()).min(1).max(500) })).mutation(async ({ ctx, input }) => {
+      const parsed = parseProviderModels({ data: input.models });
+      if (parsed.errors.length) throw new TRPCError({ code: "BAD_REQUEST", message: `Invalid models: ${parsed.errors.slice(0, 5).join("; ")}` });
+      const slugs = parsed.ok.map((m: ProviderModel) => slugFor(m));
+      const ids = parsed.ok.map((m: ProviderModel) => m.id);
+      if (new Set(slugs).size !== slugs.length || new Set(ids).size !== ids.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid models: an id or slug is listed twice." });
+      return ctx.app.db.transaction(async (tx) => {
+        const [provider] = await tx.select().from(providers).where(eq(providers.id, input.id)).for("update");
+        if (!provider) throw new TRPCError({ code: "NOT_FOUND" });
+        if (provider.status === "applied") throw new TRPCError({ code: "CONFLICT", message: "The application is still pending: change its models with providers.setStaticModels." });
+        const current = (provider.staticModels as unknown[] | null) ?? null;
+        const diff = diffStaticModels(current, parsed.ok);
+        if (!diff.added.length && !diff.removed.length && !diff.changed.length && current) throw new TRPCError({ code: "BAD_REQUEST", message: "The proposed list is the one already in force." });
+        await savePendingStaticModels(tx, input.id, parsed.ok);
+        return { id: input.id, status: provider.status, models: parsed.ok.length, reviewHash: staticModelsReviewHash(provider, parsed.ok), diff };
+      });
+    }),
+    /** The pending proposal for a provider as the operator reviews it: the list, a diff against the list in force, and the
+     * `reviewHash` to pass to `approveStaticModels` (recomputed now, so it is valid only for what is on screen). */
+    reviewStaticModels: operator.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
+      const [provider] = await ctx.app.db.select().from(providers).where(eq(providers.id, input.id));
+      if (!provider) throw new TRPCError({ code: "NOT_FOUND" });
+      const pending = await loadPendingStaticModels(ctx.app.db, input.id);
+      if (!pending) return { id: input.id, pending: false as const };
+      return ser({ id: input.id, pending: true as const, proposedAt: pending.proposedAt, reviewHash: provider.status === "applied" ? null : staticModelsReviewHash(provider, pending.models), diff: diffStaticModels((provider.staticModels as unknown[] | null) ?? null, pending.models), models: pending.models });
+    }),
+    approveStaticModels: operator.input(z.object({ id: z.string(), review_hash: z.string().regex(/^[0-9a-f]{64}$/) })).mutation(async ({ ctx, input }) => {
+      const result = await ctx.app.db.transaction(async (tx) => {
+        const [provider] = await tx.select().from(providers).where(eq(providers.id, input.id)).for("update");
+        if (!provider) throw new TRPCError({ code: "NOT_FOUND" });
+        if (provider.status === "applied") throw new TRPCError({ code: "CONFLICT", message: "The application is still pending: change its models with providers.setStaticModels." });
+        const pending = await loadPendingStaticModels(tx, input.id);
+        if (!pending) throw new TRPCError({ code: "NOT_FOUND", message: "No proposed model list for this provider." });
+        if (!safeEqual(staticModelsReviewHash(provider, pending.models), input.review_hash)) throw new TRPCError({ code: "CONFLICT", message: "The proposal or the provider changed after it was reviewed. Review the current proposal and approve its hash." });
+        // The stored list was validated when proposed; it is validated again as it is applied.
+        const parsed = parseProviderModels({ data: pending.models });
+        if (parsed.errors.length || !parsed.ok.length) throw new TRPCError({ code: "BAD_REQUEST", message: "The proposed list no longer validates." });
+        const previous = ((provider.staticModels as unknown[] | null) ?? []).length;
+        await tx.update(providers).set({ staticModels: parsed.ok, updatedAt: new Date() }).where(eq(providers.id, input.id));
+        await clearPendingStaticModels(tx, input.id);
+        return { id: input.id, status: provider.status, models: parsed.ok.length, previous_models: previous };
+      });
+      // Re-read the provider's models now, so the change is in force without waiting for the next registry run.
+      await ctx.app.jobs.run("provider-registry").catch(() => undefined);
+      return result;
     }),
     setStatus: operator.input(z.object({ id: z.string(), status: z.enum(["applied", "shadow", "live", "suspended", "delisted"]) })).mutation(async ({ ctx, input }) => {
       // A pending application becomes active only through `approve`, which binds it to the reviewed revision.
