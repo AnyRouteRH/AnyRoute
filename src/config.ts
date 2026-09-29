@@ -328,6 +328,7 @@ const schema = z.object({
   OHTTP_PAD_BYTES: int(256), // responses are zero-padded to a multiple of this many bytes (0 = no padding)
   OHTTP_GATEWAY_OPERATOR: z.string().default("AnyRoute"), // the name this router's own operator goes by in RELAY_OPERATORS
   OHTTP_MIN_RELAY_OPERATORS: int(2), // production refuses to start with fewer relay operators than this that are not the gateway operator
+  OHTTP_CHUNKED_ENABLED: bool.default(false), // also accept chunked Oblivious HTTP (message/ohttp-chunked-req), so streamed responses arrive as they are produced; only with OHTTP_ENABLED
   RELAY_OPERATORS: opt, // JSON [{operator,url,key_id,secret_sha256}]: the relays clients may use; published at GET /api/v1/relays
 
   // ---- Tor. Optional. ONION_ADDRESS is the v3 onion hostname of deploy/onion, published at GET /api/v1/status. Requests
@@ -935,6 +936,7 @@ function ohttpSettings(e: Env, production: boolean) {
     padBytes: e.OHTTP_PAD_BYTES,
     gatewayOperator: e.OHTTP_GATEWAY_OPERATOR.trim() || "AnyRoute",
     minRelayOperators: e.OHTTP_MIN_RELAY_OPERATORS,
+    chunked: false as boolean,
     relays: [] as RelayOperator[],
   };
   if (!e.OHTTP_ENABLED) return off;
@@ -973,7 +975,7 @@ function ohttpSettings(e: Env, production: boolean) {
   const others = new Set(relays.filter((r) => r.operator.toLowerCase() !== gatewayOperator.toLowerCase()).map((r) => r.operator.toLowerCase()));
   if (production && others.size < e.OHTTP_MIN_RELAY_OPERATORS)
     throw new Error(`OHTTP_ENABLED in production needs relays from at least ${e.OHTTP_MIN_RELAY_OPERATORS} operators other than "${gatewayOperator}" in RELAY_OPERATORS (found ${others.size}).`);
-  return { ...off, enabled: true, relays };
+  return { ...off, enabled: true, chunked: e.OHTTP_CHUNKED_ENABLED, relays };
 }
 
 // ---- $ANYR holder perks ------------------------------------------------------------------------

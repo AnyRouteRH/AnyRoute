@@ -8,13 +8,15 @@ import { BhttpError, DEFAULT_LIMITS, decodeRequest, encodeResponse, utf8, type H
 import { GENESIS_HASH, OhttpKeys, keyLog, type GatewayKey } from "./keys.ts";
 import { markFromGateway, type RelayIdentity } from "./origin.ts";
 import { MEDIA_KEYS, MEDIA_REQ, MEDIA_RES, OHTTPErrorCode, REQUEST_PREFIX, isOHTTPError, openRequest, serializeKeyConfigList, type OpenedRequest } from "./ohttp.ts";
+import { INCREMENTAL_HEADERS, MEDIA_CHUNKED_REQ, MEDIA_CHUNKED_RES, openChunkedRequest, streamChunkedResponse, type OpenedChunkedRequest } from "./chunked.ts";
 import { ReplayGuard } from "./replay.ts";
 
 // The Oblivious HTTP gateway (RFC 9458) and the documents around it.
 //
 //   GET  /api/v1/ohttp/keys       application/ohttp-keys: the key configuration clients encapsulate to
 //   GET  /.well-known/ohttp-gateway   the same, at the well-known location (RFC 9540)
-//   POST /api/v1/ohttp/gateway    message/ohttp-req in, message/ohttp-res out (also at the well-known path)
+//   POST /api/v1/ohttp/gateway    message/ohttp-req in, message/ohttp-res out (also at the well-known path); with
+//                                 OHTTP_CHUNKED_ENABLED also message/ohttp-chunked-req in, message/ohttp-chunked-res out
 //   GET  /api/v1/ohttp/key-list   the key history as a document signed with the receipt key, with a hash chain
 //   GET  /api/v1/relays           the relays clients can use, by operator
 //
@@ -91,7 +93,7 @@ export function authenticateRelay(ctx: Ctx, header: string | undefined): RelayId
 }
 
 /** What the inner request is dispatched as, or the encapsulated error to answer with. */
-function planDispatch(req: ReturnType<typeof decodeRequest>): { url: string; init: RequestInit } | ReturnType<typeof innerError> {
+function planDispatch(req: ReturnType<typeof decodeRequest>, chunked = false): { url: string; init: RequestInit } | ReturnType<typeof innerError> {
   if (req.headers.some(([n, v]) => n === "expect" && /100-continue/i.test(v))) return innerError(400, "invalid_request", "Expect: 100-continue cannot be used with Oblivious HTTP.");
   if (!req.path.startsWith("/") || req.path.startsWith("//") || req.path.includes("\\")) return innerError(400, "invalid_request", "The request path is not valid.");
   let url: URL;
@@ -104,7 +106,7 @@ function planDispatch(req: ReturnType<typeof decodeRequest>): { url: string; ini
   if (url.host !== "gateway.internal" || !route) return innerError(404, "route_not_allowed", `The Oblivious HTTP gateway does not serve ${req.method} ${url.pathname}. See /api/v1/relays for what it does.`);
   const headers = new Headers();
   for (const [name, value] of req.headers) if (FORWARD_REQUEST_HEADERS.has(name)) headers.append(name, value);
-  if (route.stream && req.body.length) {
+  if (route.stream && req.body.length && !chunked) {
     // A response is encapsulated as a whole, so a stream could not be delivered as it is produced. Refuse before the
     // request reaches the router, so nothing is spent on it.
     try {
@@ -186,7 +188,7 @@ export function ohttpRoutes(app: Hono, ctx: Ctx) {
     return c.json({
       data: {
         lane: "unlinkable",
-        gateway: { operator: cfg.gatewayOperator, url: `${ctx.cfg.publicUrl}/api/v1/ohttp/gateway`, keys_url: `${ctx.cfg.publicUrl}/api/v1/ohttp/keys`, key_list_url: `${ctx.cfg.publicUrl}/api/v1/ohttp/key-list` },
+        gateway: { operator: cfg.gatewayOperator, url: `${ctx.cfg.publicUrl}/api/v1/ohttp/gateway`, keys_url: `${ctx.cfg.publicUrl}/api/v1/ohttp/keys`, key_list_url: `${ctx.cfg.publicUrl}/api/v1/ohttp/key-list`, ...(cfg.chunked ? { chunked: { request: MEDIA_CHUNKED_REQ, response: MEDIA_CHUNKED_RES } } : {}) },
         relays,
         independent_operators: new Set(relays.filter((r) => r.independent).map((r) => r.operator.toLowerCase())).size,
         note: "Choose a relay whose operator is not the gateway operator. The unlinkable lane is only served through a relay marked independent, and only for requests paid with a blind token.",
@@ -197,7 +199,10 @@ export function ohttpRoutes(app: Hono, ctx: Ctx) {
   // ---- the gateway ---------------------------------------------------------------------------------------------
   const gateway = async (c: Context): Promise<Response> => {
     const raw = c.req.raw;
-    if ((raw.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase() !== MEDIA_REQ) return plain(415, "unsupported_media_type", `Expected content-type ${MEDIA_REQ}.`);
+    const type = (raw.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    // Chunked Oblivious HTTP (chunked.ts) is accepted only when switched on; otherwise it is refused like any other type.
+    const chunked = cfg.chunked && type === MEDIA_CHUNKED_REQ;
+    if (type !== MEDIA_REQ && !chunked) return plain(415, "unsupported_media_type", `Expected content-type ${MEDIA_REQ}.`);
     let relay: RelayIdentity | null;
     try {
       relay = authenticateRelay(ctx, raw.headers.get("authorization") ?? undefined);
@@ -216,14 +221,14 @@ export function ohttpRoutes(app: Hono, ctx: Ctx) {
 
     // header (7) + encapsulated key (32) + the AEAD tag (16) is the least an encapsulated request can be.
     if (body.length < REQUEST_PREFIX + 16) return plain(400, "invalid_request", "The encapsulated request is too short.");
-    let opened: OpenedRequest | undefined;
+    let opened: OpenedRequest | OpenedChunkedRequest | undefined;
     let key: GatewayKey | undefined;
     try {
       const candidates = await keys.accepting(body[0]);
       if (!candidates.length) return keyProblem("key identifier unknown");
       for (const k of candidates) {
         try {
-          opened = await openRequest(await keys.privateKey(k), body, maxMessage);
+          opened = chunked ? await openChunkedRequest(await keys.privateKey(k), body, maxMessage) : await openRequest(await keys.privateKey(k), body, maxMessage);
           key = k;
           break;
         } catch (e) {
@@ -241,10 +246,12 @@ export function ohttpRoutes(app: Hono, ctx: Ctx) {
       throw e;
     }
 
-    // From here the request is unwrapped: every outcome is an encapsulated response.
+    // From here the request is unwrapped: every outcome is an encapsulated response (a chunked one for a chunked request).
+    const responder = chunked ? await (opened as OpenedChunkedRequest).responder() : null;
     const respond = async (inner: { status: number; headers: HeaderList; body: Uint8Array }) => {
       const message = encodeResponse(inner, { padTo: cfg.padBytes });
-      return new Response(await opened!.respond(message), { status: 200, headers: { "content-type": MEDIA_RES, ...relayNoStore } });
+      if (responder) return new Response(await responder.whole(message), { status: 200, headers: { "content-type": MEDIA_CHUNKED_RES, ...relayNoStore, ...INCREMENTAL_HEADERS } });
+      return new Response(await (opened as OpenedRequest).respond(message), { status: 200, headers: { "content-type": MEDIA_RES, ...relayNoStore } });
     };
 
     if (replay.seen(createHash("sha256").update(body.subarray(0, REQUEST_PREFIX)).digest("hex"), Math.max(0, key!.acceptUntil.getTime() - keys.now()))) return respond(innerError(409, "replayed_request", "This encapsulated request was already processed."));
@@ -256,7 +263,7 @@ export function ohttpRoutes(app: Hono, ctx: Ctx) {
       if (e instanceof BhttpError) return respond(innerError(400, "invalid_request", `Invalid binary HTTP request: ${e.message}.`));
       throw e;
     }
-    const plan = planDispatch(decoded);
+    const plan = planDispatch(decoded, chunked);
     if ("status" in plan) return respond(plan);
 
     let res: Response;
@@ -268,13 +275,24 @@ export function ohttpRoutes(app: Hono, ctx: Ctx) {
       log.error("ohttp dispatch failed", { error: (e as Error)?.message });
       return respond(innerError(502, "internal", "The router could not handle the request."));
     }
-    const out = await readResponse(res, cfg.maxResponseBytes);
-    if (!out) return respond(innerError(502, "response_too_large", "The response is larger than the gateway will encapsulate."));
     const headers: HeaderList = [];
     res.headers.forEach((value, name) => {
       if (!HOP_BY_HOP.has(name) && !name.startsWith("proxy-")) headers.push([name, value]);
     });
-    return respond({ status: res.status >= 200 && res.status <= 599 ? res.status : 502, headers, body: out });
+    const status = res.status >= 200 && res.status <= 599 ? res.status : 502;
+    if (responder) {
+      // Sent as it is produced: a streamed completion reaches the client chunk by chunk. A body that says up front it
+      // is too large is refused as a whole one is; one that grows too large on the way is cut off (no final chunk).
+      if (Number(res.headers.get("content-length") ?? 0) > cfg.maxResponseBytes) {
+        void res.body?.cancel().catch(() => undefined);
+        return respond(innerError(502, "response_too_large", "The response is larger than the gateway will encapsulate."));
+      }
+      const stream = streamChunkedResponse(responder, { status, headers }, res.body, { padTo: cfg.padBytes, maxBytes: cfg.maxResponseBytes });
+      return new Response(stream, { status: 200, headers: { "content-type": MEDIA_CHUNKED_RES, ...relayNoStore, ...INCREMENTAL_HEADERS } });
+    }
+    const out = await readResponse(res, cfg.maxResponseBytes);
+    if (!out) return respond(innerError(502, "response_too_large", "The response is larger than the gateway will encapsulate."));
+    return respond({ status, headers, body: out });
   };
   for (const p of GATEWAY_PATHS) app.post(p, gateway);
 }
