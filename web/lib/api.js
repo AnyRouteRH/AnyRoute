@@ -99,14 +99,18 @@ export async function streamChat({ key, body, headers = {}, signal, onDelta, onE
     throw new ApiError(0, "The Anyroute API could not be reached. Check your connection and try again.", "unreachable");
   }
   if (!res.ok) {
-    let e = null;
+    let doc = null;
     try {
-      e = (await res.json())?.error;
+      doc = await res.json();
     } catch {
       /* not JSON */
     }
+    const e = doc?.error;
     const err = new ApiError(res.status, e?.message || `Request failed (${res.status}).`, e?.type || "error", e?.metadata);
     err.retryAfter = res.headers.get("retry-after");
+    // A withheld answer is still billed and signed: keep the receipt and usage the refusal carries, so callers can show them.
+    if (doc?.receipt && typeof doc.receipt === "object") err.receipt = doc.receipt;
+    if (doc?.usage && typeof doc.usage === "object") err.usage = doc.usage;
     throw err;
   }
   const reader = res.body.getReader();
