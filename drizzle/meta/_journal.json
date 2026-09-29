@@ -113,6 +113,13 @@
       "when": 1790709090900,
       "tag": "0015_v3_receipts_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790723090336,
+      "tag": "0016_v3_host_anchor",
+      "breakpoints": true
     }
   ]
 }

@@ -882,3 +882,43 @@ export const ohttpKeys = pgTable(
   },
   (t) => [index("ohttp_keys_key_id_idx").on(t.keyId)],
 );
+
+// ---- Per-host anchoring of enclave receipts (HOST_ANCHOR_ENABLED) ----------------------------------------
+// services/host-anchor.ts collects each attested host's sidecar receipt leaves from its leaf feed, keeps only those
+// whose signature verifies under the receipt key the host's router-verified attestation binds, and roots them: one
+// root per host, attestation reference and interval. A leaf row holds the leaf hash and the receipt id and time,
+// never the receipt's hashes or usage.
+export const hostAnchors = pgTable(
+  "host_anchors",
+  {
+    id: serial("id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    attestationRef: text("attestation_ref").notNull(), // 64 hex: sha256 of the boot quote the router verified
+    receiptKeyId: text("receipt_key_id").notNull(),
+    receiptPublicKey: text("receipt_public_key").notNull(), // raw Ed25519 key (hex) the quote's bindings commit to
+    root: text("root").notNull(),
+    fromTs: ts("from_ts").notNull(), // collected in [from_ts, to_ts)
+    toTs: ts("to_ts").notNull(),
+    count: integer("count").notNull(),
+    status: text("status").notNull().default("pending"), // pending | confirmed | local
+    txHash: text("tx_hash"),
+    blockNumber: bigint("block_number", { mode: "number" }),
+    chainIndex: integer("chain_index"), // index in ReceiptAnchor's attested anchors, once posted
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("host_anchors_provider_idx").on(t.providerId, t.toTs), index("host_anchors_status_idx").on(t.status)],
+);
+
+export const hostAnchorLeaves = pgTable(
+  "host_anchor_leaves",
+  {
+    providerId: text("provider_id").notNull(),
+    leaf: text("leaf").notNull(),
+    anchorId: integer("anchor_id").notNull(),
+    leafIndex: integer("leaf_index").notNull(),
+    receiptId: text("receipt_id").notNull(),
+    receiptTs: ts("receipt_ts").notNull(), // the time the receipt itself states
+    collectedAt: ts("collected_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.providerId, t.leaf] }), index("host_anchor_leaves_leaf_idx").on(t.leaf), uniqueIndex("host_anchor_leaves_position_idx").on(t.anchorId, t.leafIndex)],
+);
