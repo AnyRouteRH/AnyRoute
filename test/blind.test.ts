@@ -41,6 +41,8 @@ describe("feature flag", () => {
       expect(h.ctx.blind).toBeUndefined();
       expect((await h.request("/api/v1/blind/keys")).status).toBe(404);
       expect((await h.request("/api/v1/blind/purchase", { method: "POST", json: {} })).status).toBe(404);
+      expect(h.ctx.jobs.status().map((j) => j.name)).not.toContain("blind-key-rotation");
+      expect(await h.ctx.db.select().from(blindKeys)).toHaveLength(0); // nothing is generated while the feature is off
       // Without the flag the header is just an unrecognised credential: the same 402 an unpaid call gets.
       const r = await h.request("/api/v1/chat/completions", { method: "POST", headers: { authorization: "PrivateToken token=AAAA" }, json: chat });
       expect(r.status).toBe(402);
@@ -105,6 +107,16 @@ describe("blind tokens: keys, purchase, redemption", () => {
     expect(body.commitments.find((c: { epoch: number }) => c.epoch === epoch).commitment).toBe(epochCommitment(epoch, mine.map((k) => ({ denomination: k.denomination, keyId: k.token_key_id }))).commitment);
     // Nothing secret is published.
     expect(JSON.stringify(body)).not.toMatch(/private/i);
+  });
+
+  test("the weekly rotation runs as a worker job", async () => {
+    expect(h.ctx.jobs.status().map((j) => j.name)).toContain("blind-key-rotation");
+    const result = (await h.ctx.jobs.run("blind-key-rotation")) as { epoch: number; created: number; wiped: number };
+    expect(result.epoch).toBe(h.ctx.blind!.epochAt());
+    expect(await h.ctx.jobs.run("blind-key-rotation")).toMatchObject({ created: 0 }); // nothing left to create
+    // A production worker may run it: it needs no signing key, only the database and APP_SECRET.
+    const production = { ANYROUTE_ENV: "production", RUNTIME_ROLE: "worker", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/test", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: "0x" + "1".repeat(40), CALLPAY_ADDRESS: "0x" + "1".repeat(40), PROVIDER_BOND_ADDRESS: "0x" + "1".repeat(40), RECEIPT_ANCHOR_ADDRESS: "0x" + "1".repeat(40), ANYROUTE_FEATURE_BLIND: "true" };
+    expect(loadConfig({ ...production, WORKER_JOBS: "blind-key-rotation" }).workerJobs).toEqual(["blind-key-rotation"]);
   });
 
   test("issuer private keys are encrypted at rest and the previous state is stable across restarts of the issuer object", async () => {
@@ -209,6 +221,7 @@ describe("blind tokens: keys, purchase, redemption", () => {
     expect(first.status).toBe(200);
     const again = await redeem(h, tokens[0]);
     expect(again.status).toBe(401);
+    expect(again.headers.get("www-authenticate")).toStartWith("PrivateToken challenge=");
     expect((await again.json()).error.type).toBe("token_spent");
     expect((await redeem(h, tokens[0], { model: LLAMA, input: "x" }, "/api/v1/embeddings")).status).toBe(401); // any endpoint
 
@@ -288,6 +301,8 @@ describe("blind tokens: keys, purchase, redemption", () => {
     const type = async (token: string) => {
       const r = await redeem(h, token);
       expect(r.status).toBe(401);
+      // RFC 9577: a refused credential comes with the challenge to answer.
+      expect(r.headers.get("www-authenticate")).toBe(`PrivateToken challenge="${(await (await h.request("/api/v1/blind/keys")).json()).data.challenge}"`);
       return (await r.json()).error.type as string;
     };
     expect(await type(tampered((b) => (b[5] ^= 1)))).toBe("invalid_token"); // nonce changed: signature no longer matches

@@ -43,6 +43,11 @@ export class BlindIssuer {
     this.challengeDigest = challengeDigest(this.challenge);
   }
 
+  /** RFC 9577 challenge a 401 carries so a client can find out what this router wants (keys: GET /api/v1/blind/keys). */
+  get challengeHeader(): Record<string, string> {
+    return { "www-authenticate": `PrivateToken challenge="${b64url(this.challenge)}"` };
+  }
+
   // ---- epochs and key lifecycle ------------------------------------------------------------------
 
   epochAt(ms = this.now()) {
@@ -205,7 +210,7 @@ export class BlindIssuer {
    * that is still accepted, and a valid RSA-PSS signature. Every refusal is a 401 with a stable `type`.
    */
   async verify(tokenBytes: Uint8Array): Promise<VerifiedToken> {
-    const invalid = (message = "Invalid token.", type = "invalid_token", metadata?: Record<string, unknown>) => new ApiError(401, message, type, metadata);
+    const invalid = (message = "Invalid token.", type = "invalid_token", metadata?: Record<string, unknown>) => new ApiError(401, message, type, metadata, this.challengeHeader);
     const token = decodeToken(tokenBytes);
     if (!token) throw invalid("Malformed token: expected a 354-byte type 0x0002 Privacy Pass token.");
     if (!bytesEqual(token.challengeDigest, this.challengeDigest)) throw invalid("Token was not issued for this router's challenge.");

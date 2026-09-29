@@ -33,7 +33,7 @@ export async function presentBlindToken(ctx: Ctx, authorization: string | undefi
   if (!ctx.blind) return null;
   const bytes = parsePrivateToken(authorization);
   if (bytes === undefined) return null;
-  if (bytes === null) throw new ApiError(401, "Malformed PrivateToken credential: expected `PrivateToken token=<base64url>`.", "invalid_token");
+  if (bytes === null) throw new ApiError(401, "Malformed PrivateToken credential: expected `PrivateToken token=<base64url>`.", "invalid_token", undefined, ctx.blind.challengeHeader);
   const verified = await ctx.blind.verify(bytes);
   return { ...verified, value: keyValue(verified.key) };
 }
@@ -52,7 +52,7 @@ export function requireValue(ctx: Ctx, pass: BlindPass, hold: Pico) {
 /** Reserve the token. Exactly one concurrent caller wins; everyone else gets `token_spent`. */
 export async function claimToken(ctx: Ctx, pass: BlindPass) {
   const rows = await ctx.db.insert(blindNullifiers).values({ nullifier: pass.nullifier, keyId: pass.keyId }).onConflictDoNothing().returning({ n: blindNullifiers.nullifier });
-  if (!rows.length) throw new ApiError(401, "This token was already spent.", "token_spent");
+  if (!rows.length) throw new ApiError(401, "This token was already spent.", "token_spent", undefined, ctx.blind?.challengeHeader);
 }
 
 export async function unclaimToken(ctx: Ctx, pass: BlindPass) {
