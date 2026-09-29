@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { bytesToHex, concatBytes, evaluateAttestation, HPKE_MEDIA_TYPE, sealedPost, type HpkeHook, type ProviderVerification } from "../src/index.js";
+import { bytesToHex, concatBytes, evaluateAttestation, HPKE_MEDIA_TYPE, sealedPost, verifyProvider, type HpkeHook, type ProviderVerification } from "../src/index.js";
 import { json, real, stubFetch } from "./helpers.js";
 
 // A stand-in for a real HPKE implementation: it only needs to have the hook's shape. It "encrypts" with AES-GCM under
@@ -75,14 +75,80 @@ describe("HPKE hook", () => {
   });
 });
 
-// The sidecar's HPKE support is being written separately. This only runs once its source exists in the repository.
-const sidecarSrc = new URL("../../../sidecar/src", import.meta.url).pathname;
-const hpkeSources = existsSync(sidecarSrc)
-  ? (readdirSync(sidecarSrc, { recursive: true }) as string[]).filter((f) => f.endsWith(".ts")).map((f) => join(sidecarSrc, f)).filter((f) => readFileSync(f, "utf8").includes("anyroute-hpke"))
-  : [];
+// The sidecar's own encrypted transport (sidecar/src/hpke.ts, with a reference client). This runs against it when the
+// sidecar's dependencies are installed (`cd sidecar && bun install`), and is skipped otherwise.
+const sidecar = new URL("../../../sidecar/", import.meta.url).pathname;
+const sidecarReady = (() => {
+  try {
+    if (!existsSync(join(sidecar, "src/hpke.ts"))) return false;
+    Bun.resolveSync("@hpke/core", join(sidecar, "src"));
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
-describe.skipIf(hpkeSources.length === 0)("integration with the sidecar's HPKE code", () => {
-  test("the sidecar and the client name the same media type", () => {
-    for (const f of hpkeSources) expect(readFileSync(f, "utf8")).toContain(HPKE_MEDIA_TYPE);
+describe.skipIf(!sidecarReady)("interop with the sidecar's encrypted transport", () => {
+  const load = async () => ({
+    helpers: (await import(join(sidecar, "test/helpers.ts"))),
+    hpke: (await import(join(sidecar, "src/hpke.ts"))),
+    client: (await import(join(sidecar, "src/hpke-client.ts"))),
+  });
+
+  test("the media type is the one the sidecar serves", async () => {
+    const { hpke } = await load();
+    expect(HPKE_MEDIA_TYPE).toBe(hpke.HPKE_CONTENT_TYPE);
+  });
+
+  test("a request sealed to the attested HPKE key reaches the model server in the clear, and the reply and receipt verify", async () => {
+    const { helpers, client } = await load();
+    try {
+      const h = await helpers.harness({ provider: helpers.dstackProvider({ composeHash: `sha256:${"ce".repeat(32)}` }), raw: { attestation: { provider: "dstack" }, image_digest: `sha256:${"1e".repeat(32)}` }, env: {}, hpke: true });
+      const doc = (await (await h.call("/attest", { key: null })).json()) as any;
+      expect(doc.bindings.hpke_pubkey).toBe(h.rt.hpke!.publicKeyHex);
+
+      // Verify the provider the way a caller would; the HPKE key is only usable if the quote commits to it.
+      const router = { provider: "sidecar-test", status: "attested", tee: "tdx", attested_at: new Date().toISOString(), attestation_hash: null, verifiers: ["dcap"], measurement: null, checks: { quote_verified: true, digests_bound_to_quote: true, transparency_log_entry: false, transparency_log_checkpoint_signature: false, registered_on_chain: false }, not_checked: [] };
+      const v = await verifyProvider({
+        routerUrl: "https://router.test",
+        providerId: "sidecar-test",
+        attestUrl: "https://sidecar.test/attest",
+        fetch: (async () => json({ data: router })) as never,
+        attestFetcher: async (url) => ({ json: await (await h.call(new URL(url).pathname + new URL(url).search, { key: null })).json() }),
+        certificate: h.rt.tls!.certPem,
+      });
+      expect(v.failures).toEqual([]);
+      expect(v.ok).toBe(true);
+      expect(v.bound?.hpkePubkey).toBe(h.rt.hpke!.publicKeyHex);
+
+      // The hook is the sidecar's reference client; the SDK supplies the policy around it.
+      const hook: HpkeHook = {
+        async seal({ plaintext, recipientPublicKey, url }) {
+          const sealed = await client.sealRequest(bytesToHex(recipientPublicKey), new URL(url).pathname, plaintext);
+          return { body: sealed.body, open: async ({ body }) => client.openResponse(sealed.opener, body) };
+        },
+      };
+      const request = { model: "ok", messages: [{ role: "user", content: "a private question" }] };
+      const seenBefore = h.upstream.seen.filter((x: { method: string }) => x.method === "POST").length;
+      const out = await sealedPost({
+        hook,
+        url: "https://sidecar.test/v1/chat/completions",
+        verification: v,
+        json: request,
+        headers: { authorization: `Bearer ${helpers.API_KEY}` },
+        fetch: (async (url: string, init: RequestInit) => h.call(new URL(url).pathname, { ...init, key: null })) as never,
+      });
+      expect(out.status).toBe(200);
+      expect((out.json as any).choices[0].message.content).toBe("Hello");
+      const seen = h.upstream.seen.filter((x: { method: string }) => x.method === "POST");
+      expect(seen).toHaveLength(seenBefore + 1);
+      expect(seen.at(-1)!.body).toBe(JSON.stringify(request));
+
+      // If the quote commits to no HPKE key, nothing is sealed or sent.
+      const unbound = { ...v, bound: { ...v.bound!, hpkePubkey: null } };
+      await expect(sealedPost({ hook, url: "https://sidecar.test/v1/chat/completions", verification: unbound, json: request, fetch: (async () => new Response("no")) as never })).rejects.toThrow(/does not commit to an HPKE public key/);
+    } finally {
+      (await load()).helpers.cleanup();
+    }
   });
 });

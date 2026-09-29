@@ -14,9 +14,25 @@ import { nullifierOf } from "../src/blind/privacy-token.ts";
 import { decodeBase64 } from "../src/blind/privacy-token.ts";
 import { runAttestor } from "../src/services/attestor.ts";
 import { MODELS, startRouter, type Harness } from "./helpers.ts";
-import { API_KEY, cleanup, dstackProvider, harness as sidecarHarness } from "../sidecar/test/helpers.ts";
-import { startServer } from "../sidecar/src/server.ts";
-import { decodeReceiptHeader } from "../sidecar/src/receipts.ts";
+import { existsSync } from "node:fs";
+
+// The sidecar's code needs its own dependencies (`cd sidecar && bun install`). Without them its section is skipped, so a
+// checkout that only installed the router's packages still runs everything else.
+const sidecarDir = new URL("../sidecar/", import.meta.url).pathname;
+const sidecarReady = (() => {
+  try {
+    if (!existsSync(`${sidecarDir}src/boot.ts`)) return false;
+    Bun.resolveSync("@hpke/core", `${sidecarDir}src`);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const sidecar = async () => ({
+  ...(await import("../sidecar/test/helpers.ts")),
+  ...(await import("../sidecar/src/server.ts")),
+  ...(await import("../sidecar/src/receipts.ts")),
+});
 
 // The SDK in packages/client is standalone (it cannot import the router). These tests hold it to the router's and the
 // sidecar's real behaviour: the same canonical bytes, the same leaves and proofs, receipts from a running router, blind
@@ -200,10 +216,11 @@ describe("against a running router", () => {
   });
 });
 
-describe("against the sidecar over real TLS", () => {
-  afterAll(cleanup);
+describe.skipIf(!sidecarReady)("against the sidecar over real TLS", () => {
+  afterAll(async () => (await sidecar()).cleanup());
 
   test("evidence the sidecar's own code produces passes the client's checks, receipts bind to it, and tampering does not", async () => {
+    const { harness: sidecarHarness, dstackProvider, startServer, decodeReceiptHeader, API_KEY } = await sidecar();
     const h = await sidecarHarness({ provider: dstackProvider({ composeHash: `sha256:${"ce".repeat(32)}` }), raw: { attestation: { provider: "dstack" }, image_digest: `sha256:${"1e".repeat(32)}` }, env: {} });
     const server = startServer({ ...h.rt, cfg: { ...h.rt.cfg, server: { ...h.rt.cfg.server, host: "127.0.0.1", port: 0 } } });
     try {
@@ -249,6 +266,7 @@ describe("against the sidecar over real TLS", () => {
   });
 
   test("simulated (development) sidecar evidence is refused", async () => {
+    const { harness: sidecarHarness } = await sidecar();
     const h = await sidecarHarness();
     const boot = (await (await h.call("/attest", { key: null })).json()) as any;
     expect(boot.dev).toBe(true);
