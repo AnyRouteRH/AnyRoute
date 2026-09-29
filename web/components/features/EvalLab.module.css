@@ -1,0 +1,133 @@
+/* Eval Lab: layout on top of the dashboard design system (app/globals.css, app/pages.css). */
+
+.privacy{margin:0 0 24px}
+
+/* ---------- step panels ---------- */
+.panel{position:relative;min-width:0;margin:0 0 20px;padding:24px;border:1px solid var(--line-strong);background:var(--white)}
+.panelHead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px;margin:0 0 20px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.panelHead :global(.eyebrow){flex-basis:100%}
+.panelHead :global(.eyebrow)::before{content:"";width:7px;height:7px;background:var(--signal);flex:none}
+.panelHead h3{flex:1 1 auto;font-size:20px;letter-spacing:-.03em}
+.count{font:500 11px/1.4 var(--mono);letter-spacing:.04em;color:var(--muted);font-variant-numeric:tabular-nums}
+.listFoot{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-top:16px}
+
+/* ---------- 01 eval set ---------- */
+.setBar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 16px}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;margin:0 0 20px}
+.divider{width:1px;height:18px;background:var(--line-strong);opacity:.35}
+.reportList{margin:8px 0 0;padding-left:18px}
+.caseList{display:grid;gap:12px;margin:0;padding:0;list-style:none}
+.case{position:relative;min-width:0;padding:16px 16px 4px;border:1px solid var(--line);border-left:3px solid var(--line-strong);background:var(--paper)}
+.caseInvalid{border-left-color:var(--danger)}
+.caseHead{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:0 0 12px}
+.caseNo{font:600 11px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.caseId{max-width:24ch;overflow:hidden;font:400 11px/1.4 var(--mono);color:var(--muted);text-overflow:ellipsis;white-space:nowrap}
+.caseActions{display:flex;gap:18px;margin-left:auto}
+.caseGrid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:0 16px}
+.caseGrid :global(.field){margin-bottom:14px}
+.caseGrid :global(.field) textarea{min-height:52px}
+.caseGrid>:global(.field) textarea{min-height:128px}
+.caseProblem{margin:-2px 0 14px;font-size:12px;color:#96161b}
+.caseProblem::before{content:"";display:inline-block;width:6px;height:6px;margin-right:8px;background:var(--danger);vertical-align:.1em}
+.problemCount{font:500 11px/1.4 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:#96161b}
+
+/* ---------- 02 candidates ---------- */
+.candidates{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:12px;margin:0;padding:0;list-style:none}
+.candidate{position:relative;display:flex;flex-direction:column;align-items:flex-start;min-width:0;padding:16px;border:1px solid var(--line);background:var(--paper)}
+.candidate :global(.field){width:100%;margin-bottom:8px}
+.candidate>.letter{position:absolute;top:14px;right:14px;margin:0}
+.price{margin:0 0 10px;font:400 11px/1.5 var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.letter{display:inline-grid;place-items:center;flex:none;width:20px;height:20px;margin-right:8px;background:var(--ink);color:var(--paper);font:600 10px/1 var(--mono);vertical-align:middle}
+.routesNote{flex:1 1 280px;font-size:13px;color:var(--muted)}
+.params{display:grid;grid-template-columns:repeat(2,minmax(0,220px));gap:0 16px;margin-top:24px;padding-top:20px;border-top:1px dashed var(--line)}
+.judge{padding-top:4px}
+.judgeGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:0 16px;align-items:start}
+.judgeGrid :global(.field) textarea{min-height:104px}
+.judgeGrid :global(.help-text){grid-column:1 / -1;margin-top:0!important}
+
+/* ---------- 03 pre-flight ---------- */
+.runGrid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:24px;align-items:start}
+.estimateBox{min-width:0}
+.estimateBox .estimate{margin:0 0 12px}
+.estimateBox .estimate>div{grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:10px 0}
+.estimateBox .estimate dt{padding-top:1px;font:500 11px/1.5 var(--mono);letter-spacing:0;text-transform:none;color:var(--ink);overflow-wrap:anywhere}
+.estimateBox .estimate dd{font:400 12px/1.4 var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.estimateBox .estimate dd small{display:block;margin-top:4px;font-size:10.5px;color:var(--muted)}
+.estimateBox .total{border-top:1px solid var(--ink)}
+.estimateBox .total dt{font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.estimateBox .total strong{font-size:15px;font-weight:600}
+.runBox{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-width:0;padding:20px;border:1px solid var(--line-strong);background:var(--paper)}
+.runBox :global(.help-text){margin:0!important}
+.connect{display:flex;flex-direction:column;align-self:stretch;gap:6px;padding:12px 14px;border-left:3px solid var(--warn);background:repeating-linear-gradient(-45deg,rgba(243,180,63,.09) 0 6px,transparent 6px 14px),var(--white);font-size:14px}
+.connect span{font-size:13px;color:var(--muted)}
+.connect :global(.text-button){align-self:flex-start;margin-top:4px}
+.blockers{display:grid;align-self:stretch;gap:6px;margin:0;padding:0;list-style:none;font-size:13px}
+.blockers li{position:relative;padding-left:16px}
+.blockers li::before{content:"";position:absolute;left:0;top:.55em;width:6px;height:6px;background:var(--danger)}
+.ready{font-size:14px}
+.ready::before{content:"";display:inline-block;width:7px;height:7px;margin-right:10px;background:var(--signal-deep);vertical-align:.1em}
+.progress{display:flex;flex-direction:column;align-items:flex-start;align-self:stretch;gap:10px}
+.progress progress{height:8px;margin:0}
+.progressHead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 16px;width:100%;font:400 12px/1.4 var(--mono);font-variant-numeric:tabular-nums}
+.progressHead strong{font-size:14px;font-weight:600}
+.wait{align-self:stretch;padding:8px 10px;border-left:3px solid var(--warn);background:var(--white);font-size:13px}
+
+/* ---------- results ---------- */
+.results{margin-top:clamp(40px,5vw,56px)}
+.runPicker{max-width:560px}
+.summary tbody td.lead{color:var(--signal-deep);font-weight:600}
+.leadMark{display:inline-block;width:6px;height:6px;margin-right:8px;background:var(--signal-deep);vertical-align:.15em}
+.costLine{margin:-8px 0 36px;font-size:13px;line-height:1.5;color:var(--muted)}
+.costLine strong{font:500 13px var(--mono);color:var(--ink)}
+.subhead{margin:0 0 14px;font-size:18px;letter-spacing:-.02em}
+.matrix th{min-width:120px;white-space:normal;vertical-align:bottom;overflow-wrap:anywhere}
+.matrix th:first-child{min-width:220px}
+.matrix td{vertical-align:top}
+.matrix td.cell small{margin-top:6px}
+.verdict{display:inline-flex;align-items:center;gap:7px;font:500 10px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.verdict::before{content:"";flex:none;width:7px;height:7px}
+.pass{color:var(--signal-deep)}
+.pass::before{background:var(--signal-deep);box-shadow:0 0 0 3px var(--signal-tint)}
+.fail{color:#96161b}
+.fail::before{background:var(--danger)}
+.err{color:#96161b}
+.err::before{border:1.5px solid var(--danger);transform:rotate(45deg)}
+.na{color:var(--muted)}
+.na::before{border:1px solid var(--muted)}
+.muted{font-size:13px;color:var(--muted)}
+.matrix tbody tr.detailRow td{padding:18px 16px 20px;background:var(--paper);text-align:left}
+.fullPrompt{display:flex;flex-direction:column;gap:6px;max-height:180px;margin:0 0 14px;overflow:auto;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.outputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px}
+.output{display:flex;flex-direction:column;gap:12px;min-width:0;padding:14px;border:1px solid var(--line-strong);background:var(--white)}
+.output :global(.error){margin:0}
+.outputHead{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.outputHead strong{flex:1 1 auto;min-width:0;font-size:14px;overflow-wrap:anywhere}
+.outputHead .letter{margin:0}
+.outputText{max-height:320px;margin:0;padding:12px;overflow:auto;border:1px dashed var(--line-strong);background:var(--paper);font:400 12px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.facts{display:grid;margin:0;font-size:12.5px}
+.facts>div{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.facts dt{font:500 10px/1.8 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.facts dd{margin:0;overflow-wrap:anywhere}
+.receiptId{display:block;font:400 11px/1.5 var(--mono);overflow-wrap:anywhere}
+.receiptActions{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0}
+.good,.bad{display:block;margin-top:4px;font-size:12px}
+.good{color:#05461c}
+.bad{color:#96161b}
+.forget{color:var(--muted)}
+.noRuns{margin-top:40px}
+
+@media (max-width:860px){
+  .setBar,.caseGrid,.runGrid,.judgeGrid{grid-template-columns:minmax(0,1fr)}
+  .params{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .caseGrid>:global(.field) textarea{min-height:104px}
+}
+@media (max-width:640px){
+  .panel{padding:18px 16px}
+  .case{padding:14px 12px 4px}
+  .caseActions{flex-basis:100%;margin-left:0}
+  .params{grid-template-columns:minmax(0,1fr)}
+  .runBox{padding:16px}
+  .matrix th,.matrix th:first-child{min-width:0}
+  .matrix tbody tr.detailRow td{padding:14px 0 0;background:none}
+  .facts>div{grid-template-columns:64px minmax(0,1fr)}
+}
