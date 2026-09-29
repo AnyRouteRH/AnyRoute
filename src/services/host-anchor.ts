@@ -291,6 +291,8 @@ export async function runHostAnchor(ctx: Ctx, opts: HostAnchorOptions = {}) {
     if (!pin || !pin.certPem || pin.spkiOnly) continue;
     const token = ctx.cfg.hostAnchor.tokens[p.id];
     if (!p.attested) hosts[p.id] = { skipped: "not attested now" };
+    // The pin only binds an https connection; the anchor token never goes anywhere else.
+    else if (!p.attestationUrl!.startsWith("https://")) hosts[p.id] = { skipped: "the attestation endpoint is not https" };
     else if (!token) hosts[p.id] = { skipped: "no anchor token configured for this host" };
     else {
       try {

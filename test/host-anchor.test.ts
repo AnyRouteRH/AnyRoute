@@ -261,7 +261,7 @@ describe("per-host anchoring of enclave receipts", () => {
     // Bindings swapped after the quote was taken are not committed in it.
     expect(bindingFromBootDocument(ref, { ...doc, bindings: { ...doc.bindings, receipt_pubkey: "ef".repeat(32) } })).toMatchObject({ ok: false, reason: "the bindings are not committed in the verified quote" });
     expect(bindingFromBootDocument(ref, sidecarDocument(ZERO, { dev: true }))).toMatchObject({ ok: false, reason: "the document carries no hardware quote" });
-    // A host that is no longer attested is skipped and its queue is left alone.
+    // A host that is no longer attested, or whose attestation endpoint is no longer https, is skipped and its queue left alone.
     const a = hosts["host-a"];
     a.issue();
     await h.ctx.db.update(providers).set({ attested: false }).where(eq(providers.id, "host-a"));
@@ -270,6 +270,13 @@ describe("per-host anchoring of enclave receipts", () => {
       expect(a.queue.pending).toBe(1);
     } finally {
       await h.ctx.db.update(providers).set({ attested: true }).where(eq(providers.id, "host-a"));
+    }
+    await h.ctx.db.update(providers).set({ attestationUrl: `${a.url.replace("https:", "http:")}/attest` }).where(eq(providers.id, "host-a"));
+    try {
+      expect((await run()).hosts["host-a"]).toEqual({ skipped: "the attestation endpoint is not https" });
+      expect(a.queue.pending).toBe(1);
+    } finally {
+      await h.ctx.db.update(providers).set({ attestationUrl: `${a.url}/attest` }).where(eq(providers.id, "host-a"));
     }
   });
 
