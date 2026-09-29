@@ -31,6 +31,7 @@ import { holdersRoutes } from "./api/holders.ts";
 import { disclosureRoutes } from "./api/disclosure.ts";
 import { ipxRoutes } from "./api/ipx.ts";
 import { attestationRoutes } from "./api/attestation.ts";
+import { laneRoutes } from "./api/lane.ts";
 import { publicRoutes } from "./api/public.ts";
 import { embeddingsRoutes } from "./api/embeddings.ts";
 import { adminRoutes } from "./admin/trpc.ts";
@@ -109,6 +110,7 @@ export async function createApp(opts: AppOptions = {}) {
   disclosureRoutes(app, ctx);
   ipxRoutes(app, ctx);
   attestationRoutes(app, ctx);
+  laneRoutes(app, ctx);
   if (ctx.blind) blindRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);

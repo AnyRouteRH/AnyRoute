@@ -8,6 +8,7 @@ import { type Pico, maxPico, picoToUsd, picoToUsdString, usdToPico } from "../li
 import { canonical, canonicalJson, decrypt, genId, log, sha256 } from "../lib/util.ts";
 import { reserve, release, settle } from "../ledger/ledger.ts";
 import { selectProviders, type ProviderPrefs } from "../router/select.ts";
+import { isRestricted } from "../router/lane.ts";
 import { disclosureRefusal, profileOf, resolveDisclosureRequest, type DisclosureClass, type DisclosureRequest } from "../router/disclosure.ts";
 import { servedDisclosure } from "./disclosure.ts";
 import { estimatePromptTokens, maxOutputTokens, priceUsage, readUsage, worstCase, type Mode, type Usage } from "../router/pricing.ts";
@@ -143,6 +144,7 @@ function selectTargets(
       production: ctx.cfg.production,
       attestationMaxAgeMs: ctx.cfg.attestation.intervalMs * 3,
       disclosure: (id) => profileOf(ctx.catalog.disclosure.get(id)),
+      modelLane: ctx.catalog.laneOf(r.model),
       rand: ctx.rand,
     });
     // Tools / structured output must be supported by whoever serves the request.
@@ -301,9 +303,10 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   // ---- 4. Cache (opt-in, never across accounts, keys, policies or end users) ----------------------
   const cacheSpec = (body.cache as { mode?: CacheMode; ttl?: number } | undefined) ?? (c.req.header("x-anyroute-cache") ? { mode: c.req.header("x-anyroute-cache") as CacheMode } : undefined);
   // The response cache keeps prompts and answers in the router, and a hit is served without any provider, so a
-  // request with a disclosure ceiling never reads or writes it.
+  // request with a disclosure ceiling never reads or writes it. Nor does a restricted variant (abliterated,
+  // native_low_refusal): those are served only under attested retention, and the router must not keep their prompts.
   // Blind-token callers all share one internal account, so a cached answer would cross between strangers: never cache.
-  const cacheMode: CacheMode | null = !strict && billing?.mode !== "blind" && (cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic") ? cacheSpec.mode : null;
+  const cacheMode: CacheMode | null = !strict && billing?.mode !== "blind" && !resolved.some((r) => isRestricted(ctx.catalog.laneOf(r.model).variant)) && (cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic") ? cacheSpec.mode : null;
   // `user` is forwarded to the provider as the end-user identity; a response made for one end user
   // must never be replayed to another behind the same key (exact or semantic).
   const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })), ...(savedRoute ? { route: savedRoute } : {}) }))}` : "";

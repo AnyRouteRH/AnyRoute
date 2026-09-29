@@ -61,6 +61,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         production: ctx.cfg.production,
         attestationMaxAgeMs: ctx.cfg.attestation.intervalMs * 3,
         disclosure: (id) => profileOf(ctx.catalog.disclosure.get(id)),
+        modelLane: ctx.catalog.laneOf(r.model),
         rand: ctx.rand,
       });
     const sel = plan({ ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) });

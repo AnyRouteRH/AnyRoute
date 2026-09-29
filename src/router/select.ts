@@ -1,5 +1,6 @@
 import type { Candidate, Modifier } from "../catalog/catalog.ts";
 import { usdToPico } from "../lib/money.ts";
+import { NOT_SERVABLE_REASON, isRestricted, restrictedExclusion, type ModelLane } from "./lane.ts";
 import { DISCLOSURE_MAX_VALUES, OUTAGE_REASON, UNDECLARED, classAllowed, disclosureClass, disclosureExclusion, type DisclosureClass, type DisclosureMax, type DisclosureProfile, type Lane } from "./disclosure.ts";
 
 // Provider selection, OpenRouter-compatible:
@@ -53,6 +54,13 @@ export type SelectInput = {
   attestationMaxAgeMs: number;
   /** Disclosure profile of a provider (see router/disclosure.ts). Absent = every provider is undeclared, which no strict request accepts. */
   disclosure?: (providerId: string) => DisclosureProfile | undefined;
+  /**
+   * The variant and status of the model being routed (catalog.laneOf). Every caller in the router passes it: a
+   * restricted variant (abliterated, native_low_refusal) is offered only by attested providers whose attestation
+   * reports the in-enclave classifier as enabled, and a model that is not approved for serving is offered by none.
+   * Left out, the model is treated as mainstream.
+   */
+  modelLane: ModelLane;
   rand?: () => number;
 };
 
@@ -132,13 +140,17 @@ export function selectProviders(input: SelectInput): Selection {
   const maxRequest = prefs.max_price?.request != null ? usdToPico(prefs.max_price.request) : null;
   const byok = input.byokProviders ?? new Set<string>();
   const { max: disclosureMax, lane } = disclosureCeiling(prefs);
+  const restricted = isRestricted(input.modelLane?.variant);
+  const servable = input.modelLane?.servable !== false;
 
   const pass: Candidate[] = [];
   for (const c of input.offers) {
     const id = c.providerId.toLowerCase();
     const policy = (c.provider.dataPolicy ?? {}) as { training?: boolean; retains_prompts?: boolean; zdr?: boolean };
     const isFree = c.pricePrompt === 0n && c.priceCompletion === 0n && c.priceRequest === 0n;
-    const cls = disclosureMax === "any" ? null : candidateDisclosure(c, input.disclosure?.(c.providerId), input.attestationMaxAgeMs, input.production);
+    const cls = disclosureMax === "any" && !restricted ? null : candidateDisclosure(c, input.disclosure?.(c.providerId), input.attestationMaxAgeMs, input.production);
+    // Lane rules apply before the outage check, so an outage is only ever reported for a provider that could serve.
+    const laneReason = !servable ? NOT_SERVABLE_REASON : restricted ? restrictedExclusion(cls ?? "vendor-forwarded", c.provider.classifierEnabled) : null;
     const reason =
       c.provider.status !== "live"
         ? `provider ${c.provider.status}`
@@ -173,9 +185,11 @@ export function selectProviders(input: SelectInput): Selection {
                                     ? "missing required parameters"
                                     : (c.ctx ?? Number.MAX_SAFE_INTEGER) < input.estimatedTokens
                                       ? "context length exceeded"
-                                      : health.outage(c.modelId, c.providerId)
-                                        ? OUTAGE_REASON
-                                        : null;
+                                      : laneReason
+                                        ? laneReason
+                                        : health.outage(c.modelId, c.providerId)
+                                          ? OUTAGE_REASON
+                                          : null;
     if (reason) excluded.push({ provider: c.providerId, reason });
     else pass.push(c);
   }

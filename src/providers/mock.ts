@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
 // Behaviours can be switched at runtime through POST /_control.
 
 export type MockBehaviour = "ok" | "empty200" | "error500" | "rate429" | "slow" | "hang" | "reject400" | "midstream_error" | "no_usage" | "auth401";
-export type MockModel = { id: string; slug?: string; prompt: string; completion: string; ctx?: number; quant?: string; features?: string[]; params?: string[]; creator?: string; output?: string[] };
+export type MockModel = { id: string; slug?: string; prompt: string; completion: string; ctx?: number; quant?: string; features?: string[]; params?: string[]; creator?: string; output?: string[]; hf?: string };
 export type MockConfig = {
   name: string;
   models: MockModel[];
@@ -15,6 +15,8 @@ export type MockConfig = {
   quantNoise?: number; // perturbs logprobs to imitate lower precision
   delayMs?: number;
   tee?: "dev" | null;
+  /** What a development attestation reports about the in-enclave classifier (absent = says nothing). */
+  classifier?: boolean;
   wrongAnswers?: boolean; // degrade the canary benchmark
   /** Test hook: the reply for a prompt, or undefined to fall back to the built-in answers. Not settable through /_control. */
   reply?: (prompt: string, body: any) => string | undefined;
@@ -78,6 +80,7 @@ export function createMockProvider(initial: MockConfig) {
         name: m.slug ?? m.id,
         created: 1_780_000_000,
         anyroute: m.slug ? { slug: m.slug } : undefined,
+        hugging_face_id: m.hf,
         input_modalities: ["text"],
         output_modalities: m.output ?? ["text"],
         quantization: m.quant ?? "bf16",
@@ -92,7 +95,7 @@ export function createMockProvider(initial: MockConfig) {
 
   app.get("/attestation", (c) => {
     if (cfg.tee !== "dev") return c.json({ error: "no tee" }, 404);
-    return c.json({ kind: "dev", nonce: c.req.query("nonce"), measurement: "mock-measurement-v1" });
+    return c.json({ kind: "dev", nonce: c.req.query("nonce"), measurement: "mock-measurement-v1", ...(cfg.classifier != null ? { classifier: { enabled: cfg.classifier } } : {}) });
   });
 
   const gate = async () => {

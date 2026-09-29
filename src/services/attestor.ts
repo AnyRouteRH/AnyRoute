@@ -7,6 +7,7 @@ import { attestations, kv, providers } from "../db/schema.ts";
 import { canonicalJson, log, sha256 } from "../lib/util.ts";
 import { createVerifiers, verifyWithAll, type VerifierInput, type VerifyOutcome } from "./attestor-verifiers.ts";
 import { bindingsCommittedIn, digestsFromBindings, recordMeasurement, type Digests } from "./measurements.ts";
+import { classifierFromReport } from "../router/lane.ts";
 
 // attestor: every 10 minutes, for each provider with a TEE, fetch a fresh attestation bound to our
 // nonce and verify it. Fail closed: anything unverifiable leaves the provider un-attested, and the
@@ -104,6 +105,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   const fail = async (reason: string, extra: Record<string, unknown> = {}) => {
     await ctx.db.insert(attestations).values({ providerId: p.id, ok: false, teeKind: p.teeKind, nonce, detail: { reason, ...extra } });
     await ctx.db.update(providers).set({ attested: false, updatedAt: new Date() }).where(eq(providers.id, p.id));
+    await ctx.db.update(providers).set({ classifierEnabled: false }).where(eq(providers.id, p.id)); // unknown is false
     return { provider: p.id, ok: false, reason };
   };
   const policy = { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production };
@@ -135,6 +137,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   let verifiedBy: string[] = [];
   let bound: Digests | null = null;
   let quoteHex: string | null = null;
+  let bindingsCommitted = false;
 
   if (peer && (p.teeKind === "dev" || report.kind === "dev" || !report.intel_quote)) return fail("a self-signed endpoint must prove its certificate with a hardware TDX quote");
   if (p.teeKind === "dev" || report.kind === "dev") {
@@ -157,6 +160,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
         bound = digestsFromBindings(report.sidecar_bindings);
         if (!bound) return fail("sidecar bindings carry no valid image, compose and model digests", measurements);
         if (!bindingsCommittedIn(f.reportData, report.sidecar_bindings)) return fail("sidecar bindings are not committed in report_data", measurements);
+        bindingsCommitted = true;
       }
       const q = await verifyQuote(ctx, { kind: "tdx", quoteHex: report.intel_quote, registers: f, eventLog: report.event_log ?? null, vmConfig: typeof report.vm_config === "string" ? report.vm_config : null });
       if (!q.ok) return fail(q.reason!, measurements);
@@ -187,8 +191,12 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
       if (!g.ok) return fail(g.reason!);
     }
   }
+  // Whether the report says the in-enclave hard-block classifier is on. Trusted only from committed bindings of a
+  // verified hardware quote (or, outside production, from a development report); see router/lane.ts.
+  const simulated = p.teeKind === "dev" || report.kind === "dev";
+  const classifierEnabled = classifierFromReport(report, { hardwareVerified: verifiedBy.length > 0, bindingsCommitted, simulated, allowDev: ctx.cfg.attestation.allowDev });
   const reportHash = "0x" + sha256(canonicalJson({ report, nonce }));
-  await ctx.db.insert(attestations).values({ providerId: p.id, ok: true, teeKind: p.teeKind ?? report.kind ?? null, reportHash, nonce, measurements, detail: { signing_address: report.signing_address ?? null, verifiers: verifiedBy, simulated: p.teeKind === "dev" || report.kind === "dev" } });
+  await ctx.db.insert(attestations).values({ providerId: p.id, ok: true, teeKind: p.teeKind ?? report.kind ?? null, reportHash, nonce, measurements, detail: { signing_address: report.signing_address ?? null, verifiers: verifiedBy, simulated: p.teeKind === "dev" || report.kind === "dev", classifier_enabled: classifierEnabled } });
   // A measurement is recorded only from a hardware quote a verifier accepted; never from simulated evidence.
   if (ctx.cfg.measurements.enabled && bound && quoteHex && verifiedBy.length) {
     try {
@@ -202,6 +210,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   if (peer) await saveTlsPin(ctx.db, p.id, { certPem: peer.certPem, spkiSha256: peer.spkiSha256, attestationRef: peer.attestationRef!, pinnedAt: new Date().toISOString() });
   else await clearTlsPin(ctx.db, p.id);
   await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), updatedAt: new Date() }).where(eq(providers.id, p.id));
+  await ctx.db.update(providers).set({ classifierEnabled }).where(eq(providers.id, p.id));
   return { provider: p.id, ok: true, hash: reportHash, ...(peer ? { tls_pin: { spki_sha256: peer.spkiSha256, attestation_ref: peer.attestationRef } } : {}) };
 }
 

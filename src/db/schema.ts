@@ -142,6 +142,9 @@ export const providers = pgTable("providers", {
   attestationHash: text("attestation_hash"),
   attestedAt: ts("attested_at"),
   teeKind: text("tee_kind"), // tdx | snp | nvidia-cc | tinfoil | dev
+  // Whether the provider's last verified attestation reported the in-enclave hard-block classifier as enabled.
+  // Set only by the attestor; false when unknown, when the last attestation failed, or when it did not say.
+  classifierEnabled: boolean("classifier_enabled").notNull().default(false),
   bondUsdg: bigint("bond_usdg", { mode: "bigint" }).notNull().default(sql`0`),
   anyrStake: bigint("anyr_stake", { mode: "bigint" }).notNull().default(sql`0`),
   operator: text("operator"),
@@ -703,4 +706,92 @@ export const blindNullifiers = pgTable(
     generationId: text("generation_id"),
   },
   (t) => [index("blind_nullifiers_key_idx").on(t.keyId)],
+);
+
+// ---- The Lane: catalog variants, day-zero candidates, creator claims -----------------------------------
+
+// Per-model metadata for open-weights variants. A model with no row is "mainstream" (unless its id says
+// otherwise, see router/lane.ts). Rows may be written before any provider lists the model, so that a model
+// is classified before it can be served. variant abliterated and native_low_refusal are served only on the
+// attested lane, by providers whose verified attestation reports the hard-block classifier as enabled.
+// status "candidate" means the model is not approved for serving: it is routed to no provider at all.
+export const modelsLane = pgTable("models_lane", {
+  modelId: text("model_id").primaryKey(), // same id as models.id
+  variant: text("variant").notNull().default("mainstream"), // mainstream | native_low_refusal | abliterated
+  status: text("status").notNull().default("servable"), // servable | candidate
+  baseModel: text("base_model"), // the model this one derives from (Hugging Face repo id)
+  license: text("license"), // SPDX-style identifier taken from the weights' model card
+  weightsSource: text("weights_source"), // e.g. huggingface:owner/repo
+  weightsRevision: text("weights_revision"), // commit the weights were taken from
+  weightsDigest: text("weights_digest"), // sha256:<hex> of the weights manifest, when the operator has one
+  creatorHandle: text("creator_handle"), // Hugging Face handle of the uploader
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+// New Hugging Face uploads that derive from an allow-listed permissive base model. Status: discovered
+// (license accepted), rejected (reason says why), evaluated (scores stored and passed), failed (scores
+// stored, did not pass), approved (an operator approved it), servable (approved, and an attested provider
+// with the classifier serves it). One row per repository; the revision seen at discovery is the one evaluated.
+export const laneCandidates = pgTable(
+  "lane_candidates",
+  {
+    id: serial("id").primaryKey(),
+    hfRepo: text("hf_repo").notNull(),
+    baseModel: text("base_model").notNull(),
+    revision: text("revision"),
+    license: text("license"),
+    variant: text("variant").notNull().default("abliterated"),
+    creatorHandle: text("creator_handle").notNull(),
+    status: text("status").notNull().default("discovered"),
+    reason: text("reason"),
+    modelId: text("model_id"), // catalog model id the candidate is served under
+    endpointProvider: text("endpoint_provider"), // provider whose offer for modelId is evaluated
+    sourceCreatedAt: ts("source_created_at"),
+    approvedBy: text("approved_by"),
+    approvedAt: ts("approved_at"),
+    approvalNote: text("approval_note"),
+    servableAt: ts("servable_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("lane_candidates_repo_uq").on(t.hfRepo), index("lane_candidates_status_idx").on(t.status)],
+);
+
+// One row per evaluation run of a candidate endpoint.
+export const laneEvals = pgTable(
+  "lane_evals",
+  {
+    id: serial("id").primaryKey(),
+    candidateId: integer("candidate_id").notNull(),
+    ts: ts("ts").notNull().defaultNow(),
+    providerId: text("provider_id").notNull(),
+    modelId: text("model_id").notNull(),
+    refusalRate: real("refusal_rate"), // share of the benign probe prompts that were refused
+    capabilityScore: real("capability_score"), // share of the exact-check prompts answered correctly
+    canaryAccuracy: real("canary_accuracy"), // the canary exact-match set (services/canaries.ts)
+    canaryQuantMatch: boolean("canary_quant_match"),
+    passed: boolean("passed").notNull(),
+    detail: jsonb("detail"),
+  },
+  (t) => [index("lane_evals_candidate_idx").on(t.candidateId, t.ts)],
+);
+
+// Creator royalty claims: the router issues a challenge, the uploader publishes it in a file of their
+// Hugging Face repository, and the router checks the file through the Hugging Face API.
+export const laneClaims = pgTable(
+  "lane_claims",
+  {
+    id: text("id").primaryKey(),
+    modelId: text("model_id").notNull(),
+    hfRepo: text("hf_repo").notNull(),
+    handle: text("handle").notNull(),
+    address: text("address").notNull(),
+    challenge: text("challenge").notNull(),
+    status: text("status").notNull().default("pending"), // pending | verified
+    createdAt: ts("created_at").notNull().defaultNow(),
+    expiresAt: ts("expires_at").notNull(),
+    verifiedAt: ts("verified_at"),
+    onchainTx: text("onchain_tx"),
+  },
+  (t) => [index("lane_claims_model_idx").on(t.modelId, t.createdAt)],
 );

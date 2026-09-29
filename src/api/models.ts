@@ -5,7 +5,9 @@ import { priceString } from "../lib/money.ts";
 import { blendedPrice, attestationFresh } from "../router/select.ts";
 import { fail } from "../lib/errors.ts";
 import { parseLane } from "../router/disclosure.ts";
+import { VARIANTS, isVariant, type Variant } from "../router/lane.ts";
 import { servedDisclosure } from "./disclosure.ts";
+import { laneJson, offerEligible } from "./lane.ts";
 
 export function offerPricing(o: Candidate) {
   return {
@@ -22,8 +24,22 @@ export function offerPricing(o: Candidate) {
 
 const live = (o: Candidate) => o.status === "live" && o.provider.status === "live";
 
+/** Live offers that may serve the model now: a restricted variant lists only attested, classifier-enabled endpoints. */
+const servable = (ctx: Ctx, m: ModelRow) => {
+  const lane = ctx.catalog.laneOf(m);
+  return ctx.catalog.offers(m.id).filter(live).filter((o) => offerEligible(ctx, lane, o));
+};
+
+/** ?variant=abliterated,native_low_refusal: null when unset, 400 for anything that is not a variant. */
+export function parseVariants(raw: unknown): Set<Variant> | null {
+  if (raw == null || raw === "") return null;
+  const parts = String(raw).split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
+  if (!parts.length || !parts.every(isVariant)) return fail(400, `\`variant\` must be one or more of: ${VARIANTS.join(", ")}.`, "invalid_request");
+  return new Set(parts as Variant[]);
+}
+
 export function modelJson(ctx: Ctx, m: ModelRow) {
-  const offers = ctx.catalog.offers(m.id).filter(live);
+  const offers = servable(ctx, m);
   const paid = offers.filter((o) => o.pricePrompt > 0n || o.priceCompletion > 0n);
   const ref = [...(paid.length ? paid : offers)].sort((a, b) => blendedPrice(a) - blendedPrice(b))[0];
   const top = [...offers].sort((a, b) => (b.ctx ?? 0) - (a.ctx ?? 0))[0];
@@ -62,6 +78,7 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     disclosure: { best: classes.attested ? "attested" : classes.policy ? "policy" : classes["vendor-forwarded"] ? "vendor-forwarded" : null, endpoints: classes },
     creator: m.creator ?? null,
     royalty_bps: m.creator ? m.royaltyBps : 0,
+    ...laneJson(ctx, m),
   };
 }
 
@@ -71,11 +88,15 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
     const need = (c.req.query("supported_parameters") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     // ?lane=attested keeps only models with at least one endpoint served under attested retention; public (or unset) keeps all.
     const lane = parseLane(c.req.query("lane"), "`lane`");
+    // ?variant= keeps models of those variants (mainstream, native_low_refusal, abliterated). A restricted variant is
+    // listed only while an attested provider that reports the classifier serves it.
+    const variants = parseVariants(c.req.query("variant"));
     const data = [...ctx.catalog.models.values()]
-      .filter((m) => !m.hidden && ctx.catalog.offers(m.id).some(live))
+      .filter((m) => !m.hidden && servable(ctx, m).length > 0)
       .map((m) => modelJson(ctx, m))
       .filter((m) => need.every((p) => m.supported_parameters.includes(p)))
       .filter((m) => lane !== "attested" || m.disclosure.endpoints.attested > 0)
+      .filter((m) => !variants || variants.has(m.variant))
       .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id));
     return c.json({ data });
   };
@@ -88,7 +109,7 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
     const r = ctx.catalog.resolve(id);
     if (!r) fail(404, `Model ${id} not found.`, "model_not_found");
     const m = r.model;
-    const endpoints = ctx.catalog.offers(m.id).filter(live).map((o) => {
+    const endpoints = servable(ctx, m).map((o) => {
       const h = ctx.health.snapshot(m.id, o.providerId);
       const observed = ctx.health.observedUptime(m.id, o.providerId);
       return {
@@ -110,6 +131,8 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
         data_policy: o.provider.dataPolicy,
         attested: attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production),
         attestation_hash: o.provider.attestationHash ?? null,
+        // True only while the attestation is fresh and it reported the in-enclave classifier as enabled.
+        classifier_enabled: o.provider.classifierEnabled && attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production),
         disclosure: servedDisclosure(ctx, o).class,
         bond_usdg: o.provider.bondUsdg.toString(),
         is_moderated: o.isModerated,
@@ -142,6 +165,7 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
         quantizations: [...new Set(live.map((o) => o.quant))],
         attestation_fresh: fresh,
         attestation_hash: p.attestationHash ?? null,
+        classifier_enabled: p.classifierEnabled && fresh,
         data_policy: p.dataPolicy,
         datacenters: p.datacenter ?? [],
         attested: p.attested,

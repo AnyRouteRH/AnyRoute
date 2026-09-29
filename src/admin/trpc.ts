@@ -16,6 +16,7 @@ import { verifyInvariants } from "../ledger/ledger.ts";
 import { encrypt, safeEqual } from "../lib/util.ts";
 import { isApiError } from "../lib/errors.ts";
 import { disclosureInput, writeDisclosure } from "../api/disclosure.ts";
+import { laneInput, writeModelLane } from "../api/lane.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { chainKeyHashOf } from "../chain/keys.ts";
 
@@ -130,6 +131,16 @@ export const adminRouter = t.router({
       const m = ctx.app.catalog.models.get(input.id);
       if (!m) throw new TRPCError({ code: "NOT_FOUND" });
       return ser({ ...modelJson(ctx.app, m), offers: ctx.app.catalog.offers(m.id).map(({ provider, ...o }) => ({ ...o, provider: provider.id })) });
+    }),
+    /** Declare a model's variant, license and provenance (see PUT /api/v1/models/{author}/{slug}/lane). */
+    setLane: operator.input(laneInput.extend({ id: z.string() })).mutation(async ({ ctx, input }) => {
+      const { id, ...lane } = input;
+      try {
+        return ser(await writeModelLane(ctx.app, id, lane));
+      } catch (e) {
+        if (isApiError(e)) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+        throw e;
+      }
     }),
     setCreator: operator.input(z.object({ id: z.string(), creator: z.string().regex(/^0x[0-9a-fA-F]{40}$/), royalty_bps: z.number().int().min(0).max(2000) })).mutation(async ({ ctx, input }) => {
       await ctx.app.db.update(models).set({ creator: input.creator.toLowerCase(), royaltyBps: input.royalty_bps }).where(eq(models.id, input.id));

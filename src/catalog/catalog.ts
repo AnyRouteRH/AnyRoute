@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { models, offers, providerDisclosure, providers } from "../db/schema.ts";
+import { laneCandidates, models, modelsLane, offers, providerDisclosure, providers } from "../db/schema.ts";
 import { loadTlsPin, loadTlsPins, type TlsPin } from "../providers/tls-pin.ts";
+import { laneOf } from "../router/lane.ts";
 
 export type ModelRow = typeof models.$inferSelect;
 export type OfferRow = typeof offers.$inferSelect;
@@ -9,6 +10,7 @@ export type OfferRow = typeof offers.$inferSelect;
  *  certificate (providers/tls-pin.ts). */
 export type ProviderRow = typeof providers.$inferSelect & { tlsPin?: TlsPin | null };
 export type DisclosureRow = typeof providerDisclosure.$inferSelect;
+export type ModelLaneRow = typeof modelsLane.$inferSelect;
 export type Candidate = OfferRow & { provider: ProviderRow };
 
 // Routing suffixes: `author/model:nitro` (fastest), `:floor` (cheapest), `:free` (free offers
@@ -22,6 +24,10 @@ export class Catalog {
   offersByModel = new Map<string, Candidate[]>();
   /** Operator-declared disclosure profiles by provider id; a provider without a row is treated as undeclared. */
   disclosure = new Map<string, DisclosureRow>();
+  /** Operator-declared variant metadata by model id; a model without a row is classified by laneOf. */
+  lane = new Map<string, ModelLaneRow>();
+  /** Day-zero candidates by lower-cased Hugging Face repository: a model listed for one is held back until it is servable. */
+  candidates = new Map<string, { variant: string; status: string }>();
   loadedAt = 0;
   private loading: Promise<void> | null = null;
 
@@ -30,12 +36,14 @@ export class Catalog {
   async refresh() {
     this.loading ??= (async () => {
       try {
-        const [m, p, o, d, pins] = await Promise.all([
+        const [m, p, o, d, pins, l, cand] = await Promise.all([
           this.db.select().from(models),
           this.db.select().from(providers),
           this.db.select().from(offers),
           this.db.select().from(providerDisclosure),
           loadTlsPins(this.db),
+          this.db.select().from(modelsLane),
+          this.db.select({ hfRepo: laneCandidates.hfRepo, variant: laneCandidates.variant, status: laneCandidates.status }).from(laneCandidates),
         ]);
         const pm = new Map<string, ProviderRow>(p.map((x) => [x.id, { ...x, tlsPin: pins.get(x.id) ?? null }]));
         const byModel = new Map<string, Candidate[]>();
@@ -49,6 +57,8 @@ export class Catalog {
         this.models = new Map(m.map((x) => [x.id, x]));
         this.providers = pm;
         this.disclosure = new Map(d.map((x) => [x.providerId, x]));
+        this.lane = new Map(l.map((x) => [x.modelId, x]));
+        this.candidates = new Map(cand.map((x) => [x.hfRepo.toLowerCase(), { variant: x.variant, status: x.status }]));
         this.offersByModel = byModel;
         this.loadedAt = Date.now();
       } finally {
@@ -76,6 +86,11 @@ export class Catalog {
       if (m) return { model: m, modifiers };
     }
     return null;
+  }
+
+  /** The variant a model is routed under (see router/lane.ts): its declared row, else its name, else mainstream. */
+  laneOf(model: ModelRow) {
+    return laneOf(model, this.lane.get(model.id), model.hfRepo ? this.candidates.get(model.hfRepo.toLowerCase()) : null);
   }
 
   offers(modelId: string) {
