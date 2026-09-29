@@ -92,6 +92,13 @@
       "when": 1790674751309,
       "tag": "0012_v3_ohttp",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790685669388,
+      "tag": "0013_v3_attestation_events",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,8 @@ import { openProviderHeaders } from "../providers/headers.ts";
 import { providerFetch } from "../providers/network.ts";
 import type { Ctx } from "../context.ts";
 import { decrypt } from "../lib/util.ts";
+import { probeErrorKind } from "./attestation-history.ts";
+import { recordProbeChanges } from "./attestation-events.ts";
 
 // Active health probes every 15s: a free GET /models per provider. A failure is recorded against
 // every live offer of that provider (connection-level outage); passive traffic outcomes cover the
@@ -28,9 +30,10 @@ export async function runProbes(ctx: Ctx) {
       const latency = performance.now() - t;
       const offers = [...ctx.catalog.offersByModel.values()].flat().filter((o) => o.providerId === p.id && o.status === "live");
       for (const o of offers)
-        ctx.health.record({ modelId: o.modelId, providerId: p.id, ok, statusCode: status, errorKind: ok ? null : status && status >= 500 ? "http_5xx" : status === 429 ? "rate_limited" : status ? "provider_auth" : "connection", latencyMs: ok ? null : latency, source: "probe" });
+        ctx.health.record({ modelId: o.modelId, providerId: p.id, ok, statusCode: status, errorKind: probeErrorKind(ok, status), latencyMs: ok ? null : latency, source: "probe" });
       return { provider: p.id, ok, status, ms: Math.round(latency) };
     }),
   );
+  await recordProbeChanges(ctx, results.filter((r) => live.find((p) => p.id === r.provider)?.teeKind)); // the public proof-time record keeps only changes of outcome
   return { probed: results.length, down: results.filter((r) => !r.ok).map((r) => r.provider) };
 }

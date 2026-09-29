@@ -8,6 +8,7 @@ import { canonicalJson, log, sha256 } from "../lib/util.ts";
 import { createVerifiers, verifyWithAll, type VerifierInput, type VerifyOutcome } from "./attestor-verifiers.ts";
 import { bindingsCommittedIn, digestsFromBindings, recordMeasurement, type Digests } from "./measurements.ts";
 import { classifierFromReport } from "../router/lane.ts";
+import { pruneAttestationEvents, recordAttestorRun } from "./attestation-events.ts";
 
 // attestor: every 10 minutes, for each provider with a TEE, fetch a fresh attestation bound to our
 // nonce and verify it. Fail closed: anything unverifiable leaves the provider un-attested, and the
@@ -254,11 +255,15 @@ export async function runAttestor(ctx: Ctx) {
   const results = [];
   for (const p of rows) {
     try {
-      results.push(await attestProvider(ctx, p));
+      const startedAt = new Date();
+      const result = await attestProvider(ctx, p);
+      results.push(result);
+      await recordAttestorRun(ctx, p, result, startedAt); // the public proof-time record; never throws
     } catch (e) {
       log.error("attestation crashed", { provider: p.id, error: (e as Error).message });
     }
   }
+  await pruneAttestationEvents(ctx).catch((e) => log.warn("pruning the attestation history failed", { error: (e as Error).message }));
   await ctx.catalog.refresh();
   return { results };
 }

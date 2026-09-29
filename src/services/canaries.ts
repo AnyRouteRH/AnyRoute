@@ -4,6 +4,7 @@ import type { Candidate } from "../catalog/catalog.ts";
 import { canaries, canaryReferences } from "../db/schema.ts";
 import { callUpstream, providerKey, upstreamBody } from "../providers/upstream.ts";
 import { log } from "../lib/util.ts";
+import { recordCanaryEvent } from "./attestation-events.ts";
 
 // Quant canaries. Every hour, for each model x provider (live and shadow):
 //  - fingerprint: a fixed greedy continuation with logprobs (top-5). Different weight precisions
@@ -135,6 +136,7 @@ export async function runCanaryFor(ctx: Ctx, c: Candidate, threshold = 0.35) {
     quality,
     detail: { accuracy, answered, declared: c.quant, logprobs: supportsLogprobs, fingerprint_tokens: fp.length },
   });
+  if (c.provider.teeKind) await recordCanaryEvent(ctx, { providerId: c.providerId, modelId: c.modelId, declared: c.quant, quantMatch, quality });
   if (quality != null) ctx.health.setQuality(c.modelId, c.providerId, quality);
   return { model: c.modelId, provider: c.providerId, quantMatch, guess, distance, quality, accuracy };
 }

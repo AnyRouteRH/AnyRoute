@@ -148,6 +148,9 @@ const schema = z.object({
 
   // Attestation
   ATTESTATION_INTERVAL_MS: int(600_000),
+  // Days of attestor, canary and probe events kept for the public proof-time record (GET /api/v1/attestation/summary).
+  // 0 records nothing and switches the two history endpoints off; rows already stored are left alone.
+  ATTESTATION_HISTORY_DAYS: z.coerce.number().int().min(0).max(366).default(30),
   ALLOW_DEV_ATTESTATION: bool.default(false),
   NVIDIA_NRAS_URL: z.string().default("https://nras.attestation.nvidia.com/v3/attest/gpu"),
   TDX_VERIFIER_URL: opt,
@@ -527,6 +530,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     webDir: e.WEB_DIR,
     attestation: {
       intervalMs: e.ATTESTATION_INTERVAL_MS,
+      historyDays: e.ATTESTATION_HISTORY_DAYS,
       allowDev: e.ALLOW_DEV_ATTESTATION && !production,
       nrasUrl: e.NVIDIA_NRAS_URL,
       tdxVerifierUrl: e.TDX_VERIFIER_URL,

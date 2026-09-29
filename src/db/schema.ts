@@ -501,6 +501,30 @@ export const attestations = pgTable(
   (t) => [index("attestations_provider_ts").on(t.providerId, t.ts)],
 );
 
+// The public proof-time record (services/attestation-history.ts): one row per attestor run, canary run, or change of
+// the health probe's outcome. Nothing here is raw provider output: `reason` is a code from a fixed list, `measurements`
+// holds only digests, and rows older than ATTESTATION_HISTORY_DAYS are pruned by the attestor job.
+export const attestationEvents = pgTable(
+  "attestation_events",
+  {
+    id: serial("id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    kind: text("kind").notNull(), // attestation | canary | probe
+    ts: ts("ts").notNull().defaultNow(),
+    ok: boolean("ok").notNull(),
+    reason: text("reason"), // failure code, null when ok
+    simulated: boolean("simulated").notNull().default(false), // development evidence: never counts as a fresh attestation
+    teeKind: text("tee_kind"),
+    attestationHash: text("attestation_hash"), // attestations.report_hash of an ok run
+    tlsSpkiSha256: text("tls_spki_sha256"), // SPKI hash of the certificate the connection was pinned to, when pinned
+    measurements: jsonb("measurements"), // image / compose / model digests and TDX registers of an ok run
+    measurementChanged: boolean("measurement_changed").notNull().default(false), // differs from the previous ok run's
+    verifiers: jsonb("verifiers"), // names of the verifiers that accepted the quote
+    detail: jsonb("detail"),
+  },
+  (t) => [index("attestation_events_provider_ts_idx").on(t.providerId, t.ts, t.id), index("attestation_events_ts_idx").on(t.ts)],
+);
+
 // The image, compose and model digests a provider's confidential endpoint has been seen running, each bound
 // into a hardware quote a configured verifier accepted. One row per (provider, image digest); rows are created
 // only from a verified, non-simulated attestation. Status: observed (attested, not yet found in Rekor),
