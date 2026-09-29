@@ -1,0 +1,10 @@
+The SEAL sidecar for {{ .Values.seal.model.hf_repo }} listens on port {{ .Values.service.port }} of service {{ include "seal.fullname" . }}.
+
+Check its evidence from a machine that can reach it:
+
+  bun scripts/seal-cli.ts verify https://<address>:{{ .Values.service.port }}
+
+{{- if eq .Values.sidecar.attestation "dev" }}
+
+WARNING: sidecar.attestation is dev. The evidence is SIMULATED and routers refuse it on attested lanes.
+{{- end }}

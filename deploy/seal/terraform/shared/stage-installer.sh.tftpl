@@ -1,0 +1,19 @@
+#!/bin/sh
+# Cloud-init / startup script rendered by the SEAL Terraform modules. It stages the installer and its options on the
+# VM and stops there: the engine is yours to start, then you run the installer yourself (it asks before nothing,
+# starts nothing without --apply, and prints the verify command).
+set -eu
+mkdir -p /opt/anyroute-seal
+printf '%s' '${installer_b64}' | base64 -d > /opt/anyroute-seal/install.sh
+chmod 755 /opt/anyroute-seal/install.sh
+cat > /opt/anyroute-seal/install.flags <<'SEAL_FLAGS_EOF'
+${installer_flags}
+SEAL_FLAGS_EOF
+cat > /opt/anyroute-seal/NEXT.txt <<'SEAL_NEXT_EOF'
+Anyroute SEAL: the installer is staged in /opt/anyroute-seal.
+${notes}
+1. Install the NVIDIA driver and Docker, start your engine (vLLM, SGLang, llama.cpp server or Ollama) on 127.0.0.1.
+2. cd /opt/anyroute-seal && sh install.sh $(cat install.flags)
+3. Review seal.yaml and docker-compose.seal.yaml, then re-run with --apply --sidecar-image <name@sha256:...>.
+SEAL_NEXT_EOF
+cat /opt/anyroute-seal/NEXT.txt

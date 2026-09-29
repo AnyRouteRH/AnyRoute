@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "seal.fullname" . }}
+  labels:
+    {{- include "seal.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "seal.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "seal.selector" . | nindent 8 }}
+      annotations:
+        # Restart the pod when seal.yaml or sidecar.yaml change: the sidecar reads them once, at boot.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      containers:
+        - name: engine
+          image: {{ include "seal.engineImage" . }}
+          args:
+            {{- toYaml .Values.engine.args | nindent 12 }}
+          {{- with .Values.engine.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # No containerPort: the engine listens on the pod's loopback and only the sidecar reaches it.
+          resources:
+            {{- $res := deepCopy (default (dict) .Values.engine.resources) }}
+            {{- $limits := merge (default (dict) $res.limits) (dict "nvidia.com/gpu" .Values.engine.gpus) }}
+            {{- toYaml (set $res "limits" $limits) | nindent 12 }}
+          volumeMounts:
+            - { name: weights, mountPath: /models/model, readOnly: true }
+        - name: sidecar
+          image: {{ include "seal.sidecarImage" . }}
+          env:
+            - { name: SIDECAR_CONFIG, value: /etc/seal/sidecar.yaml }
+            # A process cannot read its own image digest; the operator declares it and the sidecar binds it.
+            - { name: SIDECAR_IMAGE_DIGEST, value: {{ regexFind "sha256:[0-9a-f]{64}$" (include "seal.sidecarImage" .) | quote }} }
+            {{- if eq .Values.sidecar.attestation "dev" }}
+            - { name: SIDECAR_DEV_ATTESTATION, value: "true" }
+            {{- end }}
+          ports:
+            - { name: https, containerPort: {{ .Values.sidecar.port }} }
+          readinessProbe:
+            httpGet: { path: /healthz, port: https, scheme: HTTPS }
+            periodSeconds: 15
+          {{- if eq .Values.sidecar.attestation "tdx" }}
+          # configfs-tsm needs root and the host's /sys/kernel/config.
+          securityContext: { runAsUser: 0, allowPrivilegeEscalation: false }
+          {{- else }}
+          securityContext: { allowPrivilegeEscalation: false }
+          {{- end }}
+          {{- with .Values.sidecar.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - { name: config, mountPath: /etc/seal, readOnly: true }
+            {{- if .Values.sidecar.measureWeights }}
+            - { name: weights, mountPath: /models/model, readOnly: true }
+            {{- end }}
+            {{- if eq .Values.sidecar.attestation "tdx" }}
+            - { name: configfs, mountPath: /sys/kernel/config }
+            {{- else if eq .Values.sidecar.attestation "dstack" }}
+            - { name: dstack, mountPath: /var/run/dstack.sock }
+            {{- end }}
+      volumes:
+        - name: config
+          configMap: { name: {{ include "seal.fullname" . }} }
+        - name: weights
+          {{- if .Values.engine.weights.persistentVolumeClaim }}
+          persistentVolumeClaim: { claimName: {{ .Values.engine.weights.persistentVolumeClaim }}, readOnly: true }
+          {{- else }}
+          hostPath: { path: {{ required "engine.weights.hostPath or engine.weights.persistentVolumeClaim is required" .Values.engine.weights.hostPath }}, type: Directory }
+          {{- end }}
+        {{- if eq .Values.sidecar.attestation "tdx" }}
+        - name: configfs
+          hostPath: { path: /sys/kernel/config, type: Directory }
+        {{- else if eq .Values.sidecar.attestation "dstack" }}
+        - name: dstack
+          hostPath: { path: /var/run/dstack.sock, type: Socket }
+        {{- end }}

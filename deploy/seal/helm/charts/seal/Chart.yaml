@@ -1,0 +1,10 @@
+apiVersion: v2
+name: seal
+description: Anyroute SEAL host. The attested sidecar in front of an OpenAI-compatible engine, in one pod.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords: [anyroute, seal, tdx, confidential-computing, vllm]
+home: https://github.com/AnyRouteRH/AnyRoute
+sources:
+  - https://github.com/AnyRouteRH/AnyRoute/tree/main/deploy/seal

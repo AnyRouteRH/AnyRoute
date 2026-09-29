@@ -1,0 +1,43 @@
+# docker-compose.seal.yaml: the Anyroute sidecar in front of a model server that is already running on this host.
+#
+# Template. install.sh renders it: it replaces each __NAME__ token, keeps the lines tagged with the attestation
+# provider it chose (# seal:dstack, # seal:tdx or # seal:dev) and # seal:weights when you pass --weights-dir, drops
+# the other tagged lines and removes the tags.
+# The engine (vLLM, SGLang, llama.cpp server or Ollama) stays yours; this file only adds the sidecar.
+#
+# The file is part of what gets attested: on dstack the platform measures it, on a bare TDX host the sidecar hashes
+# it (compose.file in sidecar.yaml). The labels commit to the exact seal.yaml and sidecar.yaml it runs with.
+
+name: anyroute-seal
+
+services:
+  sidecar:
+    # Pinned by digest. SIDECAR_IMAGE_DIGEST repeats it: a process cannot read its own image digest, so the operator
+    # declares it and the sidecar binds it into the attestation.
+    image: __SIDECAR_IMAGE__
+    # Host networking: the sidecar reaches the engine on the host's loopback (engine_url in seal.yaml) and the engine
+    # port is never published. The sidecar listens on __SIDECAR_PORT__.
+    network_mode: host
+    user: "__RUN_AS__"
+    environment:
+      SIDECAR_CONFIG: /etc/seal/sidecar.yaml
+      SIDECAR_IMAGE_DIGEST: "__SIDECAR_IMAGE_DIGEST__"
+      SIDECAR_PORT: "__SIDECAR_PORT__"
+      SIDECAR_DEV_ATTESTATION: "true" # seal:dev
+    volumes:
+      - ./seal.yaml:/etc/seal/seal.yaml:ro
+      - ./sidecar.yaml:/etc/seal/sidecar.yaml:ro
+      # With --weights-dir the sidecar hashes the weights at boot and refuses to start on a mismatch. Without it the
+      # digest in seal.yaml is declared, not measured, and /attest says so (digest_source: declared).
+      - __WEIGHTS_DIR__:/models/model:ro # seal:weights
+      - ./docker-compose.seal.yaml:/etc/seal/docker-compose.seal.yaml:ro # seal:tdx
+      - ./docker-compose.seal.yaml:/etc/seal/docker-compose.seal.yaml:ro # seal:dev
+      - /var/run/dstack.sock:/var/run/dstack.sock # seal:dstack
+      - /sys/kernel/config:/sys/kernel/config # seal:tdx
+    labels:
+      xyz.anyroute.seal.version: "1"
+      xyz.anyroute.seal.host-id: "__HOST_ID__"
+      xyz.anyroute.seal.seal-yaml-sha256: "__SEAL_YAML_SHA256__"
+      xyz.anyroute.seal.sidecar-yaml-sha256: "__SIDECAR_YAML_SHA256__"
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seal.fullname" . }}
+  labels:
+    {{- include "seal.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "seal.selector" . | nindent 4 }}
+  ports:
+    # Only the sidecar. TLS terminates inside the pod with the certificate bound to the quote, so do not put a
+    # TLS-terminating proxy in front of it: clients pin that certificate.
+    - name: https
+      port: {{ .Values.service.port }}
+      targetPort: https
+      protocol: TCP

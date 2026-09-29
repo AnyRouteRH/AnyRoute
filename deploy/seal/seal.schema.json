@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anyroute.xyz/schemas/seal-host-v1.json",
+  "title": "seal.yaml: the SEAL host configuration",
+  "description": "What a host declares about one model endpoint running behind the Anyroute sidecar. Checked by deploy/seal/validate.ts and, for the fields it writes, by deploy/seal/install.sh with the same patterns.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "engine", "engine_url", "model", "lanes", "pricing", "policy", "tee", "gpu", "kms", "region"],
+  "properties": {
+    "version": { "description": "Schema version of this file.", "const": 1 },
+    "host_id": {
+      "description": "The HostBond id (bytes32, 0x and 64 lowercase hex). The installer generates one if none is given; nothing is bonded until you call HostBond.bond yourself.",
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "engine": {
+      "description": "The OpenAI-compatible model server the sidecar sits in front of. Only vllm and sglang have batch-invariant (deterministic) serving modes.",
+      "enum": ["vllm", "sglang", "llamacpp", "ollama"]
+    },
+    "engine_url": {
+      "description": "Where the sidecar reaches the engine (no trailing slash, no /v1).",
+      "type": "string",
+      "pattern": "^https?://[A-Za-z0-9._-]+(:[0-9]{1,5})?$"
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hf_repo", "weights_sha256", "quant"],
+      "properties": {
+        "served_name": { "description": "The model id the engine serves (from its /v1/models).", "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$" },
+        "hf_repo": { "description": "Hugging Face repository, owner/name.", "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$" },
+        "weights_sha256": { "description": "The Anyroute model digest of the weights directory (bun sidecar/src/main.ts digest <dir>), sha256: and 64 lowercase hex.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "tokenizer_sha256": { "description": "SHA-256 of tokenizer.json, sha256: and 64 lowercase hex.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "quant": { "description": "Weight format as served, for example bf16, fp8, awq, q4_k_m.", "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{1,31}$" },
+        "creator_handle": { "description": "Royalty recipient's Hugging Face handle (claims via a signed proof).", "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$" },
+        "royalty_bps": { "description": "Share of token revenue paid to the creator, in basis points.", "type": "integer", "minimum": 0, "maximum": 10000 }
+      }
+    },
+    "lanes": {
+      "description": "Lanes this endpoint offers. attested and unlinkable need an Intel TDX host.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "enum": ["public", "attested", "unlinkable"] }
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_per_m_usdg", "output_per_m_usdg"],
+      "properties": {
+        "input_per_m_usdg": { "description": "USDG per million input tokens.", "type": "number", "minimum": 0, "maximum": 1000 },
+        "output_per_m_usdg": { "description": "USDG per million output tokens.", "type": "number", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "policy": { "description": "Measured policy.json id (spec 0005).", "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+    "tee": {
+      "description": "The CPU trusted execution environment. tdx: Intel TDX (the sidecar attests it directly or through dstack). sev-snp: AMD SEV-SNP (CPU claims only, never GPU). none: no confidential VM.",
+      "enum": ["tdx", "sev-snp", "none"]
+    },
+    "gpu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cc_mode", "multi_gpu"],
+      "properties": {
+        "cc_mode": { "description": "Whether you claim NVIDIA confidential-computing mode. Quote it: YAML 1.1 readers turn a bare on into true.", "enum": ["on", "off"] },
+        "multi_gpu": { "description": "single: one GPU. nvle: Blackwell encrypted NVLink. ppcie: protected PCIe, NVLink traffic is not encrypted.", "enum": ["single", "nvle", "ppcie"] }
+      }
+    },
+    "kms": { "description": "KMS cluster id.", "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+    "region": { "description": "Datacenter region code, for example eu-west.", "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,31}$" },
+    "nodes": {
+      "description": "Serving nodes for this model (seal add-node). Each one runs the same sidecar and engine.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "endpoint"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+          "endpoint": { "type": "string", "pattern": "^https?://[A-Za-z0-9._-]+(:[0-9]{1,5})?$" },
+          "region": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,31}$" }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "attested and unlinkable lanes need an Intel TDX host.",
+      "if": { "properties": { "lanes": { "contains": { "enum": ["attested", "unlinkable"] } } }, "required": ["lanes"] },
+      "then": { "properties": { "tee": { "const": "tdx" } } }
+    },
+    {
+      "description": "A confidential-GPU claim needs Intel TDX: SEV-SNP has no runtime measurement register to bind GPU evidence into.",
+      "if": { "properties": { "gpu": { "properties": { "cc_mode": { "const": "on" } }, "required": ["cc_mode"] } }, "required": ["gpu"] },
+      "then": { "properties": { "tee": { "const": "tdx" } } }
+    }
+  ]
+}

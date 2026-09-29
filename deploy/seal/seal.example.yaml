@@ -1,0 +1,51 @@
+# seal.yaml: what a host declares about one model endpoint behind the Anyroute sidecar.
+#
+# Schema: deploy/seal/seal.schema.json. Check a file with
+#   bun deploy/seal/validate.ts seal.yaml      (or: bun scripts/seal-cli.ts validate seal.yaml)
+# install.sh writes this file for you from flags; this copy shows every setting.
+
+version: 1
+
+# HostBond id (bytes32). install.sh generates a random one and keeps it on re-runs. Nothing is bonded until you call
+# HostBond.bond(host_id, amount) from your own wallet.
+host_id: "0x0000000000000000000000000000000000000000000000000000000000000000"
+
+# The OpenAI-compatible server the sidecar sits in front of: vllm | sglang | llamacpp | ollama.
+# Only vllm and sglang have batch-invariant (deterministic) serving modes.
+engine: vllm
+# Where the sidecar reaches it. No trailing slash, no /v1.
+engine_url: http://127.0.0.1:8000
+
+model:
+  served_name: example-model
+  hf_repo: example-org/example-model-24b
+  # Anyroute model digest of the weights directory: bun sidecar/src/main.ts digest <dir>
+  weights_sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  # SHA-256 of tokenizer.json (optional): sha256sum tokenizer.json
+  tokenizer_sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  quant: bf16
+  # The model's creator, paid royalty_bps of token revenue once they claim with a signed proof (optional).
+  creator_handle: example-creator
+  royalty_bps: 500
+
+# public: any client. attested and unlinkable: need an Intel TDX host (tee: tdx).
+lanes: [public, attested, unlinkable]
+
+pricing: { input_per_m_usdg: 0.20, output_per_m_usdg: 0.90 }
+
+# Measured policy.json id (spec 0005).
+policy: default-v1
+
+# tdx: Intel TDX. sev-snp: AMD SEV-SNP, CPU claims only and never GPU claims. none: nothing attested, public lane only.
+tee: tdx
+
+# cc_mode is quoted on purpose: YAML 1.1 readers turn a bare on into true.
+# multi_gpu: single | nvle (Blackwell encrypted NVLink) | ppcie (NVLink not encrypted: disclose it).
+gpu: { cc_mode: "on", multi_gpu: single }
+
+kms: anyroute-main
+region: eu-west
+
+# Serving nodes (seal add-node --name n1 --endpoint https://n1.example:8443).
+nodes:
+  - { name: n1, endpoint: "https://n1.example.invalid:8443", region: eu-west }

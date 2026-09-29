@@ -1,0 +1,70 @@
+# Values for the seal chart. One release serves one model: the engine and the sidecar share a pod, so the sidecar
+# reaches the engine on 127.0.0.1 and the engine's port is never in a Service.
+#
+# Schedule it only on confidential nodes (Intel TDX for the attested lanes): set nodeSelector, tolerations and, where
+# your platform uses one, runtimeClassName.
+
+# Rendered as seal.yaml. It must pass deploy/seal/seal.schema.json (the chart's test checks these defaults do).
+# Keep cc_mode quoted: Helm reads YAML 1.1, where a bare on is a boolean.
+seal:
+  version: 1
+  engine: vllm
+  engine_url: "http://127.0.0.1:8000"
+  model:
+    served_name: example-model
+    hf_repo: example-org/example-model-24b
+    weights_sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    quant: bf16
+  lanes: [public, attested]
+  pricing: { input_per_m_usdg: 0.2, output_per_m_usdg: 0.9 }
+  policy: default-v1
+  tee: tdx
+  gpu: { cc_mode: "on", multi_gpu: single }
+  kms: anyroute-main
+  region: eu-west
+
+replicas: 1
+
+sidecar:
+  # Required: the sidecar image pinned by digest, name@sha256:<64 hex>. The chart refuses anything else.
+  image: ""
+  port: 8443
+  # tdx: Intel TDX through configfs-tsm (runs as root with the host's /sys/kernel/config).
+  # dstack: through the dstack guest agent socket. dev: SIMULATED evidence, for a local cluster only.
+  attestation: tdx
+  # SHA-256 (64 hex) of the router API key. The key itself never goes into values.
+  # Make one with: head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > router-api-key; sha256sum router-api-key
+  routerKeySha256: ""
+  # Hash the weights at boot from engine.weights (true) or only declare seal.model.weights_sha256 (false).
+  measureWeights: true
+  resources: {}
+
+engine:
+  # Required: the engine image pinned by digest, e.g. vllm/vllm-openai@sha256:<64 hex>.
+  image: ""
+  port: 8000
+  args:
+    - --model
+    - /models/model
+    - --served-model-name
+    - example-model
+    - --host
+    - 127.0.0.1
+    - --port
+    - "8000"
+  env:
+    - { name: HF_HUB_OFFLINE, value: "1" }
+  gpus: 1
+  # Where the weights are. One of hostPath or persistentVolumeClaim.
+  weights:
+    hostPath: /models/model
+    persistentVolumeClaim: ""
+  resources: {}
+
+service:
+  type: ClusterIP
+  port: 8443
+
+nodeSelector: {}
+tolerations: []
+runtimeClassName: ""

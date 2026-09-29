@@ -1,0 +1,35 @@
+{{- include "seal.checkClaims" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "seal.fullname" . }}
+  labels:
+    {{- include "seal.labels" . | nindent 4 }}
+data:
+  seal.yaml: |
+    {{- toYaml .Values.seal | nindent 4 }}
+  sidecar.yaml: |
+    # Written by the seal chart from values. Every setting: sidecar/sidecar.example.yaml.
+    server:
+      host: 0.0.0.0
+      port: {{ .Values.sidecar.port }}
+      tls: self_signed
+    upstream:
+      base_url: {{ .Values.seal.engine_url | quote }}
+    model:
+      {{- if .Values.sidecar.measureWeights }}
+      path: /models/model
+      {{- else }}
+      digest: {{ .Values.seal.model.weights_sha256 | quote }}
+      {{- end }}
+      {{- with .Values.seal.model.served_name }}
+      served_name: {{ . | quote }}
+      {{- end }}
+    allowlist:
+      model_digests: [{{ .Values.seal.model.weights_sha256 | quote }}]
+    attestation:
+      provider: {{ .Values.sidecar.attestation }}
+    auth:
+      keys:
+        - id: router
+          sha256: {{ required "sidecar.routerKeySha256 is required (the SHA-256 of the router API key)" .Values.sidecar.routerKeySha256 | quote }}
