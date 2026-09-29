@@ -50,6 +50,9 @@ Alertmanager (Compose) reads the same URL from the file named by `ALERT_WEBHOOK_
 | `providers` | No live provider can serve a model. | Check provider status and credentials, and the `provider-registry` job. |
 | `catalog-refresh`, `provider-registry`, `escrow-indexer`, `chain-indexer`, `receipts-anchor`, `settlement`, `attestor` | That worker job has not succeeded within twice its interval (at least 60 s), or its last run failed. | Check the worker service logs. If every job is stale the worker is down: restart it. A single job failing usually means its dependency (RPC, provider) is failing. |
 | `chain` | The RPC is unreachable, on the wrong chain, or the indexer cursor is too far behind. | Check the RPC provider, then the indexer job. |
+| `escrow_finality` | The chain's finality point is more than an hour behind its head, so escrow deposits wait. | Check the chain's status and the RPC. Credits resume on their own once blocks finalize. |
+| `escrow_reconciliation` | A credited deposit was reversed, or a final transfer left the canonical chain, and no operator has reviewed it yet. | Review each flagged deposit in the admin interface and resolve the account balance. Then mark it reviewed. The check stays red until you do. |
+| `root_completeness` | The latest spent root omits a funded key, overspends one, or does not reconcile (contracts mode). | Approve no root. Run `bun scripts/reconcile-roots.ts` and fix the cause first. |
 | `chain_submissions` | A receipt anchor or spent root has been pending for over 2 minutes. | Check the anchoring worker's logs and signer balance. |
 | `settlement_review` | A spent root has waited over 48 hours for approval. | Review and approve or reject it through the governance process. |
 | `custody_controls`, `receipt_anchor_configured` | Contract controls or addresses are not in the expected state (contracts mode only). | Compare on-chain roles with the release manifest. Do not accept payments until they match. |
