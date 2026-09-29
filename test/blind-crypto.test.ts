@@ -3,6 +3,7 @@ import { createPrivateKey } from "node:crypto";
 import { RSABSSA, type BlindRSA } from "@cloudflare/blindrsa-ts";
 import { generateIssuerKey, importIssuerPublicKey, issuerSpki, isValidBlindedMsg, parseIssuerSpki, Signer, suite, tokenKeyId } from "../src/blind/rsa.ts";
 import { challengeDigest, decodeBase64, decodeToken, encodeToken, hex, nullifierOf, parsePrivateToken, sha256Bytes, signedPart, tokenChallenge, tokenInput, unhex, TOKEN_LEN } from "../src/blind/token.ts";
+import { epochCommitment } from "../src/blind/issuer.ts";
 import vectors from "./fixtures/blind-vectors.json";
 
 // Public test vectors: RFC 9474 Appendix A (RSABSSA) and RFC 9578 Appendix A.2 (token type 0x0002).
@@ -199,5 +200,19 @@ describe("issuer keys and token encoding", () => {
     wrongType[1] = 1;
     expect(decodeToken(wrongType)).toBeNull();
     expect(decodeBase64("a b")).toBeNull();
+  });
+});
+
+describe("epoch commitment", () => {
+  test("matches the value contracts/test/BlindIssuer.t.sol asserts", () => {
+    // keccak256(abi.encode(uint64 epoch, uint32[] denominations, bytes32[] keyIds)), the value BlindIssuer stores.
+    const c = epochCommitment(2960, [
+      { denomination: 1000, keyId: "11".repeat(32) },
+      { denomination: 10000, keyId: "22".repeat(32) },
+      { denomination: 100000, keyId: "33".repeat(32) },
+    ]);
+    expect(c.commitment).toBe("0x" + "3404ddb4c7387d86b25729fe273e10e8b8e1424395772ff9ecd4794262f82e19");
+    expect(c.denominations).toEqual([1000, 10000, 100000]);
+    expect(c.keyIds[0]).toBe("0x" + "11".repeat(32));
   });
 });
