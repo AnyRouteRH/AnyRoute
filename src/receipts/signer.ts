@@ -3,6 +3,7 @@ import { desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { receiptKeys } from "../db/schema.ts";
 import { canonicalJson, decrypt, encrypt, sha256 } from "../lib/util.ts";
+import { coseSign1, decodeCoseSign1, decodeClaims, encodeClaims, receiptLeafV2, COSE_ALG_EDDSA, type ClaimsV2 } from "./v2.ts";
 
 // Ed25519 receipt signing with weekly rotation. Every key ever used stays in receipt_keys
 // (public half forever) so old receipts keep verifying; the public keys are also registered
@@ -98,6 +99,14 @@ export class ReceiptSigner {
     return { keyId: this.active.id, sig: sigBytes.toString("base64"), bytes, sigBytes };
   }
 
+  /** Receipt v2: COSE_Sign1 over the CBOR claims, EdDSA with the same active key; kid is the key id's 8 bytes. */
+  signCose(claims: ClaimsV2): { keyId: string; cose: Buffer; leaf: `0x${string}` } {
+    if (!this.active?.privateKey) throw new Error("receipt signer not initialized");
+    const key = this.active.privateKey;
+    const cose = Buffer.from(coseSign1(encodeClaims(claims), Buffer.from(this.active.id, "hex"), (tbs) => edSign(null, tbs, key)));
+    return { keyId: this.active.id, cose, leaf: receiptLeafV2(cose) };
+  }
+
   async publicKey(keyId: string): Promise<ReceiptKey | null> {
     if (this.cache.has(keyId)) return this.cache.get(keyId)!;
     const [row] = await this.db.select().from(receiptKeys).where(eq(receiptKeys.id, keyId));
@@ -135,6 +144,23 @@ export class ReceiptSigner {
 export function verifyWithRawKey(payload: unknown, sigB64: string, publicKeyHex: string) {
   try {
     return edVerify(null, canonicalBytes(payload), publicFromRaw(publicKeyHex), Buffer.from(sigB64, "base64"));
+  } catch {
+    return false;
+  }
+}
+
+/** The key id (16 hex) and claims a v2 receipt names, without checking anything. Throws on malformed bytes. */
+export function inspectCose(cose: Uint8Array): { keyId: string | null; alg: number | null; claims: ClaimsV2 } {
+  const d = decodeCoseSign1(cose);
+  return { keyId: d.kid ? Buffer.from(d.kid).toString("hex") : null, alg: d.alg, claims: decodeClaims(d.payload) };
+}
+
+/** Check a v2 receipt's COSE_Sign1 (alg EdDSA) against a raw Ed25519 public key in hex. */
+export function verifyCoseWithRawKey(cose: Uint8Array, publicKeyHex: string): boolean {
+  try {
+    const d = decodeCoseSign1(cose);
+    if (d.alg !== COSE_ALG_EDDSA) return false;
+    return edVerify(null, d.toBeSigned, publicFromRaw(publicKeyHex), d.signature);
   } catch {
     return false;
   }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createHash,generateKeyPairSync,sign} from 'node:crypto';
-import {attestationPath,base64ToBytes,bytesToHex,canonicalJson,describeAttestation,hexToBytes,isEnclaveReceipt,keccak256,parseReceiptInput,providerIdFromSearch,relativeTime,shortDigest,teeLabel,verifyHref,verifyMerkleProof,verifyReceipt} from '../lib/verify.js';
+import {attestationPath,base64ToBytes,bytesToHex,canonicalJson,chunkChainHead,decodeReceiptV2,describeAttestation,hexToBytes,isEnclaveReceipt,keccak256,parseReceiptInput,providerIdFromSearch,relativeTime,shortDigest,teeLabel,verifyHref,verifyMerkleProof,verifyReceipt,verifyReceiptV2} from '../lib/verify.js';
 
 // Recorded evidence shared with the SDK packages (a TDX deployment's attestation, receipt and the router's record of it).
 const fx=(name)=>fs.readFileSync(new URL(`../../packages/client/test/fixtures/${name}`,import.meta.url),'utf8');
@@ -262,6 +262,29 @@ test('a logged measurement bundle is described as a bundle signed with the publi
  assert.equal(image.subject,null);
  assert.equal(image.bundleDigest,'');
  assert.match(withLog({...bundle,subject:'image_digest'}).checks.find((c)=>c.id==='transparency_log_entry').label,/The image has an entry/);
+});
+
+test('a v2 (COSE_Sign1) receipt verifies in the browser code: signature, chain head, and a cut stream fails',async()=>{
+ const fx=json('receipt-v2.json');
+ const ok=await verifyReceiptV2(fx.cose,{publicKeyHex:fx.public_key_hex,chunks:fx.chunks});
+ assert.equal(ok.valid,true);
+ assert.equal(ok.leaf,fx.leaf);
+ assert.deepEqual(ok.claims,fx.claims);
+ assert.deepEqual(ok.checks.map((c)=>[c.id,c.status]),[['v2_alg','pass'],['v2_signature','pass'],['v2_chain','pass'],['v2_anchor_proof','not_checked']]);
+ assert.equal(await chunkChainHead(fx.claims.rid,fx.chunks),fx.claims.resp.chain);
+ const cut=await verifyReceiptV2(fx.cose,{publicKeyHex:fx.public_key_hex,chunks:fx.chunks.slice(0,-1)});
+ assert.equal(cut.valid,false);
+ assert.equal(cut.checks.find((c)=>c.id==='v2_chain').status,'fail');
+ assert.equal((await verifyReceiptV2(fx.cose,{publicKeyHex:'00'.repeat(32)})).valid,false);
+ const bytes=base64ToBytes(fx.cose);bytes[30]^=1;
+ assert.equal((await verifyReceiptV2(Buffer.from(bytes).toString('base64'),{publicKeyHex:fx.public_key_hex})).valid,false);
+ // Pasting { cose } works through the same entry point as v1, and the proof step runs when a path is present.
+ const parsed=parseReceiptInput(JSON.stringify({data:{cose:fx.cose}}));
+ assert.equal(parsed.receipt.cose,fx.cose);
+ const viaEntry=await verifyReceipt({cose:fx.cose,anchor:{root:fx.leaf,proof:[]}},{publicKeyHex:fx.public_key_hex});
+ assert.equal(viaEntry.valid,true);
+ assert.equal(viaEntry.anchor,'proof_valid');
+ assert.equal(decodeReceiptV2(base64ToBytes(fx.cose)).keyId,fx.key_id);
 });
 
 test('only an https entry link is passed on to the page',()=>{

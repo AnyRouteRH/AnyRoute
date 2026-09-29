@@ -8,6 +8,8 @@ export { keccak256, keccak256Hex, sha256, sha256Hex } from "./hash.js";
 export { bytesToHex, hexToBytes, base64ToBytes, bytesToBase64, bytesToBase64Url, concatBytes, equalBytes, fromUtf8, utf8 } from "./bytes.js";
 export { RECEIPT_KEYS_PATH, canonicalBytes, fetchReceiptKeys, keyIdOf, parseKeySet, receiptLeaf, verifyMerkleProof, verifyReceipt } from "./receipts.js";
 export type { ReceiptVerification, VerifyReceiptOptions } from "./receipts.js";
+export { COSE_ALG_EDDSA, checkChain, chunkChain, decodeReceiptV2, receiptLeafV2, sigStructure, verifyReceiptV2 } from "./receipts-v2.js";
+export type { ChainedEvent, DecodedReceiptV2, ReceiptClaimsV2, ReceiptV2Verification, VerifyReceiptV2Options } from "./receipts-v2.js";
 export { verifySidecarReceipt } from "./sidecar.js";
 export { ATTEST_SAN_SUFFIX, attestSanFor, defaultAttestFetcher, digestHex, evaluateAttestation, fetchRouterAttestation, verifyProvider } from "./attestation.js";
 export type { AttestDocument, AttestFetcher, Bindings, BoundIdentity, EvaluateInput, EvaluateOptions, ExpectedDigests, ProviderVerification, QuoteVerifier, RouterAttestation, VerifyProviderOptions } from "./attestation.js";

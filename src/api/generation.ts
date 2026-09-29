@@ -6,25 +6,37 @@ import { agentSessions, anchors, blindNullifiers, generations, paywithDebts, pay
 import { fail } from "../lib/errors.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { MerkleTree, receiptLeaf } from "../receipts/merkle.ts";
-import { canonicalBytes, verifyWithRawKey } from "../receipts/signer.ts";
+import { canonicalBytes, inspectCose, verifyCoseWithRawKey, verifyWithRawKey } from "../receipts/signer.ts";
+import { chainOf, receiptLeafV2 } from "../receipts/v2.ts";
 import { bearer, resolveKey, walletAuth } from "./auth.ts";
 import { nullifierOf, parsePrivateToken } from "../blind/privacy-token.ts";
 
-export async function anchorProof(ctx: Ctx, g: { anchorIndex: number | null; leafIndex: number | null }) {
-  if (g.anchorIndex == null || g.leafIndex == null) return null;
+/** Rebuild an anchor's tree from the stored leaf positions (v1 leaves, and v2 leaves where a receipt has one). */
+async function anchorTree(ctx: Ctx, anchorIndex: number) {
+  const rows = await ctx.db
+    .select({ leaf: generations.receiptLeaf, leafIndex: generations.leafIndex, leafV2: generations.receiptLeafV2, leafIndexV2: generations.leafIndexV2 })
+    .from(generations)
+    .where(eq(generations.anchorIndex, anchorIndex))
+    .orderBy(asc(generations.leafIndex));
+  const leaves: Hex[] = [];
+  for (const r of rows) {
+    if (r.leafIndex != null) leaves[r.leafIndex] = r.leaf as Hex;
+    if (r.leafIndexV2 != null && r.leafV2) leaves[r.leafIndexV2] = r.leafV2 as Hex;
+  }
+  return new MerkleTree(leaves);
+}
+
+export async function anchorProof(ctx: Ctx, g: { anchorIndex: number | null; leafIndex: number | null; leafIndexV2?: number | null }, version: 1 | 2 = 1) {
+  const leafIndex = version === 2 ? (g.leafIndexV2 ?? null) : g.leafIndex;
+  if (g.anchorIndex == null || leafIndex == null) return null;
   const [a] = await ctx.db.select().from(anchors).where(eq(anchors.index, g.anchorIndex));
   if (!a) return null;
-  const leaves = await ctx.db
-    .select({ leaf: generations.receiptLeaf })
-    .from(generations)
-    .where(eq(generations.anchorIndex, g.anchorIndex))
-    .orderBy(asc(generations.leafIndex));
-  const tree = new MerkleTree(leaves.map((l) => l.leaf as Hex));
+  const tree = await anchorTree(ctx, g.anchorIndex);
   return {
     root: a.root,
     index: a.index,
-    leaf_index: g.leafIndex,
-    proof: tree.proof(g.leafIndex),
+    leaf_index: leafIndex,
+    proof: tree.proof(leafIndex),
     from: a.fromTs.toISOString(),
     to: a.toTs.toISOString(),
     tx: a.txHash,
@@ -147,6 +159,8 @@ export function generationRoutes(app: Hono, ctx: Ctx) {
         receipt_key_id: g.receiptKeyId,
         receipt: g.receipt,
         receipt_leaf: g.receiptLeaf,
+        // v2 buckets the counts above; this owner-only view keeps them exact.
+        receipt_v2: g.receiptCose ? { claims: g.receiptV2, cose: g.receiptCose, leaf: g.receiptLeafV2 } : null,
         paid_with: paidWith,
         payment_tx: g.paymentTx,
         attempts: g.attempts,
@@ -181,6 +195,62 @@ export async function verifyReceipt(ctx: Ctx, r: { payload: unknown; sig: string
     inclusion_valid: inclusion,
     onchain_root: onchainRoot,
     valid: signatureValid && inclusion !== false,
+  };
+}
+
+/**
+ * Stateless v2 verification, in the spec's order: COSE signature, then the hashes the caller supplied, then the
+ * chunk chain head (when the caller supplies the streamed event data), then anchor inclusion. Stops at nothing: every
+ * step is reported, and `valid` is false when any step that ran failed.
+ */
+export async function verifyReceiptV2(
+  ctx: Ctx,
+  r: { cose: string; request_sha256?: string; response_sha256?: string; chunks?: string[]; anchor?: { root: string; proof: string[]; index?: number } },
+) {
+  const cose = Buffer.from(r.cose, "base64");
+  let inspected: ReturnType<typeof inspectCose> | null = null;
+  try {
+    inspected = inspectCose(cose);
+  } catch (e) {
+    return { version: 2, valid: false, error: `not a COSE_Sign1 receipt: ${(e as Error).message}`, signature_valid: false, key_id: null, claims: null, leaf: null, hashes_valid: null, chain_valid: null, inclusion_valid: null, onchain_root: null, key_source: null };
+  }
+  const keyId = inspected.keyId ?? "";
+  const key = keyId ? await ctx.signer.publicKey(keyId) : null;
+  const onchainKey = keyId ? await ctx.chain.signingKeyOnChain(keyId).catch(() => null) : null;
+  const pubHex = onchainKey ? onchainKey.publicKey.slice(2) : key?.publicKeyHex;
+  const signatureValid = !!pubHex && verifyCoseWithRawKey(cose, pubHex);
+  const claims = inspected.claims;
+  const strip = (h: string) => h.replace(/^sha256:/, "").toLowerCase();
+  let hashes: boolean | null = null;
+  if (r.request_sha256 != null || r.response_sha256 != null) {
+    hashes = (r.request_sha256 == null || strip(r.request_sha256) === strip(claims.req?.h ?? "")) && (r.response_sha256 == null || strip(r.response_sha256) === strip(claims.resp?.h ?? ""));
+  }
+  let chain: boolean | null = null;
+  if (Array.isArray(r.chunks)) chain = typeof claims.resp?.chain === "string" && chainOf(claims.rid, r.chunks).head === claims.resp.chain;
+  const leaf = receiptLeafV2(cose);
+  let inclusion: boolean | null = null;
+  let onchainRoot: string | null = null;
+  if (r.anchor?.root && Array.isArray(r.anchor.proof)) {
+    inclusion = MerkleTree.verify(leaf, r.anchor.proof as Hex[], r.anchor.root as Hex);
+    if (r.anchor.index != null) {
+      const a = await ctx.chain.anchorOnChain(r.anchor.index).catch(() => null);
+      onchainRoot = a?.root ?? null;
+      if (onchainRoot && onchainRoot.toLowerCase() !== r.anchor.root.toLowerCase()) inclusion = false;
+    }
+  }
+  return {
+    version: 2,
+    signature_valid: signatureValid,
+    key_id: keyId || null,
+    key_source: onchainKey ? "chain" : key ? "router" : null,
+    key_retired_at: key?.retiredAt?.toISOString() ?? null,
+    claims,
+    leaf,
+    hashes_valid: hashes,
+    chain_valid: chain,
+    inclusion_valid: inclusion,
+    onchain_root: onchainRoot,
+    valid: signatureValid && claims?.v === 2 && hashes !== false && chain !== false && inclusion !== false,
   };
 }
 

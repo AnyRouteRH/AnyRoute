@@ -290,6 +290,12 @@ export const generations = pgTable(
     receiptLeaf: text("receipt_leaf"),
     anchorIndex: integer("anchor_index"),
     leafIndex: integer("leaf_index"),
+    // Receipt v2 (spec/0004 Section 4): the JSON view of the signed claims, the COSE_Sign1 bytes (base64), its
+    // anchor leaf and that leaf's position in the same anchor tree as the v1 leaf. Null for v1-only receipts.
+    receiptV2: jsonb("receipt_v2"),
+    receiptCose: text("receipt_cose"),
+    receiptLeafV2: text("receipt_leaf_v2"),
+    leafIndexV2: integer("leaf_index_v2"),
     paidWith: jsonb("paid_with"),
     paymentTx: text("payment_tx"),
     appId: text("app_id"),

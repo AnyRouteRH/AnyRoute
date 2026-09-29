@@ -16,6 +16,7 @@ import { route, type Attempt, type RouteSuccess, type RouteTarget } from "../rou
 import { providerKey } from "../providers/upstream.ts";
 import { compactUpstream, recordGpuAttested, unverifiedUpstream, verifyAciExchange, type UpstreamAttestation } from "../providers/aci.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
+import { buildClaimsV2, chainComment, ChunkChain, COSE_CONTENT_TYPE } from "../receipts/v2.ts";
 import { applyGuardrails, mergeGuardrails, redactOutput, type GuardrailConfig } from "../gateway/guardrails.ts";
 import { middleOut } from "../gateway/transforms.ts";
 import type { CacheMode } from "../gateway/cache.ts";
@@ -549,6 +550,8 @@ export type FinalizeInput = Common & {
    * gateway, finalize checks it itself (council and dual verification calls).
    */
   upstreamAttestation?: UpstreamAttestation | null;
+  /** For a stream: the head of the chunk hash chain over every event sent before the receipt (receipt v2 resp.chain). */
+  chainHead?: string | null;
 };
 
 async function finalize(p: FinalizeInput) {
@@ -615,6 +618,31 @@ async function finalize(p: FinalizeInput) {
   };
   const signed = ctx.signer.sign(payload);
   const leaf = receiptLeaf(signed.bytes, signed.sigBytes);
+  // Receipt v2 alongside v1: the same facts minus payer and exact counts, as a COSE_Sign1 under the same key.
+  const policyHash = servedPolicyHash(ctx, r.candidate);
+  const claimsV2 = buildClaimsV2({
+    rid: id,
+    issuedAt: new Date(payload.issued),
+    router: ctx.cfg.publicUrl,
+    modelId: r.model.id,
+    providerId: r.candidate.providerId,
+    attestation,
+    policyHash,
+    requestSha256: p.bodySha,
+    responseSha256: payload.response_sha256,
+    chainHead: p.stream ? (p.chainHead ?? null) : null,
+    tokensIn: p.usage.prompt,
+    tokensOut: p.usage.completion,
+    finish: p.finishReason,
+    stream: p.stream,
+    complete: !p.cancelled && p.finishReason !== "error",
+    lane: p.disc.lane,
+    disclosure: served.class,
+    mode,
+    chargedPico: charged,
+    keyset: billing.mode === "blind" ? billing.pass.keyId : null,
+  });
+  const signedV2 = ctx.signer.signCose(claimsV2);
 
   const referer = p.c.req.header("http-referer") ?? p.c.req.header("referer");
   const title = p.c.req.header("x-title");
@@ -661,6 +689,9 @@ async function finalize(p: FinalizeInput) {
     receiptKeyId: signed.keyId,
     receipt: payload,
     receiptLeaf: leaf,
+    receiptV2: claimsV2,
+    receiptCose: signedV2.cose.toString("base64"),
+    receiptLeafV2: signedV2.leaf,
     paidWith,
     paymentTx: billing.mode === "per_call" ? (billing.paymentTx ?? null) : null,
     appId,
@@ -705,15 +736,16 @@ async function finalize(p: FinalizeInput) {
     alg: "Ed25519",
     payload,
     leaf,
-    anchor_hint: `Anchored on chain ${ctx.cfg.chain.id} within the hour; GET /api/v1/generation?id=${id} returns the merkle proof.`,
+    anchor_hint: `Rooted within the hour; GET /api/v1/receipts/${id}/proof returns the merkle path.`,
     ...(paidWith ? { paid_with: paidWith } : {}),
+    v2: { alg: "EdDSA", kid: signedV2.keyId, content_type: COSE_CONTENT_TYPE, cose: signedV2.cose.toString("base64"), claims: claimsV2, leaf: signedV2.leaf },
   };
   return {
     id,
     disclosure: served.class,
     simulated: served.simulated,
     /** The classifier policy hash the serving endpoint's fresh attestation bound, or null (X-Anyroute-Policy-Hash). */
-    policyHash: servedPolicyHash(ctx, r.candidate),
+    policyHash,
     upstream: cost.upstream,
     charged,
     cost,
@@ -774,11 +806,20 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
       }
       const r = result as Extract<RouteSuccess, { kind: "stream" }>;
       const base = chunkBase(p.holdId, created, r.model, r.candidate.provider.name, kind);
+      // Chunk hash chain (receipt v2 resp.chain): every event before the receipt is chained, and c_i follows the
+      // i-th event as an SSE comment, which OpenAI-compatible parsers discard. Only what was enqueued is chained.
+      const chain = new ChunkChain(p.holdId);
+      const chained = (obj: unknown) => {
+        if (closed) return;
+        const data = JSON.stringify(obj);
+        const hex = chain.push(data);
+        send(`data: ${data}\n\n` + chainComment(chain.count, hex));
+      };
       // What an attested gateway streams for a request that requires attested hardware is held back until its
       // receipt shows an attested upstream (providers/aci.ts); every other stream is relayed as it arrives.
       const hold = !!r.candidate.provider.aci && requiresAttestedUpstream(p.body, p.disc);
       const held: unknown[] = [];
-      const relay = (obj: unknown) => (hold ? held.push(obj) : event(obj));
+      const relay = (obj: unknown) => (hold ? held.push(obj) : chained(obj));
       const holdKeepalive = hold ? setInterval(() => send(": ANYROUTE PROCESSING\n\n"), 5_000) : undefined;
       let text = "";
       let reasoningText = ""; // billed when usage never arrives (e.g. the client cancels mid-stream)
@@ -831,9 +872,10 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
         const upstreamAttestation = await upstreamAttestationOf(ctx, r, p.byok);
         clearInterval(holdKeepalive);
         const refused = hold && !!upstreamAttestation && !upstreamAttestation.attested;
-        if (hold && !refused) for (const e of held) event(e);
-        const fin = await finalize({ ...p, r, usage, responseText: text, finishReason: finish ?? (cancelled ? "cancelled" : midError ? "error" : null), nativeFinish, generationMs: Date.now() - p.t0, cancelled, upstreamAttestation });
-        if (refused) event({ ...unattestedUpstream(upstreamAttestation!).toJSON(), id: p.holdId });
+        if (hold && !refused) for (const e of held) chained(e);
+        // The refusal goes out before the receipt is signed, so the chain covers it too.
+        if (refused) chained({ ...unattestedUpstream(upstreamAttestation!).toJSON(), id: p.holdId });
+        const fin = await finalize({ ...p, r, usage, responseText: text, finishReason: finish ?? (cancelled ? "cancelled" : midError ? "error" : null), nativeFinish, generationMs: Date.now() - p.t0, cancelled, upstreamAttestation, chainHead: chain.head });
         event({ ...base, choices: [], usage: fin.usageJson, receipt: fin.receiptJson, ...(fin.extras(0) ?? {}) });
       } catch (e) {
         clearInterval(holdKeepalive);

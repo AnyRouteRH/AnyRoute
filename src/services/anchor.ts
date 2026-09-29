@@ -5,7 +5,7 @@ import { anchors, generations, receiptKeys } from "../db/schema.ts";
 import { MerkleTree } from "../receipts/merkle.ts";
 import { log } from "../lib/util.ts";
 
-// Hourly: build a merkle tree over every receipt issued since the last anchor, store the proof
+// Hourly: build a merkle tree over every receipt leaf (v1, plus v2 where issued) since the last anchor, store the proof
 // positions, and post the root to ReceiptAnchor on Robinhood Chain (status "local" when no chain
 // is configured, so proofs still work and can be anchored later).
 
@@ -18,24 +18,31 @@ export async function runAnchor(ctx: Ctx, upTo?: Date) {
   const [last] = await ctx.db.select().from(anchors).orderBy(desc(anchors.index)).limit(1);
   if (last && last.toTs >= toTs) return { anchored: 0 };
   const pending = await ctx.db
-    .select({ id: generations.id, leaf: generations.receiptLeaf, ts: generations.ts })
+    .select({ id: generations.id, leaf: generations.receiptLeaf, leafV2: generations.receiptLeafV2, ts: generations.ts })
     .from(generations)
     .where(and(isNull(generations.anchorIndex), lt(generations.ts, toTs), ...(upTo ? [lte(generations.ts, upTo)] : []), sql`${generations.receiptLeaf} IS NOT NULL`))
     .orderBy(asc(generations.ts), asc(generations.id))
     .limit(200_000);
   if (!pending.length) return { anchored: 0 };
   const index = last ? last.index + 1 : 0;
-  const tree = new MerkleTree(pending.map((p) => p.leaf as Hex));
+  // Leaves in receipt order; a receipt with a v2 encoding contributes its v1 leaf and then its v2 leaf.
+  const leaves: Hex[] = [];
+  const positions = pending.map((p) => {
+    const v1 = leaves.push(p.leaf as Hex) - 1;
+    const v2 = p.leafV2 ? leaves.push(p.leafV2 as Hex) - 1 : null;
+    return { id: p.id, v1, v2 };
+  });
+  const tree = new MerkleTree(leaves);
   const fromTs = last ? last.toTs : new Date(Math.floor(pending[0].ts.getTime() / 1000) * 1000);
   await ctx.db.transaction(async (tx) => {
-    await tx.insert(anchors).values({ index, root: tree.root, fromTs, toTs, count: pending.length, status: "pending" });
-    for (let i = 0; i < pending.length; i++) await tx.update(generations).set({ anchorIndex: index, leafIndex: i }).where(eq(generations.id, pending[i].id));
+    await tx.insert(anchors).values({ index, root: tree.root, fromTs, toTs, count: leaves.length, status: "pending" });
+    for (const pos of positions) await tx.update(generations).set({ anchorIndex: index, leafIndex: pos.v1, leafIndexV2: pos.v2 }).where(eq(generations.id, pos.id));
   });
   let status = "local";
   let txHash: string | null = null;
   if (ctx.chain.address("receiptAnchor") && ctx.chain.roleAddress("anchorer")) {
     try {
-      const r = await ctx.chain.anchor(tree.root, Math.floor(fromTs.getTime() / 1000), Math.floor(toTs.getTime() / 1000), pending.length);
+      const r = await ctx.chain.anchor(tree.root, Math.floor(fromTs.getTime() / 1000), Math.floor(toTs.getTime() / 1000), leaves.length);
       status = "confirmed";
       txHash = r.hash;
       if (r.index != null && Number(r.index) !== index) log.warn("on-chain anchor index differs from local index", { local: index, chain: String(r.index) });

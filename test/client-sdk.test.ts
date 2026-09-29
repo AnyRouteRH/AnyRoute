@@ -7,7 +7,7 @@ import { buyTokens } from "../packages/client/src/blind.ts";
 import { tokenNullifier as sdkNullifier } from "../packages/client/src/blind.ts";
 import { canonicalJson } from "../src/lib/util.ts";
 import * as webVerify from "../web/lib/verify.js";
-import { verifyReceipt as sdkVerifyReceipt } from "../packages/client/src/index.ts";
+import { verifyReceipt as sdkVerifyReceipt, verifyReceiptV2 as sdkVerifyReceiptV2 } from "../packages/client/src/index.ts";
 import { MerkleTree, receiptLeaf } from "../src/receipts/merkle.ts";
 import { canonicalBytes } from "../src/receipts/signer.ts";
 import { nullifierOf } from "../src/blind/privacy-token.ts";
@@ -112,7 +112,18 @@ describe("the verify page's browser code agrees with the SDK and the router", ()
         const a = await sdkVerifyReceipt(r as never, { keys });
         const b = await webVerify.verifyReceipt(r, { keys });
         expect(b.valid).toBe(a.valid);
-        expect(b.checks.map((x: { id: string; status: string }) => [x.id, x.status])).toEqual(a.checks.map((x) => [x.id, x.status]));
+        // The page also checks the v2 encoding beside v1 (ids v2_*); the v1 checks match the SDK's one for one.
+        expect(b.checks.filter((x: { id: string }) => !x.id.startsWith("v2_")).map((x: { id: string; status: string }) => [x.id, x.status])).toEqual(a.checks.map((x) => [x.id, x.status]));
+      }
+      // v2: the page and the SDK agree, and a changed claim byte fails both.
+      const cose = (receipt as { v2?: { cose: string } }).v2!.cose;
+      const bytes = Buffer.from(cose, "base64");
+      bytes[40] ^= 1;
+      for (const x of [cose, bytes.toString("base64")]) {
+        const a = await sdkVerifyReceiptV2(x, { keys });
+        const b = await webVerify.verifyReceiptV2(x, { keys });
+        expect(b.valid).toBe(a.valid);
+        expect(b.checks.find((c: { id: string }) => c.id === "v2_signature").status).toBe(a.checks.find((c) => c.id === "signature")!.status);
       }
     } finally {
       await h.close();
@@ -180,6 +191,14 @@ describe("against a running router", () => {
     const meta = await stream.meta();
     expect(meta.receipt).not.toBeNull();
     expect(meta.receiptVerification?.valid).toBe(true);
+    // Receipt v2: every event came with its chain value and the signed head matches what arrived.
+    expect(stream.chained.length).toBe(chunks - 1);
+    expect(stream.chained.every((e) => /^[0-9a-f]{64}$/.test(e.chain ?? ""))).toBe(true);
+    const chain = await stream.verifyChain();
+    expect(chain).toMatchObject({ ok: true, firstMismatch: null });
+    expect(chain.head).toBe(chain.signedHead!);
+    stream.chained.pop(); // as if the last event never arrived
+    expect((await stream.verifyChain()).ok).toBe(false);
   });
 
   test("blind tokens: buy with the SDK, spend with the SDK, and the receipt shows the nullifier the SDK computes", async () => {

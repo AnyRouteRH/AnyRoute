@@ -11,7 +11,8 @@ import { readiness } from "../services/readiness.ts";
 import { readinessMetrics } from "../services/readiness-metrics.ts";
 import { readJson } from "./common.ts";
 import { requireKey } from "./auth.ts";
-import { verifyReceipt, anchorProof } from "./generation.ts";
+import { verifyReceipt, verifyReceiptV2, anchorProof } from "./generation.ts";
+import { COSE_CONTENT_TYPE } from "../receipts/v2.ts";
 import { holdersStatus } from "../holders/tiers.ts";
 import { laneSummary } from "./models.ts";
 import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAllowance, openDebt, rawToPico, saveAllowance, signCharge, statement, typedDataJson } from "../pay/paywith.ts";
@@ -48,17 +49,44 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
   // ---- Receipts ----
   app.get("/api/v1/receipts/keys", async (c) => c.json(await ctx.signer.jwks()));
   app.get("/.well-known/anyroute-receipt-keys.json", async (c) => c.json(await ctx.signer.jwks()));
+  const anchorInput = z.object({ root: z.string(), proof: z.array(z.string()), index: z.number().int().optional() }).optional();
   app.post("/api/v1/receipts/verify", async (c) => {
-    const b = z
-      .object({ payload: z.record(z.string(), z.unknown()), sig: z.string(), key_id: z.string(), anchor: z.object({ root: z.string(), proof: z.array(z.string()), index: z.number().int().optional() }).optional() })
-      .parse(await readJson(c));
+    const raw = await readJson(c);
+    // v2: a COSE_Sign1 (base64), optionally with the hashes, the streamed event data and an anchor proof to check.
+    if (raw && typeof raw === "object" && typeof (raw as { cose?: unknown }).cose === "string") {
+      const b = z
+        .object({ cose: z.string().max(16_384), request_sha256: z.string().optional(), response_sha256: z.string().optional(), chunks: z.array(z.string()).max(100_000).optional(), anchor: anchorInput })
+        .parse(raw);
+      return c.json({ data: await verifyReceiptV2(ctx, b) });
+    }
+    const b = z.object({ payload: z.record(z.string(), z.unknown()), sig: z.string(), key_id: z.string(), anchor: anchorInput }).parse(raw);
     return c.json({ data: await verifyReceipt(ctx, b) });
+  });
+  // The anchor path for a receipt once its hour has been rooted. `anchored` is true only when the root was posted to
+  // ReceiptAnchor on chain; without a configured chain the root is kept off chain (status "local") and says so.
+  app.get("/api/v1/receipts/:id/proof", async (c) => {
+    const [g] = await ctx.db.select().from(generations).where(eq(generations.id, c.req.param("id")));
+    if (!g) fail(404, "Receipt not found.", "not_found");
+    const version = g.receiptLeafV2 && c.req.query("v") !== "1" ? 2 : 1;
+    const a = await anchorProof(ctx, g, version);
+    const leaf = version === 2 ? g.receiptLeafV2 : g.receiptLeaf;
+    if (!a) return c.json({ data: { rid: g.id, leaf, leaf_version: version, rooted: false, anchored: false, status: "pending", hint: "Receipts are rooted hourly. Ask again after the next root." } });
+    const { index, leaf_index, from, to, ...rest } = a;
+    return c.json({ data: { rid: g.id, leaf, leaf_version: version, rooted: true, anchored: a.status === "confirmed" && !!a.tx, anchor_index: index, leaf_index, window: { from, to }, ...rest } });
   });
   app.get("/api/v1/receipts/:id", async (c) => {
     const [g] = await ctx.db.select().from(generations).where(eq(generations.id, c.req.param("id")));
     if (!g) fail(404, "Receipt not found.", "not_found");
-    // Receipts carry only hashes and amounts, so they are public proofs by id.
-    return c.json({ data: { id: g.id, payload: g.receipt, sig: g.receiptSig, key_id: g.receiptKeyId, leaf: g.receiptLeaf, anchor: await anchorProof(ctx, g) } });
+    const format = c.req.query("format");
+    if (format === "cose") {
+      if (!g.receiptCose) fail(404, "This receipt has no v2 (COSE) encoding.", "not_found");
+      if (c.req.query("encoding") === "base64") return c.text(g.receiptCose, 200, { "content-type": "text/plain; charset=utf-8" });
+      return c.body(Buffer.from(g.receiptCose, "base64"), 200, { "content-type": COSE_CONTENT_TYPE });
+    }
+    // Receipts carry only hashes and amounts, so they are public proofs by id. The v1 fields stay as they were; v2,
+    // when the receipt has one, is added beside them.
+    const v2 = g.receiptCose ? { alg: "EdDSA", kid: g.receiptKeyId, content_type: COSE_CONTENT_TYPE, cose: g.receiptCose, claims: g.receiptV2, leaf: g.receiptLeafV2, anchor: await anchorProof(ctx, g, 2) } : null;
+    return c.json({ data: { id: g.id, version: v2 ? 2 : 1, payload: g.receipt, sig: g.receiptSig, key_id: g.receiptKeyId, leaf: g.receiptLeaf, anchor: await anchorProof(ctx, g), v2 } });
   });
 
   // ---- Rankings: tokens per model/app, and what creators were paid ----

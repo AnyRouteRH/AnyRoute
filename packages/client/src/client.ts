@@ -3,6 +3,7 @@ import type { Ed25519Verifier } from "./ed25519.js";
 import { AnyRouteError, AttestationRefused, ReceiptInvalid } from "./errors.js";
 import { routingHeaders, withRouting, type DisclosureMax, type Lane } from "./options.js";
 import { fetchReceiptKeys, verifyReceipt, type ReceiptVerification } from "./receipts.js";
+import { checkChain, type ChainedEvent } from "./receipts-v2.js";
 import type { Fetch, KeySet, ReceiptEnvelope } from "./types.js";
 
 export type ClientOptions = {
@@ -230,6 +231,20 @@ export class AnyRoute {
 /** Server-sent events from a streamed completion. */
 export class ChatStream implements AsyncIterable<Record<string, unknown>> {
   private receipt: ReceiptEnvelope | null = null;
+  /** Every event before the receipt, with the chain value the router sent after it (receipt v2). */
+  readonly chained: ChainedEvent[] = [];
+
+  /**
+   * After iterating: recompute the chunk hash chain over the events received and compare it with each value the
+   * router sent and with the head signed in the v2 receipt. A cut or altered stream fails here.
+   */
+  async verifyChain(): Promise<{ ok: boolean; head: string; signedHead: string | null; firstMismatch: number | null }> {
+    const v2 = (this.receipt as { v2?: { claims?: { rid?: string; resp?: { chain?: string } } } } | null)?.v2;
+    const rid = v2?.claims?.rid ?? String(this.receipt?.id ?? "");
+    const r = await checkChain(rid, this.chained);
+    const signedHead = v2?.claims?.resp?.chain ?? null;
+    return { ok: r.ok && signedHead === r.head, head: r.head, signedHead, firstMismatch: r.firstMismatch };
+  }
   private resolveMeta!: (m: AnyRouteMeta) => void;
   private rejectMeta!: (e: unknown) => void;
   private readonly metaPromise: Promise<AnyRouteMeta>;
@@ -263,6 +278,8 @@ export class ChatStream implements AsyncIterable<Record<string, unknown>> {
           if (cut < 0) break;
           const block = buf.slice(0, cut);
           buf = buf.slice(cut).replace(/^\r?\n\r?\n/, "");
+          const link = /^: anyroute-chain (\d+) ([0-9a-f]{64})$/m.exec(block);
+          if (link && Number(link[1]) === this.chained.length && this.chained.length) this.chained[this.chained.length - 1].chain = link[2];
           const data = block
             .split(/\r?\n/)
             .filter((l) => l.startsWith("data:"))
@@ -276,6 +293,7 @@ export class ChatStream implements AsyncIterable<Record<string, unknown>> {
             continue;
           }
           if (chunk.receipt && typeof chunk.receipt === "object") this.receipt = chunk.receipt as ReceiptEnvelope;
+          else this.chained.push({ data });
           yield chunk;
         }
       }

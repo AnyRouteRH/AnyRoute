@@ -9,6 +9,10 @@ router-attestation.json GET /api/v1/attestation/:providerId as the router answer
                         local run of the router's own code
 canonical-vectors.json  JSON texts and the canonical form the router's canonicalJson (src/lib/util.ts) produces for each;
                         both SDKs must reproduce it exactly
+receipt-v2.json         synthetic, not recorded: a router receipt v2 (COSE_Sign1, EdDSA) the router's own code
+                        (src/receipts/v2.ts) signs with the RFC 8032 Section 7.1 test 1 key over fixed claims, with three
+                        streamed events and every chain value. Ed25519 is deterministic, so the bytes are exact; the
+                        router's suite (test/receipts-v2.test.ts) regenerates it and fails if they differ
 
 Edits made before committing:
   * the platform event log is removed from both /attest documents (it names the deployment);

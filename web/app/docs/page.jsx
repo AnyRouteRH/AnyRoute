@@ -357,7 +357,8 @@ const endpoints = [
   ["GET /api/v1/ohttp/keys · POST /api/v1/ohttp/gateway", "Oblivious HTTP, where enabled: the gateway key configuration (application/ohttp-keys), and the gateway that unwraps message/ohttp-req sent by a relay and returns message/ohttp-res"],
   ["GET /api/v1/ohttp/key-list · GET /api/v1/relays", "Oblivious HTTP, where enabled: the gateway key history signed with the receipt key, and the relays clients may use, by operator"],
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
-  ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt’s signature and anchor inclusion; signing keys (JWKS)"],
+  ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt (v1, or v2 with its chain head and Merkle path); signing keys (JWKS)"],
+  ["GET /api/v1/receipts/:id · /receipts/:id/proof", "A receipt by id, v2 beside v1 (?format=cose for the COSE bytes); the Merkle path to its hourly root, with anchored true only once that root is on chain"],
   ["GET /.well-known/anyroute-receipt-keys.json", "The same signing keys at a fixed path, for clients that verify receipts themselves"],
   ["GET /api/v1/attestation/:providerId", "What the router has verified about a provider’s hardware attestation: status, verifiers, measurements, transparency-log and on-chain state, and what was not checked"],
   ["GET /api/v1/badge/:id.svg", "Attestation badge image for a provider id or a model id (attested, policy, vendor-forwarded or unverified), with the measurement and policy hash while attested and the share of 7 days with a fresh attestation; ?theme=dark. An unknown id is Unverified with a 404"],
@@ -594,8 +595,10 @@ export default function Docs() {
           <Code label="x402 client (JavaScript, viem)">{x402Example}</Code>
           <h2 id="receipts">The response is only the beginning.</h2>
           <p>
-            Every generation returns normalized usage and an Ed25519-signed receipt with hashes of the request and response (never their content). Receipts are anchored in hourly merkle batches on Robinhood Chain, and the signing keys
-            are published on-chain. Signed is not the same as anchored: the dashboard and /api/v1/receipts/verify report each separately.
+            Every generation returns normalized usage and a signed receipt with hashes of the request and response (never their content), in two encodings: v1 (JSON, Ed25519) and v2 (a COSE_Sign1 signed EdDSA with the same key, with token
+            counts in buckets such as 512-1024 and no payer). A stream commits to every event as it goes: after each one comes a comment line, <span className="mono">: anyroute-chain &lt;i&gt; &lt;hash&gt;</span>, that SSE parsers skip, and the v2
+            receipt signs the last hash, so a cut or altered stream shows. Receipts are rooted in hourly Merkle batches and GET /api/v1/receipts/&#123;id&#125;/proof returns the path. A root is posted to ReceiptAnchor on Robinhood Chain only
+            where the router runs with a configured chain; otherwise it stays off chain and the proof says anchored: false. Signed is not the same as anchored: the dashboard and /api/v1/receipts/verify report each separately.
           </p>
           <Code label="Response shape">{JSON.stringify(receipt, null, 2)}</Code>
           <h3 id="response-headers">Response headers</h3>

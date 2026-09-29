@@ -767,12 +767,20 @@
         ],
         "operationId": "verifyReceipt",
         "summary": "Verify a signed receipt",
+        "description": "A v1 receipt (payload, sig, key_id) is checked as before. A v2 receipt is sent as cose (the COSE_Sign1 bytes, base64) and is checked in order: signature, then request_sha256 and response_sha256 when given, then the chunk hash chain when chunks (the data of every streamed event before the receipt, in order) are given, then the anchor path. The result reports each step (signature_valid, hashes_valid, chain_valid, inclusion_valid; null when not run) and valid is false when any step that ran failed.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReceiptVerificationRequest"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ReceiptVerificationRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReceiptV2VerificationRequest"
+                  }
+                ]
               }
             }
           }
@@ -812,6 +820,7 @@
         ],
         "operationId": "getReceipt",
         "summary": "Read a public receipt proof",
+        "description": "Returns the v1 fields unchanged and, when the receipt has one, its v2 encoding in v2 (version is then 2). With format=cose the COSE_Sign1 bytes themselves are returned (application/cose), or as base64 text with encoding=base64; 404 when the receipt has no v2 encoding.",
         "parameters": [
           {
             "name": "id",
@@ -819,6 +828,30 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "cose"
+              ]
+            }
+          },
+          {
+            "name": "encoding",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "binary",
+                "base64"
+              ]
             }
           }
         ],
@@ -835,6 +868,76 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/Receipt"
+                    }
+                  }
+                }
+              },
+              "application/cose; cose-type=\"cose-sign1\"": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "application/cose"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "base64"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/receipts/{id}/proof": {
+      "get": {
+        "tags": [
+          "Receipts"
+        ],
+        "operationId": "getReceiptProof",
+        "summary": "Merkle path to the hourly root",
+        "description": "Public. Once the receipt's hour has been rooted, the OpenZeppelin MerkleProof-compatible path from the receipt's leaf (the v2 leaf when it has one; v=1 selects the v1 leaf, which sits in the same tree) to the root. Before that, rooted is false. anchored is true only when the root was posted to ReceiptAnchor on chain and confirmed; a router without a configured chain keeps the root off chain (status local) and says anchored false.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The path, or rooted false.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ReceiptProof"
                     }
                   }
                 }
@@ -5823,6 +5926,290 @@
               "object",
               "null"
             ]
+          },
+          "version": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "v2": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptV2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ReceiptV2": {
+        "type": "object",
+        "description": "Receipt v2 (spec 0004 Section 4): a COSE_Sign1 over deterministic CBOR claims, signed EdDSA with the same key as v1 (kid is the key id's 8 bytes). claims is the JSON view of exactly what cose signs. Token counts are bucketed; nothing names a payer, an address or content.",
+        "properties": {
+          "alg": {
+            "type": "string",
+            "const": "EdDSA"
+          },
+          "kid": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "cose": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "leaf": {
+            "type": "string",
+            "description": "keccak256(keccak256(COSE bytes))."
+          },
+          "anchor": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "claims": {
+            "$ref": "#/components/schemas/ReceiptClaimsV2"
+          }
+        }
+      },
+      "ReceiptClaimsV2": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 2
+          },
+          "rid": {
+            "type": "string"
+          },
+          "iat": {
+            "type": "integer"
+          },
+          "iss": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "node": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string"
+              },
+              "quote_ref": {
+                "type": "string"
+              },
+              "policy_hash": {
+                "type": "string"
+              }
+            }
+          },
+          "req": {
+            "type": "object",
+            "properties": {
+              "h": {
+                "type": "string"
+              },
+              "n_in_bucket": {
+                "type": "string",
+                "examples": [
+                  "512-1024"
+                ]
+              }
+            }
+          },
+          "resp": {
+            "type": "object",
+            "properties": {
+              "h": {
+                "type": "string"
+              },
+              "chain": {
+                "type": "string",
+                "description": "Streams only: the chunk hash chain head."
+              },
+              "n_out_bucket": {
+                "type": "string"
+              },
+              "finish": {
+                "type": "string"
+              },
+              "stream": {
+                "type": "boolean"
+              },
+              "complete": {
+                "type": "boolean"
+              }
+            }
+          },
+          "lane": {
+            "type": "string"
+          },
+          "disclosure": {
+            "type": "string"
+          },
+          "policy": {
+            "type": "object",
+            "description": "Present only when the serving endpoint's fresh attestation bound a classifier policy.",
+            "properties": {
+              "enforced": {
+                "type": "boolean"
+              },
+              "blocked": {
+                "type": "boolean"
+              }
+            }
+          },
+          "credit": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string"
+              },
+              "cost_units": {
+                "type": "integer",
+                "description": "Amount charged in millionths of a US dollar, rounded up."
+              },
+              "keyset": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ReceiptProof": {
+        "type": "object",
+        "properties": {
+          "rid": {
+            "type": "string"
+          },
+          "leaf": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leaf_version": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "rooted": {
+            "type": "boolean"
+          },
+          "anchored": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "local",
+              "confirmed"
+            ]
+          },
+          "root": {
+            "type": "string"
+          },
+          "anchor_index": {
+            "type": "integer"
+          },
+          "leaf_index": {
+            "type": "integer"
+          },
+          "proof": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "window": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "tx": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "chain": {
+            "type": "integer"
+          },
+          "contract": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ReceiptV2VerificationRequest": {
+        "type": "object",
+        "required": [
+          "cose"
+        ],
+        "properties": {
+          "cose": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "response_sha256": {
+            "type": "string"
+          },
+          "chunks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "anchor": {
+            "type": "object",
+            "required": [
+              "root",
+              "proof"
+            ],
+            "properties": {
+              "root": {
+                "type": "string"
+              },
+              "proof": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "index": {
+                "type": "integer"
+              }
+            }
           }
         }
       },

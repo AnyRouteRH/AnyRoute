@@ -162,7 +162,9 @@ function* parseBlock(block: string): Generator<Item> {
   const lines = block.split(/\r?\n/);
   const data = lines.filter((l) => l.startsWith("data:")).map((l) => l.slice(5).replace(/^ /, ""));
   if (!data.length) {
-    if (lines.some((l) => l.startsWith(":"))) yield { kind: "comment" };
+    // A keep-alive becomes a ping. A receipt v2 chain value (": anyroute-chain i hex") covers the router's own events,
+    // which are re-encoded here, so it is dropped rather than passed on.
+    if (lines.some((l) => l.startsWith(":") && !l.startsWith(": anyroute-chain "))) yield { kind: "comment" };
     return;
   }
   const text = data.join("\n");

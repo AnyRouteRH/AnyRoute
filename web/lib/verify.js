@@ -272,7 +272,25 @@ export const RECEIPT_NOT_CHECKED = [
  * Ed25519 public key in hex (`publicKeyHex`). Returns { valid, keyId, checks, anchor, notChecked }. `valid` is true only
  * when the signature verified and nothing failed; a browser that cannot run Ed25519 gets "not_checked" and valid false.
  */
-export async function verifyReceipt(receipt, { keys, publicKeyHex, ed25519 = ed25519Verify, skewMs = 300_000 } = {}) {
+export async function verifyReceipt(receipt, opts = {}) {
+  // A receipt with a v2 encoding gets both checked; v1 alone is checked exactly as before.
+  const cose = typeof receipt?.cose === "string" ? receipt.cose : typeof receipt?.v2?.cose === "string" ? receipt.v2.cose : null;
+  const v2opts = { keys: opts.keys, publicKeyHex: opts.publicKeyHex, ed25519: opts.ed25519 || ed25519Verify, chunks: opts.chunks };
+  if (cose && !receipt.payload) {
+    const v2 = await verifyReceiptV2(cose, { ...v2opts, proof: receipt.anchor });
+    return { valid: v2.valid, keyId: v2.keyId, checks: v2.checks, anchor: anchorState(v2.checks), notChecked: RECEIPT_NOT_CHECKED, claims: v2.claims };
+  }
+  const v1 = await verifyReceiptV1(receipt, opts);
+  if (!cose) return v1;
+  const v2 = await verifyReceiptV2(cose, { ...v2opts, proof: receipt.v2?.anchor });
+  return { ...v1, valid: v1.valid && v2.valid, checks: [...v1.checks, ...v2.checks], claims: v2.claims };
+}
+const anchorState = (checks) => {
+  const c = checks.find((x) => x.id === "v2_anchor_proof");
+  return c?.status === "pass" ? "proof_valid" : c?.status === "fail" ? "proof_invalid" : "no_proof";
+};
+
+async function verifyReceiptV1(receipt, { keys, publicKeyHex, ed25519 = ed25519Verify, skewMs = 300_000 } = {}) {
   const checks = [];
   const keyId = typeof receipt?.key_id === "string" ? receipt.key_id : "";
   const done = (anchor) => ({ valid: checks.every((c) => c.status !== "fail") && checks.some((c) => c.id === "signature" && c.status === "pass"), keyId, checks, anchor, notChecked: RECEIPT_NOT_CHECKED });
@@ -355,9 +373,122 @@ export async function verifyReceipt(receipt, { keys, publicKeyHex, ed25519 = ed2
   return done(anchor);
 }
 
+// ---- receipt v2 (COSE_Sign1, EdDSA), the same checks as packages/client/src/receipts-v2.ts ----------------------
+
+function decodeCbor(bytes) {
+  let at = 0;
+  const need = (n) => {
+    if (at + n > bytes.length) throw new Error("truncated CBOR");
+  };
+  const item = () => {
+    need(1);
+    const b = bytes[at++];
+    const major = b >> 5;
+    const info = b & 0x1f;
+    if (major === 7) {
+      if (info === 20) return false;
+      if (info === 21) return true;
+      if (info === 22) return null;
+      throw new Error("unsupported CBOR value");
+    }
+    let n = info;
+    if (info >= 24) {
+      const len = { 24: 1, 25: 2, 26: 4, 27: 8 }[info];
+      if (!len) throw new Error("indefinite CBOR lengths are not allowed");
+      need(len);
+      n = 0;
+      for (let i = 0; i < len; i++) n = n * 256 + bytes[at++];
+    }
+    if (major === 0) return n;
+    if (major === 1) return -1 - n;
+    if (major === 2 || major === 3) {
+      need(n);
+      const s = bytes.slice(at, at + n);
+      at += n;
+      return major === 2 ? s : new TextDecoder().decode(s);
+    }
+    if (major === 4) return Array.from({ length: n }, item);
+    if (major === 5) {
+      const m = new Map();
+      for (let i = 0; i < n; i++) m.set(item(), item());
+      return m;
+    }
+    return { tag: n, value: item() };
+  };
+  const v = item();
+  if (at !== bytes.length) throw new Error("trailing CBOR bytes");
+  return v;
+}
+const cborJson = (v) => (v instanceof Map ? Object.fromEntries([...v].map(([k, x]) => [String(k), cborJson(x)])) : Array.isArray(v) ? v.map(cborJson) : v);
+const cborHead = (major, n) => (n < 24 ? Uint8Array.of((major << 5) | n) : n < 256 ? Uint8Array.of((major << 5) | 24, n) : n < 65536 ? Uint8Array.of((major << 5) | 25, n >> 8, n & 255) : Uint8Array.of((major << 5) | 26, n >>> 24, (n >> 16) & 255, (n >> 8) & 255, n & 255));
+const cborBstr = (b) => concat(cborHead(2, b.length), b);
+const sigStructure = (prot, payload) => concat(cborHead(4, 4), cborHead(3, 10), utf8("Signature1"), cborBstr(prot), cborBstr(new Uint8Array()), cborBstr(payload));
+
+/** COSE_Sign1 bytes into { alg, keyId, claims, prot, payload, signature }. Throws on anything malformed. */
+export function decodeReceiptV2(bytes) {
+  let v = decodeCbor(bytes);
+  if (v && v.tag !== undefined && !(v instanceof Map) && !Array.isArray(v)) {
+    if (v.tag !== 18) throw new Error("not a COSE_Sign1");
+    v = v.value;
+  }
+  if (!Array.isArray(v) || v.length !== 4 || !(v[0] instanceof Uint8Array) || !(v[2] instanceof Uint8Array) || !(v[3] instanceof Uint8Array)) throw new Error("not a COSE_Sign1");
+  const hdr = decodeCbor(v[0]);
+  const kid = hdr instanceof Map ? hdr.get(4) : null;
+  return { alg: hdr instanceof Map ? hdr.get(1) : null, keyId: kid instanceof Uint8Array ? bytesToHex(kid) : "", claims: cborJson(decodeCbor(v[2])), prot: v[0], payload: v[2], signature: v[3] };
+}
+
+/** The chunk hash chain head over streamed event data: c_0 = SHA-256(rid), c_i = SHA-256(c_{i-1} || chunk_i). */
+export async function chunkChainHead(rid, chunks) {
+  let c = await sha256(utf8(rid));
+  for (const d of chunks) c = await sha256(concat(c, utf8(d)));
+  return "sha256:" + bytesToHex(c);
+}
+
+/** Checks a v2 receipt in order: signature, chain head (when events are given), anchor proof. Ids are prefixed v2_. */
+export async function verifyReceiptV2(coseB64, { keys, publicKeyHex, ed25519 = ed25519Verify, chunks, proof } = {}) {
+  const checks = [];
+  let bytes, d;
+  try {
+    bytes = base64ToBytes(coseB64);
+    d = decodeReceiptV2(bytes);
+  } catch (e) {
+    return { valid: false, keyId: "", claims: null, checks: [fail("v2_shape", `The v2 receipt is not a readable COSE_Sign1 (${e.message}).`)] };
+  }
+  checks.push(d.alg === -8 ? pass("v2_alg", "v2: COSE_Sign1 with EdDSA.") : fail("v2_alg", `v2: unsupported COSE algorithm ${String(d.alg)}.`));
+  let raw = null;
+  try {
+    if (publicKeyHex) raw = hexToBytes(publicKeyHex.trim());
+    else {
+      const jwk = (Array.isArray(keys) ? keys : keys?.keys || []).find((k) => k.kid === d.keyId);
+      if (jwk && jwk.kty === "OKP" && jwk.crv === "Ed25519") raw = base64ToBytes(jwk.x);
+    }
+  } catch {
+    raw = null;
+  }
+  if (!raw || raw.length !== 32) checks.push(fail("v2_signature", `v2: key ${d.keyId || "(none)"} is not available to check against.`));
+  else if (bytesToHex(await sha256(raw)).slice(0, 16) !== d.keyId) checks.push(fail("v2_signature", `v2: the receipt names key ${d.keyId}, which is not this key.`));
+  else {
+    try {
+      checks.push((await ed25519(raw, sigStructure(d.prot, d.payload), d.signature)) ? pass("v2_signature", "v2: the COSE signature over the claims verifies.") : fail("v2_signature", "v2: the COSE signature does not verify: the claims were changed or not signed by that key."));
+    } catch (e) {
+      checks.push(e?.unsupported ? skip("v2_signature", `${e.message} Use one of the SDKs to check it.`) : fail("v2_signature", String(e?.message || e)));
+    }
+  }
+  if (Array.isArray(chunks)) {
+    const head = await chunkChainHead(d.claims.rid, chunks);
+    checks.push(head === d.claims.resp?.chain ? pass("v2_chain", `v2: the chain head over ${chunks.length} streamed events matches.`) : fail("v2_chain", "v2: the chain head does not match the streamed events: the stream was cut or changed."));
+  } else checks.push(skip("v2_chain", d.claims.resp?.chain ? `v2: signed chain head ${shortDigest(d.claims.resp.chain)}. Paste the streamed events to check it.` : "v2: not a streamed response, so there is no chain."));
+  const leaf = "0x" + bytesToHex(keccak256(keccak256(bytes)));
+  if (proof && Array.isArray(proof.proof) && typeof proof.root === "string") {
+    const ok = verifyMerkleProof(leaf, proof.proof, proof.root);
+    checks.push(ok ? pass("v2_anchor_proof", `v2: included under root ${proof.root.slice(0, 10)}…${proof.anchored ? "" : " (a root kept off chain, not posted)"}`) : fail("v2_anchor_proof", "v2: the Merkle path does not lead from this receipt to the root."));
+  } else checks.push(skip("v2_anchor_proof", "v2: no Merkle path yet. Roots are built hourly."));
+  return { valid: checks.every((c) => c.status !== "fail") && checks.some((c) => c.id === "v2_signature" && c.status === "pass"), keyId: d.keyId, claims: d.claims, leaf, checks };
+}
+
 /**
  * Turn whatever was pasted into a receipt envelope. Accepts the receipt itself, a chat response holding `receipt`, or a
- * receipt lookup response ({ data: ... }). Returns { receipt } or { error }.
+ * receipt lookup response ({ data: ... }). A v2-only receipt ({ cose }) works too. Returns { receipt } or { error }.
  */
 export function parseReceiptInput(text) {
   const s = String(text || "").trim();
@@ -369,8 +500,10 @@ export function parseReceiptInput(text) {
     return { error: "That is not valid JSON. Paste the whole receipt object." };
   }
   const candidates = [json, json?.receipt, json?.data, json?.data?.receipt];
-  const receipt = candidates.find((c) => c && typeof c === "object" && c.payload && typeof c.sig === "string" && typeof c.key_id === "string");
-  if (!receipt) return { error: "No receipt found. It needs payload, sig and key_id (a chat response's receipt field, or GET /api/v1/receipts/:id, works)." };
+  const receipt =
+    candidates.find((c) => c && typeof c === "object" && c.payload && typeof c.sig === "string" && typeof c.key_id === "string") ||
+    candidates.find((c) => c && typeof c === "object" && typeof c.cose === "string");
+  if (!receipt) return { error: "No receipt found. It needs payload, sig and key_id, or a v2 cose field (a chat response's receipt field, or GET /api/v1/receipts/:id, works)." };
   return { receipt };
 }
 
