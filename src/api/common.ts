@@ -65,3 +65,21 @@ export function addressBucket(c: Context, cfg: Pick<Config, "onion" | "trustProx
 }
 
 export const isoOrNull = (d: Date | null | undefined) => (d ? d.toISOString() : null);
+
+/**
+ * Headers every chat, completion and embeddings response carries once a generation id exists:
+ *   X-Generation-Id / X-Receipt-Id  the generation id, which is also the id of its signed receipt (GET /api/v1/receipts/{id})
+ *   Inference-Id                     the same id, under the name Hugging Face inference clients read
+ *   X-Anyroute-Lane                  the lane the request was served under: public, attested or unlinkable
+ *   X-Anyroute-Policy-Hash           only when the serving endpoint's fresh attestation bound a classifier policy hash
+ * Browsers can read all of them (CORS Access-Control-Expose-Headers, see app.ts).
+ */
+export function generationHeaders(id: string, lane: string, policyHash?: string | null): Record<string, string> {
+  return { "x-generation-id": id, "x-receipt-id": id, "inference-id": id, "x-anyroute-lane": lane, ...(policyHash ? { "x-anyroute-policy-hash": policyHash } : {}) };
+}
+
+/** The response headers listed above plus the others a browser client may read. */
+export const EXPOSED_RESPONSE_HEADERS = ["x-generation-id", "x-receipt-id", "inference-id", "x-anyroute-lane", "x-anyroute-policy-hash", "x-payment-required", "x-payment-response", "x-anyroute-disclosure", "x-anyroute-cache", "retry-after"];
+
+/** The policy hash a header may state for a response that stands for several calls: only one they all share. */
+export const sharedPolicyHash = (hashes: (string | null | undefined)[]): string | null => (hashes.length && hashes.every((h) => h && h === hashes[0]) ? hashes[0]! : null);

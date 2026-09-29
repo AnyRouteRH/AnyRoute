@@ -11,7 +11,8 @@ import { priceUsage, readUsage } from "../router/pricing.ts";
 import { callUpstream, providerKey, upstreamBody } from "../providers/upstream.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
 import { bearer, requireKey, requireRole } from "./auth.ts";
-import { addressBucket, readJson } from "./common.ts";
+import { addressBucket, generationHeaders, readJson } from "./common.ts";
+import { servedPolicyHash } from "./disclosure.ts";
 import { requestHash, requiresAttestedUpstream, toolkit, unattestedUpstream } from "./chat.ts";
 import { compactUpstream, recordGpuAttested } from "../providers/aci.ts";
 import { payPerCall } from "../pay/percall.ts";
@@ -188,9 +189,9 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         if (pass) await confirmToken(ctx, pass, id);
         const usageJson = { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) } };
         const receiptJson = { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload };
-        const headers = { "x-anyroute-disclosure": served.class, "x-anyroute-lane": disc.lane, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) };
+        const headers = { ...generationHeaders(id, disc.lane, servedPolicyHash(ctx, cand)), "x-anyroute-disclosure": served.class, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) };
         // The gateway had already done (and billed) the work: the vectors are withheld, and the receipt records why.
-        if (refused) return c.json({ ...unattestedUpstream(ua!).toJSON(), id, usage: usageJson, receipt: receiptJson }, 502, { "x-generation-id": id, ...headers });
+        if (refused) return c.json({ ...unattestedUpstream(ua!).toJSON(), id, usage: usageJson, receipt: receiptJson }, 502, headers);
         return c.json({
           ...res.json,
           id,

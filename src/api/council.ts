@@ -32,6 +32,7 @@ import {
 } from "../router/council.ts";
 import type { KeyRow } from "./auth.ts";
 import { servedDisclosure } from "./disclosure.ts";
+import { generationHeaders, sharedPolicyHash } from "./common.ts";
 import type * as Chat from "./chat.ts";
 
 // Council mode (`model: "anyroute/council"`) and dual verification (`verify: "dual"`).
@@ -495,7 +496,8 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
       },
       ...extras,
     };
-    return c.json(out, 200, { "x-generation-id": judgeFin.id, "x-anyroute-disclosure": judgeFin.disclosure, "x-anyroute-lane": disc.lane, ...tk.paymentHeaders(bill) });
+    // The policy hash header speaks for every call of the council, so it is sent only when they all share one.
+    return c.json(out, 200, { ...generationHeaders(judgeFin.id, disc.lane, sharedPolicyHash(fins.map((f) => f.policyHash))), "x-anyroute-disclosure": judgeFin.disclosure, ...tk.paymentHeaders(bill) });
   } finally {
     await Promise.all([...open].map((id) => release(ctx.db, id)));
   }
@@ -656,7 +658,7 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
     };
     // The header speaks for both calls, so it shows the weaker of the two; each receipt carries its own call's class.
     const served = weakestServed([finA, finB].map((f) => ({ class: f.disclosure, simulated: f.simulated })));
-    return c.json(out, 200, { "x-generation-id": finA.id, "x-anyroute-disclosure": served.class, "x-anyroute-lane": disc.lane, ...tk.paymentHeaders(bill) });
+    return c.json(out, 200, { ...generationHeaders(finA.id, disc.lane, sharedPolicyHash([finA.policyHash, finB.policyHash])), "x-anyroute-disclosure": served.class, ...tk.paymentHeaders(bill) });
   } finally {
     await Promise.all([...open].map((id) => release(ctx.db, id)));
   }

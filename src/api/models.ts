@@ -1,12 +1,13 @@
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
-import type { Candidate, ModelRow } from "../catalog/catalog.ts";
+import type { Candidate, ManifestRef, ModelRow } from "../catalog/catalog.ts";
 import { priceString } from "../lib/money.ts";
 import { blendedPrice, attestationFresh } from "../router/select.ts";
 import { fail } from "../lib/errors.ts";
 import { parseLane } from "../router/disclosure.ts";
 import { VARIANTS, isVariant, type Variant } from "../router/lane.ts";
-import { servedDisclosure } from "./disclosure.ts";
+import { servedDisclosure, servedPolicyHash } from "./disclosure.ts";
+import type { DisclosureClass } from "../router/disclosure.ts";
 import { laneJson, offerEligible } from "./lane.ts";
 import { latestAttempts, summarizeAttestation } from "./provider-attestation.ts";
 
@@ -37,6 +38,45 @@ export function parseVariants(raw: unknown): Set<Variant> | null {
   const parts = String(raw).split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
   if (!parts.length || !parts.every(isVariant)) return fail(400, `\`variant\` must be one or more of: ${VARIANTS.join(", ")}.`, "invalid_request");
   return new Set(parts as Variant[]);
+}
+
+const CLASS_RANK: Record<DisclosureClass, number> = { attested: 2, policy: 1, "vendor-forwarded": 0 };
+
+/**
+ * What the strongest endpoint serving a model has proven, for model catalogs:
+ *   best             the strongest disclosure class any live endpoint is served under right now
+ *   manifest_ref     where that endpoint's measured image is logged (Rekor entry, once its inclusion proof checked)
+ *                    and registered on chain (registry transaction, once the registry reports it), while its
+ *                    attestation is fresh; null when neither is known
+ *   exec_profile_id  null: no attestation the router checks reports an execution profile yet
+ *   policy_hash      the classifier policy hash that endpoint's fresh attestation bound, else null
+ * Every value comes from the router's own attestation and measurement records; nothing is filled in when unknown.
+ * null when no endpoint serves the model.
+ */
+export function modelAttestation(ctx: Ctx, offers: Candidate[]) {
+  if (!offers.length) return null;
+  const scored = offers.map((o) => ({ o, cls: servedDisclosure(ctx, o).class, policy: servedPolicyHash(ctx, o), fresh: attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production) }));
+  const best = scored.reduce((a, x) => (CLASS_RANK[x.cls] > CLASS_RANK[a] ? x.cls : a), "vendor-forwarded" as DisclosureClass);
+  const manifest = (x: (typeof scored)[number]): ManifestRef | null => {
+    const m = x.fresh ? ctx.catalog.manifests.get(x.o.providerId) : undefined;
+    return m && (m.rekor_entry || m.registry_tx) ? m : null;
+  };
+  // The endpoint this object describes: of the strongest class, preferring one that reports a policy hash, then a manifest.
+  const ref = scored
+    .filter((x) => x.cls === best)
+    .sort((a, b) => Number(!!b.policy) - Number(!!a.policy) || Number(!!manifest(b)) - Number(!!manifest(a)) || a.o.providerId.localeCompare(b.o.providerId))[0];
+  return { best, manifest_ref: manifest(ref), exec_profile_id: null, policy_hash: ref.policy };
+}
+
+/** The one region every live endpoint of a model reports, or null when any is unknown or they differ. */
+export function datacenterRegion(offers: Candidate[]): string | null {
+  const regions = new Set<string>();
+  for (const o of offers) {
+    const dc = (o.provider.datacenter ?? []).filter(Boolean);
+    if (!dc.length) return null;
+    for (const r of dc) regions.add(r);
+  }
+  return regions.size === 1 ? [...regions][0] : null;
 }
 
 export function modelJson(ctx: Ctx, m: ModelRow) {
@@ -77,6 +117,8 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     quantization: [...new Set(offers.map((o) => o.quant))],
     attested_available: offers.some((o) => attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production)),
     disclosure: { best: classes.attested ? "attested" : classes.policy ? "policy" : classes["vendor-forwarded"] ? "vendor-forwarded" : null, endpoints: classes },
+    attestation: modelAttestation(ctx, offers),
+    datacenter_region: datacenterRegion(offers),
     creator: m.creator ?? null,
     royalty_bps: m.creator ? m.royaltyBps : 0,
     ...laneJson(ctx, m),
@@ -147,6 +189,8 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
         attestation_hash: o.provider.attestationHash ?? null,
         // True only while the attestation is fresh and it reported the in-enclave classifier as enabled.
         classifier_enabled: o.provider.classifierEnabled && attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production),
+        // The classifier policy hash this endpoint's fresh attestation bound (sent as X-Anyroute-Policy-Hash), else null.
+        policy_hash: servedPolicyHash(ctx, o),
         disclosure: servedDisclosure(ctx, o).class,
         bond_usdg: o.provider.bondUsdg.toString(),
         is_moderated: o.isModerated,

@@ -109,3 +109,17 @@ export function classifierFromReport(report: Record<string, any> | null | undefi
   if (!ev.hardwareVerified || !ev.bindingsCommitted) return false;
   return report.sidecar_bindings?.classifier_enabled === true;
 }
+
+const POLICY_HASH = /^sha256:[0-9a-f]{64}$/i;
+
+/**
+ * The hash of the policy the in-enclave classifier enforces, under exactly the trust rule of classifierFromReport:
+ * with a hardware quote only the committed `bindings.classifier_policy`, with a development report (outside
+ * production) the document's `classifier.policy_hash`. null when the classifier is not trusted to be on, or when
+ * the value is not "sha256:<64 hex>". The router never computes or guesses this value; it only relays it.
+ */
+export function policyHashFromReport(report: Record<string, any> | null | undefined, ev: ClassifierEvidence): string | null {
+  if (!classifierFromReport(report, ev)) return null;
+  const raw = ev.simulated ? report!.classifier?.policy_hash : report!.sidecar_bindings?.classifier_policy;
+  return typeof raw === "string" && POLICY_HASH.test(raw.trim()) ? raw.trim().toLowerCase() : null;
+}

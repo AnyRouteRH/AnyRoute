@@ -21,6 +21,16 @@ export function servedDisclosure(ctx: Ctx, c: Candidate): { class: DisclosureCla
   return { class: cls, simulated: cls === "attested" && c.provider.teeKind === "dev" };
 }
 
+/**
+ * The classifier policy hash this offer's endpoint reported in its attestation, or null. Only while that attestation
+ * is fresh, and only when the stored hash came from that very attestation (same report hash): nothing else counts.
+ */
+export function servedPolicyHash(ctx: Ctx, c: Pick<Candidate, "provider">): string | null {
+  const pol = c.provider.attestedPolicy;
+  if (!pol || pol.reportHash !== c.provider.attestationHash) return null;
+  return attestationFresh(c, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production) ? pol.policyHash : null;
+}
+
 /** The public view of one provider's profile, plus what it is served under at this moment. */
 export function disclosureView(ctx: Ctx, p: ProviderRow) {
   const profile = profileOf(ctx.catalog.disclosure.get(p.id));

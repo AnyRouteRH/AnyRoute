@@ -7,7 +7,8 @@ import { attestations, kv, providers } from "../db/schema.ts";
 import { canonicalJson, log, sha256 } from "../lib/util.ts";
 import { createVerifiers, verifyWithAll, type VerifierInput, type VerifyOutcome } from "./attestor-verifiers.ts";
 import { bindingsCommittedIn, digestsFromBindings, recordMeasurement, type Digests } from "./measurements.ts";
-import { classifierFromReport } from "../router/lane.ts";
+import { classifierFromReport, policyHashFromReport } from "../router/lane.ts";
+import { clearAttestedPolicy, saveAttestedPolicy } from "../providers/attested-policy.ts";
 import { pruneAttestationEvents, recordAttestorRun } from "./attestation-events.ts";
 import { checkAciReport, clearAciGateway, isAciReport, saveAciGateway } from "../providers/aci.ts";
 
@@ -108,6 +109,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
     await ctx.db.insert(attestations).values({ providerId: p.id, ok: false, teeKind: p.teeKind, nonce, detail: { reason, ...extra } });
     await ctx.db.update(providers).set({ attested: false, updatedAt: new Date() }).where(eq(providers.id, p.id));
     await ctx.db.update(providers).set({ classifierEnabled: false }).where(eq(providers.id, p.id)); // unknown is false
+    await clearAttestedPolicy(ctx.db, p.id);
     return { provider: p.id, ok: false, reason };
   };
   const policy = { production: ctx.cfg.production, allowDevelopmentMockLoopback: !ctx.cfg.production };
@@ -203,7 +205,10 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   // Whether the report says the in-enclave hard-block classifier is on. Trusted only from committed bindings of a
   // verified hardware quote (or, outside production, from a development report); see router/lane.ts.
   const simulated = p.teeKind === "dev" || report.kind === "dev";
-  const classifierEnabled = classifierFromReport(report, { hardwareVerified: verifiedBy.length > 0, bindingsCommitted, simulated, allowDev: ctx.cfg.attestation.allowDev });
+  const evidence = { hardwareVerified: verifiedBy.length > 0, bindingsCommitted, simulated, allowDev: ctx.cfg.attestation.allowDev };
+  const classifierEnabled = classifierFromReport(report, evidence);
+  // The hash of the policy that classifier enforces, under the same rule (reported as X-Anyroute-Policy-Hash).
+  const policyHash = policyHashFromReport(report, evidence);
   const reportHash = "0x" + sha256(canonicalJson({ report, nonce }));
   await ctx.db.insert(attestations).values({ providerId: p.id, ok: true, teeKind: p.teeKind ?? report.kind ?? null, reportHash, nonce, measurements, detail: { signing_address: report.signing_address ?? null, verifiers: verifiedBy, simulated: p.teeKind === "dev" || report.kind === "dev", classifier_enabled: classifierEnabled } });
   // A measurement is recorded only from a hardware quote a verifier accepted; never from simulated evidence.
@@ -222,6 +227,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   await clearAciGateway(ctx.db, p.id);
   await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), updatedAt: new Date() }).where(eq(providers.id, p.id));
   await ctx.db.update(providers).set({ classifierEnabled }).where(eq(providers.id, p.id));
+  await saveAttestedPolicy(ctx.db, p.id, policyHash, reportHash);
   return { provider: p.id, ok: true, hash: reportHash, ...(peer ? { tls_pin: { spki_sha256: peer.spkiSha256, attestation_ref: peer.attestationRef } } : {}) };
 }
 
@@ -296,6 +302,7 @@ async function attestAciGateway(
   else await clearTlsPin(ctx.db, p.id);
   // No in-enclave classifier is bound here, so restricted variants never route to a gateway (router/lane.ts).
   await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), classifierEnabled: false, updatedAt: new Date() }).where(eq(providers.id, p.id));
+  await clearAttestedPolicy(ctx.db, p.id);
   return { provider: p.id, ok: true, hash: reportHash, aci: { keyset_digest: g.keysetDigest }, ...(pin ? { tls_pin: { spki_sha256: pin.spkiSha256, attestation_ref: pin.attestationRef } } : {}) };
 }
 

@@ -10,7 +10,7 @@ import { reserve, release, settle } from "../ledger/ledger.ts";
 import { selectProviders, type ProviderPrefs } from "../router/select.ts";
 import { isRestricted } from "../router/lane.ts";
 import { disclosureClass, disclosureRefusal, profileOf, resolveDisclosureRequest, type DisclosureClass, type DisclosureRequest } from "../router/disclosure.ts";
-import { servedDisclosure } from "./disclosure.ts";
+import { servedDisclosure, servedPolicyHash } from "./disclosure.ts";
 import { estimatePromptTokens, maxOutputTokens, priceUsage, readUsage, worstCase, type Mode, type Usage } from "../router/pricing.ts";
 import { route, type Attempt, type RouteSuccess, type RouteTarget } from "../router/execute.ts";
 import { providerKey } from "../providers/upstream.ts";
@@ -20,7 +20,7 @@ import { applyGuardrails, mergeGuardrails, redactOutput, type GuardrailConfig } 
 import { middleOut } from "../gateway/transforms.ts";
 import type { CacheMode } from "../gateway/cache.ts";
 import { bearer, requireRole, resolveKey, walletAuth, type KeyRow } from "./auth.ts";
-import { addressBucket, readJson } from "./common.ts";
+import { addressBucket, generationHeaders, readJson, sharedPolicyHash } from "./common.ts";
 import { grantFor, recordDebt, type PaywithGrant } from "../pay/paywith.ts";
 import { resolveSavedRoute } from "../routing/saved-routes.ts";
 import { payPerCall } from "../pay/percall.ts";
@@ -381,7 +381,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   // provider this request can reach is served under the same class; the signed receipt always carries the truth.
   const classes = new Set(attemptable.map(({ cand }) => servedDisclosure(ctx, cand).class));
   const planned = classes.size === 1 ? [...classes][0] : null;
-  const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens, tier, disc, planned };
+  // Likewise the policy hash: up front on a stream only when every reachable endpoint attested the same one.
+  const plannedPolicy = sharedPolicyHash(attemptable.map(({ cand }) => servedPolicyHash(ctx, cand)));
+  const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens, tier, disc, planned, plannedPolicy };
 
   if (stream) return streamResponse({ ...common, run: () => route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: true, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, production: ctx.cfg.production, caller: sha256(billing.accountId).slice(0, 16) }), abort });
 
@@ -406,7 +408,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const fin = await finalize({ ...common, r, usage, responseText, finishReason: json.choices?.[0]?.finish_reason ?? null, nativeFinish: json.choices?.[0]?.native_finish_reason ?? json.choices?.[0]?.finish_reason ?? null, generationMs: Date.now() - t0, cancelled: false, upstreamAttestation });
   if (upstreamAttestation && requiresAttestedUpstream(body, disc) && !upstreamAttestation.attested) {
     const err = unattestedUpstream(upstreamAttestation);
-    return c.json({ ...err.toJSON(), id: fin.id, usage: fin.usageJson, receipt: fin.receiptJson }, 502, { "x-generation-id": fin.id, "x-anyroute-disclosure": fin.disclosure, "x-anyroute-lane": disc.lane, ...paymentHeaders(billing) });
+    return c.json({ ...err.toJSON(), id: fin.id, usage: fin.usageJson, receipt: fin.receiptJson }, 502, { ...generationHeaders(fin.id, disc.lane, fin.policyHash), "x-anyroute-disclosure": fin.disclosure, ...paymentHeaders(billing) });
   }
   const out = {
     ...json,
@@ -419,7 +421,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     ...(fin.extras(redactions) ?? {}),
   };
   if (cacheMode && !stream) await ctx.cache.put(cacheMode, cacheScope, body, out, fin.upstream, (body.cache as { ttl?: number } | undefined)?.ttl ?? ctx.cfg.gateway.cacheTtlS);
-  return c.json(out, 200, { "x-generation-id": fin.id, "x-anyroute-disclosure": fin.disclosure, "x-anyroute-lane": disc.lane, ...paymentHeaders(billing) });
+  return c.json(out, 200, { ...generationHeaders(fin.id, disc.lane, fin.policyHash), "x-anyroute-disclosure": fin.disclosure, ...paymentHeaders(billing) });
 }
 
 function allFailed(attempts: Attempt[], last?: { status?: number; errorKind: string; message: string }): ApiError {
@@ -497,6 +499,8 @@ export type Common = {
   disc: DisclosureRequest;
   /** The disclosure class every reachable provider shares, or null when it depends on who serves the call. */
   planned: DisclosureClass | null;
+  /** The attested policy hash every reachable endpoint shares, or null (see generationHeaders); used by streams. */
+  plannedPolicy?: string | null;
 };
 
 /** Extra inputs for calls made on behalf of a larger request (council members, dual verification). */
@@ -688,6 +692,8 @@ async function finalize(p: FinalizeInput) {
     id,
     disclosure: served.class,
     simulated: served.simulated,
+    /** The classifier policy hash the serving endpoint's fresh attestation bound, or null (X-Anyroute-Policy-Hash). */
+    policyHash: servedPolicyHash(ctx, r.candidate),
     upstream: cost.upstream,
     charged,
     cost,
@@ -829,7 +835,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
   });
   return new Response(body, {
     status: 200,
-    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-generation-id": p.holdId, "x-accel-buffering": "no", "x-anyroute-lane": p.disc.lane, ...(p.planned ? { "x-anyroute-disclosure": p.planned } : {}), ...paymentHeaders(p.billing) },
+    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-accel-buffering": "no", ...generationHeaders(p.holdId, p.disc.lane, p.plannedPolicy), ...(p.planned ? { "x-anyroute-disclosure": p.planned } : {}), ...paymentHeaders(p.billing) },
   });
 }
 
@@ -887,7 +893,8 @@ async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, un
       receipt: { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload, leaf },
     },
     200,
-    { "x-generation-id": id, "x-anyroute-cache": "hit", "x-anyroute-disclosure": "vendor-forwarded", "x-anyroute-lane": p.disc.lane, ...paymentHeaders(p.billing) },
+    // Served from the cache, not by an attested endpoint: no policy hash.
+    { ...generationHeaders(id, p.disc.lane), "x-anyroute-cache": "hit", "x-anyroute-disclosure": "vendor-forwarded", ...paymentHeaders(p.billing) },
   );
 }
 

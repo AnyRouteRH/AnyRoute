@@ -1,16 +1,22 @@
-import { eq } from "drizzle-orm";
+import { desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { laneCandidates, models, modelsLane, offers, providerDisclosure, providers } from "../db/schema.ts";
+import { laneCandidates, measurements, models, modelsLane, offers, providerDisclosure, providers } from "../db/schema.ts";
 import { loadTlsPin, loadTlsPins, type TlsPin } from "../providers/tls-pin.ts";
 import { loadAciGateway, loadAciGateways, loadGpuAttested, type AciGateway, type GpuAttestedRecord } from "../providers/aci.ts";
+import { loadAttestedPolicies, loadAttestedPolicy, type AttestedPolicy } from "../providers/attested-policy.ts";
 import { laneOf } from "../router/lane.ts";
 
 export type ModelRow = typeof models.$inferSelect;
 export type OfferRow = typeof offers.$inferSelect;
 /** A provider row, plus the certificate its connections are pinned to once it attested through a self-signed
- *  certificate (providers/tls-pin.ts), and for an attested aci/1 gateway what its attestation established
- *  (providers/aci.ts). */
-export type ProviderRow = typeof providers.$inferSelect & { tlsPin?: TlsPin | null; aci?: AciGateway | null };
+ *  certificate (providers/tls-pin.ts), for an attested aci/1 gateway what its attestation established
+ *  (providers/aci.ts), and the classifier policy hash its last verified attestation bound (providers/attested-policy.ts). */
+export type ProviderRow = typeof providers.$inferSelect & { tlsPin?: TlsPin | null; aci?: AciGateway | null; attestedPolicy?: AttestedPolicy | null };
+/**
+ * Where a provider's current measurement stands in the transparency log and the on-chain registry
+ * (services/measurements.ts): each field only once it was checked, null until then.
+ */
+export type ManifestRef = { rekor_entry: string | null; registry_tx: string | null };
 export type DisclosureRow = typeof providerDisclosure.$inferSelect;
 export type ModelLaneRow = typeof modelsLane.$inferSelect;
 export type Candidate = OfferRow & { provider: ProviderRow };
@@ -32,6 +38,8 @@ export class Catalog {
   candidates = new Map<string, { variant: string; status: string }>();
   /** Per model, what the latest verified gateway receipt said about GPU attestation (providers/aci.ts). */
   gpuAttested = new Map<string, GpuAttestedRecord>();
+  /** Per provider, the log entry and registry transaction of the measurement its attestations bound most recently. */
+  manifests = new Map<string, ManifestRef>();
   loadedAt = 0;
   private loading: Promise<void> | null = null;
 
@@ -40,7 +48,7 @@ export class Catalog {
   async refresh() {
     this.loading ??= (async () => {
       try {
-        const [m, p, o, d, pins, l, cand, gateways, gpu] = await Promise.all([
+        const [m, p, o, d, pins, l, cand, gateways, gpu, policies, meas] = await Promise.all([
           this.db.select().from(models),
           this.db.select().from(providers),
           this.db.select().from(offers),
@@ -50,8 +58,20 @@ export class Catalog {
           this.db.select({ hfRepo: laneCandidates.hfRepo, variant: laneCandidates.variant, status: laneCandidates.status }).from(laneCandidates),
           loadAciGateways(this.db),
           loadGpuAttested(this.db),
+          loadAttestedPolicies(this.db),
+          this.db
+            .select({ providerId: measurements.providerId, status: measurements.status, rekorUuid: measurements.rekorUuid, rekorInclusionVerified: measurements.rekorInclusionVerified, txHash: measurements.txHash })
+            .from(measurements)
+            .where(isNull(measurements.revokedAt))
+            .orderBy(desc(measurements.lastSeenAt)),
         ]);
-        const pm = new Map<string, ProviderRow>(p.map((x) => [x.id, { ...x, tlsPin: pins.get(x.id) ?? null, aci: gateways.get(x.id) ?? null }]));
+        const pm = new Map<string, ProviderRow>(p.map((x) => [x.id, { ...x, tlsPin: pins.get(x.id) ?? null, aci: gateways.get(x.id) ?? null, attestedPolicy: policies.get(x.id) ?? null }]));
+        // The measurement a provider's attestations bound most recently (rows are ordered newest first).
+        const manifests = new Map<string, ManifestRef>();
+        for (const r of meas) {
+          if (manifests.has(r.providerId)) continue;
+          manifests.set(r.providerId, { rekor_entry: r.rekorInclusionVerified ? r.rekorUuid : null, registry_tx: r.status === "registered" ? r.txHash : null });
+        }
         const byModel = new Map<string, Candidate[]>();
         for (const offer of o) {
           const provider = pm.get(offer.providerId);
@@ -67,6 +87,7 @@ export class Catalog {
         this.candidates = new Map(cand.map((x) => [x.hfRepo.toLowerCase(), { variant: x.variant, status: x.status }]));
         this.offersByModel = byModel;
         this.gpuAttested = gpu;
+        this.manifests = manifests;
         this.loadedAt = Date.now();
       } finally {
         this.loading = null;
@@ -108,6 +129,6 @@ export class Catalog {
     const cached = this.providers.get(id);
     if (cached) return cached;
     const [row] = await this.db.select().from(providers).where(eq(providers.id, id));
-    return row ? { ...row, tlsPin: await loadTlsPin(this.db, id), aci: await loadAciGateway(this.db, id) } : null;
+    return row ? { ...row, tlsPin: await loadTlsPin(this.db, id), aci: await loadAciGateway(this.db, id), attestedPolicy: await loadAttestedPolicy(this.db, id) } : null;
   }
 }

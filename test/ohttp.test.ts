@@ -683,6 +683,9 @@ describe("the unlinkable lane", () => {
     expect(r.headers.get("x-anyroute-disclosure")).toBe("attested");
     const j = r.json<any>();
     expect(j.provider).toBe("Enclave");
+    // The receipt headers travel inside the encapsulated response like the rest.
+    expect(r.headers.get("x-receipt-id")).toBe(j.receipt.id);
+    expect(r.headers.get("inference-id")).toBe(j.receipt.id);
     expect(j.receipt.payload).toMatchObject({ lane: "unlinkable", disclosure: "attested", payer: null, provider: "enclave", attestation_simulated: true });
     expect(j.receipt.payload.nullifier).toMatch(/^[0-9a-f]{64}$/);
     expect(j.receipt.payload.token_key_id).toMatch(/^[0-9a-f]{64}$/);

@@ -182,6 +182,19 @@ const xPayment = btoa(JSON.stringify({
 const paid = await fetch(url, { method: "POST", headers: { ...headers, "X-PAYMENT": xPayment }, body });
 const completion = await paid.json(); // usage + signed receipt; receipt.payload.payment_tx is the settlement
 const settlement = JSON.parse(atob(paid.headers.get("X-PAYMENT-RESPONSE"))); // { success, transaction, network, payer }`;
+const responseHeaders = `X-Receipt-Id: gen-1790461071-M1D5SJxd7YpD5A
+Inference-Id: gen-1790461071-M1D5SJxd7YpD5A
+X-Anyroute-Lane: attested
+X-Anyroute-Policy-Hash: sha256:<64 hex, only when the endpoint attested one>`;
+
+const modelAttestation = `"attestation": {
+  "best": "attested",
+  "manifest_ref": { "rekor_entry": "<log entry uuid>", "registry_tx": null },
+  "exec_profile_id": null,
+  "policy_hash": "sha256:<64 hex>"
+},
+"datacenter_region": null`;
+
 const sdkReceipt = `import { AnyRoute } from "@anyroute/client";
 
 const client = new AnyRoute({ baseUrl: "https://<router>", apiKey: process.env.ANYROUTE_API_KEY });
@@ -228,7 +241,7 @@ except AttestationRefused as e:
 const endpoints = [
   ["POST /api/v1/chat/completions", "Chat, tools and streaming (OpenAI/OpenRouter shape); X-Pay-With, X-Payment, X-Wallet-Auth headers"],
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
-  ["GET /api/v1/models · /models/:author/:slug/endpoints", "Catalog, prices, policies, quantization, attestation; per-provider health"],
+  ["GET /api/v1/models · /models/:author/:slug/endpoints", "Catalog, prices, policies, quantization, attestation (best class, manifest reference, policy hash) and datacenter region; per-provider health and attested policy hash"],
   ["GET /api/v1/generation?id=… · /generations", "Full generation record with receipt and anchor proof; your recent generations"],
   ["POST · GET · PATCH · DELETE /api/v1/keys", "Create a self-custodial key (no auth), or budgeted sub-keys with rpm/tpm, model allowlists, guardrails"],
   ["GET /api/v1/key · /credits", "Current key; balance, held and total usage"],
@@ -454,6 +467,20 @@ export default function Docs() {
             are published on-chain. Signed is not the same as anchored: the dashboard and /api/v1/receipts/verify report each separately.
           </p>
           <Code label="Response shape">{JSON.stringify(receipt, null, 2)}</Code>
+          <h3 id="response-headers">Response headers</h3>
+          <p>
+            Every chat, completion and embeddings response names its receipt in X-Receipt-Id, the same id as the body’s id and receipt.id, and again in Inference-Id, the header Hugging Face inference clients read. X-Anyroute-Lane is the lane
+            the request was served under: public, attested or unlinkable. X-Anyroute-Policy-Hash is sent only when the endpoint that served the call has a fresh, verified attestation that binds the hash of the policy its in-enclave classifier
+            enforces; the router relays that value and never computes one. On a stream these headers arrive before the first chunk, so the policy hash is sent there only when every endpoint the request can reach attested the same one. Browsers can
+            read all of them.
+          </p>
+          <Code label="Response headers">{responseHeaders}</Code>
+          <p>
+            GET /api/v1/models adds, per model, an attestation object for its strongest live endpoint and a datacenter_region. best is that endpoint’s disclosure class. manifest_ref points at the transparency-log entry and the on-chain registry
+            transaction of its measured image, each only once the router checked it. policy_hash is the attested classifier policy. Anything the router has not verified is null, never filled in; exec_profile_id stays null until an attestation reports
+            one. datacenter_region is set only when every endpoint reports the same single region.
+          </p>
+          <Code label="GET /api/v1/models (new fields)">{modelAttestation}</Code>
           <h2 id="council">Ask several models, or the same one twice.</h2>
           <p>
             Two opt-in modes, available when the router enables them (the ANYROUTE_FEATURE_COUNCIL setting, off by default). Neither streams. Every call they make is routed, billed and receipted like a request of its own, and the worst case of all of

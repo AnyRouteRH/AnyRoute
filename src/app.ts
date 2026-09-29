@@ -1,5 +1,5 @@
 import { siteCsp } from "./lib/csp.ts";
-import { viaOnion } from "./api/common.ts";
+import { EXPOSED_RESPONSE_HEADERS, viaOnion } from "./api/common.ts";
 import { kv } from "./db/schema.ts";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
@@ -95,7 +95,10 @@ export async function createApp(opts: AppOptions = {}) {
   const webBuilt = existsSync(resolve(webDir, "index.html"));
   const csp = webBuilt ? siteCsp(webDir) : "frame-ancestors 'none'; object-src 'none'; base-uri 'none'";
   const app = new Hono();
-  app.use("/api/*", cors({ origin: "*", allowHeaders: ["authorization", "content-type", "x-pay-with", "x-payment", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "http-referer", "x-title", "traceparent"], exposeHeaders: ["x-generation-id", "x-payment-required", "x-payment-response", "x-anyroute-disclosure", "x-anyroute-lane", "retry-after"] }));
+  // The OpenAI-style /v1/* aliases get the same CORS as /api/*, so a browser can read the receipt, lane and policy headers on either.
+  const apiCors = cors({ origin: "*", allowHeaders: ["authorization", "content-type", "x-pay-with", "x-payment", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "http-referer", "x-title", "traceparent"], exposeHeaders: EXPOSED_RESPONSE_HEADERS });
+  app.use("/api/*", apiCors);
+  app.use("/v1/*", apiCors);
   app.use("*", async (c, next) => {
     await next();
     c.header("x-content-type-options", "nosniff");
