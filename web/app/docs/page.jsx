@@ -331,7 +331,7 @@ try {
   if (e instanceof AttestationRefused) console.error(e.verification.checks.filter((c) => c.status === "fail"));
   else throw e;
 }`;
-const sdkOblivious = `import { AnyRoute } from "@anyroute/client";
+const sdkOblivious = `import { AnyRoute, TransparencyLog } from "@anyroute/client";
 import { obliviousFetch } from "@anyroute/client/ohttp"; // npm install ohttp-ts@0.6.0 hpke@1.1.7
 
 // keyConfig: the base64url-decoded "config" of the current key in GET /api/v1/ohttp/key-list, after checking the
@@ -341,7 +341,12 @@ const client = new AnyRoute({
   privateToken: "<a blind token>",
   lane: "unlinkable",
   receiptKeys,
-  fetch: obliviousFetch({ relayUrl: "https://<independent relay>/relay", keyConfig }),
+  fetch: obliviousFetch({
+    relayUrl: "https://<independent relay>/relay",
+    keyConfig,
+    // Optional: refuse a key configuration the witnessed key log does not include (the log is read directly).
+    transparency: new TransparencyLog({ logUrl: "https://<router>", logKey: "<log key>", witnesses: ["<witness key>", "<witness key>"] }),
+  }),
 });
 const stream = await client.chat.completions.stream({ model: "<model>", messages: [{ role: "user", content: "Hello" }] });
 for await (const chunk of stream) process.stdout.write(chunk.choices?.[0]?.delta?.content ?? "");
