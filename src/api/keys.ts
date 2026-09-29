@@ -5,6 +5,7 @@ import { CreditsAbi, erc20Abi } from "../chain/abis.ts";
 import { withdrawableFor } from "../services/settlement.ts";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
+import type { Db, Tx } from "../db/client.ts";
 import { byokKeys, generations, keys, kv, ledger, spentRoots, teamMembers, teams } from "../db/schema.ts";
 import { deriveKey, generateApiKey } from "../chain/keys.ts";
 import { fail } from "../lib/errors.ts";
@@ -103,6 +104,35 @@ function applySpec(v: z.infer<typeof keySpec>) {
   };
 }
 
+/** Create a virtual sub-key under `caller` (same account and balance, parent = caller). The secret is
+ *  returned once; only its hash is stored. Shared by POST /api/v1/keys and Agent Sessions. */
+export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeof keySpec>, db: Db | Tx = ctx.db) {
+  if (spec.management && !caller.management) fail(403, "Only a management key can create management keys.", "forbidden");
+  const teamId = spec.team ?? (caller.management ? null : caller.teamId);
+  if (teamId) {
+    const [t] = await db.select().from(teams).where(and(eq(teams.id, teamId), eq(teams.ownerAccount, caller.accountId)));
+    if (!t) fail(404, "Team not found.", "not_found");
+  }
+  const secret = generateApiKey();
+  const d = deriveKey(secret);
+  await db.insert(keys).values({
+    keyHash: d.keyHash,
+    chainKeyHash: d.chainKeyHash,
+    keyAddress: d.keyAddress,
+    accountId: caller.accountId,
+    parentHash: caller.keyHash,
+    label: d.label,
+    teamId,
+    management: !!spec.management,
+    rpm: ctx.cfg.limits.defaultRpm || null,
+    tpm: ctx.cfg.limits.defaultTpm || null,
+    ...applySpec(spec),
+  });
+  if (teamId) await db.insert(teamMembers).values({ teamId, keyHash: d.keyHash, role: "member" }).onConflictDoNothing();
+  const [row] = await db.select().from(keys).where(eq(keys.keyHash, d.keyHash));
+  return { row, secret };
+}
+
 async function pendingWithdrawal(ctx: Ctx, chainKeyHash: string) {
   const credits = ctx.chain.address("credits");
   if (!credits) return null;
@@ -132,29 +162,8 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     }
     const caller = await sub(ctx, c);
     await requireRole(ctx, caller, ["owner", "admin"]);
-    if (spec.management && !caller.management) fail(403, "Only a management key can create management keys.", "forbidden");
-    const teamId = spec.team ?? (caller.management ? null : caller.teamId);
-    if (teamId) {
-      const [t] = await ctx.db.select().from(teams).where(and(eq(teams.id, teamId), eq(teams.ownerAccount, caller.accountId)));
-      if (!t) fail(404, "Team not found.", "not_found");
-    }
-    const d = deriveKey(secret);
-    await ctx.db.insert(keys).values({
-      keyHash: d.keyHash,
-      chainKeyHash: d.chainKeyHash,
-      keyAddress: d.keyAddress,
-      accountId: caller.accountId,
-      parentHash: caller.keyHash,
-      label: d.label,
-      teamId,
-      management: !!spec.management,
-      rpm: ctx.cfg.limits.defaultRpm || null,
-      tpm: ctx.cfg.limits.defaultTpm || null,
-      ...applySpec(spec),
-    });
-    if (teamId) await ctx.db.insert(teamMembers).values({ teamId, keyHash: d.keyHash, role: "member" }).onConflictDoNothing();
-    const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, d.keyHash));
-    return c.json({ data: keyJson(row), key: secret, deposit: depositInfo(ctx, row) }, 201);
+    const created = await createSubKey(ctx, caller, spec);
+    return c.json({ data: keyJson(created.row), key: created.secret, deposit: depositInfo(ctx, created.row) }, 201);
   });
 
   app.get("/api/v1/keys", async (c) => {
