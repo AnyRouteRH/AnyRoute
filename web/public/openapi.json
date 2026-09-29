@@ -961,6 +961,153 @@
         }
       }
     },
+    "/api/v1/host-anchors/proof/{leaf}": {
+      "get": {
+        "tags": [
+          "Receipts"
+        ],
+        "operationId": "getHostAnchorProof",
+        "summary": "Merkle path from an enclave receipt to its host root",
+        "description": "Public, where the router runs with HOST_ANCHOR_ENABLED (otherwise the path does not exist). A receipt a provider's sidecar signed with its enclave key, rooted per host: the router collected it from the host's leaf feed, kept it only because its signature verified under the receipt key the host's router-verified attestation binds, and built one Merkle root per host, attestation reference and interval. anchored is true only when that root was posted with ReceiptAnchor.anchorAttested and confirmed (tx, block and anchor_index, the index in ReceiptAnchor.attestedAnchors); a root kept off chain has status local and anchored false. 404 until the leaf has been collected and rooted.",
+        "parameters": [
+          {
+            "name": "leaf",
+            "in": "path",
+            "required": true,
+            "description": "The receipt's leaf, keccak256(keccak256(canonical payload || signature)), as 0x and 64 hex characters.",
+            "schema": {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The host root that holds the leaf, the path to it, and its anchor status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HostAnchorProof"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/host-anchors/proof": {
+      "post": {
+        "tags": [
+          "Receipts"
+        ],
+        "operationId": "postHostAnchorProof",
+        "summary": "Merkle path for a sidecar receipt, by receipt or leaf",
+        "description": "Public, where the router runs with HOST_ANCHOR_ENABLED (otherwise the path does not exist). A receipt a provider's sidecar signed with its enclave key, rooted per host: the router collected it from the host's leaf feed, kept it only because its signature verified under the receipt key the host's router-verified attestation binds, and built one Merkle root per host, attestation reference and interval. anchored is true only when that root was posted with ReceiptAnchor.anchorAttested and confirmed (tx, block and anchor_index, the index in ReceiptAnchor.attestedAnchors); a root kept off chain has status local and anchored false. 404 until the leaf has been collected and rooted. With receipt, the leaf is recomputed from its payload and signature, and a leaf the receipt states must match it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "receipt": {
+                    "type": "object",
+                    "description": "The sidecar's receipt envelope as it was delivered.",
+                    "required": [
+                      "payload",
+                      "sig"
+                    ],
+                    "properties": {
+                      "payload": {
+                        "type": "object"
+                      },
+                      "sig": {
+                        "type": "string",
+                        "description": "Base64 Ed25519 signature over the canonical JSON of payload."
+                      },
+                      "key_id": {
+                        "type": "string"
+                      },
+                      "alg": {
+                        "type": "string",
+                        "enum": [
+                          "Ed25519"
+                        ]
+                      },
+                      "leaf": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "leaf": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{64}$"
+                  }
+                },
+                "oneOf": [
+                  {
+                    "required": [
+                      "receipt"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "leaf"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The host root that holds the leaf, the path to it, and its anchor status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HostAnchorProof"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
     "/.well-known/anyroute-receipt-keys.json": {
       "get": {
         "tags": [
@@ -6444,6 +6591,133 @@
           "tx": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "chain": {
+            "type": "integer"
+          },
+          "contract": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "HostAnchorProof": {
+        "type": "object",
+        "required": [
+          "leaf",
+          "rooted",
+          "anchored",
+          "status",
+          "provider",
+          "provider_id_hash",
+          "attestation_ref",
+          "receipt_key",
+          "root",
+          "leaf_index",
+          "proof"
+        ],
+        "properties": {
+          "rid": {
+            "type": "string",
+            "description": "The receipt id the sidecar gave it."
+          },
+          "leaf": {
+            "type": "string"
+          },
+          "rooted": {
+            "type": "boolean",
+            "const": true
+          },
+          "anchored": {
+            "type": "boolean",
+            "description": "True only when the root was posted on chain and confirmed."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "local",
+              "confirmed"
+            ],
+            "description": "confirmed: on chain; pending: to be posted (the chain was unreachable); local: kept off chain because no chain is configured."
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_id_hash": {
+            "type": "string",
+            "description": "keccak256 of the provider id's bytes: the providerId the root is posted under."
+          },
+          "attestation_ref": {
+            "type": "string",
+            "description": "64 hex: SHA-256 of the boot quote the router verified, which every leaf in the root names."
+          },
+          "receipt_key": {
+            "type": "object",
+            "description": "The receipt key the quote binds; every leaf in the root verified under it.",
+            "properties": {
+              "key_id": {
+                "type": "string"
+              },
+              "public_key": {
+                "type": "string",
+                "description": "Raw Ed25519 public key, hex."
+              }
+            }
+          },
+          "root_id": {
+            "type": "integer"
+          },
+          "root": {
+            "type": "string"
+          },
+          "leaf_index": {
+            "type": "integer"
+          },
+          "proof": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "OpenZeppelin MerkleProof-compatible path (sorted-pair keccak256)."
+          },
+          "count": {
+            "type": "integer"
+          },
+          "window": {
+            "type": "object",
+            "description": "When the router collected the root's leaves: [from, to).",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "anchor_index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Index in ReceiptAnchor.attestedAnchors once posted."
+          },
+          "tx": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "block": {
+            "type": [
+              "integer",
               "null"
             ]
           },

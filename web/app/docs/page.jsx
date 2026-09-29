@@ -466,6 +466,7 @@ const endpoints = [
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt (v1, or v2 with its chain head and Merkle path); signing keys (JWKS)"],
   ["GET /api/v1/receipts/:id · /receipts/:id/proof", "A receipt by id, v2 beside v1 (?format=cose for the COSE bytes); the Merkle path to its hourly root, with anchored true only once that root is on chain"],
+  ["GET /api/v1/host-anchors/proof/:leaf · POST /host-anchors/proof", "Where enabled: the Merkle path from a receipt a provider’s sidecar signed (by its leaf, or the receipt itself) to that host’s root, with the attestation reference and receipt key every leaf in the root was checked against; anchored true only once the root is on chain"],
   ["GET /.well-known/anyroute-receipt-keys.json", "The same signing keys at a fixed path, for clients that verify receipts themselves"],
   ["GET /api/v1/attestation/:providerId", "What the router has verified about a provider’s hardware attestation: status, verifiers, measurements, transparency-log and on-chain state, and what was not checked"],
   ["GET /api/v1/badge/:id.svg", "Attestation badge image for a provider id or a model id (attested, policy, vendor-forwarded or unverified), with the measurement and policy hash while attested and the share of 7 days with a fresh attestation; ?theme=dark. An unknown id is Unverified with a 404"],
@@ -710,6 +711,13 @@ export default function Docs() {
             counts in buckets such as 512-1024 and no payer). A stream commits to every event as it goes: after each one comes a comment line, <span className="mono">: anyroute-chain &lt;i&gt; &lt;hash&gt;</span>, that SSE parsers skip, and the v2
             receipt signs the last hash, so a cut or altered stream shows. Receipts are rooted in hourly Merkle batches and GET /api/v1/receipts/&#123;id&#125;/proof returns the path. A root is posted to ReceiptAnchor on Robinhood Chain only
             where the router runs with a configured chain; otherwise it stays off chain and the proof says anchored: false. Signed is not the same as anchored: the dashboard and /api/v1/receipts/verify report each separately.
+          </p>
+          <p>
+            Receipts a provider’s sidecar signs with its enclave key can be anchored per host. Where the router runs with host anchoring on, it collects each attested host’s receipt leaves once an interval (an hour by default) over
+            the connection pinned to that host’s attested certificate. It takes the receipt key from the host’s boot quote only when SHA-256 of that quote is the attestation reference it verified and the quote commits to the key, keeps only
+            leaves whose signature verifies under that key and that name that attestation, and roots them per host and interval. Each root is stored with the attestation reference and, where a chain is configured, posted with
+            ReceiptAnchor.anchorAttested under keccak256 of the provider id; otherwise it stays off chain. GET /api/v1/host-anchors/proof/&#123;leaf&#125;, or POST /api/v1/host-anchors/proof with the receipt, returns the root, the path, the
+            attestation reference, the receipt key and the status: anchored: true with the transaction, block and attested anchor index once the root is on chain, anchored: false while it is not.
           </p>
           <Code label="Response shape">{JSON.stringify(receipt, null, 2)}</Code>
           <h3 id="response-headers">Response headers</h3>
@@ -1003,6 +1011,8 @@ export default function Docs() {
             Each response carries its verification: the Ed25519 signature over the receipt’s canonical JSON against the key in the router’s published key list (fetched once, and read again if a receipt names a key it has not seen, as after a weekly rotation), that the key id is the
             hash of the key, that the receipt is dated inside its key’s window, that its leaf recomputes from the signed bytes and, when the receipt came with an anchor proof, that the leaf is under the stated root. It does not check that the key is registered on chain or that the root was posted
             there, and says so. Pass pinned keys to skip the fetch. A receipt a provider’s sidecar signed with its enclave key is checked against the receipt key its attestation binds, and must name the same attestation and model digest.
+            verifyHostAnchor checks such a receipt against its host root in the same order: the signature (under the key verifyProvider bound, when you pass it), the path to the root and, with a reader for ReceiptAnchor
+            (readAttestedAnchor over any RPC endpoint you choose), the root, provider and attestation on chain. A root kept off chain is reported as off chain, never as anchored.
           </p>
           <Code label="TypeScript · receipts, disclosure and lane">{sdkReceipt}</Code>
           <h3>Attested providers</h3>
