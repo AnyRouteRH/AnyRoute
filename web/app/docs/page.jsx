@@ -425,10 +425,10 @@ const responsesRefusal = JSON.stringify(
 const ragRefusal = JSON.stringify(
   {
     error: {
-      code: 409,
-      type: "lane_unavailable",
-      message: 'RAG stopped at the chat step: No provider for <chat model> meets lane "attested": … Nothing was sent to any provider and nothing was charged. …',
-      metadata: { step: "chat", receipts: [{ step: "embeddings", receipt_id: "<embeddings receipt id>", lane: "attested", "…": "the call that was made, and billed" }] },
+      code: 503,
+      type: "no_attested_endpoint",
+      message: 'RAG stopped at the chat step: No endpoint for <chat model> that fits this request has a fresh, verified attestation, so lane "attested" cannot be served. Nothing was sent to any provider and nothing was charged. …',
+      metadata: { step: "chat", lane: "attested", reason: "none_attested", receipts: [{ step: "embeddings", receipt_id: "<embeddings receipt id>", lane: "attested", "…": "the call that was made, and billed" }] },
     },
   },
   null,
@@ -950,10 +950,11 @@ export default function Docs() {
           <Code label="Response (abridged)">{ragResponse}</Code>
           <h3>Lane, and what a refusal looks like</h3>
           <p>
-            Send provider.lane (public or attested), provider.disclosure (none, policy or any), X-Anyroute-Lane or X-Anyroute-Disclosure-Max, and every call runs under exactly that. If a step cannot be served under it, whether there is no attested embedding model, the chat model has no attested
-            endpoint, or the attested providers are down, the request is refused with that step’s own error (409 lane_unavailable or disclosure_unavailable, 503 disclosure_provider_unavailable), and it is never sent on a weaker lane. error.metadata.step says which step stopped, and
-            error.metadata.receipts lists the calls already made, which are billed. If an attested gateway’s receipt for a call does not show an upstream it verified inside a TEE, that call’s output (the vectors, or the answer) is withheld, the call is billed, and the error is 502
-            upstream_not_attested with the receipt listed and marked withheld. The unlinkable lane is not available here.
+            Send provider.lane (public or attested), provider.disclosure (none, policy or any), X-Anyroute-Lane or X-Anyroute-Disclosure-Max, and every call runs under exactly that. So does a lane pinned on your key (its routing.provider), which applies to the embeddings step as well as the chat step.
+            If a step cannot be served under it, whether there is no attested embedding model, the chat model has no attested endpoint, or the attested endpoints are down, the request is refused with that step’s own error (on the attested lane 503 no_attested_endpoint, with error.metadata.reason none_attested or attested_endpoints_down;
+            with only a disclosure ceiling 409 disclosure_unavailable or 503 disclosure_provider_unavailable), and it is never sent on a weaker lane. error.metadata.step says which step stopped, and error.metadata.receipts lists the calls already made, which are billed. If an attested gateway’s
+            receipt for a call does not show an upstream it verified inside a TEE, that call’s output (the vectors, or the answer) is withheld, the call is billed, and the error is 502 upstream_not_attested with the receipt listed and marked withheld. The unlinkable lane is not available here.
+            A model the router resolves itself (a saved route, an alias of your key, a router model such as anyroute/council) can pin a lane of its own, so a request naming one must state provider.lane (400 lane_required).
           </p>
           <Code label="A chat model without an attested endpoint, on the attested lane (abridged)">{ragRefusal}</Code>
           <p>

@@ -258,16 +258,21 @@ export function ragRoutes(app: Hono, ctx: Ctx) {
     if (chunks.length > limits.maxChunks) fail(413, `The documents make ${chunks.length} chunks, and a request may embed at most ${limits.maxChunks}. Send fewer documents or a larger chunk.size.`, "payload_too_large", { limit: limits.maxChunks, chunks: chunks.length });
 
     // ---- the lane the caller asked for -----------------------------------------------------
-    const asked = req.provider ?? {};
-    const laneHeader = c.req.header("x-anyroute-lane")?.trim().toLowerCase() || undefined;
-    for (const [what, v] of [["provider.lane", asked.lane], ["X-Anyroute-Lane", laneHeader]] as const)
-      if (v !== undefined && !(LANES as readonly string[]).includes(v.toLowerCase()))
-        fail(400, `${what} must be one of: ${LANES.join(", ")}.${v.toLowerCase() === "unlinkable" ? " The unlinkable lane needs a relay and a blind token, which this endpoint cannot use." : ""} Nothing was sent.`, "invalid_request");
-    if (asked.disclosure !== undefined && !(DISCLOSURES as readonly string[]).includes(asked.disclosure.toLowerCase())) fail(400, `provider.disclosure must be one of: ${DISCLOSURES.join(", ")}. Nothing was sent.`, "invalid_request");
-    const disc = resolveDisclosureRequest(asked, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: laneHeader });
+    // The request's own setting, else the one pinned on the key (routing.provider, which chat applies and embeddings would not).
+    const pinned = ((key.routing as { provider?: Record<string, unknown> } | null)?.provider ?? {}) as Record<string, unknown>;
+    const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined);
+    const asked = { lane: text(req.provider?.lane) ?? text(pinned.lane), disclosure: text(req.provider?.disclosure) ?? text(pinned.disclosure) };
+    const laneHeader = text(c.req.header("x-anyroute-lane"));
+    const ceilingHeader = text(c.req.header("x-anyroute-disclosure-max"));
+    const laneFrom = req.provider?.lane !== undefined ? "provider.lane" : "the lane in this key's routing preset";
+    for (const [what, v] of [[laneFrom, asked.lane], ["X-Anyroute-Lane", laneHeader]] as const)
+      if (v !== undefined && !(LANES as readonly string[]).includes(v))
+        fail(400, `${what} must be one of: ${LANES.join(", ")}.${v === "unlinkable" ? " The unlinkable lane needs a relay and a blind token, which this endpoint cannot use." : ""} Nothing was sent.`, "invalid_request");
+    if (asked.disclosure !== undefined && !(DISCLOSURES as readonly string[]).includes(asked.disclosure)) fail(400, `The disclosure ceiling must be one of: ${DISCLOSURES.join(", ")}. Nothing was sent.`, "invalid_request");
+    const disc = resolveDisclosureRequest(asked, { disclosureMax: ceilingHeader, lane: laneHeader });
     const restricted = disc.lane !== "public" || disc.max !== "any";
-    // Anything the caller stated, even public or any, is theirs to keep: only a request that states nothing gets a default.
-    const stated = asked.lane !== undefined || asked.disclosure !== undefined || laneHeader !== undefined || !!c.req.header("x-anyroute-disclosure-max")?.trim();
+    // Anything stated, even public or any, is kept as stated: only a request that states nothing gets a default.
+    const stated = asked.lane !== undefined || asked.disclosure !== undefined || laneHeader !== undefined || ceilingHeader !== undefined;
     const wanted = disc.lane !== "public" ? `lane "${disc.lane}"` : `provider.disclosure "${disc.max}"`;
     const meets = (a: Avail) => (disc.max === "none" ? a.attested > 0 : disc.max === "policy" ? a.attested + a.policy > 0 : a.total > 0);
 
@@ -282,6 +287,8 @@ export function ragRoutes(app: Hono, ctx: Ctx) {
     // An alias of the key, a saved route or a router model are resolved by the chat route itself.
     const routed = req.model.startsWith("@route/") || req.model.startsWith("anyroute/") || !!(key.routing as { aliases?: Record<string, unknown> } | null)?.aliases?.[req.model];
     if (!chatRes && !routed) fail(404, `Model ${req.model} is not available. See GET /api/v1/models.`, "model_not_found");
+    if (!chatRes && !stated)
+      fail(400, `${req.model} is resolved by the router (a saved route, an alias of this key or a router model), and it can pin a lane of its own, so the lane for the embeddings step cannot be chosen for you. Set provider.lane to "attested" or "public". Nothing was sent.`, "lane_required");
     guardAllowed(chatRes?.model);
     const chat = chatRes ? availability(ctx, chatRes.model) : null;
     if (chat && chat.embedding && !chat.chat) fail(400, `${chat.id} is an embedding model. \`model\` must be a chat model; name the embedding model in \`embedding_model\`.`, "invalid_request");
@@ -298,7 +305,9 @@ export function ragRoutes(app: Hono, ctx: Ctx) {
       const catalog = [...ctx.catalog.models.values()].filter((m) => !m.hidden && embeds(m)).map((m) => availability(ctx, m));
       embed = pickEmbedding(restricted ? catalog.filter(meets) : catalog, !restricted);
       if (!embed) {
-        if (restricted) fail(409, `No embedding model has an endpoint that meets ${wanted}. Nothing was sent to any provider and nothing was charged. Name an embedding_model, relax the option, or see GET /api/v1/models?lane=attested.`, disc.lane !== "public" ? "lane_unavailable" : "disclosure_unavailable", { requested: { disclosure: disc.max, lane: disc.lane }, step: "embeddings" });
+        if (disc.lane !== "public")
+          fail(503, `No embedding model has an endpoint with a fresh, verified attestation, so ${wanted} cannot be served. Nothing was sent to any provider and nothing was charged. Name an embedding_model, or see GET /api/v1/models?lane=attested.`, "no_attested_endpoint", { lane: disc.lane, reason: "none_attested", requested: { disclosure: disc.max, lane: disc.lane }, step: "embeddings" });
+        if (restricted) fail(409, `No embedding model has an endpoint that meets ${wanted}. Nothing was sent to any provider and nothing was charged. Name an embedding_model, relax the option, or see GET /api/v1/models?lane=attested.`, "disclosure_unavailable", { requested: { disclosure: disc.max, lane: disc.lane }, step: "embeddings" });
         fail(404, "No embedding model is available. Name one in `embedding_model`.", "model_not_found");
       }
     }
@@ -309,7 +318,7 @@ export function ragRoutes(app: Hono, ctx: Ctx) {
     let provider: { lane?: string; disclosure?: string } | undefined;
     if (stated) {
       lane = disc.lane;
-      provider = { ...(asked.lane !== undefined ? { lane: asked.lane.toLowerCase() } : {}), ...(asked.disclosure !== undefined ? { disclosure: asked.disclosure.toLowerCase() } : {}) };
+      provider = { ...(asked.lane !== undefined ? { lane: asked.lane } : {}), ...(asked.disclosure !== undefined ? { disclosure: asked.disclosure } : {}) };
       if (!Object.keys(provider).length) provider = undefined;
     } else if (chat && chat.attested > 0 && embed.attested > 0) {
       lane = "attested";

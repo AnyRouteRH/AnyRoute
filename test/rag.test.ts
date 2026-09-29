@@ -396,9 +396,9 @@ describe("lane defaulting, and no downgrade", () => {
   test("an attested request is never downgraded: a public chat model is refused, after the attested embeddings, with their receipts", async () => {
     const before = vendorCalls();
     const r = await rag({ model: PUBLIC_CHAT, provider: { lane: "attested" } });
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(503);
     const j = (await r.json()) as any;
-    expect(j.error).toMatchObject({ code: 409, type: "lane_unavailable", metadata: { step: "chat" } });
+    expect(j.error).toMatchObject({ code: 503, type: "no_attested_endpoint", metadata: { step: "chat", lane: "attested", reason: "none_attested" } });
     expect(j.error.message).toContain("RAG stopped at the chat step");
     expect(j.error.message).toContain('lane "attested"');
     expect(j.error.message).toContain("Nothing was sent to any provider and nothing was charged");
@@ -412,15 +412,15 @@ describe("lane defaulting, and no downgrade", () => {
     const before = vendorCalls();
     const rows = await generationCount();
     for (const req of [
-      { headers: auth, body: { embedding_model: PUBLIC_EMBED, provider: { lane: "attested" } } },
-      { headers: auth, body: { embedding_model: PUBLIC_EMBED, provider: { disclosure: "none" } } },
-      { headers: { ...auth, "x-anyroute-lane": "attested" }, body: { embedding_model: PUBLIC_EMBED } },
-      { headers: { ...auth, "x-anyroute-disclosure-max": "none" }, body: { embedding_model: PUBLIC_EMBED } },
+      { headers: auth, body: { embedding_model: PUBLIC_EMBED, provider: { lane: "attested" } }, status: 503, type: "no_attested_endpoint" },
+      { headers: auth, body: { embedding_model: PUBLIC_EMBED, provider: { disclosure: "none" } }, status: 409, type: "disclosure_unavailable" },
+      { headers: { ...auth, "x-anyroute-lane": "attested" }, body: { embedding_model: PUBLIC_EMBED }, status: 503, type: "no_attested_endpoint" },
+      { headers: { ...auth, "x-anyroute-disclosure-max": "none" }, body: { embedding_model: PUBLIC_EMBED }, status: 409, type: "disclosure_unavailable" },
     ]) {
       const r = await rag(req.body, req.headers);
-      expect(r.status).toBe(409);
+      expect(r.status).toBe(req.status);
       const j = (await r.json()) as any;
-      expect(j.error.type).toMatch(/^(lane|disclosure)_unavailable$/);
+      expect(j.error.type).toBe(req.type);
       expect(j.error.metadata).toMatchObject({ step: "embeddings", receipts: [] });
       expect(j.error.message).toContain("Nothing was sent to any provider and nothing was charged");
     }
@@ -443,19 +443,57 @@ describe("lane defaulting, and no downgrade", () => {
     };
     await stale();
     const refused = await rag({ provider: { lane: "attested" } });
-    expect(refused.status).toBe(409);
+    expect(refused.status).toBe(503);
     const j = (await refused.json()) as any;
-    expect(j.error).toMatchObject({ type: "lane_unavailable", metadata: { step: "embeddings" } });
-    expect(j.error.message).toContain('No embedding model has an endpoint that meets lane "attested"');
+    expect(j.error).toMatchObject({ type: "no_attested_endpoint", metadata: { step: "embeddings", reason: "none_attested", lane: "attested" } });
+    expect(j.error.message).toContain('No embedding model has an endpoint with a fresh, verified attestation, so lane "attested" cannot be served');
     expect(state.requests).toHaveLength(0);
     const named = await rag({ provider: { lane: "attested" }, embedding_model: EMBED_LARGE });
-    expect(named.status).toBe(409);
-    expect(((await named.json()) as any).error.metadata.step).toBe("embeddings");
+    expect(named.status).toBe(503);
+    expect(((await named.json()) as any).error).toMatchObject({ type: "no_attested_endpoint", metadata: { step: "embeddings" } });
     expect(state.requests).toHaveLength(0);
     // With no lane stated, nothing is claimed: the public lane, and the note says no attested endpoint is known.
     const open = (await (await rag()).json()) as any;
     expect(open.lane).toBe("public");
     expect(open.lane_note).toContain("no attested endpoint is known");
+  });
+
+  test("a lane pinned on the key applies to every step, not only to the chat call", async () => {
+    const pinnedKey = await h.fundedKey(5n);
+    await h.ctx.db.update(keysTable).set({ routing: { provider: { lane: "attested" } } }).where(eq(keysTable.keyHash, pinnedKey.hash));
+    const ok = (await (await rag({}, pinnedKey.auth)).json()) as any;
+    expect(ok).toMatchObject({ lane: "attested", lane_source: "request" });
+    expect(sent("/v1/embeddings")[0]!.body.provider).toMatchObject({ aci_verified: true });
+    expect(ok.receipts.map((x: any) => x.lane)).toEqual(["attested", "attested"]);
+    // An embedding model that is not attested is refused, not run on the public lane for lack of a stated lane.
+    const before = vendorCalls();
+    const refused = await rag({ embedding_model: PUBLIC_EMBED }, pinnedKey.auth);
+    expect(refused.status).toBe(503);
+    expect(((await refused.json()) as any).error).toMatchObject({ type: "no_attested_endpoint", metadata: { step: "embeddings" } });
+    expect(vendorCalls()).toBe(before);
+    // The key's pin is a default the request may state over, as with chat.
+    expect(((await (await rag({ provider: { lane: "public" }, embedding_model: PUBLIC_EMBED }, pinnedKey.auth)).json()) as any).lane).toBe("public");
+    await h.ctx.db.update(keysTable).set({ routing: { provider: { lane: "unlinkable" } } }).where(eq(keysTable.keyHash, pinnedKey.hash));
+    const bad = await rag({}, pinnedKey.auth);
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as any).error.message).toContain("this key's routing preset");
+  });
+
+  test("a model the router resolves itself needs a stated lane, because it may pin one of its own", async () => {
+    const before = state.requests.length;
+    for (const model of ["@route/mine", "anyroute/council"]) {
+      const r = await rag({ model });
+      expect(r.status).toBe(400);
+      expect(((await r.json()) as any).error).toMatchObject({ type: "lane_required" });
+    }
+    expect(state.requests.length).toBe(before);
+    // A key's alias is such a model too; stating the lane lets it through to the router.
+    const aliased = await h.fundedKey(5n);
+    await h.ctx.db.update(keysTable).set({ routing: { aliases: { fast: { model: GW_CHAT } } } }).where(eq(keysTable.keyHash, aliased.hash));
+    expect((await rag({ model: "fast" }, aliased.auth)).status).toBe(400);
+    const served = await rag({ model: "fast", provider: { lane: "attested" } }, aliased.auth);
+    expect(served.status).toBe(200);
+    expect(((await served.json()) as any)).toMatchObject({ lane: "attested", lane_source: "request", model: GW_CHAT });
   });
 
   test("the unlinkable lane and unknown lane values are refused before anything is sent", async () => {
@@ -519,11 +557,11 @@ describe("streaming", () => {
 
   test("a refusal before the answer starts is an ordinary error, not a stream", async () => {
     const r = await rag({ stream: true, model: PUBLIC_CHAT, provider: { lane: "attested" } });
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(503);
     expect(r.headers.get("content-type")).toContain("application/json");
-    expect(((await r.json()) as any).error).toMatchObject({ type: "lane_unavailable", metadata: { step: "chat" } });
+    expect(((await r.json()) as any).error).toMatchObject({ type: "no_attested_endpoint", metadata: { step: "chat" } });
     const early = await rag({ stream: true, embedding_model: PUBLIC_EMBED, provider: { lane: "attested" } });
-    expect(early.status).toBe(409);
+    expect(early.status).toBe(503);
     expect(((await early.json()) as any).error.metadata.step).toBe("embeddings");
   });
 
@@ -653,7 +691,7 @@ describe("nothing of the documents is kept", () => {
     state.upstream.chat = "routed";
     expect((await rag({ documents: docs, question })).status).toBe(502);
     state.upstream.chat = "verified";
-    expect((await rag({ documents: docs, question, model: PUBLIC_CHAT, provider: { lane: "attested" } })).status).toBe(409);
+    expect((await rag({ documents: docs, question, model: PUBLIC_CHAT, provider: { lane: "attested" } })).status).toBe(503);
     const rows = await everythingStored();
     expect(rows.length).toBeGreaterThan(1000); // the scan did read the tables
     expect(rows).not.toContain(CANARY);
