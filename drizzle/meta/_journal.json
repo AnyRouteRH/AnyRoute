@@ -50,6 +50,13 @@
       "when": 1790641770115,
       "tag": "0006_escrow_finality",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790647835965,
+      "tag": "0007_workspace_features",
+      "breakpoints": true
     }
   ]
 }

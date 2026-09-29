@@ -5,8 +5,13 @@ import { API_BASE, ApiError, api, clearKey, downloadJSON, getMode, loadKey, load
 import { connect, ensureChain, hasWallet, personalSign, sendTransactions, shortAddress, signTypedData } from "../lib/wallet";
 import { Button, Modal, Code, CopyButton } from "./UI";
 import ModelCatalog from "./ModelCatalog";
+import SavedRoutes from "./features/SavedRoutes";
+import EvalLab from "./features/EvalLab";
+import BatchStudio from "./features/BatchStudio";
+import AgentSessions from "./features/AgentSessions";
+import SpendWatch from "./features/SpendWatch";
 
-const tabs = ["Overview", "Playground", "Models", "API keys", "Receipts", "Payments", "Providers", "Settings"];
+const tabs = ["Overview", "Playground", "Saved Routes", "Eval Lab", "Batch Studio", "Models", "API keys", "Agent Sessions", "Receipts", "Spend Watch", "Payments", "Providers", "Settings"];
 const tabId = (t) => t.toLowerCase().replace(" ", "-");
 const publicTabs = ["Models", "Providers"];
 
@@ -1791,6 +1796,15 @@ export default function Dashboard() {
               />
             </>
           )}
+          {["Saved Routes", "Eval Lab", "Batch Studio", "Agent Sessions", "Spend Watch"].includes(tab) &&
+            (() => {
+              const featureProps = { live, apiKey, ws, status, catalog, refresh, notify: setNotice, fail: setError, navigate };
+              if (tab === "Saved Routes") return <SavedRoutes {...featureProps} />;
+              if (tab === "Eval Lab") return <EvalLab {...featureProps} />;
+              if (tab === "Batch Studio") return <BatchStudio {...featureProps} />;
+              if (tab === "Agent Sessions") return <AgentSessions {...featureProps} />;
+              return <SpendWatch {...featureProps} />;
+            })()}
           {tab === "Providers" && (
             <>
               <div className="panel-heading">

@@ -539,3 +539,65 @@ export const escrowDeposits = pgTable(
   },
   (t) => [index("escrow_deposits_from_idx").on(t.fromAddress), index("escrow_deposits_status_idx").on(t.status)],
 );
+
+// ---- Workspace features (settings and billing data only; the privacy invariant above still holds) ----
+
+// Saved Routes: a named, reusable routing policy an account calls as `model: "@route/<slug>"`.
+// `config` holds { models: string[] (ordered fallbacks), provider?: {...OpenRouter provider prefs},
+// params?: {...default request params}, max_price?: {...} }. No prompt text is stored.
+export const savedRoutes = pgTable(
+  "saved_routes",
+  {
+    id: text("id").primaryKey(), // rt_...
+    accountId: text("account_id").notNull(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    config: jsonb("config").notNull(),
+    createdBy: text("created_by"), // key hash
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("saved_routes_account_slug_uq").on(t.accountId, t.slug)],
+);
+
+// Agent Sessions: a short-lived sub-key for one agent run, with its own budget and expiry.
+export const agentSessions = pgTable(
+  "agent_sessions",
+  {
+    id: text("id").primaryKey(), // as_...
+    accountId: text("account_id").notNull(),
+    parentKeyHash: text("parent_key_hash").notNull(),
+    keyHash: text("key_hash").notNull(), // the session's own key (keys.key_hash)
+    name: text("name").notNull().default(""),
+    budget: money("budget"), // pico; null = the parent key's limits only
+    expiresAt: ts("expires_at").notNull(),
+    endedAt: ts("ended_at"),
+    endReason: text("end_reason"), // ended | expired | budget
+    metadata: jsonb("metadata"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("agent_sessions_key_uq").on(t.keyHash), index("agent_sessions_account_idx").on(t.accountId)],
+);
+
+// Spend Watch: alert rules on spend, evaluated by the `spend-watch` worker job.
+export const spendAlerts = pgTable(
+  "spend_alerts",
+  {
+    id: text("id").primaryKey(), // sa_...
+    accountId: text("account_id").notNull(),
+    keyHash: text("key_hash"), // null = whole account
+    kind: text("kind").notNull(), // threshold | budget_pct | anomaly
+    window: text("window").notNull().default("day"), // day | week | month
+    thresholdUsd: money("threshold"), // pico, for kind=threshold
+    pct: integer("pct"), // for kind=budget_pct
+    webhookUrlEnc: text("webhook_url_enc"), // encrypted with APP_SECRET; optional
+    enabled: boolean("enabled").notNull().default(true),
+    lastFiredAt: ts("last_fired_at"),
+    lastPeriod: text("last_period"), // dedupe: fire at most once per rule per period
+    state: jsonb("state"),
+    createdBy: text("created_by"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("spend_alerts_account_idx").on(t.accountId)],
+);

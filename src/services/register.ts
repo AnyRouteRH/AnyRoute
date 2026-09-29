@@ -3,6 +3,7 @@ import { expireHolds } from "../ledger/ledger.ts";
 import { pollChain } from "../chain/indexer.ts";
 import { runPaywithAggregator } from "../pay/paywith.ts";
 import { pollEscrow } from "../pay/escrow.ts";
+import { runSpendWatch } from "./spend-watch.ts";
 import { retryAnchors, runAnchor, runKeyRotation } from "./anchor.ts";
 import { runAttestor } from "./attestor.ts";
 import { runCanaries } from "./canaries.ts";
@@ -29,6 +30,7 @@ export function registerJobs(ctx: Ctx) {
   jobs.register("slasher", 3_600_000, () => runSlasher(ctx));
   jobs.register("buyback", 3_600_000, () => runBuyback(ctx));
   jobs.register("chain-indexer", 5_000, async () => (chainOn() ? pollChain(ctx) : { skipped: "no contracts" }), { atStart: true });
+  jobs.register("spend-watch", 60_000, () => runSpendWatch(ctx));
   jobs.register("escrow-indexer", 5_000, () => pollEscrow(ctx), { atStart: true });
   jobs.register("paywith-aggregator", 60_000, async () => (ctx.chain.address("payWithStock") ? runPaywithAggregator(ctx) : { skipped: "not configured" }));
   jobs.register("alert-notifier", ALERT_INTERVAL_MS, () => runAlertNotifier(ctx), { atStart: true });
