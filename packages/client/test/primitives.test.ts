@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { base64ToBytes, bytesToBase64, bytesToHex, canonicalJson, hexToBytes, keccak256Hex, parseCertificate, parseTdxQuote, sha256Hex, utf8 } from "../src/index.js";
-import { real } from "./helpers.js";
+import { fixtureJson, real } from "./helpers.js";
 
 describe("canonical JSON", () => {
   test("sorts keys recursively, drops undefined, stringifies bigint, leaves arrays in order", () => {
     expect(canonicalJson({ b: 1, a: { d: [3, { z: 1, y: undefined, x: 2 }], c: 10n } })).toBe('{"a":{"c":"10","d":[3,{"x":2,"z":1}]},"b":1}');
+  });
+  test("matches the recorded router output on the shared vectors (also checked by the Python package)", () => {
+    for (const c of fixtureJson<{ input: string; expected: string }[]>("canonical-vectors.json")) expect(canonicalJson(JSON.parse(c.input))).toBe(c.expected);
   });
   test("equals the sidecar's bindings digest input for the captured bindings", async () => {
     const boot = real.boot();

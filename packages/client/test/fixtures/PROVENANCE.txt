@@ -7,6 +7,8 @@ receipt.json            a receipt the sidecar signed for one chat completion
 sidecar-cert.crt        the certificate the sidecar presented
 router-attestation.json GET /api/v1/attestation/:providerId as the router answered after verifying this quote, from a
                         local run of the router's own code
+canonical-vectors.json  JSON texts and the canonical form the router's canonicalJson (src/lib/util.ts) produces for each;
+                        both SDKs must reproduce it exactly
 
 Edits made before committing:
   * the platform event log is removed from both /attest documents (it names the deployment);
