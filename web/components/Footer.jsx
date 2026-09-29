@@ -2,7 +2,7 @@ import SignalField from './SignalField';
 import {Button} from './UI';
 import {Wordmark} from './Logo';
 
-const COLUMNS=[['Product',[['Models','/models/'],['Arena','/arena/'],['Dashboard','/dashboard/'],['Playground','/dashboard/#playground'],['Case study','/case-study/']]],['Developers',[['API docs','/docs/'],['SDKs','/docs/#sdk'],['Verify a provider','/verify/'],['Proof-time','/status/'],['Quickstart','/#developers'],['Route types','/#routes'],['How it works','/#how-it-works']]],['Anyroute',[['About','/#about'],['Roadmap','/#roadmap'],['Privacy route','/#privacy'],['Data notice','/legal/privacy/'],['Terms','/legal/terms/'],['Support','mailto:Anyroute1@atomicmail.io']]]];
+const COLUMNS=[['Product',[['Models','/models/'],['Arena','/arena/'],['Dashboard','/dashboard/'],['Playground','/dashboard/#playground'],['Case study','/case-study/']]],['Developers',[['API docs','/docs/'],['SDKs','/docs/#sdk'],['Verify a provider','/verify/'],['Proof-time','/status/'],['Providers','/providers/'],['Quickstart','/#developers'],['Route types','/#routes'],['How it works','/#how-it-works']]],['Anyroute',[['About','/#about'],['Roadmap','/#roadmap'],['Privacy route','/#privacy'],['Data notice','/legal/privacy/'],['Terms','/legal/terms/'],['Support','mailto:Anyroute1@atomicmail.io']]]];
 
 /** Site footer: closing call to action over the signal curtain, link columns and the oversized wordmark. */
 export default function Footer(){return <footer className="site-footer">

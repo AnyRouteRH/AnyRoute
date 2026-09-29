@@ -2,6 +2,7 @@ import PageFrame from "../../components/PageFrame";
 import { Button, Code } from "../../components/UI";
 import { sampleRequest } from "../../components/Extensions";
 import { API_BASE } from "../../lib/api";
+import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
 export const metadata = { title: "Developer documentation — Anyroute" };
 const receipt = {
   id: "gen-1790461071-M1D5SJxd7YpD5A",
@@ -224,7 +225,7 @@ const endpoints = [
   ["GET /api/v1/attestation/:providerId", "What the router has verified about a provider’s hardware attestation: status, verifiers, measurements, transparency-log and on-chain state, and what was not checked"],
   ["GET /api/v1/attestation/summary · /attestation/:providerId/history", "Proof-time: per attesting provider, the share of the last 24 hours and 7 days with a fresh attestation the router verified itself, measurement changes and the last failed check; and a provider’s recorded attestor, canary and probe events, newest first, paged by cursor. Failures are codes with fixed messages, never the provider’s own text. Kept for ATTESTATION_HISTORY_DAYS (30); 501 when it is 0"],
   ["POST /mcp", "AnyRoute MCP: list_models, chat, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
-  ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; provider registry; router configuration"],
+  ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
 export default function Docs() {
@@ -253,6 +254,7 @@ export default function Docs() {
             <a href="#council">Council</a>
             <a href="#mcp">MCP</a>
             <a href="#sdk">SDKs</a>
+            <a href="#run-a-provider">Run a provider</a>
             <a href="#endpoints">Endpoints</a>
             <a href="#limits">Limits</a>
           </nav>
@@ -493,6 +495,28 @@ export default function Docs() {
               The verify page
             </a>{" "}
             shows what the router has recorded for a provider (/verify/?p=&lt;provider id&gt;) and checks a pasted receipt in your browser. It reads the router’s record only; use an SDK to check the provider itself.
+          </p>
+          <h2 id="run-a-provider">Run a provider.</h2>
+          <p>
+            A model host runs the sidecar in front of its model server, inside a confidential VM. The sidecar hashes the weights at boot and refuses to start unless the digest is on its allow-list, binds its TLS key, receipt key and the image, compose and model digests into an Intel TDX quote, and signs a receipt for every
+            response. The onboarding command writes all of that for you:
+          </p>
+          <Code label="Terminal">{QUICKSTART}</Code>
+          <p>
+            It asks where the model runs (a Phala Cloud CPU or GPU confidential VM, or your own TDX host), measures the weights, and writes sidecar.yaml and a compose file in which every image, the weights and the sidecar source are pinned by hash. It makes the key the router will use: 32 random bytes in a file only you can read, with just their
+            SHA-256 in the configuration. Then deploy, and check the running endpoint before you apply:
+          </p>
+          <Code label="Terminal · without questions">{QUICKSTART_FLAGS}</Code>
+          <p>
+            The doctor command reads /healthz and /attest the way a client would, and checks that the served model digest is your weights, that the quote commits to the keys and digests, that the certificate carries the attestation name and the attested key, and that a response carries a receipt signed by that key. It sends your router key
+            only over a certificate the evidence proves belongs to the attested instance. It does not repeat Intel’s signature check on the quote; the router does. The apply command prints the exact body for POST /api/v1/providers/apply and, with --submit, files it. An operator reviews the application before anything is routed, and the router key goes to them separately unless you pass --include-key.
+          </p>
+          <p>
+            The sidecar attests the TDX virtual machine and does not collect GPU confidential-computing evidence. The data policy in your application is your own declaration and is shown as declared. Providers the router lists, and what it has verified about each, are on{" "}
+            <a href="/providers/" className="inline-link">
+              the providers page
+            </a>
+            .
           </p>
           <h2 id="endpoints">Endpoint map</h2>
           <div className="table-wrap">
