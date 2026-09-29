@@ -781,4 +781,53 @@ contract ProviderBondTest is ProviderBondBase {
             assertEq(pb.activeBondOf(PID), remaining);
         }
     }
+
+    // --- MeasurementDrift ------------------------------------------------------------------------
+
+    function test_kind_measurementDriftIsAppended() public pure {
+        // existing reasons keep their numeric values; the new one is appended after them
+        assertEq(uint8(IProviderBond.Kind.Empty200), 0);
+        assertEq(uint8(IProviderBond.Kind.QuantFraud), 1);
+        assertEq(uint8(IProviderBond.Kind.Uptime), 2);
+        assertEq(uint8(IProviderBond.Kind.ParamDrop), 3);
+        assertEq(uint8(IProviderBond.Kind.Other), 4);
+        assertEq(uint8(IProviderBond.Kind.MeasurementDrift), 5);
+    }
+
+    function test_measurementDrift_slashLifecycle() public {
+        _bond(PID, op, 2 * MIN);
+        vm.expectEmit(true, true, true, true, address(pb));
+        emit IProviderBond.SlashProposed(1, PID, IProviderBond.Kind.MeasurementDrift, 4_000e6, EVIDENCE, T0 + 72 hours);
+        vm.prank(slasher);
+        uint256 id = pb.proposeSlash(PID, IProviderBond.Kind.MeasurementDrift, 4_000e6, EVIDENCE, true);
+        (,,,,, IProviderBond.Kind kind,,) = pb.slashes(id);
+        assertEq(uint8(kind), uint8(IProviderBond.Kind.MeasurementDrift));
+
+        // the same dispute window and independent owner approval apply as for every other reason
+        vm.warp(T0 + 72 hours - 1);
+        vm.prank(slasher);
+        vm.expectRevert(IProviderBond.NotReady.selector);
+        pb.executeSlash(id);
+        vm.warp(T0 + 72 hours);
+        vm.prank(slasher);
+        vm.expectRevert(ProviderBond.ApprovalRequired.selector);
+        pb.executeSlash(id);
+
+        _execute(id);
+        assertEq(usdg.balanceOf(refundPool), 4_000e6);
+        assertEq(pb.bondOf(PID), 16_000e6);
+        assertTrue(pb.isDelisted(PID));
+        assertEq(uint8(_status(id)), uint8(ProviderBond.Status.Executed));
+    }
+
+    function test_proposeSlash_rejectsKindsPastMeasurementDrift() public {
+        _bond(PID, op, MIN);
+        bytes memory data = abi.encodeWithSelector(
+            IProviderBond.proposeSlash.selector, PID, uint8(6), uint256(1), EVIDENCE, false
+        );
+        vm.prank(slasher);
+        (bool ok,) = address(pb).call(data);
+        assertFalse(ok);
+        assertEq(pb.slashCount(), 0);
+    }
 }

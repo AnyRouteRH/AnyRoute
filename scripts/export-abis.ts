@@ -19,6 +19,7 @@ const contracts: Record<string, [string, string]> = {
   StockOracle: ["ChainlinkStockOracle.sol", "ChainlinkStockOracle"],
   ProviderBond: ["ProviderBond.sol", "ProviderBond"],
   ReceiptAnchor: ["ReceiptAnchor.sol", "ReceiptAnchor"],
+  MeasurementRegistry: ["MeasurementRegistry.sol", "MeasurementRegistry"],
   Royalty: ["Royalty.sol", "Royalty"],
   AnyrStaking: ["AnyrStaking.sol", "AnyrStaking"],
   AnyrToken: ["AnyrToken.sol", "AnyrToken"],

@@ -375,4 +375,118 @@ contract ReceiptAnchorTest is Test {
         vm.expectRevert(ReceiptAnchor.ZeroAddress.selector);
         ra.setAnchorer(address(0));
     }
+    // --- anchorAttested ------------------------------------------------------------------------
+
+    bytes32 internal constant PROVIDER = keccak256("provider-a");
+    bytes32 internal constant ATT_REF = keccak256("attestation-ref");
+
+    function test_anchorAttested_sequentialIndicesAndEvent() public {
+        vm.expectEmit(true, true, true, true, address(ra));
+        emit IReceiptAnchor.AttestedAnchored(0, PROVIDER, keccak256("r0"), ATT_REF);
+        vm.prank(anchorer);
+        uint256 i0 = ra.anchorAttested(PROVIDER, keccak256("r0"), ATT_REF);
+
+        vm.warp(T0 + 100);
+        vm.expectEmit(true, true, true, true, address(ra));
+        emit IReceiptAnchor.AttestedAnchored(1, keccak256("provider-b"), keccak256("r1"), keccak256("ref-b"));
+        vm.prank(anchorer);
+        uint256 i1 = ra.anchorAttested(keccak256("provider-b"), keccak256("r1"), keccak256("ref-b"));
+
+        assertEq(i0, 0);
+        assertEq(i1, 1);
+        assertEq(ra.attestedAnchorCount(), 2);
+        (bytes32 pid, bytes32 root, bytes32 ref, uint64 at) = ra.attestedAnchors(0);
+        assertEq(pid, PROVIDER);
+        assertEq(root, keccak256("r0"));
+        assertEq(ref, ATT_REF);
+        assertEq(at, T0);
+        (, , , at) = ra.attestedAnchors(1);
+        assertEq(at, T0 + 100);
+    }
+
+    function test_anchorAttested_isSeparateFromWindowedAnchors() public {
+        vm.prank(anchorer);
+        ra.anchor(keccak256("w0"), T0 - 3600, T0, 5);
+        vm.prank(anchorer);
+        ra.anchorAttested(PROVIDER, keccak256("a0"), ATT_REF);
+
+        // windowed anchors are untouched and keep enforcing their own ordering
+        assertEq(ra.anchorCount(), 1);
+        assertEq(ra.attestedAnchorCount(), 1);
+        (bytes32 root,,,) = ra.anchors(0);
+        assertEq(root, keccak256("w0"));
+        vm.prank(anchorer);
+        vm.expectRevert(IReceiptAnchor.OutOfOrder.selector);
+        ra.anchor(keccak256("w1"), T0 - 1, T0, 1);
+        vm.warp(T0 + 1);
+        vm.prank(anchorer);
+        ra.anchor(keccak256("w1"), T0, T0 + 1, 1);
+        assertEq(ra.anchorCount(), 2);
+        assertEq(ra.attestedAnchorCount(), 1);
+    }
+
+    function test_anchorAttested_revertsUnauthorized() public {
+        vm.prank(rando);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.anchorAttested(PROVIDER, keccak256("r"), ATT_REF);
+        // like anchor(), the owner alone cannot publish roots
+        vm.prank(owner);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.anchorAttested(PROVIDER, keccak256("r"), ATT_REF);
+        assertEq(ra.attestedAnchorCount(), 0);
+    }
+
+    function test_anchorAttested_revertsEmptyInputs() public {
+        vm.startPrank(anchorer);
+        vm.expectRevert(IReceiptAnchor.EmptyProvider.selector);
+        ra.anchorAttested(bytes32(0), keccak256("r"), ATT_REF);
+        vm.expectRevert(IReceiptAnchor.EmptyRoot.selector);
+        ra.anchorAttested(PROVIDER, bytes32(0), ATT_REF);
+        vm.expectRevert(IReceiptAnchor.EmptyAttestationRef.selector);
+        ra.anchorAttested(PROVIDER, keccak256("r"), bytes32(0));
+        vm.stopPrank();
+        assertEq(ra.attestedAnchorCount(), 0);
+    }
+
+    function test_anchorAttested_followsAnchorerRotation() public {
+        address a2 = makeAddr("a2");
+        vm.prank(owner);
+        ra.setAnchorer(a2);
+        vm.prank(anchorer);
+        vm.expectRevert(IReceiptAnchor.NotAnchorer.selector);
+        ra.anchorAttested(PROVIDER, keccak256("r"), ATT_REF);
+        vm.prank(a2);
+        ra.anchorAttested(PROVIDER, keccak256("r"), ATT_REF);
+    }
+
+    function test_verifyAttested_inclusion() public {
+        bytes32[] memory leaves = _leaves(5, 7);
+        vm.prank(anchorer);
+        uint256 idx = ra.anchorAttested(PROVIDER, Merkle.getRoot(leaves), ATT_REF);
+        for (uint256 i; i < leaves.length; ++i) {
+            assertTrue(ra.verifyAttested(leaves[i], Merkle.getProof(leaves, i), idx));
+        }
+        assertFalse(ra.verifyAttested(keccak256("not-a-leaf"), Merkle.getProof(leaves, 0), idx));
+        // an attested root does not verify through the windowed-anchor index space
+        assertFalse(ra.verify(leaves[0], Merkle.getProof(leaves, 0), idx));
+    }
+
+    function test_attestedAnchors_unknownIndexReturnsZeros() public view {
+        (bytes32 pid, bytes32 root, bytes32 ref, uint64 at) = ra.attestedAnchors(9);
+        assertEq(pid, bytes32(0));
+        assertEq(root, bytes32(0));
+        assertEq(ref, bytes32(0));
+        assertEq(at, 0);
+        assertFalse(ra.verifyAttested(keccak256("x"), new bytes32[](0), 9));
+    }
+
+    function testFuzz_anchorAttested_recordsInputs(bytes32 pid, bytes32 root, bytes32 ref) public {
+        vm.assume(pid != bytes32(0) && root != bytes32(0) && ref != bytes32(0));
+        vm.prank(anchorer);
+        uint256 i = ra.anchorAttested(pid, root, ref);
+        (bytes32 p2, bytes32 r2, bytes32 f2,) = ra.attestedAnchors(i);
+        assertEq(p2, pid);
+        assertEq(r2, root);
+        assertEq(f2, ref);
+    }
 }

@@ -10,7 +10,10 @@ interface IProviderBond {
         QuantFraud,
         Uptime,
         ParamDrop,
-        Other
+        Other,
+        // Appended: never reorder or insert above. The digest the provider served differs from the
+        // digest registered for it in the MeasurementRegistry.
+        MeasurementDrift
     }
 
     event Bonded(bytes32 indexed providerId, address indexed operator, uint256 amount, uint256 total);

@@ -31,6 +31,16 @@ contract ReceiptAnchor is IReceiptAnchor, Ownable2Step {
     /// @inheritdoc IReceiptAnchor
     mapping(bytes8 keyId => SigningKey) public signingKeys;
 
+    struct AttestedAnchor {
+        bytes32 providerId;
+        bytes32 root;
+        bytes32 attestationRef;
+        uint64 anchoredAt;
+    }
+
+    // Storage appended after the original layout (anchorer, _anchors, signingKeys). Keep new state below.
+    AttestedAnchor[] private _attestedAnchors;
+
     error ZeroAddress();
     error InvalidWindow();
     error InvalidKey();
@@ -110,5 +120,56 @@ contract ReceiptAnchor is IReceiptAnchor, Ownable2Step {
         if (index >= _anchors.length) return (bytes32(0), 0, 0, 0);
         Anchor storage a = _anchors[index];
         return (a.root, a.fromTs, a.toTs, a.count);
+    }
+
+    /// @inheritdoc IReceiptAnchor
+    /// @dev Anchorer only, like `anchor`. Carries no window or count: the root, the provider that served the
+    /// receipts and the attestation they were served under. Attested anchors are a separate append-only list,
+    /// so this cannot disturb the ordering rules of the windowed anchors.
+    function anchorAttested(bytes32 providerId, bytes32 root, bytes32 attestationRef)
+        external
+        returns (uint256 index)
+    {
+        if (msg.sender != anchorer) revert NotAnchorer();
+        if (providerId == bytes32(0)) revert EmptyProvider();
+        if (root == bytes32(0)) revert EmptyRoot();
+        if (attestationRef == bytes32(0)) revert EmptyAttestationRef();
+        index = _attestedAnchors.length;
+        _attestedAnchors.push(
+            AttestedAnchor({
+                providerId: providerId,
+                root: root,
+                attestationRef: attestationRef,
+                anchoredAt: uint64(block.timestamp)
+            })
+        );
+        emit AttestedAnchored(index, providerId, root, attestationRef);
+    }
+
+    /// @inheritdoc IReceiptAnchor
+    /// @dev Returns false (never reverts) for an unknown index.
+    function verifyAttested(bytes32 leaf, bytes32[] calldata proof, uint256 index)
+        external
+        view
+        returns (bool)
+    {
+        if (index >= _attestedAnchors.length) return false;
+        return MerkleProof.verifyCalldata(proof, _attestedAnchors[index].root, leaf);
+    }
+
+    /// @inheritdoc IReceiptAnchor
+    function attestedAnchorCount() external view returns (uint256) {
+        return _attestedAnchors.length;
+    }
+
+    /// @inheritdoc IReceiptAnchor
+    function attestedAnchors(uint256 index)
+        external
+        view
+        returns (bytes32 providerId, bytes32 root, bytes32 attestationRef, uint64 anchoredAt)
+    {
+        if (index >= _attestedAnchors.length) return (bytes32(0), bytes32(0), bytes32(0), 0);
+        AttestedAnchor storage a = _attestedAnchors[index];
+        return (a.providerId, a.root, a.attestationRef, a.anchoredAt);
     }
 }
