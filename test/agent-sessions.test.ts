@@ -313,6 +313,27 @@ describe("Agent Sessions", () => {
     expect(p2.next).toBeNull();
     expect((await h.request("/api/v1/sessions?before=yesterday", { headers: acct.auth })).status).toBe(400);
   });
+
+  test("a session key is managed only through /sessions and sees only its own calls and budget", async () => {
+    const s = await newSession(owner.auth, { name: "scoped", budget_usd: 0.25, ttl_minutes: 10 });
+    // The keys API refuses to edit it (re-enabling an ended session's key would contradict the session).
+    const patch = await h.request(`/api/v1/keys/${s.key_hash}`, { method: "PATCH", headers: owner.auth, json: { disabled: false } });
+    expect(patch.status).toBe(409);
+    expect(JSON.stringify(await patch.json())).toContain("session_key");
+    // The owner makes a call; the session key's history excludes it, and includes its own call.
+    expect((await chat(owner.auth)).status).toBe(200);
+    expect((await chat(bearer(s.key))).status).toBe(200);
+    const mine = (await (await h.request("/api/v1/generations", { headers: bearer(s.key) })).json()).data as { id: string }[];
+    const own = await h.ctx.db.select({ id: generations.id }).from(generations).where(eq(generations.keyHash, s.key_hash));
+    expect(mine.map((g) => g.id).sort()).toEqual(own.map((g) => g.id).sort());
+    expect(mine.length).toBe(1);
+    // Credits for a session key are its own budget, not the account balance.
+    const credits = (await (await h.request("/api/v1/credits", { headers: bearer(s.key) })).json()).data;
+    expect(credits.session).toBe(s.id);
+    expect(credits.total_credits).toBe(0.25);
+    expect(credits.available).toBeLessThan(0.25);
+    expect(credits.deposit).toBeUndefined();
+  });
 });
 
 describe("sessionStatus", () => {

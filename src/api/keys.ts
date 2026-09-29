@@ -6,7 +6,7 @@ import { withdrawableFor } from "../services/settlement.ts";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
 import type { Db, Tx } from "../db/client.ts";
-import { byokKeys, generations, keys, kv, ledger, spentRoots, teamMembers, teams } from "../db/schema.ts";
+import { agentSessions, byokKeys, generations, keys, kv, ledger, spentRoots, teamMembers, teams } from "../db/schema.ts";
 import { deriveKey, generateApiKey } from "../chain/keys.ts";
 import { fail } from "../lib/errors.ts";
 import { picoToUsd, usdToPico } from "../lib/money.ts";
@@ -182,6 +182,10 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     const caller = await sub(ctx, c);
     await requireRole(ctx, caller, ["owner", "admin"]);
     const k = await ownedKey(ctx, caller, c.req.param("hash"));
+    // An agent session's key is managed only through /api/v1/sessions: re-enabling it or changing its
+    // budget or expiry here would contradict the session's recorded state.
+    const [session] = await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, k.keyHash));
+    if (session) fail(409, "This key belongs to an agent session; manage it with /api/v1/sessions.", "session_key");
     const spec = keySpec.parse(await readJson(c));
     if (spec.management !== undefined && !caller.management) fail(403, "Only a management key can change management rights.", "forbidden");
     const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}) };
@@ -216,6 +220,13 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
 
   app.get("/api/v1/credits", async (c) => {
     const k = await sub(ctx, c);
+    // A session key sees its own budget, not the account's balance or deposits.
+    const [session] = await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, k.keyHash));
+    if (session) {
+      const budget = k.budget ?? 0n;
+      const left = budget - k.spentTotal > 0n ? budget - k.spentTotal : 0n;
+      return c.json({ data: { total_credits: picoToUsd(budget), total_usage: picoToUsd(k.spentTotal), balance: picoToUsd(left), available: picoToUsd(left), currency: "USD", session: session.id } });
+    }
     const bal = await balanceOf(ctx.db, k.accountId);
     const [dep] = await ctx.db
       .select({ n: sql<string>`coalesce(sum(${ledger.amount}), 0)` })

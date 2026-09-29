@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { and, asc, desc, eq, lt } from "drizzle-orm";
 import type { Hex } from "viem";
 import type { Ctx } from "../context.ts";
-import { anchors, generations, paywithDebts, paywithSwaps } from "../db/schema.ts";
+import { agentSessions, anchors, generations, paywithDebts, paywithSwaps } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { MerkleTree, receiptLeaf } from "../receipts/merkle.ts";
@@ -68,10 +68,13 @@ export function generationRoutes(app: Hono, ctx: Ctx) {
     if (!key) fail(401, "Provide an API key as `Authorization: Bearer sk-ar-v1-...`.", "missing_key");
     const limit = Math.min(200, Math.max(1, Number(c.req.query("limit") ?? 50) || 50));
     const before = c.req.query("before");
+    // A session key lists only its own calls, not the whole account's.
+    const [session] = await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, key.keyHash));
+    const scope = session ? eq(generations.keyHash, key.keyHash) : eq(generations.accountId, key.accountId);
     const rows = await ctx.db
       .select()
       .from(generations)
-      .where(and(eq(generations.accountId, key.accountId), ...(before ? [lt(generations.ts, new Date(before))] : [])))
+      .where(and(scope, ...(before ? [lt(generations.ts, new Date(before))] : [])))
       .orderBy(desc(generations.ts))
       .limit(limit + 1);
     const page = rows.slice(0, limit);
