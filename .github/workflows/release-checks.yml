@@ -27,10 +27,15 @@ jobs:
         with: { version: 'v1.7.1' }
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun test --timeout 20000
-        env: { TZ: UTC, TEST_PG_URL: 'postgres://postgres:fixture-only-ci-password@127.0.0.1:55432/postgres', TEST_REDIS_URL: 'redis://127.0.0.1:56379' }
+      - name: Check operational shell syntax and the production Compose graph
+        run: |
+          for f in scripts/*.sh; do bash -n "$f"; done
+          bun scripts/compose-graph-check.ts docker-compose.yml
+      # Installed before the unit tests so the off-host backup test runs real pg_dump/age.
       - name: Install encrypted recovery test tools
         run: sudo apt-get update -qq && sudo apt-get install -y age postgresql-client-16
+      - run: bun test --timeout 20000
+        env: { TZ: UTC, TEST_PG_URL: 'postgres://postgres:fixture-only-ci-password@127.0.0.1:55432/postgres', TEST_REDIS_URL: 'redis://127.0.0.1:56379' }
       - name: Exercise encrypted backup, empty restore and reconciliation
         run: bash scripts/recovery-drill.sh
         env:
@@ -46,10 +51,19 @@ jobs:
         working-directory: web
       - run: docker build -t anyroute:ci .
       - run: bash scripts/container-smoke.sh
-      - name: Verify operational alert rules
+        env:
+          POSTGRES_IMAGE: postgres:16.6@sha256:557fea37a744d5f4c8faab304b0a90858b53ab119735a88c131fd19dab802f36
+          REDIS_IMAGE: redis:8.0.2@sha256:b43d2dcbbdb1f9e1582e3a0f37e53bf79038522ccffb56a25858969d7a9b6c11
+      - name: Build the Railway one-shot and scheduled backup images
+        run: |
+          docker build -f deploy/railway/grants.Dockerfile -t anyroute-grants:ci .
+          docker build -f deploy/railway/backup.Dockerfile -t anyroute-backup:ci .
+          docker run --rm --entrypoint sh anyroute-backup:ci -ec 'age --version && pg_dump --version && bun --version && test "$(id -un)" = postgres'
+      - name: Verify operational alert rules and delivery routing
         run: |
           docker run --rm --entrypoint /bin/promtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996 check rules alerts.yml
           docker run --rm --entrypoint /bin/promtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996 test rules alerts.test.yml
+          docker run --rm --entrypoint /bin/amtool -v "$PWD/monitoring:/checks:ro" -w /checks prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a check-config alertmanager.yml
 
       - name: Exercise production service topology and dependency failure
         run: bash scripts/production-topology-smoke.sh
