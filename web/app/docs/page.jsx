@@ -384,12 +384,53 @@ const responsesResult = JSON.stringify(
     metadata: { anyroute_receipt_id: "gen-…", anyroute_lane: "attested", anyroute_disclosure: "attested" },
     store: false,
     "…": "instructions, tools, tool_choice, temperature, top_p and the other fields Responses clients read",
+const ragCurl = `curl ${BASE}/api/v1/rag \\
+  -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
+  -d '{"documents":[{"id":"handbook","text":"Refunds are issued within 14 days of the return arriving. …"},{"id":"faq","text":"…"}],"question":"How long do refunds take?","model":"<chat model>","provider":{"lane":"attested"}}'`;
+const ragResponse = JSON.stringify(
+  {
+    id: "<chat receipt id>",
+    object: "rag.answer",
+    model: "<chat model>",
+    answer: "Refunds are issued within 14 days of the return arriving [1].",
+    finish_reason: "stop",
+    sources: [{ ref: 1, document_id: "handbook", chunk_index: 0, score: 0.71, start: 0, end: 212 }],
+    receipts: [
+      {
+        step: "embeddings",
+        receipt_id: "<embeddings receipt id>",
+        model: "qwen/qwen3-embedding-8b",
+        provider: "<provider>",
+        lane: "attested",
+        disclosure: "attested",
+        cost: 0.0000011,
+        tokens: { prompt: 105, completion: 0 },
+        inputs: 3,
+        upstream_attestation: { attested: true, gpu_attested: true, receipt_verified: true, kind: "aci/1", receipt_id: "<gateway receipt id>" },
+      },
+      { step: "chat", receipt_id: "<chat receipt id>", model: "<chat model>", provider: "<provider>", lane: "attested", disclosure: "attested", "…": "cost, tokens, upstream_attestation" },
+    ],
+    embedding_model: "qwen/qwen3-embedding-8b",
+    lane: "attested",
+    lane_source: "request",
+    disclosure: "attested",
+    retrieval: { documents: 2, chunks: 2, top_k: 2, chunk: { size: 1000, overlap: 150 }, embedding_calls: 1 },
+    usage: { embedding_tokens: 105, prompt_tokens: 240, completion_tokens: 18, cost: 0.0000101, cost_usd: "0.0000101" },
   },
   null,
   2,
 );
 const responsesRefusal = JSON.stringify(
   { error: { code: 400, type: "previous_response_id_not_supported", param: "previous_response_id", message: "`previous_response_id` is not supported. AnyRoute stores no responses, so there is no earlier turn to continue from. Send the whole conversation in `input` on every request…" } },
+const ragRefusal = JSON.stringify(
+  {
+    error: {
+      code: 409,
+      type: "lane_unavailable",
+      message: 'Private RAG stopped at the chat step: No provider for <chat model> meets lane "attested": … Nothing was sent to any provider and nothing was charged. …',
+      metadata: { step: "chat", receipts: [{ step: "embeddings", receipt_id: "<embeddings receipt id>", lane: "attested", "…": "the call that was made, and billed" }] },
+    },
+  },
   null,
   2,
 );
@@ -426,6 +467,7 @@ const endpoints = [
   ["POST /mcp", "AnyRoute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["POST /v1/messages · /messages/count_tokens", "Anthropic Messages API (also under /api/v1) for the Anthropic SDKs and Claude Code: x-api-key or Authorization: Bearer; tools, images and streaming; the lane in X-Anyroute-Lane or provider.lane; the receipt in the reply and in X-Receipt-Id"],
   ["POST /v1/responses · /api/v1/responses", "OpenAI Responses API for the OpenAI Agents SDK, the Codex CLI and other Responses clients: the chat route’s billing, lanes and signed receipts behind the Responses shape and event stream. Stateless: store must be false, there is no previous_response_id and no GET; function and custom tools only"],
+  ["POST /api/v1/rag · /v1/rag", "Answers from documents you send with the question, ranked in memory and stored nowhere: it embeds, ranks and answers through the embeddings and chat routes, and returns the sources and every call’s receipt (prepaid key; the lane and disclosure options of chat)"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
@@ -458,6 +500,7 @@ export default function Docs() {
             <a href="#mcp">MCP</a>
             <a href="#anthropic">Anthropic</a>
             <a href="#responses">Responses</a>
+            <a href="#rag">Private RAG</a>
             <a href="#sdk">SDKs</a>
             <a href="#run-a-provider">Run a provider</a>
             <a href="#badge">Badge</a>
@@ -883,6 +926,64 @@ export default function Docs() {
             The Codex CLI offers apply_patch as a custom tool: freeform text, not JSON fields, with an optional grammar. AnyRoute passes a custom tool to the model as a function with one string argument, input, and puts the tool’s description, a line saying the tool takes freeform text, and the grammar if there is one into the function’s description. The grammar
             is guidance for the model only: nothing checks or enforces it, and a model can still produce input that does not follow it, which the client then reports as a failed call. When the model calls the function, the call comes back as a custom_tool_call item with the text as input (in a stream, response.custom_tool_call_input.delta as it is generated and response.custom_tool_call_input.done with
             the whole text), and the custom_tool_call_output item you send on the next turn goes back to the model as the tool result. Models differ in how well they follow a tool description, so how reliably apply_patch works depends on the model you choose. Codex’s shell and plan tools are ordinary function tools.
+          </p>
+          <h2 id="rag">Answer from your documents without storing them.</h2>
+          <p>
+            POST /api/v1/rag (also /v1/rag) answers a question from documents you send with it. The router cuts them into overlapping chunks, embeds the chunks and the question through /api/v1/embeddings, ranks the chunks by cosine similarity in memory, and asks a chat model,
+            through /api/v1/chat/completions, to answer from the best top_k of them, citing them by number. Each of those is an ordinary call with your key: billed to it, limited by it, routed by lane and signed as a receipt, and the response lists every receipt. It needs a
+            prepaid API key; per-call payment and blind tokens are not accepted.
+          </p>
+          <Code label="Ask a question of two documents, on the attested lane">{ragCurl}</Code>
+          <p>
+            <b>Request.</b> documents is a list of strings, or of objects with an id and a text; an id defaults to doc-1, doc-2 and so on, and ids must be unique. By default one request may carry 200 documents, 2 MiB of text, 2,000 chunks and 64 embeddings calls; above any of them it is
+            refused with 413 before anything is sent (the router’s RAG_MAX_DOCUMENTS, RAG_MAX_BYTES, RAG_MAX_CHUNKS and RAG_MAX_EMBEDDING_CALLS settings). chunk.size (100 to 8,000 characters, default 1,000) and chunk.overlap (default 15% of the size, at most half of it) set the
+            chunking, and a chunk ends at a paragraph, line or sentence boundary where it can. top_k (1 to 20, default 4) is how many chunks go into the prompt; a request whose largest possible prompt would not fit the chat model’s context is refused (400 context_too_small) before
+            anything is embedded. embedding_model defaults to qwen/qwen3-embedding-8b when the catalog serves it, else the cheapest embedding model, considering models with an attested endpoint first. max_tokens and temperature go to the chat call. Unknown fields are refused, so a misspelt
+            option is never silently ignored.
+          </p>
+          <p>
+            <b>Response.</b> The answer, and sources in rank order: each names its document, the chunk’s position, its cosine score and where the chunk lies in the document (start and end). The text of a source is returned only if you send include_excerpts as true. receipts has one entry
+            for every embeddings call and one for the chat call, each with its lane, the disclosure class its signed receipt records and, when the provider is an attested gateway, upstream_attestation: attested, gpu_attested and receipt_verified, what the router checked in the gateway’s receipt for
+            that call. Then the totals. The headers are the chat call’s (X-Receipt-Id and the others), X-Anyroute-Lane is the lane every call used, X-Anyroute-Disclosure is the weakest class among all the calls, and X-Anyroute-Policy-Hash is sent only when every call reported the same one.
+            The answer is a model’s output grounded in the sources you were shown, not a proof; the prompt asks for numbered citations so you can check them.
+          </p>
+          <Code label="Response (abridged)">{ragResponse}</Code>
+          <h3>Lane, and what a refusal looks like</h3>
+          <p>
+            Send provider.lane (public or attested), provider.disclosure (none, policy or any), X-Anyroute-Lane or X-Anyroute-Disclosure-Max, and every call runs under exactly that. If a step cannot be served under it, whether there is no attested embedding model, the chat model has no attested
+            endpoint, or the attested providers are down, the request is refused with that step’s own error (409 lane_unavailable or disclosure_unavailable, 503 disclosure_provider_unavailable), and it is never sent on a weaker lane. error.metadata.step says which step stopped, and
+            error.metadata.receipts lists the calls already made, which are billed. If an attested gateway’s receipt for a call does not show an upstream it verified inside a TEE, that call’s output (the vectors, or the answer) is withheld, the call is billed, and the error is 502
+            upstream_not_attested with the receipt listed and marked withheld. The unlinkable lane is not available here.
+          </p>
+          <Code label="A chat model without an attested endpoint, on the attested lane (abridged)">{ragRefusal}</Code>
+          <p>
+            Send none of them and the router chooses: the attested lane when the chat model and the embedding model both have an attested endpoint right now, and otherwise the router’s ordinary public lane. The response says which (lane, and lane_source: request or default) and, when it is
+            public, why (lane_note). Setting provider.lane to attested yourself is how you make the request refuse instead of falling back.
+          </p>
+          <h3>Streaming</h3>
+          <p>
+            With stream set to true the embeddings run first, and a refusal up to the start of the answer is an ordinary JSON error. The stream then sends a chat.completion.chunk event with empty choices and rag.object rag.sources (the sources and the embeddings receipts), the chat
+            stream exactly as /api/v1/chat/completions sends it (on the attested lane an attested gateway’s text is held back until its receipt has been checked), a last chunk with rag.object rag.summary (every receipt, the totals, and error if the answer was refused after the stream
+            began), and data: [DONE].
+          </p>
+          <h3>What is kept, and what is not</h3>
+          <p>
+            <b>Nothing of your documents is stored.</b> The documents, their chunks and vectors, the question and the answer exist in the memory of the request that carries them. The endpoint writes none of them to a database, cache or file, does not log them, and never uses the response
+            cache (it sends no cache option to the calls it makes and ignores X-Anyroute-Cache). When the request ends the router lets go of them and the runtime reclaims the memory. The router does not overwrite freed memory, so this is not a claim about what someone with access to the
+            running process could recover while a request is in flight or soon after.
+          </p>
+          <p>
+            <b>What is recorded.</b> Each embeddings call and the chat call is a generation of your key, exactly as if you had made it yourself: a record and a signed receipt holding ids, model, provider, lane, token counts, cost, timing, the disclosure class, any gateway attestation
+            check, and the SHA-256 of the request and of the response. The hashes do not reveal text, but whoever holds an exact guess of a request can confirm it against one, and a receipt can be read by its id.
+          </p>
+          <p>
+            <b>What leaves the router.</b> The text has to reach models to be used. The chunks and the question go to the embedding model’s provider; the question and the best chunks go to the chat model’s provider. What that provider sees and keeps depends on the lane. On the attested lane
+            the router sends them only to a provider whose retention is declared attested and whose hardware attestation it verified itself and holds fresh, and for an attested gateway it checks the gateway’s receipt for each call. That shows what code is running, not what it does with your
+            text; GET /api/v1/attestation/:providerId lists what the router does not check. On the public lane a provider’s documented policy applies (GET /api/v1/disclosure/:providerId).
+          </p>
+          <p>
+            <b>Untrusted text.</b> Documents are treated as untrusted. The prompt tells the model to use only the numbered sources and to ignore instructions inside them, and a source cannot close its own tag. That lowers, and does not remove, the chance that a document steers the answer.
+            The cost of a request is the sum of its calls; each holds its worst case before it is sent, so your balance bounds every step, and a refusal partway leaves the earlier calls billed.
           </p>
           <h2 id="sdk">Verify before you send.</h2>
           <p>

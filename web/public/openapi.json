@@ -3,7 +3,7 @@
   "info": {
     "title": "Anyroute API",
     "version": "1.0.0",
-    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) and the Lane: model variants, day-zero candidates and creator royalty claims. Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, teams, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
+    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the Lane: model variants, day-zero candidates and creator royalty claims, and Private RAG (answers from documents sent with the question, nothing kept). Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, teams, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
     "contact": {
       "name": "AnyRoute support",
       "email": "Anyroute1@atomicmail.io"
@@ -103,6 +103,10 @@
     {
       "name": "Responses",
       "description": "OpenAI Responses API compatible endpoint for the OpenAI Agents SDK, the Codex CLI and other Responses clients. Stateless: nothing is stored."
+    },
+    {
+      "name": "Private RAG",
+      "description": "Answers from documents sent with the question, ranked in memory and kept nowhere, through the router's own embeddings and chat routes."
     }
   ],
   "paths": {
@@ -3829,6 +3833,134 @@
         "responses": {
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/rag": {
+      "post": {
+        "tags": [
+          "Private RAG"
+        ],
+        "operationId": "createRagAnswer",
+        "summary": "Answer a question from documents you send, keeping nothing",
+        "description": "Retrieval-augmented answers over documents sent with the question, with nothing kept. The router cuts the documents into overlapping chunks, embeds the chunks and the question through POST /api/v1/embeddings (in batches), ranks the chunks by cosine similarity in memory, and answers from the best top_k through POST /api/v1/chat/completions, citing numbered sources. Every call is an ordinary call of your key: billed, limited, routed by lane and receipted, and the response lists every receipt id with its lane, the disclosure class it was served under and, for an attested gateway, its upstream_attestation check. Needs a prepaid API key (Authorization: Bearer); per-call payment and blind tokens are not accepted. Lane: send provider.lane (public or attested) or provider.disclosure (none, policy, any), or the X-Anyroute-Lane and X-Anyroute-Disclosure-Max headers, and every call is held to exactly that and refused, never downgraded: on the attested lane 503 no_attested_endpoint (error.metadata.reason none_attested, or attested_endpoints_down with Retry-After); with only a disclosure ceiling 409 disclosure_unavailable, or 503 disclosure_provider_unavailable while qualifying providers are down; or 502 upstream_not_attested when an attested gateway's receipt does not show an attested upstream (the reply is withheld and the call is billed). A lane or ceiling pinned on the key (routing.provider) applies to every step, not only the chat call. A model the router resolves itself (a saved route, an alias of the key, anyroute/...) can pin a lane of its own, so a request naming one must state provider.lane (400 lane_required). Send none and the attested lane is used when the chat model and the embedding model both have an attested endpoint; otherwise the public lane is used and lane_note says why. embedding_model defaults to qwen/qwen3-embedding-8b, else the cheapest embedding model, preferring models with an attested endpoint. Unlinkable is not available. An error from a step is that step's own status and error.type, with error.metadata.step (embeddings or chat) and error.metadata.receipts, the calls already made and billed. Caps (configurable): 200 documents, 2 MiB of document text, 2000 chunks and 64 embeddings calls per request, 413 payload_too_large above them. With stream true the embeddings run first (a refusal there, or at the start of the chat call, is an ordinary JSON error); the stream then sends a chat.completion.chunk event with choices [] and rag.object rag.sources (the sources and the embeddings receipts), the chat stream exactly as /api/v1/chat/completions sends it, an event with rag.object rag.summary (all receipts, totals and, if the chat call was refused mid-stream, error), and data: [DONE]. Nothing of the documents, the question or the answer is stored. The documents, their chunks and vectors and the question live in the memory of the one request that carries them and are dropped when it ends; this endpoint writes them to no database, cache or file, does not log them and never uses the response cache. What remains is what any call leaves: each embeddings call and the chat call is a generation of the key, with a signed receipt holding ids, model, provider, lane, token counts, cost, timing and the SHA-256 of the request and of the response, not their text (a hash confirms an exact guess; it does not reveal text). The text does leave the router: the chunks and the question go to the embedding model's provider and the question and the best chunks go to the chat model's provider. What those providers see and keep depends on the lane; on the attested lane only providers with attested retention and a fresh attestation the router verified are used, which shows what code is running, not what it does with the text.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PayWith"
+          },
+          {
+            "$ref": "#/components/parameters/DisclosureMax"
+          },
+          {
+            "$ref": "#/components/parameters/Lane"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer, its sources and the receipt of every call; or, with stream true, Server-Sent Events: a chat.completion.chunk with choices [] and rag.object rag.sources, the chat stream, a chunk with rag.object rag.summary, then data: [DONE]. The headers are those of the chat call, except X-Anyroute-Disclosure, which is the weakest class among all the calls (and is left out when a call's class is not known), and X-Anyroute-Policy-Hash, which is sent only when every call reported the same one.",
+            "headers": {
+              "X-Anyroute-Disclosure": {
+                "$ref": "#/components/headers/Disclosure"
+              },
+              "X-Anyroute-Lane": {
+                "$ref": "#/components/headers/LaneServed"
+              },
+              "X-Receipt-Id": {
+                "$ref": "#/components/headers/ReceiptId"
+              },
+              "Inference-Id": {
+                "$ref": "#/components/headers/InferenceId"
+              },
+              "X-Generation-Id": {
+                "$ref": "#/components/headers/GenerationId"
+              },
+              "X-Anyroute-Policy-Hash": {
+                "$ref": "#/components/headers/PolicyHash"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagAnswer"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events; each data: line is a JSON object of the chat.completion.chunk shape."
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "No provider meets provider.disclosure for a step (disclosure_unavailable), or no embedding model does. Nothing was sent to a provider for that step. error.metadata.step names it and error.metadata.receipts lists the calls already made.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "More documents, bytes of document text, chunks or embeddings calls than the router allows in one request (payload_too_large). error.metadata.limit is the cap. Nothing was sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "502": {
+            "description": "A step failed after the router accepted the request: upstream_not_attested (an attested gateway's receipt did not show an attested upstream; the reply was withheld and the call is billed), providers_unavailable, or invalid_embedding_response. error.metadata.step and error.metadata.receipts say where it stopped and what was billed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/DisclosureProviderDown"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
           }
         }
       }
@@ -8867,6 +8999,418 @@
           }
         },
         "additionalProperties": true
+      },
+      "RagRequest": {
+        "type": "object",
+        "required": [
+          "documents",
+          "question",
+          "model"
+        ],
+        "additionalProperties": false,
+        "description": "Unknown fields are refused (400), so a misspelt option is never silently ignored. There is no cache option: the response cache is never used.",
+        "properties": {
+          "documents": {
+            "type": "array",
+            "minItems": 1,
+            "description": "The text to search: plain strings or {id, text}. At most 200 documents and 2 MiB of UTF-8 text by default (RAG_MAX_DOCUMENTS, RAG_MAX_BYTES). A string, or an object without id, is named doc-<position>, starting at 1. Ids must be unique; a document with no text is refused.",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "text"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "model": {
+            "type": "string",
+            "description": "The chat model that writes the answer. An embedding model is refused."
+          },
+          "embedding_model": {
+            "type": "string",
+            "description": "The model that embeds the chunks and the question. Default: qwen/qwen3-embedding-8b if the catalog serves it, else the cheapest embedding model; models with an attested endpoint are considered first unless the request asks for a lane or ceiling, when only models that meet it are."
+          },
+          "top_k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 4,
+            "description": "How many of the best chunks go into the prompt. A request whose largest possible prompt would not fit the chat model's context is refused (400 context_too_small) before anything is embedded."
+          },
+          "chunk": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Sizes are in characters (UTF-16 code units). A chunk ends at a paragraph, line or sentence boundary when there is one in its last 40%, otherwise at a space.",
+            "properties": {
+              "size": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 8000,
+                "default": 1000
+              },
+              "overlap": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Characters shared by neighbouring chunks: at most half of size. Default: 15% of size."
+              }
+            }
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Passed to the chat call."
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2,
+            "description": "Passed to the chat call."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false
+          },
+          "include_excerpts": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return each source's text as excerpt. Off by default: the response then carries where each source lies (start, end) and never the text."
+          },
+          "provider": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The lane and disclosure ceiling, applied to every call. Other routing options are not accepted. If you send none, the lane pinned on the key (routing.provider) is used, and if there is none the router chooses (see the operation description).",
+            "properties": {
+              "lane": {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "attested"
+                ],
+                "description": "attested: every call goes only to a provider with attested retention and a fresh attestation the router verified; when one cannot be served the request is refused, never downgraded. unlinkable is not available here (400)."
+              },
+              "disclosure": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "policy",
+                  "any"
+                ],
+                "description": "Same as provider.disclosure on chat completions."
+              }
+            }
+          }
+        }
+      },
+      "RagSource": {
+        "type": "object",
+        "required": [
+          "ref",
+          "document_id",
+          "chunk_index",
+          "score",
+          "start",
+          "end"
+        ],
+        "properties": {
+          "ref": {
+            "type": "integer",
+            "description": "The number of the source in the prompt, and in the citations ([1], [2]) the model was asked to make. Sources are in rank order."
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "chunk_index": {
+            "type": "integer",
+            "description": "Position of the chunk within its document, from 0."
+          },
+          "score": {
+            "type": "number",
+            "description": "Cosine similarity of the chunk's vector with the question's, rounded to 6 places."
+          },
+          "start": {
+            "type": "integer"
+          },
+          "end": {
+            "type": "integer",
+            "description": "The chunk is the document text from start to end (characters)."
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "The chunk's text. Present only when include_excerpts is true."
+          }
+        }
+      },
+      "RagCall": {
+        "type": "object",
+        "required": [
+          "step",
+          "receipt_id",
+          "lane",
+          "disclosure",
+          "cost",
+          "tokens"
+        ],
+        "description": "One provider call, as its signed receipt records it. Read the receipt with GET /api/v1/receipts/{receipt_id}.",
+        "properties": {
+          "step": {
+            "type": "string",
+            "enum": [
+              "embeddings",
+              "chat"
+            ]
+          },
+          "receipt_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lane": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The lane the call was made under."
+          },
+          "disclosure": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "attested",
+              "policy",
+              "vendor-forwarded",
+              null
+            ],
+            "description": "The class the call was served under, from its receipt."
+          },
+          "cost": {
+            "type": "number",
+            "description": "USD charged for this call."
+          },
+          "tokens": {
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "integer"
+              },
+              "completion": {
+                "type": "integer"
+              }
+            }
+          },
+          "inputs": {
+            "type": "integer",
+            "description": "Embeddings calls: how many texts (the question and chunks) the call embedded."
+          },
+          "policy_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The classifier policy hash the serving endpoint attested, when it did (X-Anyroute-Policy-Hash of that call)."
+          },
+          "upstream_attestation": {
+            "type": "object",
+            "description": "For an attested gateway: what the router checked of the gateway's receipt for this call. attested is true only when the receipt shows an upstream the gateway verified inside a TEE.",
+            "properties": {
+              "attested": {
+                "type": "boolean"
+              },
+              "gpu_attested": {
+                "type": "boolean"
+              },
+              "receipt_verified": {
+                "type": "boolean"
+              },
+              "kind": {},
+              "receipt_id": {},
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "withheld": {
+            "const": true,
+            "description": "The provider had answered, but the router withheld the reply because the receipt did not show an attested upstream. The call is billed; its signed receipt says why."
+          },
+          "attestation_simulated": {
+            "const": true,
+            "description": "The attestation behind this call is a development report; a production router refuses those."
+          }
+        }
+      },
+      "RagAnswer": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "answer",
+          "sources",
+          "receipts",
+          "lane",
+          "lane_source",
+          "embedding_model",
+          "retrieval",
+          "usage"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The chat call's receipt id: the same as X-Receipt-Id."
+          },
+          "object": {
+            "const": "rag.answer"
+          },
+          "model": {
+            "type": "string",
+            "description": "The chat model that answered."
+          },
+          "answer": {
+            "type": "string"
+          },
+          "finish_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RagSource"
+            }
+          },
+          "receipts": {
+            "type": "array",
+            "description": "Every provider call the request made, in order: the embeddings calls, then the chat call.",
+            "items": {
+              "$ref": "#/components/schemas/RagCall"
+            }
+          },
+          "embedding_model": {
+            "type": "string"
+          },
+          "lane": {
+            "type": "string",
+            "enum": [
+              "public",
+              "attested"
+            ],
+            "description": "The lane every call was made under."
+          },
+          "lane_source": {
+            "type": "string",
+            "enum": [
+              "request",
+              "default"
+            ],
+            "description": "request: you stated a lane or a disclosure ceiling (even public or any) and it was used as stated. default: you stated none, and the router chose attested when the chat model and the embedding model both have an attested endpoint, else public."
+          },
+          "lane_note": {
+            "type": "string",
+            "description": "Present when the default lane was public: which model had no known attested endpoint."
+          },
+          "disclosure": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "attested",
+              "policy",
+              "vendor-forwarded",
+              null
+            ],
+            "description": "The weakest class among all the calls, from their receipts; null when a call's class is not known."
+          },
+          "attestation_simulated": {
+            "const": true,
+            "description": "Present when any call's attestation was a development report."
+          },
+          "retrieval": {
+            "type": "object",
+            "properties": {
+              "documents": {
+                "type": "integer"
+              },
+              "chunks": {
+                "type": "integer"
+              },
+              "top_k": {
+                "type": "integer"
+              },
+              "chunk": {
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "type": "integer"
+                  },
+                  "overlap": {
+                    "type": "integer"
+                  }
+                }
+              },
+              "embedding_calls": {
+                "type": "integer"
+              }
+            }
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "embedding_tokens": {
+                "type": "integer"
+              },
+              "prompt_tokens": {
+                "type": "integer"
+              },
+              "completion_tokens": {
+                "type": "integer"
+              },
+              "cost": {
+                "type": "number",
+                "description": "Total USD across all calls."
+              },
+              "cost_usd": {
+                "type": "string",
+                "description": "The same total, exact."
+              }
+            }
+          }
+        }
       }
     }
   }

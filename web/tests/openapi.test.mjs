@@ -128,3 +128,36 @@ test('the Oblivious HTTP endpoints, media types and schemas are documented and c
  walk(spec.paths,(n)=>{if(typeof n.operationId==='string')ids.push(n.operationId);});
  assert.equal(new Set(ids).size,ids.length,'operation ids are unique');
 });
+
+test('the Private RAG endpoint, its schemas and its privacy statement are documented and consistent',()=>{
+ const op=spec.paths['/api/v1/rag'].post;
+ assert.deepEqual(op.tags,['Private RAG']);
+ assert.ok(spec.tags.some((t)=>t.name==='Private RAG'));
+ assert.deepEqual(op.security,[{BearerAuth:[]}],'it needs a prepaid key');
+ assert.equal(op.requestBody.content['application/json'].schema.$ref,'#/components/schemas/RagRequest');
+ assert.ok(op.responses['200'].content['application/json']&&op.responses['200'].content['text/event-stream']);
+ for(const h of ['X-Receipt-Id','X-Anyroute-Lane','X-Anyroute-Disclosure'])assert.ok(op.responses['200'].headers[h],h);
+ for(const code of ['400','401','402','403','404','409','413','429','502','503'])assert.ok(op.responses[code],`declares ${code}`);
+ const req=spec.components.schemas.RagRequest;
+ assert.equal(req.additionalProperties,false,'a misspelt option is refused');
+ assert.deepEqual(req.required,['documents','question','model']);
+ assert.deepEqual(req.properties.provider.properties.lane.enum,['public','attested'],'unlinkable is not offered');
+ assert.equal(req.properties.provider.additionalProperties,false);
+ assert.equal(req.properties.include_excerpts.default,false,'excerpts only on request');
+ assert.equal(req.properties.top_k.maximum,20);
+ assert.equal(req.properties.cache,undefined,'there is no cache option');
+ for(const name of ['RagRequest','RagSource','RagCall','RagAnswer'])assert.ok(spec.components.schemas[name],name);
+ assert.ok(!spec.components.schemas.RagSource.required.includes('excerpt'));
+ assert.equal(spec.components.schemas.RagAnswer.properties.object.const,'rag.answer');
+ assert.deepEqual(spec.components.schemas.RagAnswer.properties.lane_source.enum,['request','default']);
+ assert.ok(spec.components.schemas.RagCall.properties.upstream_attestation&&spec.components.schemas.RagCall.properties.withheld);
+ // What it says about what is kept is stated once, precisely, and what it does not claim is stated too.
+ assert.match(op.description,/Nothing of the documents, the question or the answer is stored/);
+ assert.match(op.description,/SHA-256 of the request and of the response, not their text/);
+ assert.match(op.description,/never downgraded/);
+ assert.match(op.description,/shows what code is running, not what it does with the text/);
+ assert.match(op.description,/go to the embedding model's provider/);
+ const ids=[];
+ walk(spec.paths,(n)=>{if(typeof n.operationId==='string')ids.push(n.operationId);});
+ assert.equal(new Set(ids).size,ids.length,'operation ids are unique');
+});
