@@ -4,6 +4,8 @@ import type { Candidate, ModelRow } from "../catalog/catalog.ts";
 import { priceString } from "../lib/money.ts";
 import { blendedPrice, attestationFresh } from "../router/select.ts";
 import { fail } from "../lib/errors.ts";
+import { parseLane } from "../router/disclosure.ts";
+import { servedDisclosure } from "./disclosure.ts";
 
 export function offerPricing(o: Candidate) {
   return {
@@ -27,6 +29,9 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
   const top = [...offers].sort((a, b) => (b.ctx ?? 0) - (a.ctx ?? 0))[0];
   const supported = [...new Set(offers.flatMap((o) => o.supportedParameters ?? []))].sort();
   const arch = (m.arch ?? {}) as Record<string, unknown>;
+  // How many live endpoints serve a prompt under each disclosure class (see GET /api/v1/disclosure/{providerId}).
+  const classes = { attested: 0, policy: 0, "vendor-forwarded": 0 };
+  for (const o of offers) classes[servedDisclosure(ctx, o).class]++;
   const policies = offers.map((o) => (o.provider.dataPolicy ?? {}) as { training?: boolean; retains_prompts?: boolean; zdr?: boolean });
   return {
     id: m.id,
@@ -54,6 +59,7 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     },
     quantization: [...new Set(offers.map((o) => o.quant))],
     attested_available: offers.some((o) => attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production)),
+    disclosure: { best: classes.attested ? "attested" : classes.policy ? "policy" : classes["vendor-forwarded"] ? "vendor-forwarded" : null, endpoints: classes },
     creator: m.creator ?? null,
     royalty_bps: m.creator ? m.royaltyBps : 0,
   };
@@ -63,10 +69,13 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
   const list = async (c: import("hono").Context) => {
     await ctx.catalog.ensureFresh();
     const need = (c.req.query("supported_parameters") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    // ?lane=attested keeps only models with at least one endpoint served under attested retention; public (or unset) keeps all.
+    const lane = parseLane(c.req.query("lane"), "`lane`");
     const data = [...ctx.catalog.models.values()]
       .filter((m) => !m.hidden && ctx.catalog.offers(m.id).some(live))
       .map((m) => modelJson(ctx, m))
       .filter((m) => need.every((p) => m.supported_parameters.includes(p)))
+      .filter((m) => lane !== "attested" || m.disclosure.endpoints.attested > 0)
       .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id));
     return c.json({ data });
   };
@@ -101,6 +110,7 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
         data_policy: o.provider.dataPolicy,
         attested: attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production),
         attestation_hash: o.provider.attestationHash ?? null,
+        disclosure: servedDisclosure(ctx, o).class,
         bond_usdg: o.provider.bondUsdg.toString(),
         is_moderated: o.isModerated,
       };

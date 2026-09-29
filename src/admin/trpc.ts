@@ -14,6 +14,8 @@ import { statement } from "../pay/paywith.ts";
 import { importLiteLLM } from "../gateway/litellm.ts";
 import { verifyInvariants } from "../ledger/ledger.ts";
 import { encrypt, safeEqual } from "../lib/util.ts";
+import { isApiError } from "../lib/errors.ts";
+import { disclosureInput, writeDisclosure } from "../api/disclosure.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { chainKeyHashOf } from "../chain/keys.ts";
 
@@ -101,6 +103,16 @@ export const adminRouter = t.router({
       }
       await ctx.app.catalog.refresh();
       return input;
+    }),
+    /** Replace a provider's disclosure profile (retention, jurisdiction, legal hold, training use, each with a source and date). */
+    setDisclosure: operator.input(disclosureInput.extend({ id: z.string() })).mutation(async ({ ctx, input }) => {
+      const { id, ...profile } = input;
+      try {
+        return ser(await writeDisclosure(ctx.app, id, profile));
+      } catch (e) {
+        if (isApiError(e)) throw new TRPCError({ code: e.status === 404 ? "NOT_FOUND" : e.status === 409 ? "CONFLICT" : "BAD_REQUEST", message: e.message });
+        throw e;
+      }
     }),
     setAttestationAllowlist: operator.input(z.object({ id: z.string(), mrtd: z.array(z.string()).optional(), rtmr3: z.array(z.string()).optional(), measurement: z.array(z.string()).optional() })).mutation(async ({ ctx, input }) => {
       const { id, ...value } = input;

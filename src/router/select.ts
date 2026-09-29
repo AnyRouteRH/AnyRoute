@@ -1,9 +1,10 @@
 import type { Candidate, Modifier } from "../catalog/catalog.ts";
 import { usdToPico } from "../lib/money.ts";
+import { DISCLOSURE_MAX_VALUES, OUTAGE_REASON, UNDECLARED, classAllowed, disclosureClass, disclosureExclusion, type DisclosureClass, type DisclosureMax, type DisclosureProfile, type Lane } from "./disclosure.ts";
 
 // Provider selection, OpenRouter-compatible:
 //   candidates = providers.serving(model)
-//     .filter(prefs: only/ignore/data_collection/zdr/quantizations/private->attested/max_price/require_parameters)
+//     .filter(prefs: only/ignore/data_collection/zdr/quantizations/private->attested/disclosure+lane/max_price/require_parameters)
 //     .filter(p => !outage(p, 30s))
 //   weights = 1/price^2 x uptime30d x qualityScore(model,p)     // quality in [0.5, 1.0] from canaries
 //   order = prefs.order ?? (sort ? sortBy(sort) : weightedShuffle(weights))
@@ -23,6 +24,10 @@ export type ProviderPrefs = {
   preferred_max_latency?: number | Percentiles;
   max_price?: { prompt?: number | string; completion?: number | string; request?: number | string; image?: number | string };
   private?: boolean;
+  /** Ceiling on how a prompt may be handled: "none" = attested retention only, "policy" = attested or documented no-retention policy, "any" = no filter (default). */
+  disclosure?: DisclosureMax;
+  /** "public" (default, no filter) or "attested" (implies disclosure "none"). "unlinkable" is refused before selection. */
+  lane?: Lane;
 };
 
 export interface HealthView {
@@ -46,6 +51,8 @@ export type SelectInput = {
   health: HealthView;
   production: boolean;
   attestationMaxAgeMs: number;
+  /** Disclosure profile of a provider (see router/disclosure.ts). Absent = every provider is undeclared, which no strict request accepts. */
+  disclosure?: (providerId: string) => DisclosureProfile | undefined;
   rand?: () => number;
 };
 
@@ -56,12 +63,24 @@ export function blendedPrice(c: Candidate): number {
   return Number(c.pricePrompt * 3n + c.priceCompletion) / 4;
 }
 
-export function attestationFresh(c: Candidate, maxAgeMs: number, production: boolean) {
+export function attestationFresh(c: Pick<Candidate, "provider">, maxAgeMs: number, production: boolean) {
   const p = c.provider;
   if (!p.attested || !p.attestationHash || !p.attestedAt || !p.teeKind) return false;
   if (production && p.teeKind === "dev") return false;
   const age = Date.now() - p.attestedAt.getTime();
   return Number.isFinite(age) && age >= 0 && age <= maxAgeMs;
+}
+
+/** The disclosure class this candidate's provider is served under right now. */
+export function candidateDisclosure(c: Candidate, profile: DisclosureProfile | undefined, maxAgeMs: number, production: boolean): DisclosureClass {
+  return disclosureClass(profile ?? UNDECLARED, attestationFresh(c, maxAgeMs, production));
+}
+
+/** The ceiling a request asks for. Anything unrecognised is read as the strictest setting, never a relaxed one. */
+export function disclosureCeiling(prefs: Pick<ProviderPrefs, "disclosure" | "lane">): { max: DisclosureMax; lane: Lane } {
+  const lane = prefs.lane == null ? "public" : prefs.lane;
+  const asked = prefs.disclosure == null ? "any" : (DISCLOSURE_MAX_VALUES as readonly string[]).includes(prefs.disclosure) ? prefs.disclosure : "none";
+  return { max: lane !== "public" ? "none" : asked, lane };
 }
 
 function metric(p: Percentiles | undefined, key: keyof Percentiles) {
@@ -112,12 +131,14 @@ export function selectProviders(input: SelectInput): Selection {
   const maxCompletion = prefs.max_price?.completion != null ? usdToPico(prefs.max_price.completion) : null;
   const maxRequest = prefs.max_price?.request != null ? usdToPico(prefs.max_price.request) : null;
   const byok = input.byokProviders ?? new Set<string>();
+  const { max: disclosureMax, lane } = disclosureCeiling(prefs);
 
   const pass: Candidate[] = [];
   for (const c of input.offers) {
     const id = c.providerId.toLowerCase();
     const policy = (c.provider.dataPolicy ?? {}) as { training?: boolean; retains_prompts?: boolean; zdr?: boolean };
     const isFree = c.pricePrompt === 0n && c.priceCompletion === 0n && c.priceRequest === 0n;
+    const cls = disclosureMax === "any" ? null : candidateDisclosure(c, input.disclosure?.(c.providerId), input.attestationMaxAgeMs, input.production);
     const reason =
       c.provider.status !== "live"
         ? `provider ${c.provider.status}`
@@ -139,20 +160,22 @@ export function selectProviders(input: SelectInput): Selection {
                         ? `quantization ${c.quant} not allowed`
                         : wantPrivate && !attestationFresh(c, input.attestationMaxAgeMs, input.production)
                           ? "private route requires a fresh TEE attestation"
-                          : maxPrompt != null && c.pricePrompt * PER_MILLION > maxPrompt
-                            ? "above max_price.prompt"
-                            : maxCompletion != null && c.priceCompletion * PER_MILLION > maxCompletion
-                              ? "above max_price.completion"
-                              : maxRequest != null && c.priceRequest > maxRequest
-                                ? "above max_price.request"
-                                : prefs.require_parameters &&
-                                    input.requestParams.some((p) => !(c.supportedParameters ?? []).includes(p))
-                                  ? "missing required parameters"
-                                  : (c.ctx ?? Number.MAX_SAFE_INTEGER) < input.estimatedTokens
-                                    ? "context length exceeded"
-                                    : health.outage(c.modelId, c.providerId)
-                                      ? "outage in the last 30s"
-                                      : null;
+                          : cls && !classAllowed(cls, disclosureMax)
+                            ? disclosureExclusion(disclosureMax, lane, cls)
+                            : maxPrompt != null && c.pricePrompt * PER_MILLION > maxPrompt
+                              ? "above max_price.prompt"
+                              : maxCompletion != null && c.priceCompletion * PER_MILLION > maxCompletion
+                                ? "above max_price.completion"
+                                : maxRequest != null && c.priceRequest > maxRequest
+                                  ? "above max_price.request"
+                                  : prefs.require_parameters &&
+                                      input.requestParams.some((p) => !(c.supportedParameters ?? []).includes(p))
+                                    ? "missing required parameters"
+                                    : (c.ctx ?? Number.MAX_SAFE_INTEGER) < input.estimatedTokens
+                                      ? "context length exceeded"
+                                      : health.outage(c.modelId, c.providerId)
+                                        ? OUTAGE_REASON
+                                        : null;
     if (reason) excluded.push({ provider: c.providerId, reason });
     else pass.push(c);
   }

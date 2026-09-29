@@ -57,6 +57,13 @@
       "when": 1790647835965,
       "tag": "0007_workspace_features",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790664783477,
+      "tag": "0008_v3_disclosure",
+      "breakpoints": true
     }
   ]
 }

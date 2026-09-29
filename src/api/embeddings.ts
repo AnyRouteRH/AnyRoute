@@ -6,6 +6,8 @@ import { maxPico, picoToUsd, picoToUsdString } from "../lib/money.ts";
 import { genId, sha256 } from "../lib/util.ts";
 import { reserve, release, settle } from "../ledger/ledger.ts";
 import { selectProviders, type ProviderPrefs } from "../router/select.ts";
+import { disclosureRefusal, profileOf, resolveDisclosureRequest } from "../router/disclosure.ts";
+import { servedDisclosure } from "./disclosure.ts";
 import { priceUsage, readUsage } from "../router/pricing.ts";
 import { callUpstream, providerKey, upstreamBody } from "../providers/upstream.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
@@ -36,19 +38,30 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     if (key?.allowedModels?.length && !key.allowedModels.includes(r.model.id)) fail(403, "This key may not use that model.", "model_not_allowed");
     const chars = (Array.isArray(input) ? input : [input]).reduce((n: number, s) => n + String(s).length, 0);
     const promptTokens = Math.ceil(chars / 3) + 8;
-    const sel = selectProviders({
-      modelId: r.model.id,
-      offers: ctx.catalog.offers(r.model.id),
-      prefs: (body.provider ?? {}) as ProviderPrefs,
-      modifiers: r.modifiers,
-      requestParams: [],
-      estimatedTokens: promptTokens,
-      health: ctx.health,
-      production: ctx.cfg.production,
-      attestationMaxAgeMs: ctx.cfg.attestation.intervalMs * 3,
-      rand: ctx.rand,
-    });
-    if (!sel.ordered.length) fail(404, "No providers match this request.", "no_providers", { excluded: sel.excluded });
+    // Same disclosure ceiling and lane as chat (`provider.disclosure`, `provider.lane`, X-Anyroute-Disclosure-Max, X-Anyroute-Lane).
+    const { disclosure: _wantDisclosure, lane: _wantLane, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs;
+    const disc = resolveDisclosureRequest((body.provider ?? {}) as ProviderPrefs, { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") });
+    const strict = disc.max !== "any";
+    const plan = (p: ProviderPrefs) =>
+      selectProviders({
+        modelId: r.model.id,
+        offers: ctx.catalog.offers(r.model.id),
+        prefs: p,
+        modifiers: r.modifiers,
+        requestParams: [],
+        estimatedTokens: promptTokens,
+        health: ctx.health,
+        production: ctx.cfg.production,
+        attestationMaxAgeMs: ctx.cfg.attestation.intervalMs * 3,
+        disclosure: (id) => profileOf(ctx.catalog.disclosure.get(id)),
+        rand: ctx.rand,
+      });
+    const sel = plan({ ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) });
+    if (!sel.ordered.length) {
+      const refusal = strict ? disclosureRefusal(disc, [r.model.id], sel.excluded, () => plan(basePrefs).ordered.length > 0) : null;
+      if (refusal) throw refusal;
+      fail(404, "No providers match this request.", "no_providers", { excluded: sel.excluded });
+    }
     const mode = key ? "prepaid" : "per_call";
     const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: key ? 0 : ctx.cfg.fees.perCallMarginBps, byokFeeBps: 0 };
     const worst = (cand: (typeof sel.ordered)[number]) =>
@@ -88,6 +101,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         const usage = readUsage(res.json.usage, { prompt: promptTokens, completion: 0 });
         const cost = priceUsage(cand, r.model, { ...usage, completion: 0 }, mode, { ...fees, discountBps: tier?.discountBps ?? 0 }, false);
         const { charged } = await settle(ctx.db, id, cost.total, { description: `${r.model.id} embeddings via ${cand.providerId}`, generationId: id });
+        const served = servedDisclosure(ctx, cand);
         const payload = {
           v: 1,
           id,
@@ -102,6 +116,9 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           latency_ms: Math.round(res.latencyMs),
           quant: cand.quant,
           mode,
+          disclosure: served.class,
+          lane: disc.lane,
+          ...(served.simulated ? { attestation_simulated: true } : {}),
           payer: key?.chainKeyHash ?? paid!.payer,
           payment_tx: paid?.txHash ?? null,
           request_sha256: sha256(JSON.stringify(body)),
@@ -141,7 +158,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           usage: { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) } },
           ...(tier ? { holder: { tier: tier.name, rpm_multiplier: tier.rpmMultiplier, discount_bps: tier.discountBps } } : {}),
           receipt: { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload },
-        }, 200, paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {});
+        }, 200, { "x-anyroute-disclosure": served.class, "x-anyroute-lane": disc.lane, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) });
       }
     } catch (e) {
       await release(ctx.db, id);

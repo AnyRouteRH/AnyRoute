@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { models, offers, providers } from "../db/schema.ts";
+import { models, offers, providerDisclosure, providers } from "../db/schema.ts";
 
 export type ModelRow = typeof models.$inferSelect;
 export type OfferRow = typeof offers.$inferSelect;
 export type ProviderRow = typeof providers.$inferSelect;
+export type DisclosureRow = typeof providerDisclosure.$inferSelect;
 export type Candidate = OfferRow & { provider: ProviderRow };
 
 // Routing suffixes: `author/model:nitro` (fastest), `:floor` (cheapest), `:free` (free offers
@@ -16,6 +17,8 @@ export class Catalog {
   models = new Map<string, ModelRow>();
   providers = new Map<string, ProviderRow>();
   offersByModel = new Map<string, Candidate[]>();
+  /** Operator-declared disclosure profiles by provider id; a provider without a row is treated as undeclared. */
+  disclosure = new Map<string, DisclosureRow>();
   loadedAt = 0;
   private loading: Promise<void> | null = null;
 
@@ -24,10 +27,11 @@ export class Catalog {
   async refresh() {
     this.loading ??= (async () => {
       try {
-        const [m, p, o] = await Promise.all([
+        const [m, p, o, d] = await Promise.all([
           this.db.select().from(models),
           this.db.select().from(providers),
           this.db.select().from(offers),
+          this.db.select().from(providerDisclosure),
         ]);
         const pm = new Map(p.map((x) => [x.id, x]));
         const byModel = new Map<string, Candidate[]>();
@@ -40,6 +44,7 @@ export class Catalog {
         }
         this.models = new Map(m.map((x) => [x.id, x]));
         this.providers = pm;
+        this.disclosure = new Map(d.map((x) => [x.providerId, x]));
         this.offersByModel = byModel;
         this.loadedAt = Date.now();
       } finally {
