@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { usdToPico } from "./lib/money.ts";
 import { parseOnionAddress, parseOnionSecrets } from "./lib/onion.ts";
+import { parseModelMap } from "./anthropic/models.ts";
 
 // Every setting comes from the environment. Missing optional services produce
 // an explicit "unavailable" state at runtime; they never fake success.
@@ -227,6 +228,9 @@ const schema = z.object({
   CACHE_TTL_S: z.coerce.number().int().min(1).default(3600),
   SEMANTIC_CACHE_THRESHOLD: num(0.97),
   SEMANTIC_CACHE_EMBEDDING_MODEL: opt,
+
+  // Anthropic Messages endpoint (POST /v1/messages): JSON object mapping the model names an Anthropic client sends to catalog model ids.
+  ANTHROPIC_MODEL_MAP: opt,
 
   // Council mode (model "anyroute/council") and dual verification (verify: "dual"). Off unless enabled.
   ANYROUTE_FEATURE_COUNCIL: bool.default(false),
@@ -596,6 +600,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       semanticThreshold: e.SEMANTIC_CACHE_THRESHOLD,
       semanticEmbeddingModel: e.SEMANTIC_CACHE_EMBEDDING_MODEL,
     },
+    anthropic: { modelMap: parseModelMap(e.ANTHROPIC_MODEL_MAP) },
     // Off unless enabled. Council members and the judge are billed and receipted like any other call.
     features: { council: e.ANYROUTE_FEATURE_COUNCIL },
     council: { models: councilModels, judge: e.ANYROUTE_COUNCIL_JUDGE ?? null, mode: e.ANYROUTE_COUNCIL_MODE },
