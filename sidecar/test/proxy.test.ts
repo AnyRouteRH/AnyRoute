@@ -332,3 +332,33 @@ describe("authentication and limits", () => {
     expect((await h2.chat(chatBody({ model: "tiny" }))).status).toBe(200);
   });
 });
+
+describe("model list", () => {
+  test("GET /v1/models passes the model server's list through, behind the API key, without a receipt", async () => {
+    const h = await harness();
+    const res = await h.call("/v1/models", { headers: { "x-forwarded-for": "203.0.113.9", cookie: "s=1" } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ object: "list", data: [{ id: "tiny" }] });
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("x-anyroute-attestation-ref")).toBe(h.rt.attestationRef);
+    expect(res.headers.get("x-anyroute-receipt")).toBeNull();
+    expect(h.rt.queue.pending).toBe(0);
+    const seen = h.upstream.seen.find((s) => s.path === "/v1/models")!;
+    expect(seen.method).toBe("GET");
+    expect(seen.headers["x-forwarded-for"]).toBeUndefined();
+    expect(seen.headers.cookie).toBeUndefined();
+    expect(seen.headers.authorization).toBeUndefined(); // the client's key is never passed on
+  });
+
+  test("needs a key, answers GET only, and reports an unreachable or failing model server", async () => {
+    const h = await harness();
+    expect((await h.call("/v1/models", { key: null })).status).toBe(401);
+    expect((await h.call("/v1/models", { method: "POST", body: "{}" })).status).toBe(405);
+    h.upstream.setMode("down");
+    expect((await h.call("/v1/models")).status).toBe(503);
+    h.upstream.stop();
+    const res = await h.call("/v1/models");
+    expect(res.status).toBe(502);
+    expect((await res.json()).error.code).toBe("upstream_unavailable");
+  });
+});

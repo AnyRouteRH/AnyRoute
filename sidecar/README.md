@@ -90,6 +90,7 @@ uses it as declared and `/attest` reports `digest_source: "declared"`.
 | `GET /.well-known/anyroute-sidecar.json` | none | Discovery: endpoints, receipt key and format, digests, `dev` flag. |
 | `POST /v1/chat/completions` | API key | Proxied JSON or SSE. |
 | `POST /v1/embeddings` | API key | Proxied JSON. |
+| `GET /v1/models` | API key | The model server's model list, passed through (no receipt, no quota charge). |
 | `GET /v1/receipts/{id}` | API key | A receipt by id, for the key that earned it (useful when an SSE reader stops at `[DONE]`). |
 | `GET /anchor/leaves?after=&limit=`, `POST /anchor/ack` | anchor token | Batches of receipt leaves for the router's anchor; off unless `SIDECAR_ANCHOR_TOKEN` is set. |
 

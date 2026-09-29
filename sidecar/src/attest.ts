@@ -64,6 +64,7 @@ export function discoveryDocument(rt: Runtime) {
       healthz: "/healthz",
       chat_completions: "/v1/chat/completions",
       embeddings: "/v1/embeddings",
+      models: "/v1/models",
       receipt_by_id: "/v1/receipts/{id}",
     },
     receipts: {

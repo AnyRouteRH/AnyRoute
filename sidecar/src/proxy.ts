@@ -170,6 +170,35 @@ export async function handleInference(rt: Runtime, req: Request, path: string, c
   return new Response(bytes, { status: up.status, headers });
 }
 
+/**
+ * GET /v1/models: the model server's own list, passed through so a router can discover and health-check the
+ * endpoint. Nothing is generated, so there is no receipt and no quota charge; the same header allow-lists and
+ * response size cap apply as for inference.
+ */
+export async function handleModels(rt: Runtime, req: Request): Promise<Response> {
+  let up: Response;
+  try {
+    up = await rt.fetchImpl(`${rt.cfg.upstream.baseUrl}/v1/models`, {
+      method: "GET",
+      headers: buildUpstreamHeaders(req.headers, { forwardHeaders: rt.cfg.upstream.forwardHeaders, upstreamApiKey: rt.upstreamApiKey }),
+      redirect: "error",
+      signal: AbortSignal.timeout(Math.min(rt.cfg.upstream.timeoutMs, 30_000)),
+    });
+  } catch {
+    return errorResponse(rt, 502, "upstream_unavailable", "the model server did not respond");
+  }
+  let bytes: Uint8Array | null;
+  try {
+    bytes = await readCapped(up.body, rt.cfg.upstream.maxResponseBytes);
+  } catch {
+    return errorResponse(rt, 502, "upstream_unavailable", "the model server closed the connection early");
+  }
+  if (!bytes) return errorResponse(rt, 502, "upstream_response_too_large", `the model server's response exceeds ${rt.cfg.upstream.maxResponseBytes} bytes`);
+  const headers = baseHeaders(rt);
+  for (const [k, v] of pickResponseHeaders(up.headers)) headers.set(k, v);
+  return new Response(bytes, { status: up.status, headers });
+}
+
 /** Everything after the `[DONE]` line is ours: one named event with the signed receipt. */
 export const RECEIPT_EVENT = "anyroute.receipt";
 const receiptEvent = (env: ReceiptEnvelope, prefixBoundary: boolean) =>

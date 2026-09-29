@@ -1,7 +1,7 @@
 import { attestationDocument, discoveryDocument } from "./attest.ts";
 import type { Runtime } from "./boot.ts";
 import { buildUpstreamHeaders } from "./headers.ts";
-import { handleInference, type Caller } from "./proxy.ts";
+import { handleInference, handleModels, type Caller } from "./proxy.ts";
 import { parseNonce } from "./reportdata.ts";
 import { errorResponse, jsonResponse } from "./respond.ts";
 import { SidecarError, safeEqual, sha256Hex } from "./util.ts";
@@ -91,6 +91,13 @@ export function createHandler(rt: Runtime): (req: Request) => Promise<Response> 
       const caller = authenticate(rt, req);
       if (!caller) return { name: p, res: unauthorized(rt) };
       return { name: p, res: await handleInference(rt, req, p, caller) };
+    }
+
+    if (p === "/v1/models") {
+      if (m !== "GET") return { name: "models", res: errorResponse(rt, 405, "method_not_allowed", "use GET", { allow: "GET" }) };
+      const caller = authenticate(rt, req);
+      if (!caller) return { name: "models", res: unauthorized(rt) };
+      return { name: "models", res: await handleModels(rt, req) };
     }
 
     const rid = /^\/v1\/receipts\/(rcpt_[0-9a-f]{24})$/.exec(p);
