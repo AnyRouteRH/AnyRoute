@@ -16,9 +16,9 @@ chain, mock providers and the router.
 
 ## Layout
 
-- `app/`: routes (`/`, `/models`, `/docs`, `/dashboard`, `/case-study`, `/legal/*`) and the design system in `globals.css`.
+- `app/`: routes (`/`, `/models`, `/arena`, `/docs`, `/dashboard`, `/case-study`, `/legal/*`) and the design system in `globals.css`.
 - `components/`: landing sections, the dashboard and model catalog, shared UI (`UI.jsx`) and the vector identity (`Logo.jsx`).
-- `lib/api.js`: live API client (fetch, streaming, key storage in the browser). `lib/wallet.js`: EIP-1193 helpers that sign the router's unsigned transactions. `lib/demo.js`: fixtures for the opt-in sample workspace (`?demo=1`).
+- `lib/api.js`: live API client (fetch, streaming, key storage in the browser). `lib/wallet.js`: EIP-1193 helpers that sign the router's unsigned transactions. `lib/arena.js`: the Model Arena's link encoding, badge and lane-runner logic. `lib/demo.js`: fixtures for the opt-in sample workspace (`?demo=1`).
 - `public/brand/`: logo, mark and banner.
 
 Set `NEXT_PUBLIC_ANYROUTE_API_URL` at build time to host the site apart from the router. Nothing secret is bundled.

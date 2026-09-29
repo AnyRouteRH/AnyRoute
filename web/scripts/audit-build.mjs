@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 const root=path.resolve(process.argv[2]||'out');
-const routes=['/','/models/','/docs/','/case-study/','/dashboard/','/legal/privacy/','/legal/terms/'];
+const routes=['/','/models/','/arena/','/docs/','/case-study/','/dashboard/','/legal/privacy/','/legal/terms/'];
 let count=0;
 for(const route of routes){
  const file=path.join(root,route,'index.html');assert(fs.existsSync(file),`Missing route ${route}`);

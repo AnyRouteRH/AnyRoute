@@ -567,6 +567,12 @@ progress::-moz-progress-bar{background:var(--signal-deep)}
   .hero-inner{grid-template-columns:1fr}
   .route-card-live{justify-self:start}
 }
+/* One more nav link (Arena): tighten the links, then fold them into the menu before they touch the header buttons. */
+@media (max-width:1100px){.desktop-links{gap:20px}}
+@media (max-width:960px){
+  .desktop-links,.nav-buttons{display:none}
+  .menu-toggle{display:block}
+}
 @media (max-width:860px){
   :root{--header:58px}
   .desktop-links,.nav-buttons{display:none}
