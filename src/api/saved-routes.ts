@@ -1,5 +1,140 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
+import { savedRoutes } from "../db/schema.ts";
+import { fail } from "../lib/errors.ts";
+import { uid } from "../lib/util.ts";
+import {
+  MAX_ROUTES_PER_ACCOUNT,
+  ROUTE_PREFIX,
+  SLUG_RE,
+  lockAccountRoutes,
+  normalizeConfig,
+  patchConfig,
+  routeConfigSchema,
+  routeCreateSchema,
+  routePatchSchema,
+  unknownModels,
+  type RouteConfig,
+} from "../routing/saved-routes.ts";
+import { requireKey, requireRole, type Role } from "./auth.ts";
+import { readJson } from "./common.ts";
 
 // Saved Routes: CRUD for an account's named routing policies (`model: "@route/<slug>"`).
-export function savedRoutesRoutes(_app: Hono, _ctx: Ctx) {}
+// Any role on the account can read them (they are settings, not secrets); owners and admins write.
+
+type RouteRow = typeof savedRoutes.$inferSelect;
+const READ: Role[] = ["owner", "admin", "member", "viewer"];
+const WRITE: Role[] = ["owner", "admin"];
+
+export function routeJson(r: RouteRow) {
+  return {
+    id: r.id,
+    slug: r.slug,
+    model: ROUTE_PREFIX + r.slug,
+    name: r.name,
+    description: r.description,
+    config: r.config as RouteConfig,
+    created_at: r.createdAt.toISOString(),
+    updated_at: r.updatedAt.toISOString(),
+  };
+}
+
+function notFound(slug: string): never {
+  fail(404, `No saved route @route/${slug.slice(0, 60)} in this account.`, "route_not_found");
+}
+
+async function assertModels(ctx: Ctx, ids: string[]) {
+  await ctx.catalog.ensureFresh();
+  const unknown = unknownModels(ctx.catalog, ids);
+  if (unknown.length) fail(400, `Unknown model${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. See GET /api/v1/models.`, "model_not_found", { unknown_models: unknown });
+}
+
+export function savedRoutesRoutes(app: Hono, ctx: Ctx) {
+  const caller = async (c: Context, roles: Role[]) => {
+    const key = await requireKey(ctx, c.req.header("authorization"));
+    await requireRole(ctx, key, roles);
+    return key;
+  };
+  const load = async (accountId: string, slug: string) => {
+    if (!SLUG_RE.test(slug)) return null;
+    const [row] = await ctx.db.select().from(savedRoutes).where(and(eq(savedRoutes.accountId, accountId), eq(savedRoutes.slug, slug)));
+    return row ?? null;
+  };
+
+  app.get("/api/v1/routes", async (c) => {
+    const key = await caller(c, READ);
+    const rows = await ctx.db.select().from(savedRoutes).where(eq(savedRoutes.accountId, key.accountId)).orderBy(asc(savedRoutes.slug));
+    return c.json({ data: rows.map(routeJson), limit: MAX_ROUTES_PER_ACCOUNT });
+  });
+
+  app.post("/api/v1/routes", async (c) => {
+    const key = await caller(c, WRITE);
+    const v = routeCreateSchema.parse(await readJson(c));
+    await assertModels(ctx, v.config.models); // outside the transaction: the catalog reads through ctx.db
+    const row = await ctx.db.transaction(async (tx) => {
+      await lockAccountRoutes(tx, key.accountId);
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(savedRoutes).where(eq(savedRoutes.accountId, key.accountId));
+      if (n >= MAX_ROUTES_PER_ACCOUNT) fail(409, `An account can save at most ${MAX_ROUTES_PER_ACCOUNT} routes. Delete one first.`, "route_limit_reached", { limit: MAX_ROUTES_PER_ACCOUNT });
+      const now = new Date();
+      const [inserted] = await tx
+        .insert(savedRoutes)
+        .values({ id: uid("rt_"), accountId: key.accountId, slug: v.slug, name: v.name ?? v.slug, description: v.description ?? "", config: normalizeConfig(v.config), createdBy: key.keyHash, createdAt: now, updatedAt: now })
+        .onConflictDoNothing()
+        .returning();
+      if (!inserted) fail(409, `This account already has a route @route/${v.slug}.`, "route_exists");
+      return inserted;
+    });
+    return c.json({ data: routeJson(row) }, 201);
+  });
+
+  app.get("/api/v1/routes/:slug", async (c) => {
+    const key = await caller(c, READ);
+    const row = await load(key.accountId, c.req.param("slug"));
+    return c.json({ data: routeJson(row ?? notFound(c.req.param("slug"))) });
+  });
+
+  app.patch("/api/v1/routes/:slug", async (c) => {
+    const key = await caller(c, WRITE);
+    const slug = c.req.param("slug");
+    if (!SLUG_RE.test(slug)) notFound(slug);
+    const v = routePatchSchema.parse(await readJson(c));
+    if (v.config?.models) await assertModels(ctx, v.config.models);
+    const row = await ctx.db.transaction(async (tx) => {
+      await lockAccountRoutes(tx, key.accountId);
+      const [current] = await tx.select().from(savedRoutes).where(and(eq(savedRoutes.accountId, key.accountId), eq(savedRoutes.slug, slug)));
+      if (!current) notFound(slug);
+      // The stored config is merged section by section, then validated as a whole again.
+      const config = routeConfigSchema.parse(patchConfig(current.config as RouteConfig, v.config));
+      if (v.slug && v.slug !== current.slug) {
+        const [taken] = await tx.select({ id: savedRoutes.id }).from(savedRoutes).where(and(eq(savedRoutes.accountId, key.accountId), eq(savedRoutes.slug, v.slug)));
+        if (taken) fail(409, `This account already has a route @route/${v.slug}.`, "route_exists");
+      }
+      const [updated] = await tx
+        .update(savedRoutes)
+        .set({
+          ...(v.slug !== undefined ? { slug: v.slug } : {}),
+          ...(v.name !== undefined ? { name: v.name } : {}),
+          ...(v.description !== undefined ? { description: v.description } : {}),
+          config,
+          updatedAt: new Date(),
+        })
+        .where(eq(savedRoutes.id, current.id))
+        .returning();
+      return updated;
+    });
+    return c.json({ data: routeJson(row) });
+  });
+
+  app.delete("/api/v1/routes/:slug", async (c) => {
+    const key = await caller(c, WRITE);
+    const slug = c.req.param("slug");
+    if (!SLUG_RE.test(slug)) notFound(slug);
+    const gone = await ctx.db
+      .delete(savedRoutes)
+      .where(and(eq(savedRoutes.accountId, key.accountId), eq(savedRoutes.slug, slug)))
+      .returning({ slug: savedRoutes.slug });
+    if (!gone.length) notFound(slug);
+    return c.json({ data: { slug, model: ROUTE_PREFIX + slug, deleted: true } });
+  });
+}

@@ -18,6 +18,7 @@ import type { CacheMode } from "../gateway/cache.ts";
 import { bearer, requireRole, resolveKey, walletAuth, type KeyRow } from "./auth.ts";
 import { clientIp, readJson } from "./common.ts";
 import { grantFor, recordDebt, type PaywithGrant } from "../pay/paywith.ts";
+import { resolveSavedRoute } from "../routing/saved-routes.ts";
 import { parsePaymentHeader, paymentRequired, redeemPayment, relayAuthorization } from "../pay/percall.ts";
 
 type Kind = "chat" | "completion";
@@ -130,6 +131,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     if (alias.models && !body.models) body.models = alias.models;
     body.provider = { ...(alias.provider ?? {}), ...((body.provider as object) ?? {}) };
   }
+  // Saved route (`model: "@route/<slug>"`, the caller's account only): fills in the fallback models,
+  // provider prefs and default params the request leaves unset. Precedence: request > alias > route > key.
+  const savedRoute = await resolveSavedRoute(ctx.db, key?.accountId ?? wallet?.accountId ?? null, body);
   if (routing?.provider) body.provider = { ...routing.provider, ...((body.provider as object) ?? {}) };
   const prefs = (body.provider ?? {}) as ProviderPrefs;
 
@@ -184,7 +188,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const cacheMode: CacheMode | null = cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic" ? cacheSpec.mode : null;
   // `user` is forwarded to the provider as the end-user identity; a response made for one end user
   // must never be replayed to another behind the same key (exact or semantic).
-  const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })) }))}` : "";
+  const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })), ...(savedRoute ? { route: savedRoute } : {}) }))}` : "";
   if (cacheMode && billing && !stream) {
     const hit = await ctx.cache.get(cacheMode, cacheScope, body, ctx.cfg.gateway.semanticThreshold);
     if (hit) return cachedResponse(ctx, c, { body, hit, billing, model: primary, t0, bodySha });
@@ -262,7 +266,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });
   const keyFor = (cand: Candidate) => providerKey(cand, ctx.cfg.appSecret, byok.get(cand.providerId));
   const path = kind === "chat" ? ("/chat/completions" as const) : ("/completions" as const);
-  const meta = { guard, middle, paywithNote, cacheMode, excluded };
+  const meta = { guard, middle, paywithNote, cacheMode, excluded, route: savedRoute };
   const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens };
 
   if (stream) return streamResponse({ ...common, run: () => route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: true, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, production: ctx.cfg.production, caller: sha256(billing.accountId).slice(0, 16) }), abort });
@@ -320,7 +324,7 @@ type Common = {
   stream: boolean;
   kind: Kind;
   byok: Map<string, string>;
-  meta: { guard: ReturnType<typeof applyGuardrails>; middle: { removed: number; truncated: number } | null; paywithNote?: string; cacheMode: CacheMode | null; excluded: unknown[] };
+  meta: { guard: ReturnType<typeof applyGuardrails>; middle: { removed: number; truncated: number } | null; paywithNote?: string; cacheMode: CacheMode | null; excluded: unknown[]; route: string | null };
   guardCfg: GuardrailConfig | null;
   promptTokens: number;
 };
@@ -478,6 +482,7 @@ async function finalize(
     receiptJson,
     extras: (redactions: number) => {
       const x: Record<string, unknown> = {};
+      if (p.meta.route) x.route = p.meta.route; // the saved route (`@route/<slug>`) that resolved this call
       if (p.meta.guard || redactions) x.guardrails = { ...(p.meta.guard ?? {}), output_redactions: redactions };
       if (p.meta.middle && (p.meta.middle.removed || p.meta.middle.truncated)) x.transforms = { "middle-out": p.meta.middle };
       if (p.meta.paywithNote) x.pay_with_fallback = p.meta.paywithNote;
