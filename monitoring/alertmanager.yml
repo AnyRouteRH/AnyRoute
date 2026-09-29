@@ -1,0 +1,27 @@
+# Routes every AnyRoute alert to one on-call webhook. The webhook URL is a secret: Alertmanager
+# reads it from the mounted file at notification time, and it never appears in this repository.
+#   ntfy:    put `https://ntfy.sh/<topic>?template=alertmanager` in the secret file (readable text).
+#   Slack:   replace webhook_configs with `slack_configs: [{ api_url_file: ..., send_resolved: true }]`.
+#   Discord: replace webhook_configs with `discord_configs: [{ webhook_url_file: ..., send_resolved: true }]`.
+#   Other:   any endpoint that accepts the Alertmanager webhook JSON payload works unchanged.
+route:
+  receiver: on-call
+  group_by: [alertname, job, check]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: on-call
+    webhook_configs:
+      - url_file: /run/secrets/alert_webhook_url
+        send_resolved: true
+        max_alerts: 20
+inhibit_rules:
+  # An unreachable router explains every readiness-derived alert; page once.
+  - source_matchers: [alertname="AnyRouteUnavailable"]
+    target_matchers: [alertname=~"AnyRouteNotReady|AnyRouteDependencyFailed|AnyRouteReadinessMetricsMissing|AnyRouteBackupStale"]
+    equal: [job]
+  # A stale backup also makes overall readiness 0; the specific alert is the actionable one.
+  - source_matchers: [alertname="AnyRouteBackupStale"]
+    target_matchers: [alertname="AnyRouteNotReady"]
+    equal: [job, instance]

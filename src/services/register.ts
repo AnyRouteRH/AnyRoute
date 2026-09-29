@@ -11,6 +11,7 @@ import { runRegistry } from "./registry.ts";
 import { runSettlement } from "./settlement.ts";
 import { runSlasher } from "./slasher.ts";
 import { runBuyback } from "./buyback.ts";
+import { ALERT_INTERVAL_MS, runAlertNotifier } from "./alerts.ts";
 
 export function registerJobs(ctx: Ctx) {
   const { cfg, jobs } = ctx;
@@ -30,4 +31,5 @@ export function registerJobs(ctx: Ctx) {
   jobs.register("chain-indexer", 5_000, async () => (chainOn() ? pollChain(ctx) : { skipped: "no contracts" }), { atStart: true });
   jobs.register("escrow-indexer", 5_000, () => pollEscrow(ctx), { atStart: true });
   jobs.register("paywith-aggregator", 60_000, async () => (ctx.chain.address("payWithStock") ? runPaywithAggregator(ctx) : { skipped: "not configured" }));
+  jobs.register("alert-notifier", ALERT_INTERVAL_MS, () => runAlertNotifier(ctx), { atStart: true });
 }

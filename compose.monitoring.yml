@@ -1,5 +1,8 @@
-# Optional production overlay. Alertmanager must be reachable on egress under that
-# hostname and configured by the operator with a real on-call destination.
+# Optional production overlay: Prometheus evaluates monitoring/alerts.yml and Alertmanager
+# delivers to the on-call webhook in monitoring/alertmanager.yml. The webhook URL is mounted from
+# ALERT_WEBHOOK_URL_FILE (a host file readable by the container's nobody user, uid 65534); it is
+# never committed or passed as an environment variable. Prove delivery with a synthetic alert
+# (see MONITORING.md) before relying on it.
 services:
   prometheus:
     image: ${PROMETHEUS_IMAGE:?Set a reviewed Prometheus image pinned by sha256 digest}
@@ -10,8 +13,26 @@ services:
       - prometheusdata:/prometheus
     networks: [egress]
     ports: ["127.0.0.1:9090:9090"]
+    depends_on:
+      alertmanager: { condition: service_started }
     restart: unless-stopped
     mem_limit: 512m
     cpus: 1
+  alertmanager:
+    image: ${ALERTMANAGER_IMAGE:?Set a reviewed Alertmanager image pinned by sha256 digest}
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager", "--data.retention=120h"]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanagerdata:/alertmanager
+    secrets: [alert_webhook_url]
+    networks: [egress]
+    ports: ["127.0.0.1:9093:9093"]
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+secrets:
+  alert_webhook_url:
+    file: ${ALERT_WEBHOOK_URL_FILE:?Provide a file containing only the on-call webhook URL}
 volumes:
   prometheusdata: {}
+  alertmanagerdata: {}

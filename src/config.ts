@@ -163,6 +163,12 @@ const schema = z.object({
   BUYBACK_ORACLE_ADDRESS: addr, // the reviewed buyback-floor oracle AnyrStaking uses; production refuses buybacks without it
   PAYWITH_DELEGATION_ACCEPTED: bool.default(false),
   PAYWITH_MAX_DAILY_CAP_USD: opt, // largest daily cap (USD at the fair price) the API will build a PayWithStock session for
+
+  // Operations: optional alert webhook (a secret URL) and off-host backup freshness.
+  ALERT_WEBHOOK_URL: opt,
+  ALERT_WEBHOOK_FORMAT: z.enum(["ntfy", "slack", "discord", "json"]).optional().or(z.literal("").transform(() => undefined)),
+  BACKUP_REQUIRED: bool.default(false),
+  BACKUP_MAX_AGE_HOURS: num(26),
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -220,7 +226,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (escrowMode && Object.values(roleKeys).some(Boolean)) throw new Error("PAYMENTS_MODE=escrow must not receive settlement, anchoring, slashing or keeper signing keys.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "alert-notifier"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -244,6 +250,13 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) throw new Error("DEV_FAUCET only works against a local chain (RHC_RPC_URL on 127.0.0.1/localhost).");
     if (!e.DEV_FAUCET_PRIVATE_KEY) throw new Error("DEV_FAUCET needs DEV_FAUCET_PRIVATE_KEY (a funded local development account).");
   }
+  // The webhook is optional: without it the alert-notifier job only records state. Never echo the URL.
+  if (e.ALERT_WEBHOOK_URL) {
+    let protocol = "";
+    try { protocol = new URL(e.ALERT_WEBHOOK_URL).protocol; } catch { /* reported below */ }
+    if (protocol !== "https:" && (production || protocol !== "http:")) throw new Error("ALERT_WEBHOOK_URL must be an https URL.");
+  }
+  if (!(e.BACKUP_MAX_AGE_HOURS > 0)) throw new Error("BACKUP_MAX_AGE_HOURS must be positive.");
   if (e.PER_CALL_MARGIN_BPS > 100) throw new Error("PER_CALL_MARGIN_BPS must be <= 100 (1%).");
   const tokenList = z.array(
     z.object({
@@ -391,6 +404,8 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       semanticEmbeddingModel: e.SEMANTIC_CACHE_EMBEDDING_MODEL,
     },
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
+    alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
+    backup: { required: e.BACKUP_REQUIRED, maxAgeHours: e.BACKUP_MAX_AGE_HOURS },
   };
 }
 
