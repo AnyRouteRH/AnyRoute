@@ -1,0 +1,53 @@
+/* SEAL specification pages: the rendered Markdown (global class names from lib/spec-markdown.js) on the site's tokens. */
+
+.nav { max-height: calc(100vh - var(--header) - 56px); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.tocLabel { margin-top: 22px; }
+.toc { font-size: 13px !important; line-height: 1.35; }
+
+.doc { min-width: 0; }
+.body { min-width: 0; }
+.body > :first-child { margin-top: 40px; }
+.body h2 { font-size: clamp(24px, 2.6vw, 32px); letter-spacing: -.035em; margin: 60px 0 18px; }
+.body h3 { font-size: 20px; letter-spacing: -.02em; margin: 36px 0 12px; }
+.body h4 { font-size: 16px; margin: 28px 0 10px; }
+.body h2, .body h3, .body h4 { scroll-margin-top: calc(var(--header) + 28px); overflow-wrap: anywhere; }
+.body h2 code, .body h3 code { font-size: .8em; }
+.body :global(.heading-anchor) { margin-left: .35em; font: 500 .7em var(--mono); color: var(--muted); text-decoration: none; opacity: 0; transition: opacity .2s; }
+.body h2:hover :global(.heading-anchor), .body h3:hover :global(.heading-anchor), .body h4:hover :global(.heading-anchor), .body :global(.heading-anchor):focus-visible { opacity: 1; }
+.body h2:target, .body h3:target { color: var(--signal-deep); }
+
+.body p, .body li { overflow-wrap: break-word; }
+.body :not(pre) > code { overflow-wrap: anywhere; }
+.body li > p { margin: 0 0 8px; }
+.body ul ul, .body ol ol, .body ul ol, .body ol ul { margin: 6px 0; }
+.body strong { font-weight: 620; }
+.body blockquote { margin: 0 0 20px; padding: 2px 0 2px 18px; border-left: 3px solid var(--line-strong); color: var(--muted); }
+.body hr { margin: 40px 0; border: 0; border-top: 1px solid var(--line); }
+
+.body :global(.table-wrap) { margin: 8px 0 26px; }
+.body table { font-size: 14px; }
+.body td { vertical-align: top; line-height: 1.5; min-width: 7em; }
+/* a table scrolls sideways inside its frame, so identifiers in cells stay whole */
+.body td code { overflow-wrap: normal; }
+.body td:first-child { font-weight: 520; }
+.body th { white-space: normal; }
+
+.body :global(.code-panel) { margin: 8px 0 26px; }
+.body :global(.code-panel) pre { font-size: 12px; line-height: 1.75; padding: 20px; }
+
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 64px; padding-top: 28px; border-top: 1px solid var(--line); }
+.pager a { display: grid; gap: 6px; padding: 16px 18px; border: 1px solid var(--line); background: var(--white); text-decoration: none; font-weight: 560; transition: border-color .2s, background .2s; }
+.pager a:hover { border-color: var(--ink); background: var(--signal-tint); }
+.pager a span { font: 500 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.pager a[rel="next"], .pager a:last-child { text-align: right; }
+
+@media (max-width: 1000px) {
+  .nav { max-height: none; overflow: visible; }
+  .tocLabel, .toc { display: none !important; }
+}
+@media (max-width: 640px) {
+  .body :global(.code-panel) pre { padding: 16px; font-size: 11.5px; }
+  .body td { min-width: 9em; }
+  .pager { grid-template-columns: 1fr; }
+  .pager a:last-child { text-align: left; }
+}
