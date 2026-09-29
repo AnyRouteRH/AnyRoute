@@ -16,6 +16,8 @@ x-runtime: &runtime
   CALLPAY_ADDRESS: ${CALLPAY_ADDRESS:?Set verified CallPay address}
   PROVIDER_BOND_ADDRESS: ${PROVIDER_BOND_ADDRESS:?Set verified ProviderBond address}
   RECEIPT_ANCHOR_ADDRESS: ${RECEIPT_ANCHOR_ADDRESS:?Set verified ReceiptAnchor address}
+  # Set true once the scheduled backup below runs, so readiness reports backup_fresh.
+  BACKUP_REQUIRED: ${BACKUP_REQUIRED:-false}
 services:
   postgres:
     image: ${POSTGRES_IMAGE:?Set a reviewed PostgreSQL 16 image pinned by sha256 digest}
@@ -48,6 +50,20 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
+  # Runs as the migration/schema owner after migrations and before any runtime workload. It
+  # creates or updates anyroute_runtime (the DATABASE_URL identity) with DML-only privileges.
+  runtime-role-grants:
+    image: ${POSTGRES_IMAGE:?Set a reviewed PostgreSQL 16 image pinned by sha256 digest}
+    entrypoint: ["sh", "-ec"]
+    command: ["exec psql \"$$MIGRATION_DATABASE_URL\" -X -v ON_ERROR_STOP=1 -f /run/anyroute/production-db-runtime-role.sql"]
+    environment:
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?Inject the separate PostgreSQL migration-role URL}
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?Inject the anyroute_runtime password used in DATABASE_URL}
+    volumes: ["./scripts/production-db-runtime-role.sql:/run/anyroute/production-db-runtime-role.sql:ro"]
+    networks: [storage]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
   provider-init:
     image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
     environment:
@@ -62,7 +78,7 @@ services:
     command: ["bun", "scripts/seed.ts"]
     networks: [storage, egress]
     depends_on:
-      migrate: { condition: service_completed_successfully }
+      runtime-role-grants: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
     restart: "no"
   router:
@@ -94,7 +110,10 @@ services:
     mem_limit: 1g
     cpus: 1
     stop_grace_period: 45s
-    healthcheck: { disable: true }
+    # Read-only heartbeat freshness check; see scripts/worker-healthcheck.sh. Compose only reports
+    # it (it never restarts an unhealthy container); do not attach an auto-restarter to signing
+    # workers. A stale heartbeat also shows up as failed job checks in /ready and alerts.
+    healthcheck: { test: ["CMD", "sh", "scripts/worker-healthcheck.sh"], interval: 30s, timeout: 5s, retries: 3, start_period: 2m }
   settlement-worker:
     image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
     environment:
@@ -111,7 +130,8 @@ services:
     mem_limit: 1g
     cpus: 1
     stop_grace_period: 45s
-    healthcheck: { disable: true }
+    # Read-only heartbeat freshness check; see scripts/worker-healthcheck.sh.
+    healthcheck: { test: ["CMD", "sh", "scripts/worker-healthcheck.sh"], interval: 30s, timeout: 5s, retries: 3, start_period: 2m }
   anchor-worker:
     image: ${ANYROUTE_IMAGE:?Set the reviewed application image pinned by sha256 digest}
     environment:
@@ -128,7 +148,29 @@ services:
     mem_limit: 1g
     cpus: 1
     stop_grace_period: 45s
-    healthcheck: { disable: true }
+    # Read-only heartbeat freshness check; see scripts/worker-healthcheck.sh.
+    healthcheck: { test: ["CMD", "sh", "scripts/worker-healthcheck.sh"], interval: 30s, timeout: 5s, retries: 3, start_period: 2m }
+  # Encrypted off-host backup (deploy/railway/backup.Dockerfile). `up` never starts it; schedule
+  # it from the host in UTC, e.g. `17 3 * * * docker compose --profile backup run --rm --no-deps backup`.
+  # It connects as the runtime role and needs only the age public key, never the private identity.
+  backup:
+    profiles: [backup]
+    image: ${BACKUP_IMAGE:-}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Inject a nondefault PostgreSQL URL}
+      BACKUP_AGE_RECIPIENTS: ${BACKUP_AGE_RECIPIENTS:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      BACKUP_S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
+    networks: [storage, egress]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    mem_limit: 1g
+    cpus: 1
 networks:
   storage: { internal: true }
   egress: {}

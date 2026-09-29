@@ -41,19 +41,7 @@ services:
       retries: 30
     restart: "no"
 
-  runtime-role-grants:
-    image: ${POSTGRES_IMAGE:?Set a reviewed PostgreSQL image pinned by sha256 digest}
-    entrypoint: ["sh", "-ec"]
-    command: ["psql \"$$MIGRATION_DATABASE_URL\" -f /run/topology/production-db-runtime-role.sql"]
-    environment:
-      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?Fixture script supplies the migration role URL}
-      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?Fixture script supplies the runtime DB password}
-    volumes:
-      - ./scripts/production-db-runtime-role.sql:/run/topology/production-db-runtime-role.sql:ro
-    networks: [storage]
-    depends_on:
-      migrate: { condition: service_completed_successfully }
-    restart: "no"
+  # runtime-role-grants comes from the base file unchanged, so the smoke exercises the production step.
 
   provider-init:
     environment:
