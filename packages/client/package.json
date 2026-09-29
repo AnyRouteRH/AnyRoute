@@ -1,7 +1,7 @@
 {
   "name": "@anyroute/client",
   "version": "0.1.0",
-  "description": "OpenAI-compatible client for Anyroute with receipt verification, verify-before-send for attested providers, blind tokens and an HPKE hook. No runtime dependencies.",
+  "description": "OpenAI-compatible client for Anyroute with receipt verification, verify-before-send for attested providers, blind tokens, chunked Oblivious HTTP and an HPKE hook. No runtime dependencies.",
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,
@@ -25,6 +25,11 @@
       "bun": "./src/node.ts",
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
+    },
+    "./ohttp": {
+      "bun": "./src/ohttp.ts",
+      "types": "./dist/ohttp.d.ts",
+      "import": "./dist/ohttp.js"
     }
   },
   "files": [
@@ -38,16 +43,26 @@
     "prepublishOnly": "npm run typecheck && npm run build"
   },
   "peerDependencies": {
-    "@cloudflare/blindrsa-ts": "0.4.6"
+    "@cloudflare/blindrsa-ts": "0.4.6",
+    "hpke": "1.1.7",
+    "ohttp-ts": "0.6.0"
   },
   "peerDependenciesMeta": {
     "@cloudflare/blindrsa-ts": {
+      "optional": true
+    },
+    "hpke": {
+      "optional": true
+    },
+    "ohttp-ts": {
       "optional": true
     }
   },
   "devDependencies": {
     "@cloudflare/blindrsa-ts": "0.4.6",
     "@types/bun": "1.4.2",
+    "hpke": "1.1.7",
+    "ohttp-ts": "0.6.0",
     "typescript": "7.0.2"
   }
 }
