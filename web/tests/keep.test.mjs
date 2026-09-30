@@ -124,6 +124,15 @@ test('the transparency-log panel shows only what the router returns',()=>{
  assert.equal(logState(200,entry,'short').phase,'error');
 });
 
+test('the developer docs explain the inventory, its hash and the log entry',()=>{
+ const docs=fs.readFileSync(WEB+'app/docs/page.jsx','utf8');
+ assert.match(docs,/<a href="#keep">What we keep<\/a>/);
+ assert.match(docs,/<h2 id="keep">/);
+ assert.match(docs,/GET \/keep\/inventory\.json/);
+ assert.match(docs,/TLOG_DATA_INVENTORY/);
+ assert.match(docs,/data_inventory/);
+});
+
 test('the page, its route and its panel read the generated inventory and use no wording the site avoids',()=>{
  const page=fs.readFileSync(WEB+'app/keep/page.jsx','utf8');
  const route=fs.readFileSync(WEB+'app/keep/inventory.json/route.js','utf8');

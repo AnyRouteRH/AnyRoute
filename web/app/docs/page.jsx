@@ -165,6 +165,11 @@ const claimResponse = JSON.stringify(
   2,
 );
 const BASE = API_BASE || "<your router>";
+const keepCurl = `# the inventory, byte for byte, and its hash
+curl -s ${BASE}/keep/inventory.json | sha256sum
+
+# the same hash in the router's key log (a data_inventory entry), where the operator has switched that on
+curl -s "${BASE}/api/v1/tlog/proof?kind=data_inventory&sha256=<the hash>"`;
 const torCurl = `curl --socks5-hostname 127.0.0.1:9050 http://<onion address>/api/v1/models
 
 # a call with your key, the same request as on the clearnet
@@ -676,6 +681,7 @@ export default function Docs() {
             <a href="#private">Private proxy</a>
             <a href="#private-tokens">Private tokens</a>
             <a href="#key-log">Key log</a>
+            <a href="#keep">What we keep</a>
             <a href="#lane">Lane</a>
             <a href="#payments">Payments</a>
             <a href="#x402">x402</a>
@@ -885,6 +891,19 @@ export default function Docs() {
             With witnesses listed as well, both must hold.
           </p>
           <Code label="TypeScript · Rekor-anchored keys">{sdkRekorAnchor}</Code>
+          <h2 id="keep">What we keep, generated from the schema.</h2>
+          <p>
+            The <a href="/keep/">What we keep</a> page lists every table and column the router stores, each with what it holds, whether it is recorded per request, how long it lives where the code says, and, for any column whose name or type suggests request
+            content or a network address, a written review. It also lists the Redis keys with their lifetimes and which ones contain a caller’s address, what the application log can carry, and every place in the source that reads a request body or a
+            caller’s address. It is generated from the schema and the descriptions in src/privacy when the site is built, and the router’s suite fails when a table or column has no description, a description names something that is not there, or a column
+            that looks like request content or an address has no review.
+          </p>
+          <p>
+            GET /keep/inventory.json is the exact file the page is built from, as canonical JSON. Its SHA-256 is shown on the page with the commit the site was built from, and, where an operator sets TLOG_DATA_INVENTORY next to TLOG_ENABLED, the router
+            appends it to the key log as a data_inventory entry the first time a router with that inventory starts. The page shows the log entry, and the Rekor entry of a checkpoint that includes it, when they exist. The inventory says what is kept, not who
+            can read a request in flight: on every lane the router reads the text of a request in memory to route it.
+          </p>
+          <Code label="Shell · check the inventory">{keepCurl}</Code>
           <h2 id="lane">Open-weights variants, and paying their creators.</h2>
           <p>
             Every model has a variant. mainstream keeps the publisher’s own alignment. native_low_refusal (trained to refuse little) and abliterated (refusal behaviour removed from the weights after training) are restricted variants. GET
