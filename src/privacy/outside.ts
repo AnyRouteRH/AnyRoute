@@ -253,6 +253,7 @@ const redisFamilies: RedisFamily[] = [
 
 const addressReaders: Touchpoint[] = [
   { file: "src/network/waitlist.ts", reads: "Address bucket for a waitlist POST or DELETE; onion requests use the shared onion bucket.", then: "A secret-keyed HMAC of the address and current minute is passed to the existing limiter; onion stays the word onion.", kept: "Only a minute-specific keyed digest and counter: 61 seconds in Redis, or up to six minutes without Redis until the memory limiter sweeps old windows. No raw IP or user agent, and no address-derived value in the waitlist table.", evidence: [ev("src/network/waitlist.ts", "const from = addressBucket(c, ctx.cfg);")] },
+  { file: "src/api/e2ee.ts", reads: "The address only for encrypted calls without a key outside the Oblivious HTTP gateway; over Tor the fixed onion bucket is used.", then: "Uses the existing blind-ip rate-limit family.", kept: "Only the counter key, for 61 seconds; no address in a generation, receipt or log.", evidence: [ev("src/api/e2ee.ts", "const from = addressBucket(c, ctx.cfg);")] },
   {
     file: "src/api/common.ts",
     reads: "The socket address of the connection or, only when TRUST_PROXY is on, the right-most X-Forwarded-For entry (clientIp).",
@@ -376,6 +377,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     kept: "The public canonical policy, hash, signature, public verifier key, version and timestamps in host_policies, and a host_policy hash entry in tlog_entries. No caller address, operator token or request headers are retained by this publication path.",
     evidence: [ev("src/admin/trpc.ts", "publishPolicy: operator.input(hostPolicySchema)"), ev("src/network/publication.ts", "await log.append([hostPolicyEntry(policy.version, sha256)]);")],
   },
+  { file: "src/api/e2ee.ts", carries: "prompt-or-answer", reads: "A bounded encrypted JSON envelope and encrypted SSE or JSON response; model, roles, lengths, public keys, timestamp, nonce and clear usage remain visible. A caller must actually encrypt content; framing checks cannot prove encryption.", then: "Validates a strict text envelope, forwards the original bytes without decryption, hashes wire bytes, observes usage and completion for billing. No tools, files, search, cache, alias or content transformations.", kept: "Only hashes, counts or reservation bounds, charge and timing in generations and the ledger. The signed receipt adds end_to_end_encrypted, e2ee version/suite/gateway_attested/complete/billing_basis/input_byte_bound/max_tokens/request_bytes/response_bytes and gateway_receipt (id, keyset digest, response-hash/request-hash/upstream check states and upstream session id and GPU claim). Existing retention and deletion apply. No envelope, response ciphertext, public key, replay nonce, timestamp or credential is persisted; no new log fields or Redis families.", evidence: [ev("src/api/e2ee.ts", "const reader = c.req.raw.body?.getReader();"), ev("src/api/e2ee.ts", "end_to_end_encrypted: true")] },
   {
     file: "src/api/chat.ts",
     carries: "prompt-or-answer",

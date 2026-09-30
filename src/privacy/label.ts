@@ -10,7 +10,7 @@
 // so a client can compute the same label from a receipt it has verified; test/privacy-label.test.ts keeps them identical.
 //
 // Facts about the router this file relies on, and where they are enforced:
-//   - The router reads every prompt in memory to route it, on every lane (src/api/chat.ts).
+//   - Ordinary chat routes read prompts in memory on every lane (src/api/chat.ts); the dedicated E2EE adapter forwards encrypted fields (src/api/e2ee.ts).
 //   - generations (src/db/schema.ts) has no column for a prompt, a reply, an address or a user agent. It keeps
 //     token counts, cost, timing, SHA-256 fingerprints of the request and reply, the paying key hash or wallet, the
 //     provider attempts and the signed receipt. GET /api/v1/receipts/{id} is public by id.
@@ -47,8 +47,8 @@ export type PrivacyLabel = {
   label: {
     output: OutputLabel;
     prompt_readers: {
-      /** Always true: the router reads the prompt in memory to route it, on every lane. */
-      router: true;
+      /** False only for the dedicated ciphertext adapter recorded in an attested gateway receipt. */
+      router: boolean;
       provider: { id: string | null; access: ProviderAccess; reply_withheld: boolean | null };
       /** Provider ids named in an aggregate council receipt; individual receipts describe their access. */
       participants?: string[];
@@ -441,12 +441,24 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     out.label.prompt_readers.text += note;
     out.summary[0] = "Read by: AnyRoute's router in memory, council member providers and the judge (including member answers). See the individual receipts for each provider's handling.";
   }
+  const e2ee = obj(p.e2ee);
+  if (p.end_to_end_encrypted === true && provider === "phala-confidential-ai" && e2ee?.version === 2 && e2ee?.suite === "x25519-aes-256-gcm-hkdf-sha256" && e2ee?.gateway_attested === true && !fromCache && output.kind === "text") {
+    const text = "Read by: the provider's attested gateway enclave only — AnyRoute's router forwarded ciphertext and could not read it";
+    out.label.prompt_readers.router = false;
+    out.label.prompt_readers.text = text + ". This describes encrypted message content from a correctly encrypting client. Model, roles, sizes, timing, public keys and payment metadata remain visible. The gateway forwards restored content to its serving workload over a separate confidential channel; client encryption ends at the gateway.";
+    out.summary[0] = text;
+    out.label.stored.records = ["model, provider, gateway-reported token counts or reservation bounds, charge and timing", "hashes of exact forwarded ciphertext bytes and encrypted response bytes", "E2EE version, suite, byte bounds, completion state and gateway response-evidence checks", identityRecord, "ledger charge"];
+    out.label.stored.text = "The database keeps the signed E2EE metadata, counts, charge, timing and wire hashes, with key linkage or blind nullifiers. It keeps no message ciphertext, plaintext, private key or replay nonce. The signed receipt is public by id. Gateway usage is trusted for billing; without usage the reservation is charged, including on truncation.";
+    out.label.hardware.text = "The router verified the gateway's current hardware attestation. Client quote and deployment appraisal remains the client's responsibility. The router cannot reproduce the gateway's plaintext request hash. Signed complete response and upstream claims are checked when available; GPU attestation is not inferred from gateway attestation.";
+    out.summary[3] = "Kept: ciphertext wire hashes, counts or billing bounds, charge, timing and E2EE verification metadata. No content copy.";
+  }
   out.short = shortLine(out);
   return out;
 }
 
 const readShort = (l: PrivacyLabel): string => {
   const pr = l.label.prompt_readers.provider;
+  if (!l.label.prompt_readers.router) return "attested gateway enclave; ciphertext through router";
   if (l.label.prompt_readers.participants) return "router + council members + judge";
   if (l.label.output?.kind === "unknown") return pr.id ? "router; provider named" : "router; provider not recorded";
   switch (pr.access) {

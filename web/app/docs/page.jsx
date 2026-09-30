@@ -1,4 +1,5 @@
 import SanctionsSection from "./SanctionsSection";
+import E2eeDocs from "../../components/E2eeDocs";
 import PageFrame from "../../components/PageFrame";
 import { Button, Code } from "../../components/UI";
 import { sampleRequest } from "../../components/Extensions";
@@ -1042,6 +1043,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             time; and anything in the body that identifies you reaches the provider. End-to-end encryption through the router to the enclave is planned.
           </p>
           <NetworkPolicyDocs />
+          <E2eeDocs />
           <PrivateProxyDocs />
           <ClaudeUnlinkableDocs />
           <h2 id="private-tokens">Private tokens from your wallet, kept on your device.</h2>

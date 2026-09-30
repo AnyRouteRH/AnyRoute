@@ -95,7 +95,7 @@ export const requestTables: Record<string, TableDoc> = {
       receipt_key_id: "Which receipt signing key signed it.",
       receipt: {
         purpose:
-          "The signed v1 receipt payload: model, provider, token counts, cost, timing, mode, lane, disclosure class, payer (a key hash or a wallet address), the two SHA-256 digests and a summary of the provider's attestation. Blind payment adds a single nullifier and issuer key id, or token_count, nullifiers and token_key_ids for a set; no buyer or credential bytes. Fixed fields chosen by the router.",
+          "The signed v1 receipt payload: model, provider, token counts, cost, timing, mode, lane, disclosure class, payer (a key hash or a wallet address), the two SHA-256 digests and a summary of the provider's attestation. Blind payment adds a single nullifier and issuer key id, or token_count, nullifiers and token_key_ids for a set; no buyer or credential bytes. The ciphertext chat adapter also signs end_to_end_encrypted and e2ee: version, suite, gateway_attested, complete, billing_basis, input_byte_bound, max_tokens, request_bytes, response_bytes and gateway_receipt with id, keyset digest, response-hash, request-hash and upstream verification state plus upstream session id and GPU claim. Request-hash verification remains false in the router. No public keys, replay nonces, credentials or content are retained. Fixed fields chosen by the router.",
         review: JSON_FIELDS("Every field is set by the router's receipt code from numbers, ids and hashes; it never copies request or answer text into the payload."),
       },
       receipt_leaf: "This receipt's leaf hash in the anchoring tree.",
@@ -124,11 +124,11 @@ export const requestTables: Record<string, TableDoc> = {
         ),
       },
       request_sha256: {
-        purpose: "SHA-256 of the canonical JSON of the request body (stream flags excluded). Someone who already has the exact request can check it against this; the text cannot be recovered from it.",
+        purpose: "Ordinary chat: SHA-256 of canonical request JSON (stream flags excluded). The E2EE adapter hashes the exact forwarded encrypted envelope bytes, including whitespace and stream flags. Someone who already has the exact request can check it against this; the text cannot be recovered from it.",
         review: rv(["name:content"], "digest-only", "A hash of the request, kept so a receipt can be checked against a request the caller holds; it is 64 hex characters and holds no text."),
       },
       response_sha256: {
-        purpose: "SHA-256 of the response text (all choices joined). The text cannot be recovered from it.",
+        purpose: "Ordinary chat: SHA-256 of response text (all choices joined). The E2EE adapter hashes encrypted JSON or SSE wire bytes, including framing; an interrupted response hashes the observed prefix. The text cannot be recovered from it.",
         review: rv(["name:content"], "digest-only", "A hash of the answer, kept for the receipt; it is 64 hex characters and holds no text."),
       },
       settled_period: "The UTC hour in which the call was settled to the provider, for example 2026-09-26T13.",

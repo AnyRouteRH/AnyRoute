@@ -31,3 +31,6 @@ export type { DisclosureMax, Lane, RoutingOptions } from "./options.js";
 export type { AnchorProof, Check, CheckStatus, Fetch, JwkKey, KeySet, ReceiptEnvelope } from "./types.js";
 export { fetchPrivacyLabel, privacyLabel, privacyPath, shortLine as privacyShortLine } from "./privacy.js";
 export type { LabelOptions as PrivacyLabelOptions, PrivacyLabel } from "./privacy.js";
+
+export { e2eeChat, E2EE_SUITE } from "./e2ee.js";
+export type { E2eeCompletion, E2eeChatBody, E2eeOptions, E2eeAttestationVerifier } from "./e2ee.js";

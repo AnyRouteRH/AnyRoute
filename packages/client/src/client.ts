@@ -1,3 +1,4 @@
+import { e2eeChat, type E2eeChatBody, type E2eeOptions } from "./e2ee.js";
 import { verifyProvider, fetchRouterAttestation, type AttestFetcher, type ExpectedDigests, type ProviderVerification, type QuoteVerifier, type RouterAttestation } from "./attestation.js";
 import type { Ed25519Verifier } from "./ed25519.js";
 import { AnyRouteError, AttestationRefused, ReceiptInvalid } from "./errors.js";
@@ -87,6 +88,7 @@ export type ChatCompletion = { id?: string; model?: string; choices?: unknown[];
 export type ChatResult = ChatCompletion & { anyroute: AnyRouteMeta };
 
 export class AnyRoute {
+  e2eeChat(body: E2eeChatBody, options: Omit<E2eeOptions, "baseUrl" | "headers" | "fetch">) { return e2eeChat(body, { ...options, baseUrl: this.baseUrl, headers: this.authHeaders(), fetch: this.f }); }
   readonly baseUrl: string;
   private readonly f: Fetch;
   private keys: KeySet | null;

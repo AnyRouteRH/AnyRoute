@@ -1,4 +1,5 @@
 import { sanctionsEnv, sanctionsSettings } from "./network/config.ts";
+import { e2eeSettings } from "./e2ee/config.ts";
 import { createHash, createHmac, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -241,6 +242,9 @@ const schema = z.object({
   SETTLEMENT_INTERVAL_MS: int(3_600_000),
   PROVIDER_REGISTRY_INTERVAL_MS: int(600_000),
   PROVIDERS_FILE: opt,
+  E2EE_PASSTHROUGH_ENABLED: bool.default(false),
+  E2EE_GATEWAY_BASE_URL: opt, // production pin for the Phala gateway when PROVIDERS_FILE is not used
+  E2EE_GATEWAY_ATTESTATION_URL: opt,
 
   // Gateway features
   OTEL_EXPORTER_OTLP_ENDPOINT: opt,
@@ -547,6 +551,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     production,
     hostDashboard: { enabled: e.HOST_DASHBOARD_ENABLED },
     sanctions: sanctionsSettings(e, production),
+    e2ee: e2eeSettings(e.E2EE_PASSTHROUGH_ENABLED, e.PROVIDERS_FILE, production, { baseUrl: e.E2EE_GATEWAY_BASE_URL, attestationUrl: e.E2EE_GATEWAY_ATTESTATION_URL }),
     runtimeRole: e.RUNTIME_ROLE,
     autoMigrate: e.AUTO_MIGRATE,
     workerJobs: e.WORKER_JOBS.split(",").map((n) => n.trim()).filter(Boolean),
