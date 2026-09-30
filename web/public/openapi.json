@@ -29,6 +29,10 @@
   ],
   "tags": [
     {
+      "name": "Network host policy",
+      "description": "Versioned signed build pins for future network host admission; existing provider admission is unchanged."
+    },
+    {
       "name": "Models",
       "description": "Public model catalog and capabilities."
     },
@@ -150,8 +154,114 @@
     }
   ],
   "paths": {
-    "/api/v1/hosts": {"get":{"tags":["Hosts"],"operationId":"listHosts","summary":"List public hosts with a hardware verification record","description":"Available only with HOST_DASHBOARD_ENABLED=true (default false). Includes stale or suspended hardware hosts, labelled by their current verification status; excludes applications, unverified providers and development-only evidence. No payout settings or exact earnings.","security":[],"responses":{"200":{"description":"Public host fields; Cache-Control: public, max-age=30.","content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"data":{"type":"array","items":{"$ref":"#/components/schemas/HostPublic"}}},"required":["data"]}}}},"404":{"$ref":"#/components/responses/NotFound"}}}},
-    "/api/v1/hosts/{providerId}": {"get":{"tags":["Hosts"],"operationId":"getHost","summary":"Read one host’s evidence and invoice band","description":"Available only with HOST_DASHBOARD_ENABLED=true (default false). Reuses existing attestation, measurements, proof-time and host-root records. Hardware evidence and recorded measurements do not establish build admission approval, source equivalence or prompt handling. Detail responses always use Cache-Control: no-store and Vary: X-Wallet-Auth. Earnings are lifetime settlement invoice totals after provider fees, including paid invoices and excluding the open hour. USDG units have six decimal places.","security":[],"parameters":[{"name":"providerId","in":"path","required":true,"schema":{"type":"string"}},{"name":"X-Wallet-Auth","in":"header","required":false,"schema":{"type":"string"},"description":"Optional operator view: address:unixSeconds:personal_sign_signature over anyroute:unixSeconds:sha256(scope), where scope is exactly GET /api/v1/hosts/{encodeURIComponent(providerId)}. Uses existing walletAuth five-minute validity and replay protection. The recovered wallet must equal providers.operator, case-insensitively. This signature authorizes no payment."}],"responses":{"200":{"description":"Public evidence with coarse bands; operator fields present only for the signed host operator.","content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"data":{"$ref":"#/components/schemas/HostDetail"}},"required":["data"]}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"503":{"description":"Existing evidence endpoint could not be read.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}}}}},
+    "/api/v1/hosts": {
+      "get": {
+        "tags": [
+          "Hosts"
+        ],
+        "operationId": "listHosts",
+        "summary": "List public hosts with a hardware verification record",
+        "description": "Available only with HOST_DASHBOARD_ENABLED=true (default false). Includes stale or suspended hardware hosts, labelled by their current verification status; excludes applications, unverified providers and development-only evidence. No payout settings or exact earnings.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Public host fields; Cache-Control: public, max-age=30.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/HostPublic"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/hosts/{providerId}": {
+      "get": {
+        "tags": [
+          "Hosts"
+        ],
+        "operationId": "getHost",
+        "summary": "Read one host’s evidence and invoice band",
+        "description": "Available only with HOST_DASHBOARD_ENABLED=true (default false). Reuses existing attestation, measurements, proof-time and host-root records. Hardware evidence and recorded measurements do not establish build admission approval, source equivalence or prompt handling. Detail responses always use Cache-Control: no-store and Vary: X-Wallet-Auth. Earnings are lifetime settlement invoice totals after provider fees, including paid invoices and excluding the open hour. USDG units have six decimal places.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "providerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Wallet-Auth",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional operator view: address:unixSeconds:personal_sign_signature over anyroute:unixSeconds:sha256(scope), where scope is exactly GET /api/v1/hosts/{encodeURIComponent(providerId)}. Uses existing walletAuth five-minute validity and replay protection. The recovered wallet must equal providers.operator, case-insensitively. This signature authorizes no payment."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public evidence with coarse bands; operator fields present only for the signed host operator.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HostDetail"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "description": "Existing evidence endpoint could not be read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/models": {
       "get": {
         "tags": [
@@ -10134,10 +10244,159 @@
           }
         }
       }
+    },
+    "/api/v1/network/policy": {
+      "get": {
+        "tags": [
+          "Network host policy"
+        ],
+        "description": "Public when NETWORK_POLICY_ENABLED is true (default false; requires TLOG_ENABLED). No policy is seeded. Includes canonical JSON, SHA-256, detached Ed25519 signature and public log verifier key. Pin the verifier key independently and verify the host_policy inclusion proof under a signed checkpoint with independent witness or public-log evidence. Publication does not change existing provider admission. Current sidecars do not bind a source hash, engine image or model ID; missing bindings fail the pure check. AnyRoute reads request text in memory on every lane.",
+        "responses": {
+          "200": {
+            "description": "Published host policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HostPolicyPublication"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "operationId": "getCurrentNetworkHostPolicy",
+        "summary": "Current signed network host policy"
+      }
+    },
+    "/api/v1/network/policy/{version}": {
+      "get": {
+        "tags": [
+          "Network host policy"
+        ],
+        "description": "Public when NETWORK_POLICY_ENABLED is true (default false; requires TLOG_ENABLED). No policy is seeded. Includes canonical JSON, SHA-256, detached Ed25519 signature and public log verifier key. Pin the verifier key independently and verify the host_policy inclusion proof under a signed checkpoint with independent witness or public-log evidence. Publication does not change existing provider admission. Current sidecars do not bind a source hash, engine image or model ID; missing bindings fail the pure check. AnyRoute reads request text in memory on every lane.",
+        "responses": {
+          "200": {
+            "description": "Published host policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HostPolicyPublication"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "operationId": "getNetworkHostPolicyVersion",
+        "summary": "An immutable signed network host policy version",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ]
+      }
+    },
+    "/trpc/network.publishPolicy": {
+      "post": {
+        "tags": [
+          "Network host policy"
+        ],
+        "operationId": "publishNetworkHostPolicy",
+        "summary": "Publish a consecutive signed host policy version (operator)",
+        "security": [
+          {
+            "AdminToken": []
+          }
+        ],
+        "description": "POST /trpc/network.publishPolicy accepts the policy document directly as a tRPC JSON input. Requires ADMIN_TOKEN as x-admin-token or Authorization: Bearer, NETWORK_POLICY_ENABLED and TLOG_ENABLED. The policy, host_policy log leaf and signed checkpoint commit atomically. Versions start at 1 and advance consecutively; exact resubmission is idempotent, replacement is refused. Issue time cannot be in the future or before the preceding version. allow_dev must be false. Existing providers are unaffected. This publication path is groundwork for later host signup; it does not open signup.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostPolicy"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "tRPC publication result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/HostPolicyPublication"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "tRPC error envelope: unauthorized without the operator token, precondition failed when disabled, conflict for an occupied or nonconsecutive version, or bad request for invalid policy or issue time.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "securitySchemes": {
+      "AdminToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-admin-token",
+        "description": "Operator ADMIN_TOKEN. Authorization: Bearer with the operator token is also accepted."
+      },
       "BearerAuth": {
         "type": "http",
         "scheme": "bearer",
@@ -10254,7 +10513,8 @@
             "blind_issuer_key",
             "measurement_bundle",
             "attestation_binding",
-            "data_inventory"
+            "data_inventory",
+            "host_policy"
           ]
         }
       },
@@ -10481,8 +10741,435 @@
       }
     },
     "schemas": {
-      "HostPublic": {"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"name":{"type":"string"},"tee_kind":{"type":"string"},"attested":{"type":"boolean"},"status":{"type":"string"},"probation":{"type":"boolean"},"shadow_until":{"type":["string","null"]},"models":{"type":"array","items":{"type":"string"}},"attestation":{"type":"object","additionalProperties":false,"properties":{"status":{"type":"string","enum":["attested","unverified"]},"reason":{"type":"string"},"tee":{"type":["string","null"]},"verifiers":{"type":"array","items":{"type":"string"}},"last_verified_at":{"type":["string","null"]},"last_attempt_at":{"type":["string","null"]},"last_attempt_ok":{"type":["boolean","null"]}},"required":["status","tee","verifiers","last_verified_at","last_attempt_at","last_attempt_ok"]},"verify_url":{"type":"string"}},"required":["id","name","tee_kind","attested","status","probation","shadow_until","models","attestation","verify_url"]},
-      "HostDetail": {"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"name":{"type":"string"},"tee_kind":{"type":"string"},"attested":{"type":"boolean"},"status":{"type":"string"},"probation":{"type":"boolean"},"shadow_until":{"type":["string","null"]},"models":{"type":"array","items":{"type":"string"}},"attestation":{"type":"object","additionalProperties":false,"properties":{"status":{"type":"string","enum":["attested","unverified"]},"reason":{"type":"string"},"tee":{"type":["string","null"]},"verifiers":{"type":"array","items":{"type":"string"}},"last_verified_at":{"type":["string","null"]},"last_attempt_at":{"type":["string","null"]},"last_attempt_ok":{"type":["boolean","null"]},"checks":{"type":"object","description":"The existing attestation endpoint checks."},"not_checked":{"type":"array","items":{"type":"string"}}},"required":["status","tee","verifiers","last_verified_at","last_attempt_at","last_attempt_ok","checks","not_checked"]},"verify_url":{"type":"string"},"attestation_history":{"type":["object","null"],"description":"First 50 sanitized events from the existing attestation history endpoint, with data, next cursor, history_days and url. Null when history is disabled."},"measurement":{"type":["object","null"],"description":"Existing attestation endpoint current measurement: digests, status, timestamps, hardware registers, registry state and transparency_log with Rekor entry_url and verification checks; no raw quote."},"measurement_history":{"type":"array","items":{"type":"object","description":"Existing attestation endpoint superseded measurements, each with its own superseded_at and transparency_log entry_url."}},"anchoring":{"type":"object","additionalProperties":false,"properties":{"roots":{"type":"integer","minimum":0},"anchored_roots":{"type":"integer","minimum":0},"latest":{"anyOf":[{"type":"object","additionalProperties":false,"properties":{"id":{"type":"integer","minimum":0},"root":{"type":"string"},"status":{"type":"string","enum":["local","pending","confirmed"]},"anchored":{"type":"boolean"},"tx_hash":{"type":["string","null"]},"block_number":{"type":["integer","null"]},"from_ts":{"type":"string"},"to_ts":{"type":"string"},"receipts":{"type":"integer","minimum":0},"attestation_ref":{"type":"string"}},"required":["id","root","status","anchored","tx_hash","block_number","from_ts","to_ts","receipts","attestation_ref"]},{"type":"null"}]}},"required":["roots","anchored_roots","latest"]},"uptime":{"type":"object","additionalProperties":false,"properties":{"success_pct_30d":{"type":["number","null"],"minimum":0,"maximum":100},"observations_30d":{"type":"integer","minimum":0},"definition":{"type":"string"}},"required":["success_pct_30d","observations_30d","definition"]},"proof_time":{"type":["object","null"],"description":"Existing proof-time summary metadata (generated_at, history_days, fresh_within_ms) and its host record. Host is null when absent from that summary. Proof-time itself is null when history is disabled."},"earnings":{"type":"object","additionalProperties":false,"properties":{"band":{"type":"string","enum":["none yet","<$1","$1–10","$10–100","$100–1,000","$1,000+"]},"basis":{"type":"string"}},"required":["band","basis"]},"operator":{"type":"object","additionalProperties":false,"properties":{"payout_address":{"type":["string","null"]},"payout_mode":{"type":"string"},"invoiced_usdg_units":{"type":"string","pattern":"^[0-9]+$"},"unpaid_usdg_units":{"type":"string","pattern":"^[0-9]+$"},"decimals":{"type":"integer","const":6}},"required":["payout_address","payout_mode","invoiced_usdg_units","unpaid_usdg_units","decimals"],"description":"Present only after walletAuth recovers the stored provider operator. Lifetime invoice units include paid invoices; unpaid units have no recorded payment transaction and can include a pending payout."}},"required":["id","name","tee_kind","attested","status","probation","shadow_until","models","attestation","verify_url","attestation_history","measurement","measurement_history","anchoring","uptime","proof_time","earnings"]},
+      "HostPublic": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tee_kind": {
+            "type": "string"
+          },
+          "attested": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "probation": {
+            "type": "boolean"
+          },
+          "shadow_until": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attestation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "attested",
+                  "unverified"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "tee": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "verifiers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "last_verified_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_attempt_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_attempt_ok": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "tee",
+              "verifiers",
+              "last_verified_at",
+              "last_attempt_at",
+              "last_attempt_ok"
+            ]
+          },
+          "verify_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "tee_kind",
+          "attested",
+          "status",
+          "probation",
+          "shadow_until",
+          "models",
+          "attestation",
+          "verify_url"
+        ]
+      },
+      "HostDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tee_kind": {
+            "type": "string"
+          },
+          "attested": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "probation": {
+            "type": "boolean"
+          },
+          "shadow_until": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attestation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "attested",
+                  "unverified"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "tee": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "verifiers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "last_verified_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_attempt_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_attempt_ok": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "checks": {
+                "type": "object",
+                "description": "The existing attestation endpoint checks."
+              },
+              "not_checked": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "status",
+              "tee",
+              "verifiers",
+              "last_verified_at",
+              "last_attempt_at",
+              "last_attempt_ok",
+              "checks",
+              "not_checked"
+            ]
+          },
+          "verify_url": {
+            "type": "string"
+          },
+          "attestation_history": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "First 50 sanitized events from the existing attestation history endpoint, with data, next cursor, history_days and url. Null when history is disabled."
+          },
+          "measurement": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Existing attestation endpoint current measurement: digests, status, timestamps, hardware registers, registry state and transparency_log with Rekor entry_url and verification checks; no raw quote."
+          },
+          "measurement_history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Existing attestation endpoint superseded measurements, each with its own superseded_at and transparency_log entry_url."
+            }
+          },
+          "anchoring": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "roots": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "anchored_roots": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "latest": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "root": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "local",
+                          "pending",
+                          "confirmed"
+                        ]
+                      },
+                      "anchored": {
+                        "type": "boolean"
+                      },
+                      "tx_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "block_number": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "from_ts": {
+                        "type": "string"
+                      },
+                      "to_ts": {
+                        "type": "string"
+                      },
+                      "receipts": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "attestation_ref": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "root",
+                      "status",
+                      "anchored",
+                      "tx_hash",
+                      "block_number",
+                      "from_ts",
+                      "to_ts",
+                      "receipts",
+                      "attestation_ref"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "roots",
+              "anchored_roots",
+              "latest"
+            ]
+          },
+          "uptime": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "success_pct_30d": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 100
+              },
+              "observations_30d": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "definition": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "success_pct_30d",
+              "observations_30d",
+              "definition"
+            ]
+          },
+          "proof_time": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Existing proof-time summary metadata (generated_at, history_days, fresh_within_ms) and its host record. Host is null when absent from that summary. Proof-time itself is null when history is disabled."
+          },
+          "earnings": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "band": {
+                "type": "string",
+                "enum": [
+                  "none yet",
+                  "<$1",
+                  "$1–10",
+                  "$10–100",
+                  "$100–1,000",
+                  "$1,000+"
+                ]
+              },
+              "basis": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "band",
+              "basis"
+            ]
+          },
+          "operator": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "payout_address": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "payout_mode": {
+                "type": "string"
+              },
+              "invoiced_usdg_units": {
+                "type": "string",
+                "pattern": "^[0-9]+$"
+              },
+              "unpaid_usdg_units": {
+                "type": "string",
+                "pattern": "^[0-9]+$"
+              },
+              "decimals": {
+                "type": "integer",
+                "const": 6
+              }
+            },
+            "required": [
+              "payout_address",
+              "payout_mode",
+              "invoiced_usdg_units",
+              "unpaid_usdg_units",
+              "decimals"
+            ],
+            "description": "Present only after walletAuth recovers the stored provider operator. Lifetime invoice units include paid invoices; unpaid units have no recorded payment transaction and can include a pending payout."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "tee_kind",
+          "attested",
+          "status",
+          "probation",
+          "shadow_until",
+          "models",
+          "attestation",
+          "verify_url",
+          "attestation_history",
+          "measurement",
+          "measurement_history",
+          "anchoring",
+          "uptime",
+          "proof_time",
+          "earnings"
+        ]
+      },
       "ApiError": {
         "type": "object",
         "required": [
@@ -15899,7 +16586,8 @@
                     "blind_issuer_key",
                     "measurement_bundle",
                     "attestation_binding",
-                    "data_inventory"
+                    "data_inventory",
+                    "host_policy"
                   ]
                 }
               },
@@ -16021,7 +16709,8 @@
                   "blind_issuer_key",
                   "measurement_bundle",
                   "attestation_binding",
-                  "data_inventory"
+                  "data_inventory",
+                  "host_policy"
                 ]
               },
               "sha256": {
@@ -16112,7 +16801,8 @@
                   "blind_issuer_key",
                   "measurement_bundle",
                   "attestation_binding",
-                  "data_inventory"
+                  "data_inventory",
+                  "host_policy"
                 ]
               },
               "sha256": {
@@ -19960,6 +20650,210 @@
                     "type": "string"
                   }
                 }
+              }
+            }
+          }
+        }
+      },
+      "HostPolicy": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "tee_kinds": {
+            "minItems": 1,
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "tdx",
+                "snp",
+                "nvidia-cc"
+              ]
+            }
+          },
+          "sidecar": {
+            "type": "object",
+            "properties": {
+              "image_digests": {
+                "minItems": 1,
+                "maxItems": 128,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              },
+              "source_hashes": {
+                "minItems": 1,
+                "maxItems": 128,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            },
+            "required": [
+              "image_digests",
+              "source_hashes"
+            ],
+            "additionalProperties": false
+          },
+          "engines": {
+            "minItems": 1,
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                },
+                "image_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "name",
+                "image_digest"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "models": {
+            "minItems": 1,
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                },
+                "model_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "min_gpu_cc": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "model_digest",
+                "min_gpu_cc"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "rules": {
+            "type": "object",
+            "properties": {
+              "require_gpu_cc_for": {
+                "maxItems": 128,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                }
+              },
+              "allow_dev": {
+                "type": "boolean",
+                "const": false
+              }
+            },
+            "required": [
+              "require_gpu_cc_for",
+              "allow_dev"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "version",
+          "issued_at",
+          "tee_kinds",
+          "sidecar",
+          "engines",
+          "models",
+          "rules"
+        ],
+        "additionalProperties": false
+      },
+      "HostPolicyPublication": {
+        "type": "object",
+        "required": [
+          "policy",
+          "canonical",
+          "sha256",
+          "signature",
+          "transparency_log"
+        ],
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/HostPolicy"
+          },
+          "canonical": {
+            "type": "string",
+            "description": "Exact UTF-8 canonical policy bytes: sorted object keys, retained array order, no whitespace or trailing newline."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "signature": {
+            "type": "object",
+            "required": [
+              "alg",
+              "value",
+              "verifier_key"
+            ],
+            "properties": {
+              "alg": {
+                "const": "Ed25519"
+              },
+              "value": {
+                "type": "string",
+                "description": "Base64 detached Ed25519 signature over canonical UTF-8 bytes."
+              },
+              "verifier_key": {
+                "type": "string",
+                "description": "C2SP signed-note verifier key. Pin independently; this response alone does not authenticate the operator."
+              }
+            }
+          },
+          "transparency_log": {
+            "type": "object",
+            "required": [
+              "kind",
+              "proof_url"
+            ],
+            "properties": {
+              "kind": {
+                "const": "host_policy"
+              },
+              "proof_url": {
+                "type": "string",
+                "description": "Inclusion proof under a signed checkpoint; independent checkpoint checks are separate."
               }
             }
           }

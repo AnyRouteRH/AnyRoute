@@ -31,3 +31,14 @@ export const sanctionsMeta = pgTable("sanctions_meta", {
   ignoredCount: integer("ignored_count").notNull(),
   refreshedAt: timestamp("refreshed_at", { withTimezone: true, mode: "date" }).notNull(),
 });
+
+/** Immutable publication records. Canonical policy bytes are signed by the transparency log's Ed25519 key. */
+export const hostPolicies = pgTable("host_policies", {
+  version: integer("version").primaryKey(),
+  issuedAt: timestamp("issued_at", { withTimezone: true, mode: "date" }).notNull(),
+  canonical: text("canonical").notNull(),
+  sha256: text("sha256").notNull().unique(),
+  signature: text("signature").notNull(),
+  verifierKey: text("verifier_key").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});

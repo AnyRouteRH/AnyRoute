@@ -6,6 +6,7 @@ import { API_BASE } from "../../lib/api";
 import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
 import OnionAddress from "../../components/OnionAddress";
 import ClaudeUnlinkableDocs from "../../components/ClaudeUnlinkableDocs";
+import NetworkPolicyDocs from "../../components/NetworkPolicyDocs";
 import PrivateProxyDocs from "../../components/PrivateProxyDocs";
 import HostsDocs from "../../components/HostsDocs";
 export const metadata = { title: "Developer documentation — Anyroute" };
@@ -1040,6 +1041,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             sent on one circuit can be linked to each other, so give calls you want kept apart their own circuit (a different SOCKS user name, as above, or Tor Browser’s New Identity); buying tokens right before spending them links the two by
             time; and anything in the body that identifies you reaches the provider. End-to-end encryption through the router to the enclave is planned.
           </p>
+          <NetworkPolicyDocs />
           <PrivateProxyDocs />
           <ClaudeUnlinkableDocs />
           <h2 id="private-tokens">Private tokens from your wallet, kept on your device.</h2>

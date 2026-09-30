@@ -27,7 +27,7 @@ import type { Fetch } from "./types.js";
 // With witnesses configured as well, both must hold. Rekor makes a second history visible after the fact to anyone who
 // follows the anchoring key's entries there; unlike a witness quorum, it does not stop the log from signing one.
 
-export const TLOG_KINDS = ["receipt_key", "ohttp_key_config", "blind_issuer_key", "measurement_bundle", "attestation_binding", "data_inventory"] as const;
+export const TLOG_KINDS = ["receipt_key", "ohttp_key_config", "blind_issuer_key", "measurement_bundle", "attestation_binding", "data_inventory", "host_policy"] as const;
 export type TlogKind = (typeof TLOG_KINDS)[number];
 
 export class TransparencyError extends AnyRouteError {

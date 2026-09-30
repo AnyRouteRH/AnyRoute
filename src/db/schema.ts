@@ -1258,3 +1258,4 @@ export const skillInstalls = pgTable(
 
 export { networkWaitlist } from "../network/schema.ts";
 export { sanctionsAddresses, sanctionsMeta } from "../network/schema.ts";
+export { hostPolicies } from "../network/schema.ts";

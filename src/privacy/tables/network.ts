@@ -1,4 +1,5 @@
 import type { TableDoc } from "../types.ts";
+import { CREATED, KEPT_APPEND } from "./common.ts";
 
 export const networkTables: Record<string, TableDoc> = {
   network_waitlist: {
@@ -17,6 +18,21 @@ export const networkTables: Record<string, TableDoc> = {
       paid_in: "Payout preference only: usdg, anyr or any. Payouts are planned, not available.",
       delete_code_hash: "SHA-256 of a random 32-byte deletion code. The raw code is returned once to its holder.",
       created_at: "Server timestamp when the sign-up was saved.",
+    },
+  },
+  host_policies: {
+    category: "operations",
+    purpose: "Public versions of the network host admission policy, signed with the transparency log's Ed25519 key. Publication does not admit providers or change the existing admission path.",
+    request: "no",
+    retention: KEPT_APPEND,
+    columns: {
+      version: "Consecutive policy version, beginning at 1.",
+      issued_at: "The policy's issue time supplied by the operator.",
+      canonical: "Canonical JSON of the operator's policy: version, issue time, TEE kinds, approved sidecar image and source hashes, engine names and image digests, model IDs and digests, and GPU CC requirements. A strict bounded schema accepts no prompt fields; names are operator-written identifiers with a restricted alphabet, so the router cannot know what meaning the operator assigns them. Public through the policy API.",
+      sha256: "SHA-256 of the exact canonical policy bytes.",
+      signature: "Base64 Ed25519 signature over the canonical policy bytes.",
+      verifier_key: "The public signed-note verifier key identifying the log key that signed this version.",
+      created_at: CREATED,
     },
   },
 };

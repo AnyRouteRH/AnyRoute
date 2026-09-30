@@ -22,6 +22,8 @@ import { picoToUsd } from "../lib/money.ts";
 import { chainKeyHashOf } from "../chain/keys.ts";
 import { parseProviderModels, slugFor, type ProviderModel } from "../services/registry.ts";
 import { clearPendingStaticModels, diffStaticModels, loadPendingStaticModels, savePendingStaticModels, staticModelsReviewHash } from "../providers/static-models.ts";
+import { hostPolicySchema } from "../network/policy.ts";
+import { publishHostPolicy } from "../network/publication.ts";
 import { submitBundle } from "../services/measurement-bundles.ts";
 
 // Admin / account API over tRPC v11 at /trpc. Operator procedures need the ADMIN_TOKEN
@@ -47,6 +49,7 @@ const reviewView = (row: typeof providers.$inferSelect) => {
 
 export const adminRouter = t.router({
   networkWaitlistExport: operator.input(z.strictObject({ after: z.uuid().optional(), limit: z.number().int().min(1).max(1000).default(100) })).query(async ({ ctx, input }) => ser(await exportWaitlist(ctx.app, input))),
+  network: t.router({ publishPolicy: operator.input(hostPolicySchema).mutation(({ ctx, input }) => publishHostPolicy(ctx.app, input)) }),
   providers: t.router({
     // "apply" is a reserved word in tRPC routers; REST keeps POST /api/v1/providers/apply.
     onboard: t.procedure.input(providerApplication).mutation(async ({ ctx, input }) => {

@@ -381,6 +381,7 @@ const schema = z.object({
 
   // ---- Transparency log of keys and configurations (C2SP tlog-tiles with signed-note checkpoints and tlog-cosignature
   // witnesses; src/tlog). Off by default: no route is registered and nothing is appended.
+  NETWORK_POLICY_ENABLED: bool.default(false),
   TLOG_ENABLED: bool.default(false),
   TLOG_ORIGIN: opt, // checkpoint origin and the log's key name; default "<host of PUBLIC_BASE_URL>/tlog"
   TLOG_SIGNING_KEY: opt, // the log's Ed25519 key: base64 PKCS#8, or PRIVATE+KEY+<origin>+<id>+<key>; required in production
@@ -409,6 +410,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     throw new Error(`Invalid configuration: ${issues}`);
   }
   const e = parsed.data;
+  if (e.NETWORK_POLICY_ENABLED && !e.TLOG_ENABLED) throw new Error("NETWORK_POLICY_ENABLED needs TLOG_ENABLED.");
   const production = e.ANYROUTE_ENV === "production";
   const escrowMode = e.PAYMENTS_MODE === "escrow";
   const contractAddresses = {
@@ -560,6 +562,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     redisUrl: e.REDIS_URL,
     appSecret: e.APP_SECRET ?? "dev-insecure-secret-change-me-dev-insecure",
     adminToken: e.ADMIN_TOKEN,
+    networkPolicyEnabled: e.NETWORK_POLICY_ENABLED,
     logLevel: e.LOG_LEVEL,
     trustProxy: e.TRUST_PROXY,
     release: { commit: contractPath.releaseCommit, deployment: contractPath.deployment },

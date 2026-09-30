@@ -370,6 +370,13 @@ const addressReaders: Touchpoint[] = [
 const bodyReaders: ExternalDoc["bodyReaders"] = [
   { file: "src/network/waitlist.ts", carries: "settings", reads: "At most 4 KiB of JSON: waitlist fields or a deletion code.", then: "Validated strictly; a filled honeypot is discarded. The deletion code is hashed for an atomic delete.", kept: "Only sign-up fields, optional contact, id, deletion digest and time in network_waitlist. No raw deletion code, body log, IP or user agent. Free text is readable by the owner; public stats return counts only.", evidence: [ev("src/network/waitlist.ts", "const reader = c.req.raw.body?.getReader();")] },
   {
+    file: "src/admin/trpc.ts", carries: "settings",
+    reads: "For network.publishPolicy, the operator's policy document decoded by the tRPC transport and validated by hostPolicySchema. No prompt fields are accepted.",
+    then: "Checked for consecutive version and issue time, canonically encoded, signed with the log key, and committed with its transparency-log entry and checkpoint.",
+    kept: "The public canonical policy, hash, signature, public verifier key, version and timestamps in host_policies, and a host_policy hash entry in tlog_entries. No caller address, operator token or request headers are retained by this publication path.",
+    evidence: [ev("src/admin/trpc.ts", "publishPolicy: operator.input(hostPolicySchema)"), ev("src/network/publication.ts", "await log.append([hostPolicyEntry(policy.version, sha256)]);")],
+  },
+  {
     file: "src/api/chat.ts",
     carries: "prompt-or-answer",
     reads: "The whole JSON body of a chat or text completion: the messages, the model and the parameters (readJson).",

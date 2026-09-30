@@ -7,11 +7,11 @@ import { billingTables } from "./tables/billing.ts";
 import { chainTables } from "./tables/chain.ts";
 import { characterTables } from "./tables/characters.ts";
 import { keyTables } from "./tables/keys.ts";
+import { networkTables } from "./tables/network.ts";
 import { operationTables } from "./tables/operations.ts";
 import { providerTables } from "./tables/providers.ts";
 import { receiptTables } from "./tables/receipts.ts";
 import { requestTables } from "./tables/request.ts";
-import { networkTables } from "./tables/network.ts";
 import { skillTables } from "./tables/skills.ts";
 import { CATEGORIES, CATEGORY_INFO, type AboutRequest, type ColumnDoc, type ExternalDoc, type Review, type TableDoc } from "./types.ts";
 

@@ -66,6 +66,7 @@ import { ohttpRoutes } from "./ohttp/gateway.ts";
 import { hostAnchorRoutes } from "./api/host-anchor.ts";
 import { hostRoutes } from "./api/hosts.ts";
 import { TransparencyLog } from "./tlog/log.ts";
+import { networkPolicyRoutes } from "./network/routes.ts";
 import { tlogRoutes } from "./tlog/routes.ts";
 import { statusRoutes } from "./api/status.ts";
 import { networkRoutes } from "./network/waitlist.ts";
@@ -172,6 +173,7 @@ export async function createApp(opts: AppOptions = {}) {
   if (ctx.ohttp) ohttpRoutes(app, ctx);
   if (ctx.cfg.hostAnchor.enabled) hostAnchorRoutes(app, ctx);
   if (ctx.tlog) tlogRoutes(app, ctx);
+  networkPolicyRoutes(app, ctx);
   statusRoutes(app, ctx);
   skillsRoutes(app, ctx);
   networkRoutes(app, ctx);

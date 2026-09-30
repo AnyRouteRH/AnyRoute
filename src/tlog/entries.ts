@@ -16,7 +16,7 @@ import { canonicalJson, sha256 } from "../lib/util.ts";
 //
 // Entries carry no log time: the log's order is its only clock.
 
-export const ENTRY_KINDS = ["receipt_key", "ohttp_key_config", "blind_issuer_key", "measurement_bundle", "attestation_binding", "data_inventory"] as const;
+export const ENTRY_KINDS = ["receipt_key", "ohttp_key_config", "blind_issuer_key", "measurement_bundle", "attestation_binding", "data_inventory", "host_policy"] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 export const isEntryKind = (v: unknown): v is EntryKind => typeof v === "string" && (ENTRY_KINDS as readonly string[]).includes(v);
 
@@ -85,4 +85,9 @@ export function dataInventoryEntry(i: { sha256: string; format: string; tables: 
     subject: `inventory:${digest.slice(0, 16)}`,
     key: { format: i.format, inventory_sha256: digest, tables: i.tables, columns: i.columns, path: "/keep/inventory.json" },
   };
+}
+
+/** SHA-256 of a version's canonical host policy; the public document includes its detached signature. */
+export function hostPolicyEntry(version: number, sha256: string): EntryInput {
+  return { kind: "host_policy", sha256, subject: `host-policy:${version}`, key: { version, policy_sha256: sha256, path: `/api/v1/network/policy/${version}` } };
 }
