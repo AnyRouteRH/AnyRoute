@@ -278,6 +278,69 @@ describe("the same label on the client", () => {
   });
 });
 
+describe("the OpenAPI document", () => {
+  const spec = JSON.parse(readFileSync(new URL("../web/public/openapi.json", import.meta.url), "utf8"));
+  const resolve = (node: any): any => (node && typeof node.$ref === "string" ? node.$ref.replace(/^#\//, "").split("/").reduce((n: any, k: string) => n[k], spec) : node);
+
+  /** A small structural check of a value against a schema: types, enums, consts, required keys, and no key the schema does not list. */
+  function conforms(value: unknown, schema: any, at = "label"): string[] {
+    const s = resolve(schema);
+    const errors: string[] = [];
+    const types: string[] = Array.isArray(s.type) ? s.type : s.type ? [s.type] : [];
+    const kind = value === null ? "null" : Array.isArray(value) ? "array" : typeof value === "object" ? "object" : typeof value;
+    if (types.length && !types.includes(kind)) return [`${at}: ${kind} is not ${types.join("|")}`];
+    if (s.enum && !s.enum.includes(value)) errors.push(`${at}: ${JSON.stringify(value)} is not one of ${JSON.stringify(s.enum)}`);
+    if ("const" in s && value !== s.const) errors.push(`${at}: ${JSON.stringify(value)} is not ${JSON.stringify(s.const)}`);
+    if (kind === "array") {
+      if (s.minItems !== undefined && (value as unknown[]).length < s.minItems) errors.push(`${at}: too few items`);
+      if (s.maxItems !== undefined && (value as unknown[]).length > s.maxItems) errors.push(`${at}: too many items`);
+      (value as unknown[]).forEach((v, i) => errors.push(...conforms(v, s.items, `${at}[${i}]`)));
+    }
+    if (kind === "object" && s.properties) {
+      for (const k of s.required ?? []) if (!(k in (value as object))) errors.push(`${at}: missing ${k}`);
+      for (const [k, v] of Object.entries(value as object)) {
+        if (!s.properties[k]) errors.push(`${at}: ${k} is not in the schema`);
+        else errors.push(...conforms(v, s.properties[k], `${at}.${k}`));
+      }
+    }
+    return errors;
+  }
+
+  test("documents the endpoint as public and the label schema matches what the function returns", () => {
+    const op = spec.paths["/api/v1/receipts/{id}/privacy"].get;
+    expect(op.tags).toEqual(["Receipts"]);
+    expect(op.security).toBeUndefined();
+    expect(op.responses["404"]).toEqual({ $ref: "#/components/responses/NotFound" });
+    expect(op.responses["200"].content["application/json"].schema.properties.data).toEqual({ $ref: "#/components/schemas/PrivacyLabel" });
+    expect(spec.components.schemas.Receipt.properties.privacy.$ref).toBe("#/components/schemas/PrivacyLabel");
+    const ids: string[] = [];
+    JSON.stringify(spec, (k, v) => (k === "operationId" ? (ids.push(v), v) : v));
+    expect(new Set(ids).size).toBe(ids.length);
+    const matrix: [Record<string, unknown>, Parameters<typeof privacyLabel>[1]][] = [
+      [{}, {}],
+      [{ lane: "attested", disclosure: "attested", provider: "gw", upstream_attestation: GATEWAY_UA }, { teeKind: "tdx" }],
+      [{ lane: "unlinkable", disclosure: "attested", mode: "blind", payer: null, nullifier: NULLIFIER }, { unlinkableTransports: ["onion"] }],
+      [{ lane: "attested", disclosure: "policy", upstream_attestation: UNPROVEN_UA }, {}],
+      [{ lane: "public", disclosure: "policy", upstream_attestation: UNPROVEN_UA }, {}],
+      [{ mode: "per_call", payer: WALLET, payment_tx: "0x" + "77".repeat(32) }, {}],
+      [{ mode: "paywith" }, {}],
+      [{ mode: "byok" }, {}],
+      [{ mode: "cache", provider: "cache" }, {}],
+      [{ attestation_simulated: true, disclosure: "attested", lane: "attested" }, {}],
+      [{ lane: undefined, mode: undefined, disclosure: undefined, provider: undefined, id: undefined }, {}],
+    ];
+    for (const [over, opts] of matrix) expect(conforms(privacyLabel(receipt(over), opts), spec.components.schemas.PrivacyLabel)).toEqual([]);
+  });
+
+  test("the developer docs describe the label in the router's own terms", () => {
+    const docs = readFileSync(new URL("../web/app/docs/page.jsx", import.meta.url), "utf8");
+    expect(docs).toContain('id="what-we-saw"');
+    expect(docs).toContain("/api/v1/receipts/&#123;id&#125;/privacy");
+    expect(docs).toContain("privacyLabel");
+    expect(docs).toContain("/verify/?r=");
+  });
+});
+
 // ---- through the router ------------------------------------------------------------------------------------------
 
 const GW_MODEL = "acme/attested-chat";

@@ -30,6 +30,66 @@ const receipt = {
     paid_with: { token: "NVDA", raw_units: "<units>", fair_price: "<18-decimal USD>", swap_tx: "<tx once swapped>" },
   },
 };
+// GET /api/v1/receipts/{id}/privacy for an attested-lane call paid from a key; the four long sentences are elided here and read in full in the response.
+const privacyExample = {
+  "data": {
+    "receipt_id": "gen-1790461071-M1D5SJxd7YpD5A",
+    "lane": "attested",
+    "label": {
+      "prompt_readers": {
+        "router": true,
+        "provider": {
+          "id": "attested-gateway",
+          "access": "attested_enclave",
+          "reply_withheld": false
+        },
+        "text": "…"
+      },
+      "network": {
+        "hidden": false,
+        "via": null,
+        "stored": false,
+        "counter": "none",
+        "text": "…"
+      },
+      "payment": {
+        "kind": "key_balance",
+        "identifies": "api_key",
+        "text": "…"
+      },
+      "stored": {
+        "prompt_text": false,
+        "reply_text": false,
+        "client_address": false,
+        "fingerprints": true,
+        "linked_to": "api_key",
+        "cache": "never",
+        "records": [
+          "…"
+        ],
+        "public_by_id": true,
+        "text": "…"
+      },
+      "hardware": {
+        "attested": true,
+        "tee": "Intel TDX",
+        "gpu_attested": true,
+        "verified_by": "gateway_receipt",
+        "development_report": false,
+        "text": "…"
+      }
+    },
+    "summary": [
+      "Read by: AnyRoute's router (in memory, to route it) and the provider's attested enclave (attested-gateway).",
+      "Your IP address: seen by AnyRoute's servers when you connected; not saved with this answer.",
+      "Paid with: an API key's balance. The receipt names the key by its hash.",
+      "Kept: token counts, cost, timing and hashes of the request and reply. Not kept: the prompt or the reply text.",
+      "Hardware: attested (Intel TDX with GPU attestation), checked from the gateway's signed receipt."
+    ],
+    "short": "Read by: router + proven enclave · IP: seen, not saved · Paid: API key balance",
+    "verify_url": "https://router.example/verify?r=gen-1790461071-M1D5SJxd7YpD5A"
+  }
+};
 const councilRequest = JSON.stringify(
   {
     model: "anyroute/council",
@@ -542,7 +602,8 @@ const endpoints = [
   ["GET /api/v1/tlog/rekor · /tlog/rekor/key · /tlog/rekor/{size}", "Transparency log with Rekor anchoring, where enabled: the anchoring key (ECDSA P-256), the anchored checkpoints, and one checkpoint’s Rekor entry with its log index, integrated time, inclusion proof and signed entry timestamp"],
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt (v1, or v2 with its chain head and Merkle path); signing keys (JWKS)"],
-  ["GET /api/v1/receipts/:id · /receipts/:id/proof", "A receipt by id, v2 beside v1 (?format=cose for the COSE bytes); the Merkle path to its hourly root, with anchored true only once that root is on chain"],
+  ["GET /api/v1/receipts/:id · /receipts/:id/proof", "A receipt by id, v2 beside v1 (?format=cose for the COSE bytes), with its privacy label beside the signed payload; the Merkle path to its hourly root, with anchored true only once that root is on chain"],
+  ["GET /api/v1/receipts/:id/privacy", "What we saw: who could read the prompt, who saw the address, how it was paid, what was kept and what hardware answered, in plain English and as fields, computed from the signed receipt. Public by id"],
   ["GET /api/v1/host-anchors/proof/:leaf · POST /host-anchors/proof", "Where enabled: the Merkle path from a receipt a provider’s sidecar signed (by its leaf, or the receipt itself) to that host’s root, with the attestation reference and receipt key every leaf in the root was checked against; anchored true only once the root is on chain"],
   ["GET /.well-known/anyroute-receipt-keys.json", "The same signing keys at a fixed path, for clients that verify receipts themselves"],
   ["GET /api/v1/attestation/:providerId", "What the router has verified about a provider’s hardware attestation: status, verifiers, measurements, transparency-log and on-chain state, and what was not checked"],
@@ -582,6 +643,7 @@ export default function Docs() {
             <a href="#payments">Payments</a>
             <a href="#x402">x402</a>
             <a href="#receipts">Receipts</a>
+            <a href="#what-we-saw">What we saw</a>
             <a href="#council">Council</a>
             <a href="#mcp">MCP</a>
             <a href="#anthropic">Anthropic</a>
@@ -872,6 +934,42 @@ export default function Docs() {
             one. datacenter_region is set only when every endpoint reports the same single region.
           </p>
           <Code label="GET /api/v1/models (new fields)">{modelAttestation}</Code>
+          <h2 id="what-we-saw">What we saw: a privacy label for every answer.</h2>
+          <p>
+            GET /api/v1/receipts/&#123;id&#125;/privacy reads a receipt back in plain English: who could read the prompt, who saw your network address, how the call was paid, what the router kept and what hardware answered. It is public by id, like the receipt.
+            The router works it out from the receipt’s signed fields (lane, disclosure, mode, payer, nullifier, attestation and, for an attested gateway, upstream_attestation) and from what its code does for that combination. A field a receipt does not carry is
+            reported as not recorded and never assumed to be favourable. GET /api/v1/receipts/&#123;id&#125; returns the same label as privacy, beside the signed payload and never inside it, so nothing that is signed changes. The MCP chat tool returns the
+            summary with its result, the Telegram bot puts a one-line form above each answer’s footer, and <a href="/verify/" className="inline-link">the verify page</a> shows the label for a receipt id at /verify/?r=&lt;receipt id&gt;.
+          </p>
+          <ul>
+            <li>
+              <b>Who could read the prompt.</b> The router reads every prompt in memory to route it, on every lane. It then reaches the provider. The label calls that an attested enclave only when the receipt shows the router had verified the provider’s hardware
+              attestation and, for an attested gateway, that the gateway’s signed receipt for the exchange checked out. Otherwise it is a provider that documents a no-retention policy no hardware backs, or one that may keep the prompt under its own terms. When the router
+              withheld a reply because that check failed, the label says the provider had already read the prompt.
+            </li>
+            <li>
+              <b>Who saw your address.</b> On the unlinkable lane, nobody at AnyRoute: the lane is served only to requests that arrive over Tor (or through an independent relay), and a direct request is refused before it is served. On any other lane AnyRoute’s servers saw the
+              address the request came from. Its software writes that address to no table: the record of a call has no column for it. A call with no API key (a blind token, a wallet or an x402 payment) is rate-limited per address, so for about a minute the address is the key of a
+              counter; a call with a key is limited per key and uses no address. What the network provider that hosts the router logs is outside what a receipt can show, and the label says so.
+            </li>
+            <li>
+              <b>How it was paid.</b> An API key’s balance, Stock Token pay-with, your own provider key, a blind token, a wallet or an x402 payment, and so what the receipt names: a key hash, a wallet address, or only the hash of a spent token. A blind token is signed blind,
+              so the token itself cannot be matched to its purchase; the timing and size of purchases and spends can still hint at a link.
+            </li>
+            <li>
+              <b>What was kept.</b> Token counts, cost, timing, SHA-256 fingerprints of the request and the reply, the payer as above, the providers tried and a ledger line for the charge. There is no column for a prompt, a reply or an address. The response cache is
+              opt-in and holds an encrypted copy until it expires; it is never used on the attested or unlinkable lanes or with a blind token. Anyone who has a receipt’s id can read the receipt.
+            </li>
+            <li>
+              <b>What hardware answered.</b> Attested only where the receipt says so and the check behind it passed; the TEE type comes from the router’s attestation record for the receipt’s attestation hash; GPU only where the gateway’s receipt asserted it. A
+              development report is labelled as one and is never called attested.
+            </li>
+          </ul>
+          <Code label="GET /api/v1/receipts/{id}/privacy · attested lane, paid from a key">{JSON.stringify(privacyExample, null, 2)}</Code>
+          <p>
+            The label reads a receipt; it does not check it. Verify the signature first (POST /api/v1/receipts/verify, the verify page or an SDK), then compute the label on your side: privacyLabel(receipt) in @anyroute/client gives the router’s label for any receipt you hold
+            (pass teeKind if you know the attestation’s TEE type), and fetchPrivacyLabel(baseUrl, id) reads the router’s.
+          </p>
           <h2 id="council">Ask several models, or the same one twice.</h2>
           <p>
             Two opt-in modes, available when the router enables them (the ANYROUTE_FEATURE_COUNCIL setting, off by default). Neither streams. Every call they make is routed, billed and receipted like a request of its own, and the worst case of all of
@@ -1156,6 +1254,9 @@ export default function Docs() {
             (readAttestedAnchor over any RPC endpoint you choose), the root, provider and attestation on chain. A root kept off chain is reported as off chain, never as anchored.
           </p>
           <Code label="TypeScript · receipts, disclosure and lane">{sdkReceipt}</Code>
+          <p>
+            privacyLabel(receipt) turns a receipt you have verified into the plain-English label the router serves at GET /api/v1/receipts/:id/privacy (see What we saw above), computed on your side from the signed fields alone; fetchPrivacyLabel(baseUrl, receiptId) reads the router’s.
+          </p>
           <h3>Attested providers</h3>
           <p>
             Give a request an attested option and the client checks the provider first and sends nothing unless every check passes. It reads the router’s record (GET /api/v1/attestation/:providerId) and the provider’s own /attest document, then checks that the router reports the provider
@@ -1179,7 +1280,7 @@ export default function Docs() {
             <a href="/verify/" className="inline-link">
               The verify page
             </a>{" "}
-            shows what the router has recorded for a provider (/verify/?p=&lt;provider id&gt;) and checks a pasted receipt in your browser. It reads the router’s record only; use an SDK to check the provider itself.
+            shows what the router has recorded for a provider (/verify/?p=&lt;provider id&gt;), the privacy label of a receipt id (/verify/?r=&lt;receipt id&gt;) and checks a pasted receipt in your browser. It reads the router’s record only; use an SDK to check the provider itself.
           </p>
           <h2 id="run-a-provider">Run a provider.</h2>
           <p>

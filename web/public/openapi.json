@@ -832,7 +832,7 @@
         ],
         "operationId": "getReceipt",
         "summary": "Read a public receipt proof",
-        "description": "Returns the v1 fields unchanged and, when the receipt has one, its v2 encoding in v2 (version is then 2). With format=cose the COSE_Sign1 bytes themselves are returned (application/cose), or as base64 text with encoding=base64; 404 when the receipt has no v2 encoding.",
+        "description": "Returns the v1 fields unchanged and, when the receipt has one, its v2 encoding in v2 (version is then 2). With format=cose the COSE_Sign1 bytes themselves are returned (application/cose), or as base64 text with encoding=base64; 404 when the receipt has no v2 encoding. The response also carries privacy, the plain-English privacy label computed from the payload (see GET /api/v1/receipts/{id}/privacy); it is added beside the signed fields and is not signed.",
         "parameters": [
           {
             "name": "id",
@@ -950,6 +950,52 @@
                   "properties": {
                     "data": {
                       "$ref": "#/components/schemas/ReceiptProof"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/receipts/{id}/privacy": {
+      "get": {
+        "tags": [
+          "Receipts"
+        ],
+        "operationId": "getReceiptPrivacy",
+        "summary": "What we saw: the privacy label for one answer",
+        "description": "Public by id, like the receipt itself. A plain-English label computed from the receipt's signed fields: who could read the prompt, who saw the caller's network address, how the call was paid, what the router kept and what hardware answered, in five short lines (summary) and as structured fields (label). The router reads every prompt in memory to route it on every lane, and the label says so. A field the receipt does not carry is reported as not recorded, never assumed; on an unlinkable receipt the address is reported hidden only because that lane is served solely to requests that arrive over Tor (or an independent relay). The label does not verify the receipt: check its signature with POST /api/v1/receipts/verify or the client library, which also computes the same label with privacyLabel(receipt). The same object is returned as `privacy` by GET /api/v1/receipts/{id}, beside the signed payload and never inside it.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The label.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PrivacyLabel"
                     }
                   }
                 }
@@ -6999,6 +7045,10 @@
                 "type": "null"
               }
             ]
+          },
+          "privacy": {
+            "$ref": "#/components/schemas/PrivacyLabel",
+            "description": "The privacy label derived from payload for readers. It is not part of what is signed."
           }
         }
       },
@@ -10980,6 +11030,316 @@
                 "description": "Pass as before for the next page; null on the last page."
               }
             }
+          }
+        }
+      },
+      "PrivacyLabel": {
+        "type": "object",
+        "required": [
+          "receipt_id",
+          "lane",
+          "label",
+          "summary",
+          "short",
+          "verify_url"
+        ],
+        "description": "The privacy label for one answer, computed from its signed receipt (privacyLabel in @anyroute/client computes the same object from a receipt you hold; teeKind and the unlinkable transports are the two things it takes from the router).",
+        "properties": {
+          "receipt_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lane": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "public",
+              "attested",
+              "unlinkable",
+              null
+            ],
+            "description": "The lane the receipt records, or null for a receipt that predates lanes."
+          },
+          "label": {
+            "type": "object",
+            "required": [
+              "prompt_readers",
+              "network",
+              "payment",
+              "stored",
+              "hardware"
+            ],
+            "properties": {
+              "prompt_readers": {
+                "type": "object",
+                "required": [
+                  "router",
+                  "provider",
+                  "text"
+                ],
+                "properties": {
+                  "router": {
+                    "type": "boolean",
+                    "const": true,
+                    "description": "Always true: the router reads the prompt in memory to route it, on every lane."
+                  },
+                  "provider": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "access",
+                      "reply_withheld"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "access": {
+                        "type": "string",
+                        "enum": [
+                          "attested_enclave",
+                          "documented_policy",
+                          "provider",
+                          "unproven_provider",
+                          "unknown",
+                          "none"
+                        ],
+                        "description": "attested_enclave: the router had verified the provider's hardware attestation (and, for a gateway, its signed receipt checked out). documented_policy: a no-retention policy the provider states, not proven by hardware. provider: may keep or log the prompt under its own terms. unproven_provider: an attested enclave was required or reported and not shown. unknown: the receipt does not say. none: served from the response cache, no provider ran."
+                      },
+                      "reply_withheld": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ],
+                        "description": "true when the router withheld the reply because the attested-enclave check failed; null when the receipt does not show which."
+                      }
+                    }
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              "network": {
+                "type": "object",
+                "required": [
+                  "hidden",
+                  "via",
+                  "stored",
+                  "counter",
+                  "text"
+                ],
+                "properties": {
+                  "hidden": {
+                    "type": "boolean",
+                    "description": "true only on the unlinkable lane."
+                  },
+                  "via": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "tor",
+                      "relay",
+                      "tor_or_relay",
+                      null
+                    ]
+                  },
+                  "stored": {
+                    "type": "boolean",
+                    "const": false,
+                    "description": "AnyRoute's software writes the client address to no table."
+                  },
+                  "counter": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "about_a_minute",
+                      "possible"
+                    ],
+                    "description": "Whether the address was the key of a rate-limit counter that expires about a minute later. Calls with an API key are limited per key (none); a call with no key is limited per address (about_a_minute); possible when the receipt does not say which."
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              "payment": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "identifies",
+                  "text"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "key_balance",
+                      "pay_with_stock_token",
+                      "own_provider_key",
+                      "blind_token",
+                      "wallet_balance",
+                      "x402",
+                      "cache_hit",
+                      "unknown"
+                    ]
+                  },
+                  "identifies": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "api_key",
+                      "wallet",
+                      "spent_token",
+                      null
+                    ],
+                    "description": "What the receipt names as the payer: a key hash, a wallet address, or only the hash of a spent blind token."
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              "stored": {
+                "type": "object",
+                "required": [
+                  "prompt_text",
+                  "reply_text",
+                  "client_address",
+                  "fingerprints",
+                  "linked_to",
+                  "cache",
+                  "records",
+                  "public_by_id",
+                  "text"
+                ],
+                "properties": {
+                  "prompt_text": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "reply_text": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "client_address": {
+                    "type": "boolean",
+                    "const": false
+                  },
+                  "fingerprints": {
+                    "type": "boolean",
+                    "description": "SHA-256 fingerprints of the request and the reply are kept."
+                  },
+                  "linked_to": {
+                    "type": "string",
+                    "enum": [
+                      "api_key",
+                      "wallet",
+                      "nobody",
+                      "unknown"
+                    ]
+                  },
+                  "cache": {
+                    "type": "string",
+                    "enum": [
+                      "never",
+                      "only_if_requested",
+                      "cache_hit"
+                    ],
+                    "description": "The opt-in response cache holds an encrypted copy of a prompt and reply until it expires. It is never used on the attested or unlinkable lanes or with a blind token; on the public lane only if the request asked for it."
+                  },
+                  "records": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "public_by_id": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              "hardware": {
+                "type": "object",
+                "required": [
+                  "attested",
+                  "tee",
+                  "gpu_attested",
+                  "verified_by",
+                  "development_report",
+                  "text"
+                ],
+                "properties": {
+                  "attested": {
+                    "type": "boolean"
+                  },
+                  "tee": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The TEE type from the router's attestation record for the receipt's attestation hash, when the receipt cites one; null when not known."
+                  },
+                  "gpu_attested": {
+                    "type": "boolean",
+                    "description": "true only when the gateway's signed receipt asserted GPU attestation."
+                  },
+                  "verified_by": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "gateway_receipt",
+                      "router_attestation",
+                      null
+                    ]
+                  },
+                  "development_report": {
+                    "type": "boolean",
+                    "description": "true when the attestation behind the call was a development report, which is not a hardware proof."
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "summary": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 5,
+            "items": {
+              "type": "string"
+            },
+            "description": "Three to five short lines a person who is not a developer can read."
+          },
+          "short": {
+            "type": "string",
+            "description": "The same in one line, for a chat message."
+          },
+          "verify_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The verify page for this receipt, when the router's address is known."
           }
         }
       }
