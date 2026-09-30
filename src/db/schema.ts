@@ -1208,3 +1208,50 @@ export const characterMemory = pgTable(
   },
   (t) => [index("character_memory_account_scope_idx").on(t.accountId, t.scope)],
 );
+
+// Secured Skills Hub (src/skills/): agent skill folders (SKILL.md plus scripts and resources) imported from a repository, an
+// uploaded archive or a mirrored registry, stored as one canonical tar with its sha256 and the static scan report.
+export const skills = pgTable(
+  "skills",
+  {
+    id: text("id").primaryKey(), // sk_ + the first 24 hex characters of content_hash
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    version: text("version").notNull(),
+    description: text("description").notNull(),
+    author: text("author").notNull(), // as written in SKILL.md frontmatter
+    accountId: text("account_id"), // the publishing account, paid the author share of installs; null for a mirrored skill
+    createdBy: text("created_by"), // key hash that imported it; null for the mirror job
+    source: jsonb("source").notNull(), // { kind: upload | git | mirror, repo?, ref?, commit?, path?, registry? }
+    files: jsonb("files").notNull(), // [{ path, type, mode, size, sha256, target? }] in canonical order
+    contentHash: text("tar_sha256").notNull(), // content hash: sha256 of the canonical tar
+    archive: text("archive").notNull(), // base64 of the gzipped canonical tar
+    size: integer("size").notNull(),
+    fileCount: integer("file_count").notNull(),
+    level: text("level").notNull(), // trusted | caution | dangerous
+    score: integer("score").notNull(),
+    report: jsonb("report").notNull(), // the scan report (src/skills/scanner.ts)
+    priceUsdg: bigint("price_usdg", { mode: "bigint" }).notNull().default(sql`0`), // USDG base units (1e-6); 0 = free
+    revokedAt: ts("revoked_at"),
+    revokedReason: text("revoked_reason"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("skills_tar_sha256_uq").on(t.contentHash), index("skills_slug_idx").on(t.slug), index("skills_level_idx").on(t.level)],
+);
+
+export const skillInstalls = pgTable(
+  "skill_installs",
+  {
+    id: text("id").primaryKey(),
+    skillId: text("skill_id").notNull(),
+    accountId: text("account_id").notNull(), // the installer
+    keyHash: text("key_hash"),
+    priceUsdg: bigint("price_usdg", { mode: "bigint" }).notNull(),
+    authorShare: money("author_share").notNull(), // pico-USD credited to the author
+    fee: money("fee").notNull(), // pico-USD network fee
+    receipt: jsonb("receipt").notNull(), // { payload, signature: { alg, key_id, sig } }
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("skill_installs_skill_account_uq").on(t.skillId, t.accountId), index("skill_installs_account_idx").on(t.accountId)],
+);

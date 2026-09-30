@@ -19,6 +19,7 @@ import { runBuyback } from "./buyback.ts";
 import { ALERT_INTERVAL_MS, runAlertNotifier } from "./alerts.ts";
 import { TelegramBot, type RouterCall } from "./telegram.ts";
 import { runBatches, type Dispatch } from "./batches.ts";
+import { runSkillsMirror } from "../skills/service.ts";
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
@@ -58,6 +59,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   jobs.register("alert-notifier", ALERT_INTERVAL_MS, () => runAlertNotifier(ctx), { atStart: true });
   // Batch API: runs queued batch lines in spare capacity, expires overdue batches and deletes results past BATCH_RESULTS_TTL.
   if (dispatch) jobs.register("batches", cfg.batch.intervalMs, () => runBatches(ctx, dispatch));
+  // Skills Hub mirror (SKILLS_SOURCES): pulls skills from the listed repositories and registry indexes, scans and stores them.
+  if (cfg.skills.sources.length) jobs.register("skills-mirror", cfg.skills.mirrorIntervalMs, () => runSkillsMirror(ctx));
   // Long-polls Telegram: one getUpdates cycle per run, re-run every second (Jobs never overlaps a job with itself).
   if (cfg.telegram.botToken && router) {
     const bot = new TelegramBot(ctx, { token: cfg.telegram.botToken, router });

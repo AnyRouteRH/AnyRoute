@@ -143,6 +143,14 @@ const redisFamilies: RedisFamily[] = [
     evidence: [ev("src/api/chat.ts", "await limitOrThrow(ctx, `kt:${billing.key.keyHash}`"), ev("src/api/council.ts", "tk.limitOrThrow(ctx, `kt:${billing.key.keyHash}`")],
   }),
   limit({
+    prefix: "skills-import:",
+    shape: "skills-import:<key hash>",
+    purpose: "Skill imports per hour for one API key (each import may fetch a repository and runs the scanner).",
+    holds: "key-hash",
+    seconds: 3600,
+    evidence: [ev("src/api/skills.ts", "await ctx.limiter.take(`skills-import:${key.keyHash}`")],
+  }),
+  limit({
     prefix: "blind:buy:",
     shape: "blind:buy:<key hash>",
     purpose: "Blind-token purchases per minute for one API key.",
@@ -477,6 +485,15 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     then: "Validated against a strict schema with no field for message text, then stored.",
     kept: "The route in saved_routes.",
     evidence: [ev("src/api/saved-routes.ts", "routeCreateSchema.parse(await readJson(c))")],
+  },
+  {
+    file: "src/api/skills.ts",
+    carries: "public-data",
+    reads:
+      "A skill to publish: a repository URL, ref and folder, or an uploaded .tar.gz, .tar or .zip of a skill folder (SKILL.md, scripts and resources), and an optional price; an author's new price; an operator's revocation reason.",
+    then: "The archive is read in memory under size, file-count and path limits (nothing is extracted to disk), normalised into one canonical tar, hashed and scanned; a repository is fetched at depth 1 and its tree read without a checkout.",
+    kept: "The published skill, its hash and scan report in skills; installs in skill_installs.",
+    evidence: [ev("src/api/skills.ts", "importSchema.parse(await readJson(c))"), ev("src/api/skills.ts", "new Uint8Array(await c.req.arrayBuffer())"), ev("src/skills/archive.ts", "Nothing is extracted to disk")],
   },
   {
     file: "src/api/presets.ts",

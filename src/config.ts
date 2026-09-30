@@ -273,6 +273,17 @@ const schema = z.object({
   BATCH_CONCURRENCY: int(4), // lines run at once
   BATCH_LINE_MAX_ATTEMPTS: int(3), // tries for a line whose providers were all unavailable
 
+  // Secured Skills Hub (/api/v1/skills): agent skills imported from a repository or an archive, scanned, hashed and served.
+  SKILLS_MAX_BYTES: int(5 * 1024 * 1024), // unpacked bytes of one skill (and the most an uploaded archive may be)
+  SKILLS_MAX_FILES: int(500), // files in one skill
+  SKILLS_ALLOWED_HOSTS: opt, // comma-separated hosts added to the scanner's network allowlist (a host also covers its subdomains)
+  SKILLS_DOWNLOAD_LEVELS: z.string().default("trusted,caution"), // scan levels that may be downloaded and installed
+  SKILLS_FEE_BPS: z.coerce.number().int().min(0).max(5000).default(1000), // network fee on a paid install; the author gets the rest
+  SKILLS_GIT_TIMEOUT_MS: int(30_000),
+  SKILLS_ALLOW_LOCAL_GIT: bool.default(false), // file:// and local paths as import sources (never in production)
+  SKILLS_SOURCES: opt, // mirror job sources, JSON: [{ "kind": "git", "url", "ref"?, "paths"? } | { "kind": "index", "url" }]
+  SKILLS_MIRROR_INTERVAL_MS: int(6 * 3_600_000),
+
   // Default per-key limits (0 = unlimited)
   DEFAULT_RPM: int(600),
   DEFAULT_TPM: int(0),
@@ -445,7 +456,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.IPX_KEEPER_PRIVATE_KEY && (escrowMode || Object.values(roleKeys).some(Boolean))) throw new Error("IPX_KEEPER_PRIVATE_KEY must be isolated from every other signing role.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -687,6 +698,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       concurrency: Math.max(1, e.BATCH_CONCURRENCY),
       maxAttempts: Math.max(1, e.BATCH_LINE_MAX_ATTEMPTS),
     },
+    skills: skillsSettings(e, production),
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
     telegram: { botToken: e.TELEGRAM_BOT_TOKEN },
@@ -743,6 +755,38 @@ function hostAnchorSettings(e: Env) {
 }
 
 // ---- Transparency log --------------------------------------------------------------------------------------------
+export type SkillSource = { kind: "git"; url: string; ref?: string; paths?: string[] } | { kind: "index"; url: string };
+const skillSourceSchema = z.array(
+  z.union([
+    z.object({ kind: z.literal("git"), url: z.string().min(1).max(512), ref: z.string().max(128).optional(), paths: z.array(z.string().max(255)).max(200).optional() }).strict(),
+    z.object({ kind: z.literal("index"), url: z.string().url().max(512) }).strict(),
+  ]),
+).max(50);
+
+function skillsSettings(e: Env, production: boolean) {
+  let sources: SkillSource[] = [];
+  if (e.SKILLS_SOURCES?.trim()) {
+    try {
+      sources = skillSourceSchema.parse(JSON.parse(e.SKILLS_SOURCES)) as SkillSource[];
+    } catch {
+      throw new Error("SKILLS_SOURCES must be a JSON array of { kind: git, url, ref?, paths? } or { kind: index, url } sources.");
+    }
+  }
+  const levels = e.SKILLS_DOWNLOAD_LEVELS.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!levels.length || levels.some((l) => !["trusted", "caution", "dangerous"].includes(l))) throw new Error("SKILLS_DOWNLOAD_LEVELS lists trusted, caution and/or dangerous.");
+  return {
+    maxBytes: e.SKILLS_MAX_BYTES,
+    maxFiles: e.SKILLS_MAX_FILES,
+    extraHosts: (e.SKILLS_ALLOWED_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean),
+    downloadLevels: levels as ("trusted" | "caution" | "dangerous")[],
+    feeBps: e.SKILLS_FEE_BPS,
+    gitTimeoutMs: e.SKILLS_GIT_TIMEOUT_MS,
+    allowLocalGit: e.SKILLS_ALLOW_LOCAL_GIT && !production,
+    sources,
+    mirrorIntervalMs: Math.max(60_000, e.SKILLS_MIRROR_INTERVAL_MS),
+  };
+}
+
 function tlogSettings(e: Env, production: boolean) {
   if (e.TLOG_REKOR_ENABLED && !e.TLOG_ENABLED) throw new Error("TLOG_REKOR_ENABLED needs TLOG_ENABLED: it records the transparency log's checkpoints in Rekor.");
   if (e.TLOG_DATA_INVENTORY && !e.TLOG_ENABLED) throw new Error("TLOG_DATA_INVENTORY needs TLOG_ENABLED: it appends the data inventory's hash to the transparency log.");
