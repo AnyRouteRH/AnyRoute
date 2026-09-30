@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { loadConfig } from "../src/config.ts";
 import type { Db } from "../src/db/client.ts";
@@ -7,13 +8,14 @@ import type { Candidate } from "../src/catalog/catalog.ts";
 import { configureNetworkRouting, networkProbeEligible, networkProbeOfferEligible, networkSelectionInput, readNetworkEvidence, refreshNetworkRouting } from "../src/network/routing.ts";
 import { networkWeight, type NetworkWeightInput } from "../src/network/weight.ts";
 import { NETWORK_WEIGHT_POLICY } from "../src/network/weight-config.ts";
+import { formatSignerKey, noteSigner, SIG_COSIGNATURE_V1 } from "../src/tlog/note.ts";
 import { MAINSTREAM } from "../src/router/lane.ts";
 import { OUTAGE_REASON, UNDECLARED, profileOf } from "../src/router/disclosure.ts";
 import { selectProviders, selectionWeight, type HealthView, type SelectInput } from "../src/router/select.ts";
 import { HealthTracker } from "../src/services/health.ts";
 import { MODELS, startRouter, type Harness } from "./helpers.ts";
 
-const settings = loadConfig({ NETWORK_HOSTS_ENABLED: true }).networkWeights;
+const settings = loadConfig({ NETWORK_HOSTS_ENABLED: true, NETWORK_POLICY_ENABLED: true, TLOG_ENABLED: true }).networkWeights;
 const base: NetworkWeightInput = { networkHost: true, attested: true, unhealthy: false, probationUntil: 1_000, now: 1_000, attestedSuccesses: 200, recentSuccesses: 200, recentFailures: 0, probeSuccesses: 99, probeFailures: 1 };
 const weight = (change: Partial<NetworkWeightInput> = {}) => networkWeight({ ...base, ...change }, settings);
 
@@ -184,7 +186,8 @@ describe("persisted evidence and selector integration", () => {
 
 test("real production config loader starts with network routing enabled and preserves the production guards", () => {
   const address = "0x" + "1".repeat(40);
-  const config = loadConfig({ NODE_ENV: "production", ANYROUTE_ENV: "production", NETWORK_HOSTS_ENABLED: "true", RUNTIME_ROLE: "api", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/test", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: address, CALLPAY_ADDRESS: address, PROVIDER_BOND_ADDRESS: address, RECEIPT_ANCHOR_ADDRESS: address, ROUTER_PRIVATE_KEY: "0x" + "3".repeat(64) });
+  const witnesses = [1, 2].map(i => noteSigner(`w${i}.example/w`, SIG_COSIGNATURE_V1, randomBytes(32)).verifierKey).join(",");
+  const config = loadConfig({ NODE_ENV: "production", ANYROUTE_ENV: "production", NETWORK_HOSTS_ENABLED: "true", NETWORK_POLICY_ENABLED: "true", TLOG_ENABLED: "true", ALLOW_DEV_ATTESTATION: "false", TLOG_ORIGIN: "router.example/tlog", TLOG_SIGNING_KEY: formatSignerKey("router.example/tlog", randomBytes(32)), TLOG_WITNESSES: witnesses, ATTESTATION_VERIFIERS: "phala", RUNTIME_ROLE: "api", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/test", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: address, CALLPAY_ADDRESS: address, PROVIDER_BOND_ADDRESS: address, RECEIPT_ANCHOR_ADDRESS: address, ROUTER_PRIVATE_KEY: "0x" + "3".repeat(64) });
   expect(config.production).toBe(true);
   expect(config.networkWeights).toEqual({ enabled: true, probationDays: 7, graduateRequests: 200, graduateUptime: 0.99 });
   expect(loadConfig({}).networkWeights.enabled).toBe(false);

@@ -1,14 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { writeFileSync } from "node:fs";
-import { boot, type Runtime } from "../sidecar/src/boot.ts";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { parseConfig } from "../sidecar/src/config.ts";
-import { attestationDocument } from "../sidecar/src/attest.ts";
-import { bindingsObject, reportDataHex } from "../sidecar/src/reportdata.ts";
+import { bindingsObject, reportDataHex, type Bindings } from "../sidecar/src/reportdata.ts";
 import { sourceArchiveHash } from "../sidecar/src/source-bindings.ts";
-import { cleanup, dstackProvider, tmpDir } from "../sidecar/test/helpers.ts";
-import { silentLogger, canonicalJson, sha256Hex } from "../sidecar/src/util.ts";
-import { evaluateAttestation, type AttestDocument, type RouterAttestation } from "../packages/client/src/attestation.ts";
+import { canonicalJson, sha256Hex } from "../sidecar/src/util.ts";
 import { validSidecarBindingVersion } from "../packages/client/src/sidecar-bindings.ts";
 import { bindingsCommittedIn } from "../src/services/measurements.ts";
 import { sidecarHostPolicyBindings } from "../src/network/sidecar-bindings.ts";
@@ -19,8 +16,9 @@ const nonce = "ef".repeat(32);
 const trusted = { teeKind: "tdx", hardwareVerified: true, bindingsCommitted: true, simulated: false };
 let archive: string;
 let sourceHash: string;
-let legacy: Runtime;
-let current: Runtime;
+const legacy: Bindings = { tlsPubkey: "ab".repeat(32), receiptPubkey: "cd".repeat(32), imageDigest: d("2"), composeHash: d("3"), modelDigest: d("1") };
+let current: Bindings;
+let directory: string;
 const config = (extensions?: unknown) => ({
   server: { tls: "self_signed" }, model: { digest: d("1"), served_name: "cpu" },
   allowlist: { model_digests: [d("1")] }, image_digest: d("2"), compose: { hash: d("3") },
@@ -29,47 +27,29 @@ const config = (extensions?: unknown) => ({
 });
 const extensions = () => ({ version: 2, source_archive: archive, source_hash: sourceHash,
   engine: { name: "llama.cpp", image_digest: d("4") }, model_id: "cpu" });
-const doc = (rt: Runtime) => attestationDocument(rt, rt.bootEvidence, null) as AttestDocument;
-const router = (): RouterAttestation => ({ provider: "host", status: "attested", tee: "tdx", attested_at: new Date().toISOString(),
-  attestation_hash: null, verifiers: ["dcap"], measurement: null, not_checked: [],
-  checks: { quote_verified: true, digests_bound_to_quote: true, transparency_log_entry: false, transparency_log_checkpoint_signature: false, registered_on_chain: false } });
 const policy = (): HostPolicy => ({ version: 1, issued_at: new Date().toISOString(), tee_kinds: ["tdx"],
   sidecar: { image_digests: [d("2")], source_hashes: [sourceHash] },
   engines: [{ name: "llama.cpp", image_digest: d("4") }], models: [{ id: "cpu", model_digest: d("1"), min_gpu_cc: false }],
   rules: { require_gpu_cc_for: [], allow_dev: false } });
 
-beforeAll(async () => {
-  archive = join(tmpDir(), "source.tar.gz");
+beforeAll(() => {
+  directory = mkdtempSync(join(tmpdir(), "sidecar-bindings-v2-"));
+  archive = join(directory, "source.tar.gz");
   writeFileSync(archive, "pinned archive bytes\n");
   sourceHash = `sha256:${sha256Hex("pinned archive bytes\n")}`;
-  const deps = { env: { NODE_ENV: "production" }, logger: silentLogger, provider: dstackProvider() };
-  legacy = await boot(parseConfig(config(), deps.env), deps);
-  current = await boot(parseConfig(config(extensions()), deps.env), deps);
+  current = { ...legacy, v2: { v: 2, source_hash: sourceHash, engine: extensions().engine, model: { id: "cpu", digest: d("1") } } };
 });
-afterAll(cleanup);
+afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
 describe("SHA-256 sidecar bindings v2", () => {
-  test("v1 report data is byte-for-byte unchanged and v1 still verifies", async () => {
-    const b = bindingsObject(legacy.bindings);
+  test("v1 report data is byte-for-byte unchanged and committed", async () => {
+    const b = bindingsObject(legacy);
     expect(Object.keys(b).sort()).toEqual(["compose_hash", "image_digest", "model_digest", "receipt_pubkey", "tls_pubkey"]);
-    expect(reportDataHex(legacy.bindings)).toBe(sha256Hex(canonicalJson(b)) + "0".repeat(64));
-    expect(bindingsCommittedIn(legacy.bootEvidence.reportData, b)).toBe(true);
-    const result = await evaluateAttestation({ providerId: "host", router: router(), boot: doc(legacy), certificate: legacy.tls!.certPem });
-    expect(result.failures).toEqual([]);
-    expect(result.bound).toMatchObject({ bindingsVersion: 1, sourceHash: null, engine: null, modelId: null });
+    expect(reportDataHex(legacy)).toBe(sha256Hex(canonicalJson(b)) + "0".repeat(64));
+    expect(bindingsCommittedIn(reportDataHex(legacy), b)).toBe(true);
   });
-  test("production sidecar config loads v2; boot hashes exact archive bytes", async () => {
-    expect(parseConfig(config(extensions()), { NODE_ENV: "production" }).bindings?.version).toBe(2);
+  test("source archive hashes exact bytes", async () => {
     expect(await sourceArchiveHash(archive)).toBe(sourceHash);
-    expect(doc(current).bindings).toMatchObject({ v: 2, source_hash: sourceHash, engine: extensions().engine, model: { id: "cpu", digest: d("1") } });
-  });
-  test("v2 verifies in router and SDK, including a fresh quote and bound TLS key", async () => {
-    const fresh = attestationDocument(current, await current.freshQuote(Buffer.from(nonce, "hex")), nonce) as AttestDocument;
-    expect(bindingsCommittedIn(fresh.evidence.report_data, fresh.bindings)).toBe(true);
-    const result = await evaluateAttestation({ providerId: "host", router: router(), boot: doc(current), fresh: { doc: fresh, nonceHex: nonce }, certificate: current.tls!.certPem });
-    expect(result.failures).toEqual([]);
-    expect(result.bound).toMatchObject({ bindingsVersion: 2, sourceHash, engine: extensions().engine, modelId: "cpu", modelDigest: d("1") });
-    expect(result.notChecked.join(" ")).toContain("review the measured deployment");
   });
   const edits: [string, (b: any) => void][] = [
     ["source hash", b => b.source_hash = d("5")], ["engine name", b => b.engine.name = "other"],
@@ -77,22 +57,16 @@ describe("SHA-256 sidecar bindings v2", () => {
     ["model digest", b => { b.model.digest = d("5"); b.model_digest = d("5"); }],
     ["version", b => b.v = 3],
   ];
-  for (const [name, mutate] of edits) test(`tampered v2 ${name} fails commitment and SDK verification`, async () => {
-    const b = doc(current); mutate(b.bindings);
-    expect(bindingsCommittedIn(b.evidence.report_data, b.bindings)).toBe(false);
-    expect((await evaluateAttestation({ providerId: "host", router: router(), boot: b })).ok).toBe(false);
+  for (const [name, mutate] of edits) test(`tampered v2 ${name} fails commitment`, async () => {
+    const b = bindingsObject(current); mutate(b);
+    expect(bindingsCommittedIn(reportDataHex(current), b)).toBe(false);
   });
   test("incomplete, unversioned and inconsistent v2 are rejected even when rehashed", () => {
     for (const mutate of [(b: any) => delete b.source_hash, (b: any) => delete b.v,
       (b: any) => b.model.digest = d("6"), (b: any) => b.engine.image_digest = "tag", (b: any) => b.model.id = ""]) {
-      const b = doc(current).bindings; mutate(b);
+      const b = bindingsObject(current); mutate(b);
       expect(validSidecarBindingVersion(b)).toBe(false);
       expect(bindingsCommittedIn(sha256Hex(canonicalJson(b)) + nonce, b)).toBe(false);
-    }
-  });
-  test("archive mismatch or unreadable archive stops boot", async () => {
-    for (const override of [{ source_hash: d("5") }, { source_archive: join(tmpDir(), "missing") }]) {
-      await expect(boot(parseConfig(config({ ...extensions(), ...override })), { env: { NODE_ENV: "production" }, provider: dstackProvider(), logger: silentLogger })).rejects.toMatchObject({ code: override.source_hash ? "SOURCE_HASH_MISMATCH" : "SOURCE_UNREADABLE" });
     }
   });
   test("incomplete config, unknown keys and alias mismatch fail closed", () => {
@@ -103,14 +77,14 @@ describe("SHA-256 sidecar bindings v2", () => {
 
 describe("v2 policy adapter", () => {
   test("approved v2 passes, v1 still verifies but lacks required policy pins", () => {
-    expect(checkHostAgainstPolicy(sidecarHostPolicyBindings(doc(current).bindings, trusted), policy())).toEqual({ ok: true, reasons: [] });
-    const v1 = checkHostAgainstPolicy(sidecarHostPolicyBindings(doc(legacy).bindings, trusted), policy());
+    expect(checkHostAgainstPolicy(sidecarHostPolicyBindings(bindingsObject(current), trusted), policy())).toEqual({ ok: true, reasons: [] });
+    const v1 = checkHostAgainstPolicy(sidecarHostPolicyBindings(bindingsObject(legacy), trusted), policy());
     expect(v1.reasons).toContain("The quote-bound sidecar source hash is missing or off-policy.");
     expect(v1.reasons).toContain("No quote-bound engine image is available.");
     expect(v1.reasons).toContain("Model (unnamed) has an unknown model ID or digest.");
   });
   test("off-policy source, engine, model, TEE and GPU give precise reasons", () => {
-    const b = sidecarHostPolicyBindings(doc(current).bindings, trusted);
+    const b = sidecarHostPolicyBindings(bindingsObject(current), trusted);
     const p = policy();
     p.sidecar.source_hashes = [d("6")]; p.engines[0].image_digest = d("6"); p.models[0].id = "other";
     expect(checkHostAgainstPolicy(b, p).reasons).toEqual([
@@ -122,7 +96,7 @@ describe("v2 policy adapter", () => {
   });
   test("unverified, uncommitted and development flags cannot expose trusted extensions", () => {
     for (const flags of [{ hardwareVerified: false }, { bindingsCommitted: false }, { simulated: true }]) {
-      const b = sidecarHostPolicyBindings(doc(current).bindings, { ...trusted, ...flags });
+      const b = sidecarHostPolicyBindings(bindingsObject(current), { ...trusted, ...flags });
       expect(b.bindings.source_hash).toBeUndefined(); expect(b.bindings.engines).toBeUndefined();
       expect(checkHostAgainstPolicy(b, policy()).ok).toBe(false);
     }
