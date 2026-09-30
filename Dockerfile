@@ -12,7 +12,7 @@ RUN bun scripts/gen-inventory.ts --out /out/inventory.generated.json
 FROM node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS web
 WORKDIR /web
 RUN npm install -g pnpm@11.19.0
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/next.config.mjs ./
 COPY web/app ./app

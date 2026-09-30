@@ -17,4 +17,5 @@ web/*
 !web/public
 !web/package.json
 !web/pnpm-lock.yaml
+!web/pnpm-workspace.yaml
 !web/next.config.mjs
