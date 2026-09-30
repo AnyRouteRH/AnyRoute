@@ -30,3 +30,5 @@ cd integrations/elizaos && bun install && bun run typecheck
 ```
 
 Both packages are Apache-2.0, like the client SDK in `packages/client`.
+
+The official SDKs (TypeScript, Python, Go) and the LangChain and LlamaIndex packages live in [`sdks/`](../sdks/).

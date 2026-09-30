@@ -1,0 +1,49 @@
+{
+  "name": "@anyroute/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript SDK for Anyroute: chat, streaming, embeddings, rerank, batches, presets, models with lanes, and offline receipt verification (v1 Ed25519, v2 COSE, streamed chunk chain). @anyroute/client is bundled in, so there are no runtime dependencies.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "anyroute",
+    "openai-compatible",
+    "llm",
+    "router",
+    "receipts",
+    "attested",
+    "batch",
+    "rerank"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnyRouteRH/AnyRoute.git",
+    "directory": "sdks/typescript"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,194 @@
+[
+ {
+  "input": "{}",
+  "expected": "{}"
+ },
+ {
+  "input": "[]",
+  "expected": "[]"
+ },
+ {
+  "input": "null",
+  "expected": "null"
+ },
+ {
+  "input": "true",
+  "expected": "true"
+ },
+ {
+  "input": "false",
+  "expected": "false"
+ },
+ {
+  "input": "0",
+  "expected": "0"
+ },
+ {
+  "input": "-0",
+  "expected": "0"
+ },
+ {
+  "input": "1",
+  "expected": "1"
+ },
+ {
+  "input": "1.0",
+  "expected": "1"
+ },
+ {
+  "input": "1.5",
+  "expected": "1.5"
+ },
+ {
+  "input": "-1.5",
+  "expected": "-1.5"
+ },
+ {
+  "input": "0.1",
+  "expected": "0.1"
+ },
+ {
+  "input": "100",
+  "expected": "100"
+ },
+ {
+  "input": "1e21",
+  "expected": "1e+21"
+ },
+ {
+  "input": "1e20",
+  "expected": "100000000000000000000"
+ },
+ {
+  "input": "1E-7",
+  "expected": "1e-7"
+ },
+ {
+  "input": "1e-6",
+  "expected": "0.000001"
+ },
+ {
+  "input": "0.000001",
+  "expected": "0.000001"
+ },
+ {
+  "input": "123456789012345678901234567890",
+  "expected": "1.2345678901234568e+29"
+ },
+ {
+  "input": "9007199254740993",
+  "expected": "9007199254740992"
+ },
+ {
+  "input": "9007199254740992",
+  "expected": "9007199254740992"
+ },
+ {
+  "input": "-9007199254740993",
+  "expected": "-9007199254740992"
+ },
+ {
+  "input": "5e-324",
+  "expected": "5e-324"
+ },
+ {
+  "input": "1.7976931348623157e308",
+  "expected": "1.7976931348623157e+308"
+ },
+ {
+  "input": "12345678.9",
+  "expected": "12345678.9"
+ },
+ {
+  "input": "0.30000000000000004",
+  "expected": "0.30000000000000004"
+ },
+ {
+  "input": "4.35",
+  "expected": "4.35"
+ },
+ {
+  "input": "1e2",
+  "expected": "100"
+ },
+ {
+  "input": "2.5e-10",
+  "expected": "2.5e-10"
+ },
+ {
+  "input": "1234567890123456789.0",
+  "expected": "1234567890123456800"
+ },
+ {
+  "input": "\"plain\"",
+  "expected": "\"plain\""
+ },
+ {
+  "input": "\"quote\\\" backslash\\\\ slash\\/\"",
+  "expected": "\"quote\\\" backslash\\\\ slash/\""
+ },
+ {
+  "input": "\"\\n\\r\\t\\b\\f\"",
+  "expected": "\"\\n\\r\\t\\b\\f\""
+ },
+ {
+  "input": "\"\\u0000\\u001f\\u007f\"",
+  "expected": "\"\\u0000\\u001f\""
+ },
+ {
+  "input": "\"é ü 日本語 😀\"",
+  "expected": "\"é ü 日本語 😀\""
+ },
+ {
+  "input": "\"\\u2028\\u2029\"",
+  "expected": "\"  \""
+ },
+ {
+  "input": "\"\\ud83d\\ude00\"",
+  "expected": "\"😀\""
+ },
+ {
+  "input": "\"\\ud83d\"",
+  "expected": "\"\\ud83d\""
+ },
+ {
+  "input": "\"\\ude00 lone\"",
+  "expected": "\"\\ude00 lone\""
+ },
+ {
+  "input": "{\"b\":1,\"a\":2}",
+  "expected": "{\"a\":2,\"b\":1}"
+ },
+ {
+  "input": "{\"a\":{\"d\":[3,{\"z\":1,\"x\":2}],\"c\":10},\"b\":1}",
+  "expected": "{\"a\":{\"c\":10,\"d\":[3,{\"x\":2,\"z\":1}]},\"b\":1}"
+ },
+ {
+  "input": "{\"\":0,\"10\":1,\"9\":2,\"a-b\":3,\"A\":4,\"a\":5}",
+  "expected": "{\"9\":2,\"10\":1,\"\":0,\"A\":4,\"a\":5,\"a-b\":3}"
+ },
+ {
+  "input": "{\"é\":1,\"e\":2,\"😀\":3,\"\\uffff\":4,\"\\ud7ff\":5,\"\\ue000\":6}",
+  "expected": "{\"e\":2,\"é\":1,\"퟿\":5,\"😀\":3,\"\":6,\"￿\":4}"
+ },
+ {
+  "input": "{\"n\":[0,-0,1.5,1e21,1e-7,123456789012345680000,-1]}",
+  "expected": "{\"n\":[0,0,1.5,1e+21,1e-7,123456789012345680000,-1]}"
+ },
+ {
+  "input": "{\"k\":null,\"arr\":[null,true,false]}",
+  "expected": "{\"arr\":[null,true,false],\"k\":null}"
+ },
+ {
+  "input": "[[],[[]],{},{\"a\":[]}]",
+  "expected": "[[],[[]],{},{\"a\":[]}]"
+ },
+ {
+  "input": "{\"v\":1,\"type\":\"anyroute.sidecar.receipt\",\"id\":\"rcpt_x\",\"ts\":1790670017149,\"usage\":{\"prompt_tokens\":40,\"completion_tokens\":28,\"total_tokens\":68},\"dev\":false,\"nullifier\":\"\"}",
+  "expected": "{\"dev\":false,\"id\":\"rcpt_x\",\"nullifier\":\"\",\"ts\":1790670017149,\"type\":\"anyroute.sidecar.receipt\",\"usage\":{\"completion_tokens\":28,\"prompt_tokens\":40,\"total_tokens\":68},\"v\":1}"
+ },
+ {
+  "input": "{\"issued\":\"2026-09-15T10:00:00.000Z\",\"tokens\":{\"prompt\":3,\"completion\":4,\"reasoning\":0,\"cached\":0,\"estimated\":false},\"cost\":\"0.00001\",\"paid_with\":null}",
+  "expected": "{\"cost\":\"0.00001\",\"issued\":\"2026-09-15T10:00:00.000Z\",\"paid_with\":null,\"tokens\":{\"cached\":0,\"completion\":4,\"estimated\":false,\"prompt\":3,\"reasoning\":0}}"
+ }
+]

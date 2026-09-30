@@ -1,0 +1,53 @@
+{
+  "name": "@anyroute/langchain",
+  "version": "0.1.0",
+  "description": "Anyroute chat and embeddings for LangChain.js: 350+ models behind one key, a signed receipt on every call, and attested and unlinkable lanes.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "langchain",
+    "anyroute",
+    "openai-compatible",
+    "llm",
+    "attested",
+    "receipts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnyRouteRH/AnyRoute.git",
+    "directory": "sdks/langchain-js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@langchain/openai": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.0.0",
+    "@types/bun": "latest",
+    "@types/node": "^20",
+    "typescript": "^5.9.0"
+  }
+}

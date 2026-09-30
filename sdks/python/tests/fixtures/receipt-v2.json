@@ -1,0 +1,47 @@
+{
+  "note": "Receipt v2 test vector: RFC 8032 test 1 key, fixed claims. Ed25519 is deterministic, so cose is byte-exact.",
+  "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "key_id": "21fe31dfa154a261",
+  "cose": "0oRNogEnBEgh/jHfoVSiYaBZAfyrYXYCY2lhdBpqsTuAY2lzc3ZodHRwczovL3JvdXRlci5leGFtcGxlY3JlcaJhaHhHc2hhMjU2OjExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTFrbl9pbl9idWNrZXRoNTEyLTEwMjRjcmlkdmdlbi0xNzkwMDAwMDAwLWZpeHR1cmVkbGFuZWhzdGFuZGFyZGRub2RloWhwcm92aWRlcnBleGFtcGxlLXByb3ZpZGVyZHJlc3CmYWh4R3NoYTI1NjoxODVmOGRiMzIyNzFmZTI1ZjU2MWE2ZmM5MzhiMmUyNjQzMDZlYzMwNGVkYTUxODAwN2QxNzY0ODI2MzgxOTY5ZWNoYWlueEdzaGEyNTY6NTQzMGIyZWE5MGFjYjg0ZTFjOWM3YTdiZWY0NDI2NjMwNjRhZTc4M2I0ZjYwZGQzY2M0NjgyZjVkYjcwOWU5MGZmaW5pc2hkc3RvcGZzdHJlYW31aGNvbXBsZXRl9WxuX291dF9idWNrZXRjMi00ZW1vZGVsoWJpZG1leGFtcGxlL21vZGVsZmNyZWRpdKJkbW9kZWdwcmVwYWlkamNvc3RfdW5pdHMZAyxqZGlzY2xvc3VyZXB2ZW5kb3ItZm9yd2FyZGVkWEC1OwsDf4omxlUDbxES4bFLJMMTg79ricZ94OeUZE7FFvvmPiOUIzD4JMCieJ5PBupapoIliarO2+6Ww/lxCxsN",
+  "leaf": "0xbc3a2ec426665ddb4b4f3cace4094668fd63c16e0722013584d01f051717f08e",
+  "claims": {
+    "v": 2,
+    "rid": "gen-1790000000-fixture",
+    "iat": 1790000000,
+    "iss": "https://router.example",
+    "model": {
+      "id": "example/model"
+    },
+    "node": {
+      "provider": "example-provider"
+    },
+    "req": {
+      "h": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "n_in_bucket": "512-1024"
+    },
+    "resp": {
+      "h": "sha256:185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969",
+      "n_out_bucket": "2-4",
+      "stream": true,
+      "complete": true,
+      "chain": "sha256:5430b2ea90acb84e1c9c7a7bef442663064ae783b4f60dd3cc4682f5db709e90",
+      "finish": "stop"
+    },
+    "lane": "standard",
+    "disclosure": "vendor-forwarded",
+    "credit": {
+      "mode": "prepaid",
+      "cost_units": 812
+    }
+  },
+  "chunks": [
+    "{\"id\":\"gen-1790000000-fixture\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"}}]}",
+    "{\"id\":\"gen-1790000000-fixture\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"}}]}",
+    "{\"id\":\"gen-1790000000-fixture\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}"
+  ],
+  "chain_steps": [
+    "90011613b9e8d06ed2164476b7910a8907453981f9baed026ddbaf86e6abf01d",
+    "a1f9591b8856331dadd57687d9052c6dbbbff7a34a7e2e6401dd182d4daa0096",
+    "5430b2ea90acb84e1c9c7a7bef442663064ae783b4f60dd3cc4682f5db709e90"
+  ]
+}
