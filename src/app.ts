@@ -26,6 +26,7 @@ import { chatRoutes } from "./api/chat.ts";
 import { modelsRoutes } from "./api/models.ts";
 import { generationRoutes } from "./api/generation.ts";
 import { keysRoutes } from "./api/keys.ts";
+import { teamsRoutes } from "./api/teams.ts";
 import { escrowRoutes } from "./api/escrow.ts";
 import { savedRoutesRoutes } from "./api/saved-routes.ts";
 import { presetsRoutes } from "./api/presets.ts";
@@ -139,6 +140,7 @@ export async function createApp(opts: AppOptions = {}) {
   modelsRoutes(app, ctx);
   generationRoutes(app, ctx);
   keysRoutes(app, ctx);
+  teamsRoutes(app, ctx);
   escrowRoutes(app, ctx);
   savedRoutesRoutes(app, ctx);
   presetsRoutes(app, ctx);

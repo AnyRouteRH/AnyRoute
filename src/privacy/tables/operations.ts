@@ -86,10 +86,12 @@ export const operationTables: Record<string, TableDoc> = {
     purpose: "The router's small key-value store: job status, cursors, cached facts about providers, pending sign-in challenges and Telegram bot state. No request or answer text is written here.",
     request: "no",
     retention:
-      "Per key family: a wallet sign-in challenge is deleted when used and any older than 10 minutes is deleted when the next challenge is made; a Telegram user's row is deleted by /forget; other families are overwritten in place.",
+      "Per key family: a wallet sign-in or team challenge is deleted when used and any older than 10 minutes is deleted when the next challenge is made; a team invite is deleted when used and expired ones when the next invite is made; a Telegram user's row is deleted by /forget; other families are overwritten in place.",
     notes: [
       "telegram:offset, telegram:user:<Telegram user id>: the update cursor, and per user the API key sealed under APP_SECRET, the chosen model and the private-mode switch (services/telegram.ts). Message text is not stored.",
       "wallet-login:<nonce>: a sign-in challenge (wallet address, the router's own origin, chain id, expiry and the message to sign). Deleted when used; older ones are pruned.",
+      "team-invite:<sha256 of the invite>: a single-use team invite (team, role, how to join, expiry and the inviting key's hash). The invite itself is never stored. Deleted when used; expired ones are deleted when the next invite is made.",
+      "team-challenge:<id>: a team join, sign-in or owner challenge (team, method, the WebAuthn challenge or the message to sign, and the wallet address when there is one). Deleted when used; older than 10 minutes are pruned.",
       "job-health:<job>, alerts:state, alerts:lease, backup:last: when each background job last ran, alert state, an alert lease and the time and checksum of the last database backup.",
       "tls-pin:<provider>, aci-gateway:<provider>, aci-gpu:<model>, attest-policy:<provider>, attest-allow:<provider>, static-models-pending:<provider>, apply-token:<application id>: facts about providers (pinned certificate keys, verified gateway keysets, operator allow-lists, a pending model list, and the SHA-256 of an application token).",
       "paywith-allowance:<chain key hash>, paywith-intent:<chain key hash>, paywith-commitment:<commitment>: a signed pay-with allowance (wallet address and signature), the wallet and token a key holder registered for pay-with, and the swap a usage commitment belongs to.",

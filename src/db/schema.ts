@@ -34,10 +34,16 @@ export const accounts = pgTable(
   (t) => [uniqueIndex("accounts_wallet_uq").on(t.wallet)],
 );
 
+// Teams are anonymous organisations: an owning account, optionally bound to a wallet or a Safe (EIP-1271), members who
+// join by passkey or wallet, roles, an org budget and an append-only, hash-chained audit log (src/teams/).
 export const teams = pgTable("teams", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   ownerAccount: text("owner_account").notNull(),
+  ownerAddress: text("owner_address"), // lowercase 0x address of the owning wallet or Safe, once proven by signature
+  ownerKind: text("owner_kind").notNull().default("account"), // account | eoa | contract
+  ownerVerifiedAt: ts("owner_verified_at"),
+  budget: money("budget"), // org budget (pico): cap on the sum of key limits in the team; null = no cap
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 
@@ -46,10 +52,48 @@ export const teamMembers = pgTable(
   {
     teamId: text("team_id").notNull(),
     keyHash: text("key_hash").notNull(),
-    role: text("role").notNull().default("member"), // owner | admin | member | viewer
+    role: text("role").notNull().default("member"), // owner | admin | dev | viewer | agent (member = dev, legacy)
+    principalId: text("principal_id"), // the passkey or wallet member the key was issued to at sign-in
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.teamId, t.keyHash] })],
+);
+
+// Members of an organisation who sign in without an API key: a WebAuthn passkey (public key only) or a wallet address.
+export const teamPrincipals = pgTable(
+  "team_principals",
+  {
+    id: text("id").primaryKey(), // tp_...
+    teamId: text("team_id").notNull(),
+    kind: text("kind").notNull(), // passkey | wallet
+    subject: text("subject").notNull(), // passkey: credential id (base64url); wallet: lowercase address
+    publicKey: text("public_key"), // passkey: the COSE public key, base64url
+    alg: integer("alg"), // passkey: COSE algorithm (-7 ES256, -8 EdDSA, -257 RS256)
+    signCount: bigint("sign_count", { mode: "number" }).notNull().default(0),
+    role: text("role").notNull(), // admin | dev | viewer | agent
+    disabled: boolean("disabled").notNull().default(false),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    lastUsed: ts("last_used"),
+  },
+  (t) => [uniqueIndex("team_principals_team_kind_subject_uq").on(t.teamId, t.kind, t.subject)],
+);
+
+// The organisation's audit log: append-only (a trigger rejects UPDATE and DELETE), one hash chain per team:
+// hash = sha256(prev_hash bytes || canonical JSON of {team, seq, at, actor, action, target, detail}).
+export const teamAudit = pgTable(
+  "team_audit",
+  {
+    teamId: text("team_id").notNull(),
+    seq: integer("seq").notNull(), // 1, 2, 3, ... per team
+    at: ts("at").notNull(),
+    actor: text("actor").notNull(), // key:<16 hex> | passkey:<principal id> | wallet:<address>
+    action: text("action").notNull(),
+    target: text("target").notNull(),
+    detail: jsonb("detail").notNull(),
+    prevHash: text("prev_hash").notNull(),
+    hash: text("hash").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.seq] })],
 );
 
 export const keys = pgTable(

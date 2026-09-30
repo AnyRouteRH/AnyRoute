@@ -1,5 +1,5 @@
 import type { TableDoc } from "../types.ts";
-import { CREATED, KEPT, rv } from "./common.ts";
+import { CREATED, KEPT, KEPT_APPEND, rv } from "./common.ts";
 
 // Keys and auth: API keys (kept only as hashes), the teams and sessions built on them, the provider keys you may bring, and the
 // issuer and gateway keys behind blind tokens and Oblivious HTTP.
@@ -68,13 +68,20 @@ export const keyTables: Record<string, TableDoc> = {
 
   teams: {
     category: "keys",
-    purpose: "A team: a named group of keys under one owning account.",
+    purpose: "A team, also called an organisation: a named group of keys under one owning account, optionally bound to a wallet or a Safe, with an optional org budget.",
     request: "no",
     retention: KEPT,
     columns: {
       id: "Team id.",
       name: "The team's name, chosen by its owner.",
       owner_account: "The account that owns the team.",
+      owner_address: {
+        purpose: "The wallet or Safe that owns the team, once it signed a one-time message (checked by recovery for a wallet, by EIP-1271 isValidSignature for a contract wallet). Empty until one is bound.",
+        review: rv(["name:network"], "wallet-address", "A blockchain address the owner chose to bind, not a network address of a caller."),
+      },
+      owner_kind: "account (no wallet bound), eoa (a wallet) or contract (a Safe or another smart wallet).",
+      owner_verified_at: "When the owner's wallet signature was checked.",
+      budget: "The org budget in pico-USD: a cap on the sum of the limits of the team's keys. Empty means no cap.",
       created_at: CREATED,
     },
   },
@@ -87,8 +94,52 @@ export const keyTables: Record<string, TableDoc> = {
     columns: {
       team_id: "The team.",
       key_hash: "The member key's hash.",
-      role: "owner, admin, member or viewer.",
+      role: "owner, admin, dev, viewer or agent (member is the older default).",
+      principal_id: "For a key issued when a member signed in with a passkey or wallet, that member (team_principals.id).",
       created_at: CREATED,
+    },
+  },
+
+  team_principals: {
+    category: "keys",
+    purpose:
+      "Members of a team who sign in without an API key: a passkey (WebAuthn) or a wallet. There is no email, name or device information: a passkey row holds only its credential id and public key (attestation is not requested), a wallet row only its address.",
+    request: "no",
+    retention: "Kept while the team exists; revoking a member disables the row and the keys issued to it.",
+    columns: {
+      id: "Member id (tp_...).",
+      team_id: "The team.",
+      kind: "passkey or wallet.",
+      subject: "For a passkey, its credential id (random bytes the authenticator chose, base64url); for a wallet, its address.",
+      public_key: "The passkey's public key (COSE, base64url). It can check signatures, not make them.",
+      alg: "The passkey's signature algorithm: -7 ES256, -8 EdDSA or -257 RS256.",
+      sign_count: "The passkey's signature counter, so a cloned authenticator is noticed.",
+      role: "The member's role: owner (the bound owner wallet), admin, dev or viewer.",
+      disabled: "Whether the member was revoked.",
+      created_at: CREATED,
+      last_used: "When the member last signed in.",
+    },
+  },
+
+  team_audit: {
+    category: "keys",
+    purpose:
+      "A team's audit log: who changed members, keys, budgets, presets, routes and lane settings, and when. Each entry is hash-chained to the one before it, so an export can be checked offline (scripts/verify-audit.mjs). It records settings changes only, never what anyone asked a model.",
+    request: "no",
+    retention: `${KEPT_APPEND} A database trigger rejects UPDATE and DELETE.`,
+    columns: {
+      team_id: "The team.",
+      seq: "The entry's position in the team's chain: 1, 2, 3, ...",
+      at: "When the change was made.",
+      actor: "Who made it: key:<first 16 hex digits of the key hash>, passkey:<member id> or wallet:<address>.",
+      action: "What changed, such as member.join, key.create, budget.set, preset.save or route.update.",
+      target: "What it changed: a key hash, member id, invite hash prefix, preset or route name.",
+      detail: {
+        purpose: "A few fixed fields about the change: a role, a limit, a lane, a version and hash, the names of the fields that changed.",
+        review: rv(["type:json"], "config", "Fields chosen by the router for each action (src/teams/audit.ts, src/api/teams.ts): no free text from a call, and for presets only the version, hash and lane, never the system prompt."),
+      },
+      prev_hash: "The previous entry's hash (64 zeros for the first entry).",
+      hash: "sha256(prev_hash bytes || canonical JSON of the entry).",
     },
   },
 

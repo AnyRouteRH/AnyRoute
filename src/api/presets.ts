@@ -21,6 +21,7 @@ import {
 } from "../routing/presets.ts";
 import { SLUG_RE, type RouteConfig } from "../routing/saved-routes.ts";
 import { requireKey, requireRole, type Role } from "./auth.ts";
+import { actorOf, auditAccount } from "../teams/audit.ts";
 import { readJson } from "./common.ts";
 import { assertModels, assertRouteLane } from "./saved-routes.ts";
 
@@ -129,6 +130,8 @@ export function presetsRoutes(app: Hono, ctx: Ctx) {
     const doc = presetDocSchema.parse(await readJson(c));
     await assertRoutable(ctx, normalizePreset(doc));
     const [row, created] = await append(key.accountId, key.keyHash, name, doc, "put", null, false);
+    // Presets are account-wide, so every team of the account records the change: name, version, hash and lane, never the prompt.
+    if (created) await auditAccount(ctx.db, key.accountId, await actorOf(ctx.db, key), "preset.save", PRESET_PREFIX + name, { version: row.version, hash: row.hash, lane: doc.provider?.lane ?? null });
     return c.json({ data: { ...presetJson(row, await firstOf(key.accountId, name)), changed: created } }, created && row.version === 1 ? 201 : 200);
   });
 
@@ -140,6 +143,7 @@ export function presetsRoutes(app: Hono, ctx: Ctx) {
       .where(and(eq(presetVersions.accountId, key.accountId), eq(presetVersions.name, name)))
       .returning({ version: presetVersions.version });
     if (!gone.length) notFound(name);
+    await auditAccount(ctx.db, key.accountId, await actorOf(ctx.db, key), "preset.delete", PRESET_PREFIX + name, { versions: gone.length });
     return c.json({ data: { name, model: PRESET_PREFIX + name, deleted: true, versions: gone.length } });
   });
 
@@ -187,6 +191,7 @@ export function presetsRoutes(app: Hono, ctx: Ctx) {
     // The models and lane are checked again: a rollback must not bring back a version the catalog can no longer serve.
     await assertRoutable(ctx, doc.data);
     const [row, created] = await append(key.accountId, key.keyHash, name, doc.data, "rollback", target.version, true);
+    if (created) await auditAccount(ctx.db, key.accountId, await actorOf(ctx.db, key), "preset.rollback", PRESET_PREFIX + name, { version: row.version, hash: row.hash, restored_from: target.version, lane: doc.data.provider?.lane ?? null });
     return c.json({ data: { ...presetJson(row, await firstOf(key.accountId, name)), changed: created, restored_from: target.version } });
   });
 }

@@ -9,7 +9,24 @@ import { sha256 } from "../lib/util.ts";
 import { processEvents } from "../chain/indexer.ts";
 
 export type KeyRow = typeof keys.$inferSelect;
-export type Role = "owner" | "admin" | "member" | "viewer";
+/**
+ * Team roles. owner > admin > dev > viewer; agent is API-only. `member` is the older default for a key in a team: it may call
+ * the API and read settings. A management key acts as owner. See roleAllowed for how the newer roles map onto route lists.
+ */
+export type Role = "owner" | "admin" | "dev" | "member" | "viewer" | "agent";
+export const ROLE_RANK: Record<Role, number> = { agent: 0, viewer: 0, member: 1, dev: 1, admin: 2, owner: 3 };
+
+/**
+ * Whether `role` may use a route that allows `allowed`. Route lists predate dev and agent, so: a dev may do what a member or a
+ * viewer may (call the API, read settings and usage, plus create keys where a route lists dev); an agent may only use routes
+ * that make calls (they list member but not viewer), never the ones that read or manage the account.
+ */
+export function roleAllowed(role: Role, allowed: readonly Role[]) {
+  if (allowed.includes(role)) return true;
+  if (role === "dev") return allowed.includes("member") || allowed.includes("viewer");
+  if (role === "agent") return allowed.includes("member") && !allowed.includes("viewer");
+  return false;
+}
 
 export const accountIdFor = (chainKeyHash: string) => `k_${chainKeyHash.slice(2, 34)}`;
 export const walletAccountId = (address: string) => `w_${address.toLowerCase().slice(2)}`;
@@ -85,7 +102,7 @@ export async function roleOf(ctx: Ctx, key: KeyRow): Promise<Role> {
 
 export async function requireRole(ctx: Ctx, key: KeyRow, allowed: Role[]) {
   const role = await roleOf(ctx, key);
-  if (!allowed.includes(role)) fail(403, `This key's role (${role}) cannot do that.`, "forbidden");
+  if (!roleAllowed(role, allowed)) fail(403, `This key's role (${role}) cannot do that.`, "forbidden");
   return role;
 }
 

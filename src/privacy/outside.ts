@@ -63,6 +63,14 @@ const redisFamilies: RedisFamily[] = [
     evidence: [ev("src/api/keys.ts", "await ctx.limiter.take(`wallet-login:${from.id}`")],
   }),
   limit({
+    prefix: "team-auth:",
+    shape: "team-auth:<caller address>",
+    purpose: `Team join and sign-in attempts per minute (passkey or wallet), which need no API key. ${ADDRESS_NOTE}`,
+    holds: "address",
+    seconds: 60,
+    evidence: [ev("src/api/teams.ts", "await ctx.limiter.take(`team-auth:${from.id}`")],
+  }),
+  limit({
     prefix: "pm:",
     shape: "pm:<caller address>",
     purpose: `Paymaster requests per minute. ${ADDRESS_NOTE}`,
@@ -271,6 +279,13 @@ const addressReaders: Touchpoint[] = [
     evidence: [ev("src/api/keys.ts", "await ctx.limiter.take(`newkey:${from.id}`"), ev("src/api/keys.ts", "await ctx.limiter.take(`wallet-login:${from.id}`")],
   },
   {
+    file: "src/api/teams.ts",
+    reads: "The caller's address when joining a team or signing in to one with a passkey or wallet (no API key yet).",
+    then: "Counted against team-auth:<address>.",
+    kept: "Only as the Redis rate-limit key.",
+    evidence: [ev("src/api/teams.ts", "await ctx.limiter.take(`team-auth:${from.id}`")],
+  },
+  {
     file: "src/api/paymaster.ts",
     reads: "The caller's address on a paymaster request.",
     then: "Counted against pm:<address>.",
@@ -470,6 +485,15 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     then: "Validated against a strict schema with size caps, then stored as a new version.",
     kept: "The preset's versions in preset_versions.",
     evidence: [ev("src/api/presets.ts", "presetDocSchema.parse(await readJson(c))")],
+  },
+  {
+    file: "src/api/teams.ts",
+    carries: "payment-or-signature",
+    reads:
+      "Team settings (a name, an org budget, a role), invites, and the proofs members sign in with: a passkey registration or assertion (WebAuthn clientDataJSON, authenticator data, signature) or a wallet signature over a one-time message.",
+    then: "Settings are validated and stored; passkey and wallet proofs are verified and only the passkey's public key or the wallet address is kept. Each change is appended to the team's audit log.",
+    kept: "The team, team_members, team_principals and team_audit tables; nothing of the proofs themselves.",
+    evidence: [ev("src/api/teams.ts", "verifyRegistration(v.passkey.response, passkeyPolicy(ctx, ch.challenge!))")],
   },
   {
     file: "src/api/spend.ts",

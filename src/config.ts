@@ -52,6 +52,9 @@ const schema = z.object({
   HOST: z.string().default("127.0.0.1"),
   PORT: int(8787),
   PUBLIC_BASE_URL: z.string().default("http://127.0.0.1:8787"),
+  // Passkeys for organisation members (WebAuthn). Default: the host and origin of PUBLIC_BASE_URL, where the dashboard is served.
+  WEBAUTHN_RP_ID: opt,
+  WEBAUTHN_ORIGINS: opt, // comma-separated origins allowed in clientDataJSON
   DATABASE_URL: z.string().default("pglite://.data/pglite"),
   REDIS_URL: opt,
   APP_SECRET: opt,
@@ -525,6 +528,10 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     host: e.HOST,
     port: e.PORT,
     publicUrl: e.PUBLIC_BASE_URL.replace(/\/$/, ""),
+    webauthn: {
+      rpId: e.WEBAUTHN_RP_ID ?? new URL(e.PUBLIC_BASE_URL).hostname,
+      origins: e.WEBAUTHN_ORIGINS ? e.WEBAUTHN_ORIGINS.split(",").map((o) => o.trim().replace(/\/$/, "")).filter(Boolean) : [new URL(e.PUBLIC_BASE_URL).origin],
+    },
     databaseUrl: e.DATABASE_URL,
     redisUrl: e.REDIS_URL,
     appSecret: e.APP_SECRET ?? "dev-insecure-secret-change-me-dev-insecure",

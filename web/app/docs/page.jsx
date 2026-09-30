@@ -755,6 +755,7 @@ export default function Docs() {
             <a href="#routing">Routing</a>
             <a href="#presets">Presets</a>
             <a href="#tracing">Tracing</a>
+            <a href="#teams">Teams</a>
             <a href="#disclosure">Disclosure</a>
             <a href="#lanes">Lanes</a>
             <a href="#tor">Tor</a>
@@ -864,6 +865,25 @@ export default function Docs() {
             Any OTLP/HTTP collector works: /v1/traces is added to the endpoint unless it is already there, and the body is OTLP JSON. For a self-hosted Tempo or an OpenTelemetry Collector, expose its OTLP/HTTP receiver over https and put its
             auth in headers.
           </p>
+          <h2 id="teams">Teams: anonymous organisations with an audit log.</h2>
+          <p>
+            A team is an organisation with no email and no names. Its owner is the account that made it, a wallet, or a Safe: POST /api/v1/teams/&lt;id&gt;/owner/challenge returns a one-time message, and POST /owner checks the
+            signature by recovery for a wallet or by EIP-1271 for a contract wallet (isValidSignature must return 0x1626ba7e, read on chain). A team made by a wallet-signed-in account is owned by that wallet from the start. The bound
+            address signs in as owner.
+          </p>
+          <p>
+            Roles: owner, admin (members, invites, keys and budgets), dev (creates keys in the team within its org budget), viewer (reads the team, usage, receipts and the audit log) and agent (API calls only, 403 on every team route).
+            An admin makes a single-use invite (POST /invites, only its SHA-256 is kept). The invitee joins with a passkey (WebAuthn, attestation none, so only the public key is stored) or a wallet signature, and signs in the same way
+            later with POST /api/v1/teams/&lt;id&gt;/sign-in. A sign-in returns a key that lasts 12 hours and has a limit of 0: it manages the team within the member&apos;s role, and a dev or admin creates API keys to call models. With
+            budget_usd set, every key in the team needs a limit and the limits together must fit (409 org_budget_exceeded).
+          </p>
+          <p>
+            Every change to members, invites, the owner, keys, budgets, presets, routes and lane settings is appended to the team&apos;s audit log, never prompt text. Each entry is chained to the one before it: hash = sha256(prev_hash
+            bytes, then the canonical JSON of team, seq, at, actor, action, target and detail), starting from 64 zeros, with an RFC 6962 Merkle root per hour. GET /audit pages through it, GET /audit/roots lists the hourly roots and
+            GET /audit/export?format=jsonl|csv downloads the chain. Anyone holding an export can check it with Node alone: an edited, dropped or reordered entry fails.
+          </p>
+          <Code label="Verify an audit export offline">{`node scripts/verify-audit.mjs anyroute-audit-<team>.jsonl --head <hash you saw>
+OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           <h2 id="disclosure">Route by what a provider discloses.</h2>
           <p>
             Each provider has a disclosure profile its operator documents: retention (attested, policy or logs), jurisdiction, legal-hold status and training use, each with a source and a date. Anything undocumented reads as the conservative

@@ -1,0 +1,106 @@
+/* Teams tab: organisations, members, invites and the audit log. Colour fields and type, no rules or boxes; tables,
+   fields and buttons come from the global dashboard system. */
+
+/* ---------- the organisation ---------- */
+.team{margin:28px 0 0}
+.teamHead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px 24px;margin:0 0 18px}
+.teamHead h2{margin-top:10px;font-size:clamp(26px,3vw,36px);letter-spacing:-.045em;line-height:1.02;overflow-wrap:anywhere}
+.teamId{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;margin-top:10px;font:400 12px/1.4 var(--mono);color:var(--muted)}
+.teamId code{color:var(--ink);overflow-wrap:anywhere}
+
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0 0 6px}
+.fact{display:flex;flex-direction:column;gap:10px;min-width:0;padding:18px 20px;background:var(--white)}
+.fact strong{font-size:28px;font-weight:620;letter-spacing:-.045em;line-height:1;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.fact>span:last-child{font-size:12px;line-height:1.4;color:var(--muted)}
+.fact code{font-size:11px}
+.factInk{background:var(--ink);color:var(--paper)}
+.factInk :global(.eyebrow),.factInk>span:last-child{color:var(--muted-dark)}
+.meter{height:6px;background:var(--paper-3)}
+.meter span{display:block;height:100%;background:var(--signal-deep);transition:width .6s var(--ease-out)}
+.meter[data-level=high] span{background:var(--warn)}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:stretch;margin:0 0 8px}
+.block{min-width:0;padding:22px 22px 24px;background:var(--white)}
+.block h3{margin:10px 0 14px;font-size:21px;letter-spacing:-.035em;line-height:1.1;overflow-wrap:anywhere}
+.block :global(.detail-list){margin:0 0 12px}
+.block :global(.help-text){margin:0 0 16px!important}
+.plain{margin:0;padding:0;border:0;min-width:0}
+.plain:disabled{opacity:.72}
+.gap{margin-top:18px}
+.sig{min-height:84px!important;font:400 13px/1.5 var(--mono)!important;overflow-wrap:anywhere}
+
+.roles{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:6px}
+.roles li{padding:12px 14px;background:var(--paper)}
+.roles li[data-you]{background:var(--signal-tint)}
+.roles strong{font-weight:600}
+.roles :global(.badge){margin-left:8px}
+.roles p{margin:4px 0 0;font-size:13px;line-height:1.45;color:var(--muted)}
+
+/* ---------- sections ---------- */
+.section{margin:40px 0 0}
+.section .block{padding:0;background:none}
+.sectionHead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:10px 24px;margin:0 0 14px}
+.sectionHead h3{font-size:22px;letter-spacing:-.035em}
+.sectionHead :global(.help-text){margin:6px 0 0!important;max-width:720px}
+.roleSelect{min-height:36px;max-width:100%;padding:6px 34px 6px 10px;border:1px solid var(--line-strong);border-radius:0;background:var(--white);font:400 13px var(--sans);color:var(--ink);-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink) 50%),linear-gradient(135deg,var(--ink) 50%,transparent 50%);background-position:calc(100% - 17px) 52%,calc(100% - 12px) 52%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.roleSelect:disabled{opacity:.6}
+.muted td{color:var(--muted)}
+.danger{text-decoration-color:var(--danger)}
+
+.inlineForm{margin:0 0 18px;padding:20px 20px 22px;background:var(--paper-2)}
+.formRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 16px}
+.once{margin:18px 0 0;padding:20px 22px 22px;background:var(--signal-tint)}
+.once p{margin:10px 0 14px;font-size:14px;line-height:1.5}
+.once :global(.code-panel){margin:0 0 12px}
+.once :global(.code-panel pre){white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* ---------- audit log ---------- */
+.toolbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px 24px;margin:0 0 14px}
+.toolbarRight{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px}
+.fileLabel{cursor:pointer}
+.fileLabel:focus-within{outline:2px solid var(--signal-deep);outline-offset:3px}
+.verdict{margin:0 0 14px;padding:14px 16px;font-size:14px;line-height:1.5;background:var(--paper-2);overflow-wrap:anywhere}
+.verdict[data-state=ok]{background:var(--signal-tint);color:#05461c}
+.verdict[data-state=broken],.verdict[data-state=error]{background:#fff0ef;color:#96161b}
+.verdict strong{font-weight:600}
+.verdict code{font-size:12px}
+.audit td{vertical-align:top}
+.audit td:first-child{width:1%}
+.audit time{white-space:nowrap;font-size:13px}
+.audit .mono{font-size:12px;overflow-wrap:anywhere}
+.detail{display:block;margin-top:4px;font:400 11px/1.45 var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.target{font-size:12px;overflow-wrap:anywhere}
+.brokenRow td{background:#fff0ef}
+.pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin:12px 0 0;font:400 11px/1.4 var(--mono);color:var(--muted)}
+.pager button:disabled{opacity:.35;text-decoration-color:transparent}
+.offline{margin:24px 0 0}
+.offline :global(.code-panel){margin:0}
+.offline :global(.code-panel pre){white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* ---------- joining and signing in ---------- */
+.access{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:40px 0 0;scroll-margin-top:calc(var(--header) + 80px)}
+.panel{min-width:0;padding:24px 24px 26px;background:var(--paper-2)}
+.panel[data-highlight]{background:var(--signal-tint)}
+.panel h3{margin:10px 0 8px;font-size:22px;letter-spacing:-.035em}
+.panel>p{margin:0 0 18px;font-size:14px;line-height:1.5;color:var(--muted)}
+.panel form{margin:0}
+.panel :global(.help-text){margin:16px 0 0!important}
+
+@media (max-width:1000px){
+  .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:860px){
+  .split,.access{grid-template-columns:minmax(0,1fr)}
+  .formRow{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:560px){
+  .facts{grid-template-columns:minmax(0,1fr)}
+  .fact{flex-direction:row;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px;padding:14px 16px}
+  .fact strong{font-size:22px}
+  .fact>span:last-child,.meter{flex-basis:100%}
+  .block,.panel,.inlineForm,.once{padding:18px 16px 20px}
+  .toolbar{align-items:flex-start;flex-direction:column}
+}
+@media (prefers-reduced-motion:reduce){
+  .meter span{transition:none}
+}

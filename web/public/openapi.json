@@ -3,7 +3,7 @@
   "info": {
     "title": "Anyroute API",
     "version": "1.0.0",
-    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the transparency log of keys and configurations with its tiles, checkpoints and witness cosignatures (present only when the router enables it) the Lane: model variants, day-zero candidates and creator royalty claims, Private RAG (answers from documents sent with the question, nothing kept), and the Batch API (many chat or embeddings requests run in the background at a discount, with the lines and answers kept sealed outside the database until the results expire). Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, teams, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
+    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the transparency log of keys and configurations with its tiles, checkpoints and witness cosignatures (present only when the router enables it) the Lane: model variants, day-zero candidates and creator royalty claims, Private RAG (answers from documents sent with the question, nothing kept), and the Batch API (many chat or embeddings requests run in the background at a discount, with the lines and answers kept sealed outside the database until the results expire). It also covers teams as anonymous organisations: roles, passkey and wallet members, org budgets and the hash-chained audit log with its export. Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
     "contact": {
       "name": "AnyRoute support",
       "email": "Anyroute1@atomicmail.io"
@@ -127,6 +127,10 @@
     {
       "name": "Rerank",
       "description": "Rerank documents against a query (Cohere and Jina shape), billed per token or per search unit, with a signed receipt."
+    },
+    {
+      "name": "Teams",
+      "description": "Anonymous organisations: an owner that is an account, a wallet or a Safe (EIP-1271), members who join by passkey or wallet, roles (owner, admin, dev, viewer, agent), an org budget, and a hash-chained audit log you can export and verify offline."
     }
   ],
   "paths": {
@@ -6471,6 +6475,1412 @@
           }
         }
       }
+    },
+    "/api/v1/teams": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "createTeam",
+        "summary": "Create a team (organisation)",
+        "description": "Management key. A team made by a wallet-signed-in account is owned by that wallet.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "budget_usd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Team"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "listTeams",
+        "summary": "List teams",
+        "description": "A management key lists its account's teams; a team key (viewer, dev, admin, owner) its own team. Agent keys get 403.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Teams.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Team"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}": {
+      "get": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "getTeam",
+        "summary": "Get a team",
+        "description": "Viewer, dev, admin or owner.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The team.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Team"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "updateTeam",
+        "summary": "Rename a team or set its org budget",
+        "description": "Admin or owner. An org budget can be set only when every key in the team has a limit and the limits fit.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "budget_usd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The team.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Team"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "org_budget_exceeded, org_budget_limit_required or org_budget_unlimited_keys: the change does not fit the org budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/members/{hash}": {
+      "put": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "setTeamMember",
+        "summary": "Add a key to a team or change its role",
+        "description": "Admin or owner; never a role at or above your own unless you are the owner.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          },
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The key's hash."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "owner",
+                      "admin",
+                      "dev",
+                      "member",
+                      "viewer",
+                      "agent"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The membership.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "team": {
+                          "type": "string"
+                        },
+                        "key_hash": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "owner",
+                            "admin",
+                            "dev",
+                            "member",
+                            "viewer",
+                            "agent"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "org_budget_exceeded, org_budget_limit_required or org_budget_unlimited_keys: the change does not fit the org budget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/owner/challenge": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "teamOwnerChallenge",
+        "summary": "Start binding the team to a wallet or Safe",
+        "description": "Owner only. Returns a one-time message for the wallet or Safe to sign.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "address"
+                ],
+                "properties": {
+                  "address": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{40}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The message to sign.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WalletChallenge"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/owner": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "bindTeamOwner",
+        "summary": "Bind the team to a wallet or Safe",
+        "description": "Owner only. A wallet's signature is checked by recovery; a contract wallet's by EIP-1271: isValidSignature(hashMessage(message), signature) must return 0x1626ba7e, read on chain. The bound address then signs in as owner.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "address",
+                  "nonce",
+                  "signature"
+                ],
+                "properties": {
+                  "address": {
+                    "type": "string"
+                  },
+                  "nonce": {
+                    "type": "string"
+                  },
+                  "signature": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The team.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Team"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/invites": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "createTeamInvite",
+        "summary": "Create a single-use invite",
+        "description": "Admin or owner. The invite is shown once; only its SHA-256 is stored.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamInviteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The invite.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "invite": {
+                          "type": "string",
+                          "pattern": "^ar-inv-[0-9a-f]{48}$"
+                        },
+                        "team": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "method": {
+                          "type": "string"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/join/challenge": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "teamJoinChallenge",
+        "summary": "Start joining a team with an invite",
+        "description": "No key. Passkey: WebAuthn creation options (attestation none, a random user handle, no name or email). Wallet: a message to sign.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "invite",
+                  "method"
+                ],
+                "properties": {
+                  "invite": {
+                    "type": "string"
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "passkey",
+                      "wallet"
+                    ]
+                  },
+                  "address": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TeamChallenge"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/join": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "joinTeam",
+        "summary": "Join a team",
+        "description": "No key. Send the passkey registration or the wallet signature. The invite and the challenge work once. Returns a 12-hour key for the new member.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "invite",
+                  "challenge_id"
+                ],
+                "properties": {
+                  "invite": {
+                    "type": "string"
+                  },
+                  "challenge_id": {
+                    "type": "string"
+                  },
+                  "passkey": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "response"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "rawId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "public-key"
+                      },
+                      "response": {
+                        "type": "object",
+                        "required": [
+                          "clientDataJSON",
+                          "attestationObject"
+                        ],
+                        "properties": {
+                          "clientDataJSON": {
+                            "type": "string"
+                          },
+                          "attestationObject": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "wallet": {
+                    "type": "object",
+                    "required": [
+                      "address",
+                      "signature"
+                    ],
+                    "properties": {
+                      "address": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-fA-F]{40}$"
+                      },
+                      "signature": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Joined.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamSignedIn"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "already_member: that passkey or wallet is already in the team.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/sign-in/challenge": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "teamSignInChallenge",
+        "summary": "Start signing in to a team",
+        "description": "No key. Passkey: WebAuthn request options with an empty allowCredentials (discoverable passkeys). Wallet: a message to sign.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "method"
+                ],
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "passkey",
+                      "wallet"
+                    ]
+                  },
+                  "address": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TeamChallenge"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/sign-in": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "teamSignIn",
+        "summary": "Sign in to a team",
+        "description": "No key. A passkey assertion (signature and a counter that must increase) or a wallet signature (EOA or EIP-1271). The owner's bound wallet or Safe signs in as owner. Returns a 12-hour key with a limit of 0.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "challenge_id"
+                ],
+                "properties": {
+                  "challenge_id": {
+                    "type": "string"
+                  },
+                  "passkey": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "response"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "rawId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "public-key"
+                      },
+                      "response": {
+                        "type": "object",
+                        "required": [
+                          "clientDataJSON",
+                          "authenticatorData",
+                          "signature"
+                        ],
+                        "properties": {
+                          "clientDataJSON": {
+                            "type": "string"
+                          },
+                          "authenticatorData": {
+                            "type": "string"
+                          },
+                          "signature": {
+                            "type": "string"
+                          },
+                          "userHandle": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "wallet": {
+                    "type": "object",
+                    "required": [
+                      "address",
+                      "signature"
+                    ],
+                    "properties": {
+                      "address": {
+                        "type": "string",
+                        "pattern": "^0x[0-9a-fA-F]{40}$"
+                      },
+                      "signature": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamSignedIn"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/principals/{pid}": {
+      "patch": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "updateTeamPrincipal",
+        "summary": "Change a member's role, revoke or restore them",
+        "description": "Admin or owner. Revoking disables every key issued to the member.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Member id (tp_...)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "dev",
+                      "viewer"
+                    ]
+                  },
+                  "disabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The member.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TeamPrincipal"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "revokeTeamPrincipal",
+        "summary": "Revoke a member",
+        "description": "Admin or owner. Disables the member and every key issued to it.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Member id (tp_...)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "revoked": {
+                          "type": "boolean"
+                        },
+                        "keys_disabled": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/audit": {
+      "get": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "listTeamAudit",
+        "summary": "Read the audit log",
+        "description": "Viewer, dev, admin or owner. Entries in chain order.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "head",
+                    "next_after",
+                    "genesis"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TeamAuditEntry"
+                      }
+                    },
+                    "head": {
+                      "type": "object",
+                      "properties": {
+                        "seq": {
+                          "type": "integer"
+                        },
+                        "hash": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "next_after": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "genesis": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/audit/roots": {
+      "get": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "listTeamAuditRoots",
+        "summary": "Hourly Merkle roots of the audit log",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One root per UTC hour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TeamAuditRoot"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}/audit/export": {
+      "get": {
+        "tags": [
+          "Teams"
+        ],
+        "operationId": "exportTeamAudit",
+        "summary": "Export the audit log with its chain",
+        "description": "Viewer, dev, admin or owner. JSONL: a header line, one entry per line, then one hourly root per line. CSV: team,seq,at,actor,action,target,detail,prev_hash,hash. Verify offline with node scripts/verify-audit.mjs <file>.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Team id (team_...)."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "jsonl",
+                "csv"
+              ],
+              "default": "jsonl"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export as a download.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "attachment; filename=\"anyroute-audit-<team>.jsonl\" (or .csv)"
+              }
+            },
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -8027,6 +9437,17 @@
               }
             ],
             "description": "Trace export for this key's public-lane calls; null removes it."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "dev",
+              "member",
+              "viewer",
+              "agent"
+            ],
+            "description": "The new key's role in its team (default member). A key cannot hand out a role above its own. In a team with an org budget every key needs a limit that fits."
           }
         },
         "additionalProperties": false
@@ -14735,6 +16156,418 @@
           },
           "receipt": {
             "$ref": "#/components/schemas/Receipt"
+          }
+        }
+      },
+      "Team": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "owner",
+          "budget_usd",
+          "allocated_usd",
+          "your_role",
+          "members",
+          "principals",
+          "audit"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "owner": {
+            "type": "object",
+            "required": [
+              "account",
+              "address",
+              "kind",
+              "verified_at"
+            ],
+            "properties": {
+              "account": {
+                "type": "string"
+              },
+              "address": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The bound wallet or Safe, lowercase."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "account",
+                  "eoa",
+                  "contract"
+                ]
+              },
+              "verified_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
+          "budget_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Org budget: a cap on the sum of the limits of the team's keys."
+          },
+          "allocated_usd": {
+            "type": "number",
+            "description": "The limits of the team's enabled, unexpired keys, summed."
+          },
+          "your_role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "dev",
+              "member",
+              "viewer",
+              "agent"
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key_hash": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "owner",
+                    "admin",
+                    "dev",
+                    "member",
+                    "viewer",
+                    "agent"
+                  ]
+                },
+                "principal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "disabled": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "principals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamPrincipal"
+            }
+          },
+          "audit": {
+            "type": "object",
+            "properties": {
+              "entries": {
+                "type": "integer"
+              },
+              "head": {
+                "type": "string",
+                "description": "The chain's head hash (64 zeros when empty)."
+              }
+            }
+          }
+        }
+      },
+      "TeamPrincipal": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "subject",
+          "role",
+          "disabled",
+          "created_at",
+          "last_used"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "passkey",
+              "wallet"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "description": "A wallet address, or the first 16 characters of a passkey's credential id."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "dev",
+              "viewer"
+            ]
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "TeamInviteRequest": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "dev",
+              "viewer"
+            ],
+            "description": "Agents are API keys (POST /api/v1/keys with role agent), not invited people. Only the owner invites an admin."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "passkey",
+              "wallet",
+              "any"
+            ],
+            "default": "any"
+          },
+          "ttl_hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 168,
+            "default": 72
+          }
+        }
+      },
+      "TeamSignedIn": {
+        "type": "object",
+        "required": [
+          "data",
+          "key"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "team": {
+                "type": "string"
+              },
+              "principal": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "passkey",
+                      "wallet"
+                    ]
+                  },
+                  "role": {
+                    "type": "string"
+                  }
+                }
+              },
+              "key": {
+                "type": "object",
+                "description": "The issued key (same shape as GET /api/v1/key): it expires after 12 hours and has a limit of 0."
+              }
+            }
+          },
+          "key": {
+            "type": "string",
+            "description": "The secret, shown once."
+          }
+        }
+      },
+      "TeamAuditEntry": {
+        "type": "object",
+        "required": [
+          "team",
+          "seq",
+          "at",
+          "actor",
+          "action",
+          "target",
+          "detail",
+          "prev_hash",
+          "hash"
+        ],
+        "properties": {
+          "team": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor": {
+            "type": "string",
+            "description": "key:<16 hex>, passkey:<member id> or wallet:<address>."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "team.create",
+              "team.rename",
+              "budget.set",
+              "owner.bind",
+              "invite.create",
+              "member.join",
+              "member.role",
+              "member.revoke",
+              "member.restore",
+              "key.create",
+              "key.update",
+              "key.disable",
+              "preset.save",
+              "preset.rollback",
+              "preset.delete",
+              "route.create",
+              "route.update",
+              "route.delete"
+            ]
+          },
+          "target": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "object",
+            "description": "A few fixed fields about the change (role, limit, lane, version, hash). Never prompt text."
+          },
+          "prev_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "sha256(bytes(prev_hash) || utf8(canonical JSON of {team, seq, at, actor, action, target, detail})), keys sorted recursively."
+          }
+        }
+      },
+      "TeamAuditRoot": {
+        "type": "object",
+        "required": [
+          "hour",
+          "first_seq",
+          "last_seq",
+          "count",
+          "root"
+        ],
+        "properties": {
+          "hour": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "first_seq": {
+            "type": "integer"
+          },
+          "last_seq": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "root": {
+            "type": "string",
+            "description": "RFC 6962 Merkle root over the raw 32-byte entry hashes of that UTC hour."
+          }
+        }
+      },
+      "WalletChallenge": {
+        "type": "object",
+        "properties": {
+          "challenge_id": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "Sign with personal_sign (EOA) or through the Safe (EIP-1271)."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TeamChallenge": {
+        "type": "object",
+        "properties": {
+          "challenge_id": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "passkey",
+              "wallet"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Wallet: the message to sign."
+          },
+          "publicKey": {
+            "type": "object",
+            "description": "Passkey: WebAuthn options with base64url binary fields (PublicKeyCredentialCreationOptions to join, PublicKeyCredentialRequestOptions to sign in). Attestation is none; sign-in uses discoverable passkeys and lists no credentials."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       }

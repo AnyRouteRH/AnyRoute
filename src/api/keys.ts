@@ -15,7 +15,9 @@ import { encrypt, uid, randomHex } from "../lib/util.ts";
 import { SENTINEL_NEIGHBOUR, SpentTree, type SpentNeighbour } from "../receipts/merkle.ts";
 import { addressBucket, readJson } from "./common.ts";
 import { parseStoredTracing, sealTracing, tracingInput, tracingJson } from "../services/tracing.ts";
-import { bearer, registerRootKey, requireKey, requireRole, walletAccountId, type KeyRow } from "./auth.ts";
+import { bearer, registerRootKey, requireKey, requireRole, ROLE_RANK, walletAccountId, type KeyRow, type Role } from "./auth.ts";
+import { actorOf, appendAudit, type AuditDetail } from "../teams/audit.ts";
+import { assertFitsOrgBudget } from "../teams/org.ts";
 
 const keySpec = z.object({
   name: z.string().max(100).optional(),
@@ -37,6 +39,7 @@ const keySpec = z.object({
   management: z.boolean().optional(),
   // Trace export for this key's public-lane calls; null removes it. Secrets are sealed and never returned.
   tracing: tracingInput.nullable().optional(),
+  role: z.enum(["admin", "dev", "member", "viewer", "agent"]).optional(), // the key's role in its team (default member)
 });
 
 export function keyJson(k: KeyRow) {
@@ -117,15 +120,37 @@ function applySpec(v: z.infer<typeof keySpec>) {
   };
 }
 
+/** What an audit entry says about a key change: the fields that changed, the new limit and the lane, never guardrail
+ *  phrases or other text the owner typed. */
+function keyChange(spec: z.infer<typeof keySpec>, patch: ReturnType<typeof applySpec> & { management?: boolean }): AuditDetail {
+  const out: AuditDetail = { fields: Object.keys(patch).sort() };
+  if (patch.budget !== undefined) out.limit_usd = patch.budget == null ? null : picoToUsd(patch.budget);
+  if (patch.disabled !== undefined) out.disabled = patch.disabled;
+  if (patch.management !== undefined) out.management = patch.management;
+  const provider = (spec.routing as { provider?: { lane?: unknown } } | null | undefined)?.provider;
+  if (typeof provider?.lane === "string") out.lane = provider.lane;
+  return out;
+}
+
 /** Create a virtual sub-key under `caller` (same account and balance, parent = caller). The secret is
  *  returned once; only its hash is stored. Shared by POST /api/v1/keys and Agent Sessions. */
 export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeof keySpec>, db: Db | Tx = ctx.db) {
   if (spec.management && !caller.management) fail(403, "Only a management key can create management keys.", "forbidden");
   const teamId = spec.team ?? (caller.management ? null : caller.teamId);
+  // A non-management key creates keys only in its own team, and never with a role above its own.
+  if (!caller.management && teamId !== caller.teamId) fail(403, "This key can create keys only in its own team.", "forbidden");
+  const role = spec.role ?? "member";
+  const limit = applySpec(spec).budget;
   if (teamId) {
     const [t] = await db.select().from(teams).where(and(eq(teams.id, teamId), eq(teams.ownerAccount, caller.accountId)));
     if (!t) fail(404, "Team not found.", "not_found");
-  }
+    if (!caller.management) {
+      // Read through `db`: an agent session creates its key inside a transaction.
+      const [me] = await db.select({ role: teamMembers.role }).from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.keyHash, caller.keyHash)));
+      if (ROLE_RANK[role] > ROLE_RANK[(me?.role ?? "member") as Role]) fail(403, "You cannot create a key with a role above your own.", "forbidden");
+    }
+    await assertFitsOrgBudget(db, teamId, limit ?? null);
+  } else if (spec.role) fail(400, "`role` applies to a key in a team; set `team` too.", "invalid_request");
   const secret = generateApiKey();
   const d = deriveKey(secret);
   await db.insert(keys).values({
@@ -142,7 +167,10 @@ export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeo
     ...applySpec(spec),
     ...tracingPatch(ctx, spec, null),
   });
-  if (teamId) await db.insert(teamMembers).values({ teamId, keyHash: d.keyHash, role: "member" }).onConflictDoNothing();
+  if (teamId) {
+    await db.insert(teamMembers).values({ teamId, keyHash: d.keyHash, role }).onConflictDoNothing();
+    await appendAudit(db, teamId, await actorOf(db, caller), "key.create", d.keyHash, { role, limit_usd: limit == null ? null : picoToUsd(limit) });
+  }
   const [row] = await db.select().from(keys).where(eq(keys.keyHash, d.keyHash));
   return { row, secret };
 }
@@ -176,7 +204,8 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
       return c.json({ data: keyJson(row), key: secret, deposit: depositInfo(ctx, row) }, 201);
     }
     const caller = await sub(ctx, c);
-    await requireRole(ctx, caller, ["owner", "admin"]);
+    // Devs create keys too, in their own team and within its org budget (createSubKey checks both).
+    await requireRole(ctx, caller, ["owner", "admin", "dev"]);
     const created = await createSubKey(ctx, caller, spec);
     return c.json({ data: keyJson(created.row), key: created.secret, deposit: depositInfo(ctx, created.row) }, 201);
   });
@@ -203,8 +232,13 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     if (session) fail(409, "This key belongs to an agent session; manage it with /api/v1/sessions.", "session_key");
     const spec = keySpec.parse(await readJson(c));
     if (spec.management !== undefined && !caller.management) fail(403, "Only a management key can change management rights.", "forbidden");
+    if (spec.role !== undefined) fail(400, "Change a key's role with PUT /api/v1/teams/:id/members/:hash.", "invalid_request");
     const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}), ...tracingPatch(ctx, spec, k.tracing) };
+    // In a team with an org budget, a new limit (or a key coming back) must still fit.
+    if (k.teamId && (patch.budget !== undefined || patch.disabled === false || patch.expiresAt !== undefined))
+      await assertFitsOrgBudget(ctx.db, k.teamId, patch.budget !== undefined ? patch.budget : k.budget, k.keyHash);
     if (Object.keys(patch).length) await ctx.db.update(keys).set(patch).where(eq(keys.keyHash, k.keyHash));
+    if (k.teamId && Object.keys(patch).length) await appendAudit(ctx.db, k.teamId, await actorOf(ctx.db, caller), "key.update", k.keyHash, keyChange(spec, patch));
     const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, k.keyHash));
     return c.json({ data: keyJsonWithTracing(ctx, row) });
   });
@@ -215,6 +249,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     if (k.keyHash === caller.keyHash) fail(400, "A key cannot delete itself; disable it with PATCH instead.", "invalid_request");
     // Keys are disabled rather than removed: generations and on-chain balances reference them.
     await ctx.db.update(keys).set({ disabled: true }).where(eq(keys.keyHash, k.keyHash));
+    if (k.teamId && !k.disabled) await appendAudit(ctx.db, k.teamId, await actorOf(ctx.db, caller), "key.disable", k.keyHash, {});
     return c.json({ data: { hash: k.keyHash, deleted: true } });
   });
 
@@ -425,48 +460,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     return c.json({ data: { provider: c.req.param("provider"), deleted: true } });
   });
 
-  // Teams / RBAC
-  app.post("/api/v1/teams", async (c) => {
-    const k = await sub(ctx, c);
-    if (!k.management) fail(403, "Only a management key can create teams.", "forbidden");
-    const v = z.object({ name: z.string().min(1).max(100) }).parse(await readJson(c));
-    const id = uid("team_");
-    await ctx.db.insert(teams).values({ id, name: v.name, ownerAccount: k.accountId });
-    return c.json({ data: { id, name: v.name } }, 201);
-  });
-  app.get("/api/v1/teams", async (c) => {
-    const k = await sub(ctx, c);
-    const rows = await ctx.db.select().from(teams).where(eq(teams.ownerAccount, k.accountId));
-    const members = await ctx.db.select().from(teamMembers);
-    return c.json({ data: rows.map((t) => ({ id: t.id, name: t.name, members: members.filter((m) => m.teamId === t.id).map((m) => ({ key_hash: m.keyHash, role: m.role })) })) });
-  });
-  app.put("/api/v1/teams/:id/members/:hash", async (c) => {
-    const k = await sub(ctx, c);
-    const teamId = c.req.param("id");
-    const [t] = await ctx.db.select().from(teams).where(and(eq(teams.id, teamId), eq(teams.ownerAccount, k.accountId)));
-    if (!t) fail(404, "Team not found.", "not_found");
-    const RANK = { viewer: 0, member: 1, admin: 2, owner: 3 } as const;
-    let myRank: number = RANK.owner + 1; // management keys outrank every team role
-    if (!k.management) {
-      const [me] = await ctx.db.select().from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.keyHash, k.keyHash)));
-      if (me?.role !== "owner" && me?.role !== "admin") fail(403, "Only team owners/admins can change membership.", "forbidden");
-      myRank = RANK[me.role as keyof typeof RANK];
-    }
-    const v = z.object({ role: z.enum(["owner", "admin", "member", "viewer"]) }).parse(await readJson(c));
-    const [target] = await ctx.db.select().from(keys).where(and(eq(keys.keyHash, c.req.param("hash")), eq(keys.accountId, k.accountId)));
-    if (!target) fail(404, "Key not found.", "not_found");
-    if (!k.management) {
-      // Team admins only manage keys already in their team (or unassigned), never management keys,
-      // and never grant a role above their own.
-      if (target.management || (target.teamId && target.teamId !== teamId)) fail(403, "That key is outside this team.", "forbidden");
-      if (RANK[v.role] >= myRank && !(RANK[v.role] === myRank && myRank === RANK.owner)) fail(403, "You cannot grant a role at or above your own.", "forbidden");
-      const [current] = await ctx.db.select().from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.keyHash, target.keyHash)));
-      if (current && RANK[current.role as keyof typeof RANK] >= myRank && myRank !== RANK.owner) fail(403, "You cannot change a member at or above your role.", "forbidden");
-    }
-    await ctx.db.update(keys).set({ teamId }).where(eq(keys.keyHash, target.keyHash));
-    await ctx.db.insert(teamMembers).values({ teamId, keyHash: target.keyHash, role: v.role }).onConflictDoUpdate({ target: [teamMembers.teamId, teamMembers.keyHash], set: { role: v.role } });
-    return c.json({ data: { team: teamId, key_hash: target.keyHash, role: v.role } });
-  });
+  // Teams, organisations and their audit log: src/api/teams.ts.
 
   // Server-issued, single-use wallet login challenges. Origin, action and chain are signed.
   app.post("/api/v1/auth/wallet/challenge", async (c) => {
