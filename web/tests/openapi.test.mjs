@@ -161,3 +161,33 @@ test('the Private RAG endpoint, its schemas and its privacy statement are docume
  walk(spec.paths,(n)=>{if(typeof n.operationId==='string')ids.push(n.operationId);});
  assert.equal(new Set(ids).size,ids.length,'operation ids are unique');
 });
+
+test('the Batch API endpoints, schemas and privacy statement are documented and consistent',()=>{
+ const docs=fs.readFileSync(new URL('../app/docs/page.jsx',import.meta.url),'utf8');
+ const ops=[['/api/v1/batches','post'],['/api/v1/batches','get'],['/api/v1/batches/{id}','get'],['/api/v1/batches/{id}/cancel','post'],['/api/v1/batches/{id}/output','get'],['/api/v1/batches/{id}/errors','get']];
+ for(const [path,method] of ops){
+  const op=spec.paths[path]?.[method];
+  assert.ok(op,`${method.toUpperCase()} ${path}`);
+  assert.deepEqual(op.tags,['Batches']);
+  assert.deepEqual(op.security,[{BearerAuth:[]}],'it needs a prepaid key');
+  assert.ok(op.responses['401']);
+ }
+ assert.ok(spec.tags.some((t)=>t.name==='Batches'));
+ const create=spec.paths['/api/v1/batches'].post;
+ assert.equal(create.requestBody.content['application/json'].schema.$ref,'#/components/schemas/BatchCreateRequest');
+ assert.match(create.description,/input_file_id is refused/);
+ assert.match(create.description,/never written to the database/);
+ assert.match(create.description,/50% of the normal price/);
+ for(const path of ['/api/v1/batches/{id}/output','/api/v1/batches/{id}/errors']){
+  assert.ok(spec.paths[path].get.responses['200'].content['application/jsonl'],`${path} is JSONL`);
+  assert.match(spec.paths[path].get.responses['410'].description,/batch_results_expired/);
+ }
+ const batch=spec.components.schemas.Batch.properties;
+ assert.deepEqual(batch.status.enum,['validating','in_progress','completed','failed','expired','cancelling','cancelled']);
+ assert.equal(batch.object.const,'batch');
+ assert.deepEqual(batch.cost.required,['usd','discount_bps','list_usd']);
+ assert.equal(spec.components.schemas.BatchRequestLine.properties.custom_id.maxLength,64);
+ assert.match(docs,/id="batches"/);
+ assert.match(docs,/href="#batches"/);
+ assert.match(docs,/never written to the database/);
+});

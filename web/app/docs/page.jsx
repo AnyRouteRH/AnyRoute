@@ -656,6 +656,18 @@ const ragRefusal = JSON.stringify(
   null,
   2,
 );
+const batchCurl = `curl ${BASE}/api/v1/batches \\
+  -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
+  -d '{"completion_window":"24h","requests":[{"custom_id":"row-1","method":"POST","url":"/v1/chat/completions","body":{"model":"<chat model>","messages":[{"role":"user","content":"Summarize: …"}],"max_tokens":200}},{"custom_id":"row-2","method":"POST","url":"/v1/chat/completions","body":{"model":"<chat model>","messages":[{"role":"user","content":"Classify: …"}]}}]}'
+
+# Check on it, then read the results once status is completed
+curl ${BASE}/api/v1/batches/$BATCH_ID -H "Authorization: Bearer $ANYROUTE_API_KEY"
+curl ${BASE}/api/v1/batches/$BATCH_ID/output -H "Authorization: Bearer $ANYROUTE_API_KEY" > output.jsonl
+curl ${BASE}/api/v1/batches/$BATCH_ID/errors -H "Authorization: Bearer $ANYROUTE_API_KEY" > errors.jsonl`;
+const batchOutputLine = [
+  JSON.stringify({ id: "batch_req_…", custom_id: "row-1", response: { status_code: 200, request_id: "<generation id>", body: { id: "<generation id>", choices: ["…"], usage: { "…": "tokens", cost: 0.0000162 }, receipt: { "…": "the signed receipt of this line" } } }, error: null }),
+  JSON.stringify({ id: "batch_req_…", custom_id: "row-2", response: { status_code: 402, request_id: null, body: { error: { "…": "the error a normal call returns" } } }, error: { code: "insufficient_credits", message: "…" } }),
+].join("\n");
 const endpoints = [
   ["POST /api/v1/chat/completions", "Chat, tools and streaming (OpenAI/OpenRouter shape); X-Pay-With, X-Payment, X-Wallet-Auth headers"],
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
@@ -696,7 +708,8 @@ const endpoints = [
   ["POST /v1/messages · /messages/count_tokens", "Anthropic Messages API (also under /api/v1) for the Anthropic SDKs and Claude Code: x-api-key or Authorization: Bearer; tools, images and streaming; the lane in X-Anyroute-Lane or provider.lane; the receipt in the reply and in X-Receipt-Id"],
   ["GET /ollama/api/tags · POST /ollama/api/chat · /generate · /embed", "Ollama API for Ollama clients (Open WebUI, Continue, the ollama libraries, LangChain): set the host to <router>/ollama and send the key as Authorization: Bearer; NDJSON streaming, tools, images, format and options; also /api/show, /api/version, /api/ps and /api/embeddings; the lane in X-Anyroute-Lane; the receipt in X-Receipt-Id and the closing line"],
   ["POST /v1/responses · /api/v1/responses", "OpenAI Responses API for the OpenAI Agents SDK, the Codex CLI and other Responses clients: the chat route’s billing, lanes and signed receipts behind the Responses shape and event stream. Stateless: store must be false, there is no previous_response_id and no GET; function and custom tools only"],
-  ["POST /api/v1/rag · /v1/rag", "Answers from documents you send with the question, ranked in memory and stored nowhere: it embeds, ranks and answers through the embeddings and chat routes, and returns the sources and every call’s receipt (prepaid key; the lane and disclosure options of chat)"],
+  ["POST · GET /api/v1/batches · GET /batches/:id · POST /batches/:id/cancel · GET /batches/:id/output · /batches/:id/errors", "Batch API (also under /v1): many chat or embeddings requests in one call, run in the background at 50% of the normal price within 24 hours; results as JSONL for 24 hours after the batch finishes (prepaid key)"],
+  ["POST /api/v1/rag · /v1/rag","Answers from documents you send with the question, ranked in memory and stored nowhere: it embeds, ranks and answers through the embeddings and chat routes, and returns the sources and every call’s receipt (prepaid key; the lane and disclosure options of chat)"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
@@ -737,6 +750,7 @@ export default function Docs() {
             <a href="#ollama">Ollama</a>
             <a href="#responses">Responses</a>
             <a href="#rag">Private RAG</a>
+            <a href="#batches">Batch API</a>
             <a href="#sdk">SDKs</a>
             <a href="#run-a-provider">Run a provider</a>
             <a href="#badge">Badge</a>
@@ -1441,6 +1455,33 @@ export default function Docs() {
             <b>Untrusted text.</b> Documents are treated as untrusted. The prompt tells the model to use only the numbered sources and to ignore instructions inside them, and a source cannot close its own tag. That lowers, and does not remove, the chance that a document steers the answer.
             The cost of a request is the sum of its calls; each holds its worst case before it is sent, so your balance bounds every step, and a refusal partway leaves the earlier calls billed.
           </p>
+          <h2 id="batches">Run many calls at half the price.</h2>
+          <p>
+            POST /api/v1/batches (also /v1/batches) is the OpenAI Batch API without files. Send many chat completions or embeddings requests in one call and the router runs them in the background, in spare capacity, at 50% of the normal price. A batch can take minutes,
+            and lines not run within the 24-hour completion window expire and are not charged. It needs a prepaid key (Authorization: Bearer). Each line is billed, budgeted, rate-limited and routed exactly like a normal call of that key, so lanes, provider preferences, key budgets and
+            key rate limits apply to every line; a failed line is not charged, and every answered line has its own signed receipt. In the dashboard, Batch Studio can send a batch this way (Run on the server).
+          </p>
+          <Code label="Send a batch inline, then read the results">{batchCurl}</Code>
+          <p>
+            <b>Request.</b> Send requests, a list of lines, or input_jsonl, the same lines as JSONL text, with completion_window 24h. Each line has a custom_id (unique, at most 64 characters), method POST, a url of /v1/chat/completions or /v1/embeddings, and the body of that request.
+            endpoint, if you send it, must match every line’s url. There is no files endpoint, so input_file_id is refused with 400: send the lines inline. stream: true, council mode (anyroute/council) and verify are refused in a batch. A batch with an invalid line is not created: the 400
+            invalid_request lists each problem in error.metadata.errors with its line (counted from 1), code and message.
+          </p>
+          <p>
+            <b>Progress and results.</b> The response is a Batch object with its id (batch_…). GET /api/v1/batches/:id returns it again: status (validating, in_progress, then completed, failed or expired; cancelling, then cancelled, after a cancel), request_counts (total, completed,
+            failed) and cost (usd, the discounted cost so far, and list_usd, what the same calls cost at the normal price). GET /api/v1/batches?limit=20&amp;after=&lt;batch id&gt; lists your batches, newest first. POST /api/v1/batches/:id/cancel stops a batch: lines already running finish
+            and are billed, lines not started are never run or billed. GET /api/v1/batches/:id/output returns one JSONL line per answered request, with the normal response body (usage.cost and the receipt included), and GET /api/v1/batches/:id/errors one per failed or unrun request.
+          </p>
+          <Code label="A line of the output file, and one of the errors file (abridged)">{batchOutputLine}</Code>
+          <p>
+            <b>Limits.</b> By default a batch holds up to 1,000 lines and 8 MiB of input, and a key can have 2 unfinished batches at a time; one more is refused with 429 batch_limit. The operator sets these with BATCH_MAX_LINES, BATCH_MAX_BYTES and BATCH_MAX_ACTIVE. Results are kept for
+            24 hours after the batch finishes (BATCH_RESULTS_TTL) and then deleted; after that the output and errors routes answer 410 batch_results_expired.
+          </p>
+          <p>
+            <b>What is kept.</b> The request lines and the answers are never written to the database. Until the results expire they are kept sealed (AES-256-GCM, with a key derived from the router’s secret) in Redis, or in the router’s memory where there is no Redis, and then deleted.
+            The seal protects them from someone who can read Redis without the router’s secret; the router itself can open them, which it does to return your results. The database keeps only each batch’s counts, costs and statuses and the generation id of each answered line, and every
+            answered line has the generation record and signed receipt of a normal call.
+          </p>
           <h2 id="sdk">Verify before you send.</h2>
           <p>
             Two client libraries wrap the OpenAI-shaped call and add the checks a plain HTTP client would skip. The TypeScript package, @anyroute/client, has no runtime dependencies and runs on Bun, Node 20 and later, and in browsers. The Python package, anyroute-client (Python
@@ -1546,7 +1587,7 @@ export default function Docs() {
             provider fails, nothing is charged. A cancelled stream is billed only for what was generated.
           </p>
           <p>
-            The router stores key hashes, balances and receipt metadata. It never stores prompts or responses; the optional response cache is encrypted, per-workspace and expires. Provider data policies are listed per provider.
+            The router stores key hashes, balances and receipt metadata. It never stores prompts or responses; the optional response cache is encrypted, per-workspace and expires, and a <a href="#batches" className="inline-link">Batch API</a> batch keeps its lines and answers sealed, outside the database, only until its results expire. Provider data policies are listed per provider.
           </p>
           <h3>Primary references</h3>
           <p>

@@ -4,6 +4,7 @@ import { api } from "../lib/api.js";
 import {
   ATTESTED_LANE, BatchRunner, LANE_COLUMNS, MAX_ROWS, backoffMs, countFailedClosed, failClosed, laneMismatch, makeSender, modelsOnLane, routesOnLane, rowsOffLane, servedFrom, buildDefaults, checkFunds, classifyError, csvCell, detectFormat, estimateBatch, estimateRow, normalizeRoutes,
   parseBatch, parseCSV, parseRetryAfter, priceIndex, promptChars, restoreStates, resultRecord, retryAfterMs, rowsPerMinute, summarize, toCSV, toJSONL, validateBody,
+  SERVER_DISCOUNT_BPS, SERVER_MAX_BYTES, SERVER_MAX_LINES, checkServerBatch, estimateServerBatch, newState, parseServerResults, serverBatchDone, serverInputBytes, serverLineErrors, serverProgress, toServerRequests,
 } from "../lib/batch.js";
 
 // ---------------------------------------------------------------- helpers
@@ -692,4 +693,128 @@ test("answers the router withheld or this page could not confirm are never retri
   assert.equal(classifyError({ status: 502, type: "all_providers_failed" }), "transient");
   assert.equal(classifyError({ status: 409, type: "lane_unavailable" }), "fatal");
   assert.equal(classifyError({ status: 503, type: "disclosure_provider_unavailable" }), "transient");
+});
+
+// ---------------------------------------------------------------- server batches
+
+const serverRows = () => parseBatch(['{"custom_id": "a", "prompt": "one"}', '{"prompt": "two"}', '{"custom_id": "c", "prompt": "three"}', '{"custom_id": "d", "prompt": "four"}'].join("\n"), { defaults: { model: "m/x", params: { max_tokens: 10 } } }).rows;
+
+test("server batch requests are one chat completion line per parsed row, with the row's custom_id", () => {
+  const rows = serverRows();
+  const req = toServerRequests(rows);
+  assert.deepEqual(
+    req.map((r) => [r.custom_id, r.method, r.url]),
+    [
+      ["a", "POST", "/v1/chat/completions"],
+      ["row-2", "POST", "/v1/chat/completions"],
+      ["c", "POST", "/v1/chat/completions"],
+      ["d", "POST", "/v1/chat/completions"],
+    ],
+  );
+  assert.deepEqual(req[0].body, { model: "m/x", messages: [{ role: "user", content: "one" }], max_tokens: 10 });
+  assert.equal(toServerRequests([{ body: { model: "m/x" } }])[0].custom_id, "row-1", "a row without an id is numbered");
+  assert.equal(serverInputBytes(req), req.reduce((n, r) => n + Buffer.byteLength(JSON.stringify(r)) + 1, 0));
+  assert.deepEqual(toServerRequests(parseBatch('{"prompt": "x"}', { defaults: { model: "m/x", lane: ATTESTED_LANE } }).rows)[0].body.provider, { lane: ATTESTED_LANE }, "the lane goes on every line");
+});
+
+test("rules of the Batch API block a server batch; the router's default limits only warn", () => {
+  const line = (body, id = "x") => ({ custom_id: id, method: "POST", url: "/v1/chat/completions", body: { model: "m/x", messages: [{ role: "user", content: "hi" }], ...body } });
+  assert.deepEqual(checkServerBatch([line({})]), { error: null, warnings: [] });
+  assert.match(checkServerBatch([line({}, "i".repeat(65))]).error, /longer than 64 characters/);
+  assert.equal(checkServerBatch([line({}, "i".repeat(64))]).error, null);
+  assert.match(checkServerBatch([line({ model: "anyroute/council" })]).error, /Council mode/);
+  assert.match(checkServerBatch([line({ verify: true })]).error, /"verify"/);
+  const many = Array.from({ length: 3 }, (_, i) => line({}, "r" + i));
+  const { error, warnings } = checkServerBatch(many, { maxLines: 2, maxBytes: 100 });
+  assert.equal(error, null);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /3 rows is more than the 2/);
+  assert.match(warnings[1], /MB/);
+  assert.equal(SERVER_MAX_LINES, 1000);
+  assert.equal(SERVER_MAX_BYTES, 8 * 1024 * 1024);
+});
+
+test("line errors of a refused batch point at the rows' own lines", () => {
+  const rows = serverRows();
+  const e = { status: 400, type: "invalid_request", metadata: { errors: [{ line: 2, code: "invalid_body", message: "Bad body." }, { line: 9, code: "x", message: "Out of range." }] } };
+  assert.deepEqual(serverLineErrors(e, rows), [
+    { line: rows[1].line, custom_id: "row-2", message: "Bad body." },
+    { line: 9, custom_id: null, message: "Out of range." },
+  ]);
+  assert.deepEqual(serverLineErrors({ status: 429, type: "batch_limit" }, rows), []);
+});
+
+test("a server batch is done only in a terminal status, and its progress reads the counts and the cost", () => {
+  for (const s of ["validating", "in_progress", "cancelling"]) assert.equal(serverBatchDone({ status: s }), false, s);
+  for (const s of ["completed", "failed", "expired", "cancelled"]) assert.equal(serverBatchDone({ status: s }), true, s);
+  assert.equal(serverBatchDone(null), false);
+  const p = serverProgress({ status: "in_progress", request_counts: { total: 10, completed: 6, failed: 1 }, cost: { usd: 0.002, discount_bps: 5000, list_usd: 0.004 } });
+  assert.deepEqual(
+    [p.status, p.done, p.total, p.completed, p.failed, p.finished, p.remaining, p.pct, p.cost, p.listCost, p.saved, p.discountBps],
+    ["in_progress", false, 10, 6, 1, 7, 3, 70, 0.002, 0.004, 0.002, 5000],
+  );
+  const empty = serverProgress({ status: "validating" });
+  assert.deepEqual([empty.total, empty.finished, empty.pct, empty.cost, empty.saved], [0, 0, 0, 0, 0]);
+  assert.equal(serverProgress({ status: "weird" }).status, "validating");
+});
+
+test("the server estimate is the browser estimate at the batch discount", () => {
+  const rows = serverRows();
+  const priceOf = priceIndex([{ id: "m/x", price: 1, output: 2 }]);
+  const full = estimateBatch(rows, priceOf);
+  const half = estimateServerBatch(rows, priceOf);
+  assert.equal(SERVER_DISCOUNT_BPS, 5000);
+  assert.deepEqual([half.rows, half.input, half.output, half.priced], [full.rows, full.input, full.output, full.priced]);
+  assert.ok(Math.abs(half.maxCost - full.maxCost / 2) < 1e-15);
+  assert.ok(Math.abs(half.maxRowCost - full.maxRowCost / 2) < 1e-15);
+  assert.equal(half.listMaxCost, full.maxCost);
+  assert.ok(Math.abs(estimateServerBatch(rows, priceOf, 2500).maxCost - full.maxCost * 0.75) < 1e-15);
+});
+
+test("the output and errors files map back onto the rows and export like a browser batch", () => {
+  const rows = serverRows();
+  const body = { id: "gen-a", model: "m/x", choices: [{ message: { role: "assistant", content: "answer a" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, cost: 0.0005 }, receipt: { id: "gen-a" } };
+  const output = [JSON.stringify({ id: "batch_req_1", custom_id: "a", response: { status_code: 200, request_id: "gen-a", body }, error: null }), "", "not json", JSON.stringify({ id: "batch_req_9", custom_id: "nobody", response: { status_code: 200, body }, error: null })].join("\n");
+  const errors = [
+    JSON.stringify({ id: "batch_req_2", custom_id: "row-2", response: { status_code: 402, request_id: null, body: { error: { code: 402, type: "insufficient_credits", message: "Not enough credits.", metadata: { needed: 1 } } } }, error: { code: "insufficient_credits", message: "Not enough credits." } }),
+    JSON.stringify({ id: "batch_req_3", custom_id: "c", response: null, error: { code: "batch_cancelled", message: "The batch was cancelled before this line ran." } }),
+  ].join("\r\n");
+  const { states, unmatched } = parseServerResults(output, errors, rows);
+  assert.equal(unmatched, 2, "a line that is not JSON and a line naming no row");
+  assert.deepEqual(states.map((s) => s.status), ["done", "failed", "cancelled", "failed"]);
+  assert.deepEqual(states[0].response, { status_code: 200, body });
+  assert.equal(states[0].request_id, "gen-a");
+  assert.deepEqual(states[1].error, { status: 402, type: "insufficient_credits", message: "Not enough credits.", metadata: { needed: 1 } });
+  assert.deepEqual(states[2].error, { status: 0, type: "cancelled", message: "The batch was cancelled before this line ran." });
+  assert.deepEqual(states[3].error, { status: 0, type: "no_result", message: "The router returned no result for this row." }, "a row in neither file");
+  for (const st of states) for (const k of Object.keys(newState())) assert.ok(k in st, `${k} is kept`);
+
+  const s = summarize(states);
+  assert.deepEqual([s.done, s.failed, s.cancelled, s.cost, s.promptTokens], [1, 2, 1, 0.0005, 3]);
+  const lines = toJSONL(rows, states).trimEnd().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(lines.map((l) => l.error?.code ?? null), [null, "insufficient_credits", "cancelled", "no_result"]);
+  assert.deepEqual([lines[0].receipt_id, lines[0].cost], ["gen-a", 0.0005]);
+  assert.equal(lines[1].response.status_code, 402);
+  assert.equal(lines[2].response, null, "a line that never ran has no response");
+  const csv = toCSV(rows, states).slice(1).split("\r\n");
+  assert.equal(csv[1], "a,succeeded,200,m/x,answer a,stop,3,2,5,0.0005,gen-a,");
+  assert.equal(csv[3], "c,cancelled,,m/x,,,,,,,,The batch was cancelled before this line ran.");
+
+  const both = parseServerResults(output + "\n" + JSON.stringify({ custom_id: "a", response: null, error: { code: "x", message: "y" } }), "", rows);
+  assert.equal(both.states[0].status, "done", "an answered row is never overwritten by an error line");
+  assert.deepEqual(parseServerResults("", "", []), { states: [], unmatched: 0 });
+});
+
+test("on the attested lane a server row keeps its receipt id and the lane its receipt states, and a refusal fails closed", () => {
+  const rows = serverRows().slice(0, 3);
+  const body = { id: "gen-a", choices: [{ message: { content: "ok" } }], usage: { cost: 0.1 }, receipt: { id: "gen-a", payload: { lane: "attested" } } };
+  const output = [JSON.stringify({ custom_id: "a", response: { status_code: 200, request_id: "gen-a", body }, error: null }), JSON.stringify({ custom_id: "c", response: { status_code: 200, request_id: "gen-c", body: { ...body, receipt: { id: "gen-c" } } }, error: null })].join("\n");
+  const errors = JSON.stringify({ custom_id: "row-2", response: { status_code: 503, request_id: null, body: { error: { code: 503, type: "no_attested_endpoint", message: "No attested endpoint." } } }, error: { code: "no_attested_endpoint", message: "No attested endpoint." } });
+  const { states } = parseServerResults(output, errors, rows, { lane: true });
+  assert.deepEqual(states[0].served, { lane: "attested", receipt_id: "gen-a", policy_hash: null, disclosure: null });
+  assert.equal(states[2].served.lane, null, "a receipt that states no lane is not taken as attested");
+  assert.equal(failClosed(states[1]), "refused");
+  const rec = resultRecord(rows[0], states[0], { lane: true });
+  assert.deepEqual([rec.lane, rec.receipt_id, rec.fail_closed], ["attested", "gen-a", null]);
+  assert.equal(parseServerResults(output, errors, rows).states[0].served, undefined, "nothing extra without a lane");
 });

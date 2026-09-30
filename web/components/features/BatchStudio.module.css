@@ -62,6 +62,11 @@
 .slider output{min-width:2ch;font:500 16px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
 .slider small{grid-column:1 / -1;font-size:12px;color:var(--muted);line-height:1.45}
 
+.runOn{display:flex;flex-wrap:wrap;gap:0 24px;margin:4px 0 6px}
+.runOn :global(.check-label){margin:0 0 12px}
+.runOnHelp{margin:0 0 20px;font-size:12px;color:var(--muted);line-height:1.45}
+.serverNote{margin:20px 0 0;font-size:13px;color:var(--muted);line-height:1.45}
+.lineErrors{margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.45}
 .startRow{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px}
 .locked{font-size:13px;color:var(--muted);line-height:1.45}
 

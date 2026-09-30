@@ -5,6 +5,7 @@
 // prompts or completions anywhere but in the arrays the caller owns.
 // A batch can run on the attested lane: every row asks for provider.lane "attested", the response headers
 // (X-Anyroute-Lane, X-Receipt-Id) are kept per row, and a row the router refuses or withholds is "failed closed".
+// The same rows can also run on the router's Batch API at a discount (see "server batches" at the end).
 
 export const MAX_ROWS = 5000;
 export const MAX_INPUT_CHARS = 32 * 1024 * 1024;
@@ -913,4 +914,156 @@ export function toCSV(rows, states, { lane = false } = {}) {
     lines.push(cells.map(csvCell).join(","));
   });
   return "\ufeff" + lines.join("\r\n") + "\r\n";
+}
+
+// ---------------------------------------------------------------- server batches (POST /api/v1/batches)
+// The same parsed rows can instead go to the router's Batch API: the router's worker runs them in the background at a
+// discount, and its output and errors files (JSONL) are mapped back onto the row states the export above reads.
+
+export const SERVER_DISCOUNT_BPS = 5000; // each line is billed at 50% of the normal price
+export const SERVER_MAX_LINES = 1000; // the router's default BATCH_MAX_LINES; an operator may set another
+export const SERVER_MAX_BYTES = 8 * 1024 * 1024; // the router's default BATCH_MAX_BYTES of input
+export const SERVER_POLL_MS = 4000;
+export const SERVER_STATUSES = ["validating", "in_progress", "completed", "failed", "expired", "cancelling", "cancelled"];
+export const SERVER_TERMINAL = ["completed", "failed", "expired", "cancelled"];
+const SERVER_CUSTOM_ID_MAX = 64;
+const COUNCIL_MODEL = "anyroute/council";
+
+const serverId = (row, n) => (typeof row?.custom_id === "string" && row.custom_id ? row.custom_id : "row-" + (n + 1));
+
+/** Parsed rows as the `requests` of POST /api/v1/batches: one chat completion line per row. */
+export function toServerRequests(rows) {
+  return (rows || []).map((row, n) => ({ custom_id: serverId(row, n), method: "POST", url: "/v1/chat/completions", body: row.body }));
+}
+
+/** UTF-8 bytes of the requests as JSONL, the measure of the router's input limit. */
+export function serverInputBytes(requests) {
+  const enc = new TextEncoder();
+  return (requests || []).reduce((n, r) => n + enc.encode(JSON.stringify(r)).length + 1, 0);
+}
+
+/**
+ * What stops a server batch, judged before it is sent: { error, warnings }. `error` (or null) breaks a rule of the
+ * Batch API itself; `warnings` are the router's default limits, which an operator can change, so they do not block.
+ */
+export function checkServerBatch(requests, { maxLines = SERVER_MAX_LINES, maxBytes = SERVER_MAX_BYTES } = {}) {
+  const warnings = [];
+  let error = null;
+  for (const r of requests || []) {
+    if (r.custom_id.length > SERVER_CUSTOM_ID_MAX) error ||= `custom_id "${clip(r.custom_id, 40)}" is longer than ${SERVER_CUSTOM_ID_MAX} characters, the most a server batch accepts.`;
+    else if (String(r.body?.model || "").toLowerCase() === COUNCIL_MODEL) error ||= `Council mode (${COUNCIL_MODEL}) cannot run in a server batch. Choose another model, or run the batch in this browser.`;
+    else if (plain(r.body) && "verify" in r.body) error ||= '"verify" cannot be used in a server batch. Remove it, or run the batch in this browser.';
+  }
+  const n = requests?.length || 0;
+  if (n > maxLines) warnings.push(`${n.toLocaleString("en-US")} rows is more than the ${maxLines.toLocaleString("en-US")} a server batch holds by default. If the router refuses it, split the input.`);
+  const bytes = serverInputBytes(requests);
+  if (bytes > maxBytes) warnings.push(`The input is ${(bytes / 1048576).toFixed(1)} MB, more than the ${maxBytes / 1048576} MB a server batch holds by default. If the router refuses it, split the input.`);
+  return { error, warnings };
+}
+
+/** The line errors of a 400 from POST /api/v1/batches, on the rows' own lines: [{ line, custom_id, message }]. */
+export function serverLineErrors(err, rows) {
+  const list = err?.metadata?.errors;
+  if (!Array.isArray(list)) return [];
+  return list.map((e) => {
+    const row = Number.isInteger(e?.line) ? rows?.[e.line - 1] : null;
+    return { line: row?.line ?? e?.line ?? null, custom_id: row ? serverId(row, e.line - 1) : null, message: String(e?.message || e?.code || "Invalid line.") };
+  });
+}
+
+/** True once the batch can change no more: completed, failed, expired or cancelled. */
+export const serverBatchDone = (batch) => SERVER_TERMINAL.includes(batch?.status);
+
+/** Counts, cost and saving of a Batch object, for the progress view. */
+export function serverProgress(batch) {
+  const c = batch?.request_counts || {};
+  const total = Math.max(0, num(c.total) || 0);
+  const completed = Math.max(0, num(c.completed) || 0);
+  const failed = Math.max(0, num(c.failed) || 0);
+  const finished = Math.min(total, completed + failed);
+  const cost = num(batch?.cost?.usd) || 0;
+  const listCost = num(batch?.cost?.list_usd) ?? cost;
+  return {
+    status: SERVER_STATUSES.includes(batch?.status) ? batch.status : "validating",
+    done: serverBatchDone(batch),
+    total,
+    completed,
+    failed,
+    finished,
+    remaining: total - finished,
+    pct: total ? Math.floor((finished / total) * 100) : 0,
+    cost,
+    listCost,
+    saved: Math.max(0, listCost - cost),
+    discountBps: num(batch?.cost?.discount_bps) ?? SERVER_DISCOUNT_BPS,
+  };
+}
+
+/** The pre-flight estimate of a server batch: the browser estimate at the batch discount, with the list price kept. */
+export function estimateServerBatch(rows, priceOf, discountBps = SERVER_DISCOUNT_BPS) {
+  const e = estimateBatch(rows, priceOf);
+  const k = 1 - discountBps / 1e4;
+  return { ...e, maxCost: e.maxCost * k, maxRowCost: e.maxRowCost * k, listMaxCost: e.maxCost, discountBps };
+}
+
+function servedOf(res, lane) {
+  if (!lane) return {};
+  const r = plain(res.body?.receipt) ? res.body.receipt : {};
+  const stated = r.payload?.lane ?? r.lane ?? null;
+  return { served: { lane: typeof stated === "string" && stated ? stated.toLowerCase() : null, receipt_id: res.request_id ?? r.id ?? null, policy_hash: null, disclosure: null } };
+}
+
+function readResultLines(text) {
+  const lines = [];
+  let invalid = 0;
+  for (const src of String(text ?? "").split(/\r?\n/)) {
+    if (!src.trim()) continue;
+    let v;
+    try {
+      v = JSON.parse(src);
+    } catch {
+      v = null;
+    }
+    if (plain(v) && typeof v.custom_id === "string") lines.push(v);
+    else invalid++;
+  }
+  return { lines, invalid };
+}
+
+/**
+ * The output and errors files of a finished server batch as row states (the shape BatchRunner keeps), in row order.
+ * An output line is a done row; an errors line is a failed row, or a cancelled one when it never ran (no response)
+ * and its error code says it was cancelled. A row with no line in either file failed with no_result. `unmatched`
+ * counts lines that could not be read or name no row. With `lane`, each row also keeps `served` like a browser lane
+ * run: the receipt id (the line's request_id) and the lane its signed receipt states, or null where it states none.
+ */
+export function parseServerResults(outputJsonl, errorsJsonl, rows, { lane = false } = {}) {
+  const at = new Map((rows || []).map((row, n) => [serverId(row, n), n]));
+  const states = (rows || []).map(() => null);
+  const out = readResultLines(outputJsonl);
+  const errs = readResultLines(errorsJsonl);
+  let unmatched = out.invalid + errs.invalid;
+  for (const l of out.lines) {
+    const n = at.get(l.custom_id);
+    if (n == null) {
+      unmatched++;
+      continue;
+    }
+    const res = plain(l.response) ? l.response : {};
+    states[n] = { ...newState(), status: "done", attempts: 1, response: { status_code: Number(res.status_code) || 200, body: res.body ?? null }, error: null, request_id: res.request_id ?? null, ...servedOf(res, lane) };
+  }
+  for (const l of errs.lines) {
+    const n = at.get(l.custom_id);
+    if (n == null) unmatched++;
+    if (n == null || states[n]) continue;
+    const res = plain(l.response) ? l.response : null;
+    const e = plain(res?.body?.error) ? res.body.error : {};
+    const code = String(l.error?.code || e.type || e.code || "error");
+    const message = clip(String(l.error?.message || e.message || "The request failed."), 2000);
+    const cancelled = !res && /cancel/i.test(code);
+    const error = { status: cancelled ? 0 : Number(res?.status_code) || 0, type: cancelled ? "cancelled" : code, message, ...(plain(e.metadata) ? { metadata: e.metadata } : {}) };
+    states[n] = { ...newState(), status: cancelled ? "cancelled" : "failed", attempts: res ? 1 : 0, error, request_id: res?.request_id ?? null, ...(res ? servedOf(res, lane) : {}) };
+  }
+  const missing = { status: 0, type: "no_result", message: "The router returned no result for this row." };
+  return { states: states.map((st) => st || { ...newState(), status: "failed", error: { ...missing } }), unmatched };
 }

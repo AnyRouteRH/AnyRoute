@@ -52,7 +52,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function api(path, { key, method = "GET", body, signal, headers = {}, onResponse } = {}) {
+export async function api(path, { key, method = "GET", body, signal, headers = {}, onResponse, raw = false } = {}) {
   let res;
   try {
     res = await fetch(API_BASE + path, {
@@ -79,7 +79,7 @@ export async function api(path, { key, method = "GET", body, signal, headers = {
     err.retryAfter = res.headers.get("retry-after"); // seconds or an HTTP date; read by the batch and eval runners
     throw err;
   }
-  return json;
+  return raw ? text : json; // raw: the body as text, for JSONL such as a batch's output and errors files
 }
 
 /**

@@ -5,6 +5,7 @@ import { models as sampleModels, money } from "../../lib/demo";
 import {
   ATTESTED_LANE, BatchRunner, CONCURRENCY, MAX_INPUT_CHARS, MAX_RETRIES, MAX_ROWS, buildDefaults, checkFunds, clampConcurrency, countFailedClosed, estimateBatch, failClosed, makeSender,
   modelsOnLane, normalizeRoutes, parseBatch, priceIndex, responseText, restoreStates, routesOnLane, rowsOffLane, summarize, toCSV, toJSONL,
+  SERVER_DISCOUNT_BPS, SERVER_POLL_MS, checkServerBatch, estimateServerBatch, newState, parseServerResults, serverBatchDone, serverLineErrors, serverProgress, toServerRequests,
 } from "../../lib/batch";
 import { Button, CopyButton, Modal } from "../UI";
 import styles from "./BatchStudio.module.css";
@@ -82,7 +83,11 @@ function saveNow() {
     v: 1,
     savedAt: Date.now(),
     draft: store.draft,
-    run: r && { id: r.id, createdAt: r.createdAt, endedAt: r.endedAt, rows: r.rows, states: r.runner.states, status: r.runner.status, concurrency: r.runner.concurrency, sourceName: r.sourceName, model: r.model, lane: r.lane, estimate: r.estimate, skipped: r.skipped },
+    run:
+      r &&
+      (r.server
+        ? { server: true, id: r.id, createdAt: r.createdAt, endedAt: r.endedAt, rows: r.rows, states: r.states, batch: r.batch, results: r.results === "loading" ? "none" : r.results, sourceName: r.sourceName, model: r.model, lane: r.lane, estimate: r.estimate, skipped: r.skipped }
+        : { id: r.id, createdAt: r.createdAt, endedAt: r.endedAt, rows: r.rows, states: r.runner.states, status: r.runner.status, concurrency: r.runner.concurrency, sourceName: r.sourceName, model: r.model, lane: r.lane, estimate: r.estimate, skipped: r.skipped }),
   };
   const hash = store.keyHash;
   idb("readwrite", (s) => s.put(record, recordKey(hash))).then(({ ok }) => {
@@ -146,6 +151,106 @@ function attachRun(meta, key) {
   return runner;
 }
 
+// ---------------------------------------------------------------- server batches
+// A batch sent to POST /api/v1/batches runs on the router's worker, so it goes on when this tab closes. The page polls the
+// Batch object and, once the batch has finished, reads its output and errors files into the row states a browser batch keeps.
+// The key stays in memory with the run; it is never saved.
+
+const batchPath = (id, rest = "") => "/api/v1/batches/" + encodeURIComponent(id) + rest;
+
+function attachServerRun(meta, key) {
+  const run = {
+    server: true,
+    id: meta.id,
+    createdAt: meta.createdAt,
+    endedAt: meta.endedAt ?? null,
+    rows: meta.rows,
+    states: meta.states || meta.rows.map(newState),
+    batch: meta.batch,
+    results: meta.results || "none", // none | loading | ready | expired | error
+    resultsError: null,
+    pollError: null,
+    sourceName: meta.sourceName,
+    model: meta.model,
+    lane: meta.lane === ATTESTED_LANE ? ATTESTED_LANE : null,
+    estimate: meta.estimate,
+    skipped: meta.skipped || 0,
+    key,
+    timer: null,
+  };
+  store.run = run;
+  store.lastStatus = null;
+  return run;
+}
+
+/** The next look at an unfinished batch, or its results once it has finished. */
+function watchServer(run) {
+  clearTimeout(run.timer);
+  run.timer = null;
+  if (store.run !== run) return;
+  if (!serverBatchDone(run.batch)) run.timer = setTimeout(() => pollServer(run), run.pollError ? SERVER_POLL_MS * 4 : SERVER_POLL_MS);
+  else if (run.results === "none") loadServerResults(run);
+}
+
+async function pollServer(run) {
+  if (store.run !== run) return;
+  try {
+    const b = await api(batchPath(run.batch.id), { key: run.key });
+    if (store.run !== run) return;
+    if (b?.id) run.batch = b;
+    run.pollError = null;
+  } catch (e) {
+    if (store.run !== run) return;
+    run.pollError = e?.message || "The batch could not be checked.";
+  }
+  if (serverBatchDone(run.batch)) run.endedAt ||= Date.now();
+  scheduleSave();
+  bump();
+  watchServer(run);
+}
+
+async function cancelServer(run) {
+  run.cancelError = null;
+  try {
+    const b = await api(batchPath(run.batch.id, "/cancel"), { key: run.key, method: "POST" });
+    if (store.run !== run) return;
+    if (b?.id) run.batch = b;
+  } catch (e) {
+    if (store.run !== run) return;
+    run.cancelError = e?.message || "The batch could not be cancelled.";
+  }
+  if (serverBatchDone(run.batch)) run.endedAt ||= Date.now();
+  saveNow();
+  bump();
+  watchServer(run);
+}
+
+const SERVER_ENDED = { completed: "finished", failed: "failed", expired: "expired", cancelled: "cancelled" };
+
+async function loadServerResults(run) {
+  if (store.run !== run || run.results === "loading") return;
+  run.results = "loading";
+  run.resultsError = null;
+  bump();
+  try {
+    const [output, errors] = await Promise.all([api(batchPath(run.batch.id, "/output"), { key: run.key, raw: true }), api(batchPath(run.batch.id, "/errors"), { key: run.key, raw: true })]);
+    if (store.run !== run) return;
+    run.states = parseServerResults(output, errors, run.rows, { lane: run.lane === ATTESTED_LANE }).states;
+    run.results = "ready";
+  } catch (e) {
+    if (store.run !== run) return;
+    run.results = e?.status === 410 ? "expired" : "error";
+    run.resultsError = e?.message || "The results could not be read.";
+  }
+  const p = serverProgress(run.batch);
+  store.hooks.notify?.(`Server batch ${SERVER_ENDED[p.status] || "ended"}: ${int(p.completed)} succeeded, ${int(p.failed)} failed.${run.results === "ready" ? " Download the results in Batch Studio." : ""}`);
+  Promise.resolve()
+    .then(() => store.hooks.refresh?.())
+    .catch(() => {});
+  saveNow();
+  bump();
+}
+
 /** A reload pauses the batch: rows that were in flight fail as interrupted (never sent twice), the rest wait for Resume. */
 async function loadSaved(hash, key) {
   const { ok, value } = await idb("readonly", (s) => s.get(recordKey(hash)));
@@ -155,7 +260,14 @@ async function loadSaved(hash, key) {
   const rec = value?.v === 1 ? value : null;
   if (rec?.draft && typeof rec.draft === "object") store.draft = rec.draft;
   const saved = rec?.run;
-  if (saved && Array.isArray(saved.rows) && Array.isArray(saved.states) && saved.rows.length && saved.rows.length === saved.states.length) {
+  if (saved?.server) {
+    // A server batch went on without this page: look at it again (or read its results) instead of resuming anything here.
+    if (saved.batch?.id && Array.isArray(saved.rows) && saved.rows.length) {
+      const run = attachServerRun({ ...saved, states: Array.isArray(saved.states) && saved.states.length === saved.rows.length ? saved.states : undefined }, key);
+      if (serverBatchDone(run.batch)) watchServer(run);
+      else pollServer(run);
+    }
+  } else if (saved && Array.isArray(saved.rows) && Array.isArray(saved.states) && saved.rows.length && saved.rows.length === saved.states.length) {
     const interrupted = saved.states.filter((s) => s?.status === "running").length;
     const runner = attachRun({ ...saved, states: restoreStates(saved.states) }, key);
     if (runner.pending.length || runner.waiting.size) runner.pause({ kind: "reload", interrupted });
@@ -170,7 +282,8 @@ function discardRun() {
   if (!r) return;
   store.run = null;
   store.lastStatus = null;
-  r.runner.cancel();
+  if (r.server) clearTimeout(r.timer); // a server batch is only forgotten here; it is never cancelled by a discard
+  else r.runner.cancel();
   saveNow();
   bump();
 }
@@ -275,8 +388,9 @@ export default function BatchStudio({ live, apiKey, ws, catalog, refresh, notify
     if (!keyHash) return;
     if (store.keyHash === keyHash && store.loaded) return setReady(true);
     if (store.run) {
-      // Another key's batch: stop starting its rows. It stays saved in this browser under that key.
-      store.run.runner.pause({ kind: "key" });
+      // Another key's batch: stop starting its rows (or stop watching a server batch). It stays saved in this browser under that key.
+      if (store.run.server) clearTimeout(store.run.timer);
+      else store.run.runner.pause({ kind: "key" });
       saveNow();
       store.run = null;
     }
@@ -308,19 +422,30 @@ export default function BatchStudio({ live, apiKey, ws, catalog, refresh, notify
           <h2>{live ? "Run many calls at once." : "Try the batch format."}</h2>
           <p className="help-text">Upload JSONL or CSV, check the estimate, then send every row from this browser and download the results.</p>
         </div>
-        <span className="badge">{live ? "Runs in this browser" : "Sample workspace · nothing is sent"}</span>
+        <span className="badge">{!live ? "Sample workspace · nothing is sent" : run?.server ? "Runs on the server" : "Runs in this browser"}</span>
       </div>
-      <div className={"note " + styles.privacy}>
-        <strong>Batches run from this browser.</strong> Rows are sent to the router one request at a time and are not stored on Anyroute’s servers.{" "}
-        {live ? "Input and progress are kept in this browser (IndexedDB) so a reload can resume." : "In the sample workspace nothing is sent and no results are produced."}
-      </div>
+      {run?.server && live ? (
+        <div className={"note " + styles.privacy}>
+          <strong>This batch runs on the server.</strong> The router keeps its rows and answers sealed (encrypted) outside the database until the results expire, then deletes them; the database keeps only counts, costs, statuses and receipt ids.
+          This browser keeps its copy of the input and the results (IndexedDB).
+        </div>
+      ) : (
+        <div className={"note " + styles.privacy}>
+          <strong>Batches run from this browser.</strong> Rows are sent to the router one request at a time and are not stored on Anyroute’s servers.{" "}
+          {live ? "Input and progress are kept in this browser (IndexedDB) so a reload can resume." : "In the sample workspace nothing is sent and no results are produced."}
+        </div>
+      )}
       {!ready ? (
         <div className="empty loading-state" role="status">
           <span className="loading-bar" aria-hidden="true" />
           Loading saved batch…
         </div>
       ) : run && live ? (
-        <RunView run={run} navigate={navigate} />
+        run.server ? (
+          <ServerRunView run={run} navigate={navigate} />
+        ) : (
+          <RunView run={run} navigate={navigate} />
+        )
       ) : (
         <Composer live={live} apiKey={apiKey} ws={ws} models={models} routes={routes} priceOf={priceOf} />
       )}
@@ -342,11 +467,13 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
   const [temperature, setTemperature] = useState(d.temperature ?? "");
   const [extra, setExtra] = useState(d.extra || "");
   const [concurrency, setConcurrency] = useState(clampConcurrency(d.concurrency ?? CONCURRENCY.default));
+  const [server, setServer] = useState(live && d.server === true); // run on the router's Batch API instead of this browser
   const [skipInvalid, setSkipInvalid] = useState(false);
   const [fileError, setFileError] = useState("");
   const [drag, setDrag] = useState(false);
   const [modal, setModal] = useState(null);
   const [funds, setFunds] = useState(null);
+  const [submit, setSubmit] = useState(null); // a server batch being sent: { busy } or { error, lines }
 
   // The attested lane limits the pickers to what the router lists for it (GET /api/v1/models?lane=attested).
   useEffect(() => {
@@ -373,15 +500,19 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
     if (!pickModels.some((m) => m.id === model) && !pickRoutes.some((r) => "@route/" + r.slug === model)) setModel(pickModels[0]?.id ?? "");
   }, [laneReady, model, pickModels, pickRoutes]);
   useEffect(() => {
-    store.draft = { text, fileName, format, model, maxTokens, temperature, extra, concurrency, attested };
+    store.draft = { text, fileName, format, model, maxTokens, temperature, extra, concurrency, attested, server };
     scheduleSave(1000);
-  }, [text, fileName, format, model, maxTokens, temperature, extra, concurrency, attested]);
+  }, [text, fileName, format, model, maxTokens, temperature, extra, concurrency, attested, server]);
 
   const lane = attested ? ATTESTED_LANE : null;
   const { defaults, error: defaultsError } = useMemo(() => buildDefaults({ model: model || "", maxTokens, temperature, extra, lane }), [model, maxTokens, temperature, extra, lane]);
   const source = useDeferredValue(text);
   const parsed = useMemo(() => parseBatch(source, { format, fileName, defaults }), [source, format, fileName, defaults]);
-  const estimate = useMemo(() => estimateBatch(parsed.rows, priceOf), [parsed, priceOf]);
+  const browserEstimate = useMemo(() => estimateBatch(parsed.rows, priceOf), [parsed, priceOf]);
+  const serverEstimate = useMemo(() => (server ? estimateServerBatch(parsed.rows, priceOf) : null), [server, parsed, priceOf]);
+  const estimate = serverEstimate || browserEstimate; // a server batch is billed at the batch discount
+  const requests = useMemo(() => (server ? toServerRequests(parsed.rows) : null), [server, parsed]);
+  const serverCheck = useMemo(() => (requests ? checkServerBatch(requests) : null), [requests]);
   const checking = source !== text;
   const fundsNow = live ? checkFunds(estimate.maxCost, { available: ws?.credits?.available, budgetRemaining: ws?.me?.limit_remaining }) : null;
   const rpm = ws?.me?.rate_limit?.requests;
@@ -397,6 +528,7 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
     if (!parsed.rows.length) return "No valid rows yet.";
     if (defaultsError) return "Fix the default parameters first.";
     if (parsed.invalid && !skipInvalid) return "Fix the invalid rows, or choose to skip them.";
+    if (serverCheck?.error) return serverCheck.error;
     return "";
   })();
   const canStart = live && !hint;
@@ -429,6 +561,7 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
   }
   async function review() {
     setModal("start");
+    setSubmit(null);
     setFunds({ loading: true });
     try {
       const [c, k] = await Promise.all([api("/api/v1/credits", { key: apiKey }), api("/api/v1/key", { key: apiKey })]);
@@ -437,7 +570,36 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
       setFunds({ available: ws?.credits?.available, budgetRemaining: ws?.me?.limit_remaining ?? null, rpm: rpm ?? null, stale: e?.message || "The balance could not be refreshed." });
     }
   }
+  async function startServer() {
+    setSubmit({ busy: true });
+    try {
+      const batch = await api("/api/v1/batches", { key: apiKey, method: "POST", body: { requests, completion_window: "24h" } });
+      if (!batch?.id) throw new Error("The router did not return a batch id.");
+      setModal(null);
+      setSubmit(null);
+      const run = attachServerRun(
+        {
+          id: batch.id,
+          createdAt: Date.now(),
+          rows: parsed.rows,
+          batch,
+          sourceName: fileName || "Pasted rows",
+          model: model || "",
+          lane,
+          estimate: { input: estimate.input, output: estimate.output, maxCost: estimate.maxCost, listMaxCost: estimate.listMaxCost, unpriced: estimate.unpriced },
+          skipped: parsed.invalid,
+        },
+        apiKey,
+      );
+      saveNow();
+      bump();
+      watchServer(run);
+    } catch (e) {
+      setSubmit({ error: e?.message || "The batch could not be sent.", lines: serverLineErrors(e, parsed.rows) });
+    }
+  }
   function start() {
+    if (server) return startServer();
     setModal(null);
     const runner = attachRun(
       {
@@ -614,7 +776,7 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
           <Figure label="Rows" value={int(parsed.rows.length)} sub={parsed.invalid ? `${int(parsed.invalid)} invalid · ${int(parsed.total)} read` : `Up to ${int(MAX_ROWS)}`} />
           <Figure label="Input tokens" value={"≈ " + int(estimate.input)} sub="Prompt characters ÷ 4" />
           <Figure label="Output tokens" value={"≤ " + int(estimate.output)} sub="max_tokens per row" />
-          <Figure label="Max cost / USDG" value={money(estimate.maxCost, 6)} sub={live ? "From catalog prices" : "Sample prices"} />
+          <Figure label="Max cost / USDG" value={money(estimate.maxCost, 6)} sub={server ? `50% off ${money(estimate.listMaxCost, 6)} list` : live ? "From catalog prices" : "Sample prices"} />
         </div>
         {estimate.unpriced > 0 && (
           <div className={styles.check + " " + styles.warn}>
@@ -642,11 +804,18 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
         ) : (
           <div className={styles.check + " " + styles.warn}>
             <span>
-              The maximum is above your {fundsNow.source === "budget" ? "key’s remaining budget" : "available balance"} (<b>{money(fundsNow.limit, 6)} USDG</b>). Actual cost is usually lower; if the money runs
-              out, the router declines rows with 402 and the batch pauses so you can add funds and resume.
+              The maximum is above your {fundsNow.source === "budget" ? "key’s remaining budget" : "available balance"} (<b>{money(fundsNow.limit, 6)} USDG</b>). Actual cost is usually lower;{" "}
+              {server
+                ? "if the money runs out, the rows the router cannot pay for fail with insufficient_credits and are not charged."
+                : "if the money runs out, the router declines rows with 402 and the batch pauses so you can add funds and resume."}
             </span>
           </div>
         )}
+        {serverCheck?.warnings.map((w) => (
+          <div key={w} className={styles.check + " " + styles.warn}>
+            <span>{w}</span>
+          </div>
+        ))}
         {live && rpm ? <p className="help-text">This key allows {int(rpm)} requests per minute. Rate-limited rows wait and retry automatically.</p> : null}
         {parsed.ignoredColumns.length > 0 && <p className="help-text">Ignored CSV columns: {parsed.ignoredColumns.join(", ")}.</p>}
         {parsed.errors.length > 0 && (
@@ -673,7 +842,22 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
             <input type="checkbox" checked={skipInvalid} onChange={(e) => setSkipInvalid(e.target.checked)} /> Skip the {int(parsed.invalid)} invalid row{parsed.invalid === 1 ? "" : "s"} and run the {int(parsed.rows.length)} valid ones
           </label>
         )}
-        <Concurrency id="batch-concurrency" value={concurrency} onChange={setConcurrency} />
+        <div className={styles.runOn} role="radiogroup" aria-label="Where the batch runs" aria-describedby={server ? "batch-run-on-help" : undefined}>
+          <label className="check-label">
+            <input type="radio" name="batch-run-on" checked={!server} onChange={() => setServer(false)} /> Run in this browser
+          </label>
+          <label className="check-label">
+            <input type="radio" name="batch-run-on" checked={server} disabled={!live} onChange={() => setServer(true)} /> Run on the server (50% off)
+          </label>
+        </div>
+        {server ? (
+          <p className={styles.runOnHelp} id="batch-run-on-help">
+            The router runs the rows in the background, in spare capacity, at half the normal price; failed rows are not charged. It can take minutes, and rows not run within 24 hours expire unbilled. You can close this tab. The router keeps the rows and answers
+            sealed until the results expire, 24 hours after the batch finishes by default.
+          </p>
+        ) : (
+          <Concurrency id="batch-concurrency" value={concurrency} onChange={setConcurrency} />
+        )}
         <div className={styles.startRow}>
           <Button onClick={review} disabled={!canStart} aria-describedby="batch-start-hint">
             {live ? "Review and start" : "Run batch"}
@@ -685,10 +869,16 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
       </section>
 
       {modal === "start" && (
-        <Modal title="Start this batch?" onClose={() => setModal(null)}>
-          <p>
-            {int(parsed.rows.length)} rows go to the router from this browser, {concurrency} at a time. Each row is billed like a normal call and gets its own signed receipt.
-          </p>
+        <Modal title={server ? "Send this batch to the server?" : "Start this batch?"} onClose={() => setModal(null)}>
+          {server ? (
+            <p>
+              {int(parsed.rows.length)} rows go to the router’s Batch API and run there in the background. Each row is billed at {100 - SERVER_DISCOUNT_BPS / 100}% of the normal price, a failed row is not charged, and every answered row gets its own signed receipt.
+            </p>
+          ) : (
+            <p>
+              {int(parsed.rows.length)} rows go to the router from this browser, {concurrency} at a time. Each row is billed like a normal call and gets its own signed receipt.
+            </p>
+          )}
           <dl className="detail-list">
             <div>
               <dt>Rows</dt>
@@ -714,7 +904,8 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
             <div>
               <dt>Max cost</dt>
               <dd>
-                {money(estimate.maxCost, 6)} USDG{estimate.unpriced ? ` · plus ${int(estimate.unpriced)} unpriced rows` : ""}
+                {money(estimate.maxCost, 6)} USDG{server ? ` (50% off ${money(estimate.listMaxCost, 6)})` : ""}
+                {estimate.unpriced ? ` · plus ${int(estimate.unpriced)} unpriced rows` : ""}
               </dd>
             </div>
             <div>
@@ -725,23 +916,52 @@ function Composer({ live, apiKey, ws, models, routes, priceOf }) {
               <dt>Key budget left</dt>
               <dd>{funds?.loading ? "Checking…" : funds?.budgetRemaining == null ? "No budget limit" : money(funds.budgetRemaining, 6) + " USDG"}</dd>
             </div>
-            <div>
-              <dt>Concurrency</dt>
-              <dd>
-                {concurrency} at once{funds?.rpm ? ` · key limit ${int(funds.rpm)} requests/min` : ""}
-              </dd>
-            </div>
+            {server ? (
+              <div>
+                <dt>Runs</dt>
+                <dd>
+                  On the server, within 24 hours{funds?.rpm ? ` · key limit ${int(funds.rpm)} requests/min` : ""}
+                </dd>
+              </div>
+            ) : (
+              <div>
+                <dt>Concurrency</dt>
+                <dd>
+                  {concurrency} at once{funds?.rpm ? ` · key limit ${int(funds.rpm)} requests/min` : ""}
+                </dd>
+              </div>
+            )}
           </dl>
           {funds?.stale && <p className="help-text">Showing the last known balance: {funds.stale}</p>}
           {check?.known && !check.enough && (
             <div className="error" role="alert">
-              The maximum is {money(check.shortfall, 6)} USDG above your {check.source === "budget" ? "key’s remaining budget" : "available balance"}. The batch pauses if the router declines a row for lack of funds.
+              The maximum is {money(check.shortfall, 6)} USDG above your {check.source === "budget" ? "key’s remaining budget" : "available balance"}.{" "}
+              {server ? "Rows the router cannot pay for fail and are not charged." : "The batch pauses if the router declines a row for lack of funds."}
             </div>
           )}
-          <div className="note">Keep this tab open until the batch finishes. Other dashboard sections are fine; closing or reloading the page pauses the batch, and you can resume it here.</div>
+          {server ? (
+            <div className="note">You can close this tab once the batch is sent: it runs on the router. Come back to Batch Studio for its progress and results; the router keeps the results for 24 hours after the batch finishes.</div>
+          ) : (
+            <div className="note">Keep this tab open until the batch finishes. Other dashboard sections are fine; closing or reloading the page pauses the batch, and you can resume it here.</div>
+          )}
+          {submit?.error && (
+            <div className="error" role="alert">
+              {submit.error}
+              {submit.lines?.length > 0 && (
+                <ul className={styles.lineErrors}>
+                  {submit.lines.slice(0, 20).map((e, k) => (
+                    <li key={k}>
+                      {e.line ? `Line ${e.line}` : "Input"}
+                      {e.custom_id ? ` (${e.custom_id})` : ""}: {e.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <div className="button-row modal-actions">
-            <Button onClick={start} disabled={!!funds?.loading}>
-              {check?.known && !check.enough ? "Start anyway" : "Start batch"}
+            <Button onClick={start} disabled={!!funds?.loading || !!submit?.busy}>
+              {server ? (submit?.busy ? "Sending…" : check?.known && !check.enough ? "Send anyway" : "Send batch") : check?.known && !check.enough ? "Start anyway" : "Start batch"}
             </Button>
             <Button secondary onClick={() => setModal(null)}>
               Back
@@ -810,17 +1030,7 @@ function RunView({ run, navigate }) {
   const retryable = s.failed + s.cancelled;
   const label = r.status === "running" ? "Running" : r.status === "paused" ? (r.inflight.size ? "Pausing" : "Paused") : r.status === "completed" ? "Finished" : "Cancelled";
   const pill = { running: "running", paused: "waiting", completed: "done", cancelled: "cancelled" }[r.status] || "pending";
-
-  const q = query.trim().toLowerCase();
-  const list = [];
-  const inFilter = (st) => filter === "all" || (filter === "closed" ? !!failClosed(st) : st.status === filter);
-  for (let i = 0; i < total; i++) if (inFilter(r.states[i]) && (!q || r.rows[i].custom_id.toLowerCase().includes(q))) list.push(i);
-  const pages = Math.max(1, Math.ceil(list.length / PAGE));
-  const pg = Math.min(page, pages - 1);
-  const shown = list.slice(pg * PAGE, pg * PAGE + PAGE);
   const closed = countFailedClosed(r.states);
-  const counts = { all: total, ...s, closed };
-  const filters = laneRun ? [...FILTERS, ["closed", "Failed closed"]] : FILTERS;
 
   const note = (st) => {
     if (st.status === "waiting") {
@@ -909,16 +1119,88 @@ function RunView({ run, navigate }) {
         {!ended && <p className={styles.keepOpen}>Keep this tab open until the batch finishes. Other dashboard sections are fine; closing or reloading the page pauses the batch.</p>}
       </section>
 
+      <Results
+        rows={r.rows}
+        states={r.states}
+        laneRun={laneRun}
+        intro={"Built in this browser from the router’s responses. " + (ended ? "" : "Rows that have not run yet are included with the error code not_run.")}
+        fileBase={`anyroute-batch-${run.id}`}
+        estimate={run.estimate}
+        note={note}
+        view={{ filter, setFilter, query, setQuery, page, setPage }}
+        onInspect={(i) => setModal({ type: "row", index: i })}
+      />
+
+      {modal?.type === "row" && <RowDetails row={r.rows[modal.index]} st={r.states[modal.index]} laneRun={laneRun} navigate={navigate} onClose={() => setModal(null)} />}
+      {modal?.type === "cancel" && (
+        <Modal title="Cancel this batch?" onClose={() => setModal(null)}>
+          <p>Requests in flight are stopped and no new rows start. A provider may already have done, and the router billed, work for requests in flight. Finished rows stay available to download.</p>
+          <div className="button-row modal-actions">
+            <Button
+              onClick={() => {
+                setModal(null);
+                r.cancel();
+              }}
+            >
+              Cancel batch
+            </Button>
+            <Button secondary onClick={() => setModal(null)}>
+              Keep running
+            </Button>
+          </div>
+        </Modal>
+      )}
+      {modal?.type === "discard" && (
+        <Modal title={ended ? "Start a new batch?" : "Discard this batch?"} onClose={() => setModal(null)}>
+          <p>This clears the batch and its results from this browser. Download the results first if you need them. Your input stays in the editor.</p>
+          <div className="button-row modal-actions">
+            <Button
+              onClick={() => {
+                setModal(null);
+                discardRun();
+              }}
+            >
+              {ended ? "Clear and start over" : "Discard batch"}
+            </Button>
+            <Button secondary onClick={() => setModal(null)}>
+              Keep it
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/** The results of a batch, from this browser or from the server: downloads, totals, and the rows by status, page by page. */
+function Results({ rows, states, laneRun, intro, fileBase, estimate, note, view, onInspect }) {
+  const { filter, setFilter, query, setQuery, page, setPage } = view;
+  const s = summarize(states);
+  const total = rows.length;
+  const answered = s.done + s.failed;
+  const q = query.trim().toLowerCase();
+  const list = [];
+  const inFilter = (st) => filter === "all" || (filter === "closed" ? !!failClosed(st) : st.status === filter);
+  for (let i = 0; i < total; i++) if (inFilter(states[i]) && (!q || rows[i].custom_id.toLowerCase().includes(q))) list.push(i);
+  const pages = Math.max(1, Math.ceil(list.length / PAGE));
+  const pg = Math.min(page, pages - 1);
+  const shown = list.slice(pg * PAGE, pg * PAGE + PAGE);
+  const closed = countFailedClosed(states);
+  const counts = { all: total, ...s, closed };
+  const filters = laneRun ? [...FILTERS, ["closed", "Failed closed"]] : FILTERS;
+
+  return (
+    <>
       <div className="panel-heading">
         <div>
           <h2>Results</h2>
-          <p className="help-text">Built in this browser from the router’s responses. {ended ? "" : "Rows that have not run yet are included with the error code not_run."}</p>
+          <p className="help-text">{intro}</p>
         </div>
         <div className={styles.results}>
-          <Button onClick={() => download(toJSONL(r.rows, r.states, { lane: laneRun }), `anyroute-batch-${run.id}.jsonl`, "application/jsonl")} disabled={!answered && !s.cancelled}>
+          <Button onClick={() => download(toJSONL(rows, states, { lane: laneRun }), `${fileBase}.jsonl`, "application/jsonl")} disabled={!answered && !s.cancelled}>
             Download JSONL
           </Button>
-          <Button secondary onClick={() => download(toCSV(r.rows, r.states, { lane: laneRun }), `anyroute-batch-${run.id}.csv`, "text/csv")} disabled={!answered && !s.cancelled}>
+          <Button secondary onClick={() => download(toCSV(rows, states, { lane: laneRun }), `${fileBase}.csv`, "text/csv")} disabled={!answered && !s.cancelled}>
             Download CSV
           </Button>
         </div>
@@ -927,7 +1209,7 @@ function RunView({ run, navigate }) {
         <Figure label="Succeeded" value={int(s.done)} sub={`of ${int(total)} rows`} />
         <Figure label="Failed" value={int(s.failed)} sub={closed ? `${int(closed)} failed closed${s.cancelled ? ` · plus ${int(s.cancelled)} cancelled` : ""}` : s.cancelled ? `Plus ${int(s.cancelled)} cancelled` : "Errors are in the download"} />
         <Figure label="Tokens" value={int(s.promptTokens + s.completionTokens)} sub={`${int(s.promptTokens)} in · ${int(s.completionTokens)} out`} />
-        <Figure label="Actual cost / USDG" value={money(s.cost, 6)} sub={run.estimate ? `Estimated max ${money(run.estimate.maxCost, 6)}` : "From usage.cost"} />
+        <Figure label="Actual cost / USDG" value={money(s.cost, 6)} sub={estimate ? `Estimated max ${money(estimate.maxCost, 6)}` : "From usage.cost"} />
       </div>
 
       <div className={styles.tools}>
@@ -958,8 +1240,8 @@ function RunView({ run, navigate }) {
             </thead>
             <tbody>
               {shown.map((i) => {
-                const row = r.rows[i];
-                const st = r.states[i];
+                const row = rows[i];
+                const st = states[i];
                 const u = st.status === "done" ? st.response?.body?.usage : null;
                 const why = note(st);
                 return (
@@ -996,7 +1278,7 @@ function RunView({ run, navigate }) {
                       {u?.cost != null ? money(u.cost, 6) : "—"}
                     </td>
                     <td className="cell-action">
-                      <button type="button" className="text-button" onClick={() => setModal({ type: "row", index: i })} aria-label={"Inspect row " + row.custom_id}>
+                      <button type="button" className="text-button" onClick={() => onInspect(i)} aria-label={"Inspect row " + row.custom_id}>
                         Inspect →
                       </button>
                     </td>
@@ -1027,16 +1309,146 @@ function RunView({ run, navigate }) {
           </div>
         </div>
       )}
+    </>
+  );
+}
 
-      {modal?.type === "row" && <RowDetails row={r.rows[modal.index]} st={r.states[modal.index]} laneRun={laneRun} navigate={navigate} onClose={() => setModal(null)} />}
+// ---------------------------------------------------------------- a batch on the server
+
+const SERVER_STATUS = {
+  validating: ["Queued", "pending", "Batch queued on the server."],
+  in_progress: ["Running", "running", "Batch running on the server."],
+  cancelling: ["Cancelling", "waiting", "Cancelling the batch."],
+  completed: ["Finished", "done", "Batch finished."],
+  failed: ["Failed", "failed", "Batch failed."],
+  expired: ["Expired", "cancelled", "Batch expired."],
+  cancelled: ["Cancelled", "cancelled", "Batch cancelled."],
+};
+const unix = (s) => (Number.isFinite(Number(s)) && s != null ? Number(s) * 1000 : null);
+const serverNote = (st) => (st.status === "failed" || st.status === "cancelled" ? st.error?.message : "");
+
+function ServerRunView({ run, navigate }) {
+  const [filter, setFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [modal, setModal] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+  const b = run.batch || {};
+  const p = serverProgress(b);
+  const laneRun = run.lane === ATTESTED_LANE;
+  const [label, pill, heading] = SERVER_STATUS[p.status];
+  useEffect(() => {
+    if (p.done) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [p.done]);
+  const started = unix(b.created_at) ?? run.createdAt;
+  const ended = unix(b.completed_at ?? b.failed_at ?? b.expired_at ?? b.cancelled_at) ?? run.endedAt;
+  const expires = unix(b.results_expire_at);
+  const canCancel = !p.done && p.status !== "cancelling";
+
+  return (
+    <>
+      <p className="sr-only" role="status">
+        Server batch {label.toLowerCase()}.
+      </p>
+      <div className="panel-heading">
+        <div>
+          <h2>{heading}</h2>
+          <p className="help-text">
+            {run.sourceName} · {int(run.rows.length)} rows{run.skipped ? ` (${int(run.skipped)} invalid skipped)` : ""} · default {run.model || "set per row"}
+            {laneRun ? " · attested lane" : ""} · started {time(started)} · <span className="mono">{b.id}</span>
+          </p>
+        </div>
+        <span className={styles.pill} data-status={pill}>
+          {label}
+        </span>
+      </div>
+      {run.pollError && !p.done && <div className="error">The batch could not be checked just now ({run.pollError}). This page tries again shortly.</div>}
+      {run.cancelError && <div className="error">{run.cancelError}</div>}
+
+      <section className={styles.panel} aria-labelledby="batch-server-progress-title">
+        <h3 id="batch-server-progress-title">Progress</h3>
+        <div className={styles.progressHead}>
+          <strong>
+            {int(p.finished)} of {int(p.total)} rows
+          </strong>
+          <span>
+            {p.pct}% · {int(p.remaining)} left
+          </span>
+        </div>
+        <progress className={styles.progress} max={p.total || 1} value={p.finished} aria-label={`Batch progress: ${int(p.finished)} of ${int(p.total)} rows answered`} />
+        <div className={styles.figures + " " + styles.wide}>
+          <Figure label="Succeeded" value={int(p.completed)} sub="Billed at 50% off" />
+          <Figure label="Failed" value={int(p.failed)} sub="Not charged" />
+          <Figure label="Left" value={int(p.remaining)} sub={p.done ? "Not run, not charged" : "Waiting for the worker"} />
+          <Figure label="Cost so far" value={money(p.cost, 6)} sub="USDG · batch price" />
+          <Figure label="Saved" value={money(p.saved, 6)} sub={`USDG · list ${money(p.listCost, 6)}`} />
+          <Figure label="Elapsed" value={duration((ended || now) - started)} sub={"Since " + time(started)} />
+        </div>
+        <div className={styles.controls}>
+          <div className="button-row">
+            {canCancel && (
+              <Button secondary onClick={() => setModal({ type: "cancel" })}>
+                Cancel batch
+              </Button>
+            )}
+            {p.done && (
+              <Button secondary onClick={() => setModal({ type: "discard" })}>
+                New batch
+              </Button>
+            )}
+          </div>
+        </div>
+        {!p.done && <p className={styles.serverNote}>The batch runs on the router, so you can close this tab. This page checks it every few seconds and reads the results when it finishes.</p>}
+      </section>
+
+      {run.results === "ready" ? (
+        <Results
+          rows={run.rows}
+          states={run.states}
+          laneRun={laneRun}
+          intro={`Built from the batch’s output and errors files.${expires ? ` The router deletes them at ${new Date(expires).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}; this browser keeps its copy.` : ""}`}
+          fileBase={`anyroute-${b.id || "batch-" + run.id}`}
+          estimate={run.estimate}
+          note={serverNote}
+          view={{ filter, setFilter, query, setQuery, page, setPage }}
+          onInspect={(i) => setModal({ type: "row", index: i })}
+        />
+      ) : run.results === "loading" ? (
+        <div className="empty loading-state" role="status">
+          <span className="loading-bar" aria-hidden="true" />
+          Reading the results…
+        </div>
+      ) : run.results === "expired" ? (
+        <div className="note">The router has deleted this batch’s results: it keeps them for 24 hours after a batch finishes. The receipts of the answered rows are still in Receipts.</div>
+      ) : run.results === "error" ? (
+        <div className="error" role="alert">
+          The results could not be read ({run.resultsError}).{" "}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              run.results = "none";
+              watchServer(run);
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        <p className="help-text">The results appear here when the batch finishes.</p>
+      )}
+
+      {modal?.type === "row" && <RowDetails row={run.rows[modal.index]} st={run.states[modal.index]} laneRun={laneRun} navigate={navigate} onClose={() => setModal(null)} />}
       {modal?.type === "cancel" && (
         <Modal title="Cancel this batch?" onClose={() => setModal(null)}>
-          <p>Requests in flight are stopped and no new rows start. A provider may already have done, and the router billed, work for requests in flight. Finished rows stay available to download.</p>
+          <p>Rows that have not started are never run or billed. Rows already running finish and are billed. Answered rows stay available to download.</p>
           <div className="button-row modal-actions">
             <Button
               onClick={() => {
                 setModal(null);
-                r.cancel();
+                cancelServer(run);
               }}
             >
               Cancel batch
@@ -1048,7 +1460,7 @@ function RunView({ run, navigate }) {
         </Modal>
       )}
       {modal?.type === "discard" && (
-        <Modal title={ended ? "Start a new batch?" : "Discard this batch?"} onClose={() => setModal(null)}>
+        <Modal title="Start a new batch?" onClose={() => setModal(null)}>
           <p>This clears the batch and its results from this browser. Download the results first if you need them. Your input stays in the editor.</p>
           <div className="button-row modal-actions">
             <Button
@@ -1057,7 +1469,7 @@ function RunView({ run, navigate }) {
                 discardRun();
               }}
             >
-              {ended ? "Clear and start over" : "Discard batch"}
+              Clear and start over
             </Button>
             <Button secondary onClick={() => setModal(null)}>
               Keep it

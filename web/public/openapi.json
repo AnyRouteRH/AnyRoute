@@ -3,7 +3,7 @@
   "info": {
     "title": "Anyroute API",
     "version": "1.0.0",
-    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the transparency log of keys and configurations with its tiles, checkpoints and witness cosignatures (present only when the router enables it) the Lane: model variants, day-zero candidates and creator royalty claims, and Private RAG (answers from documents sent with the question, nothing kept). Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, teams, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
+    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the transparency log of keys and configurations with its tiles, checkpoints and witness cosignatures (present only when the router enables it) the Lane: model variants, day-zero candidates and creator royalty claims, Private RAG (answers from documents sent with the question, nothing kept), and the Batch API (many chat or embeddings requests run in the background at a discount, with the lines and answers kept sealed outside the database until the results expire). Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, teams, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
     "contact": {
       "name": "AnyRoute support",
       "email": "Anyroute1@atomicmail.io"
@@ -119,6 +119,10 @@
     {
       "name": "Ollama",
       "description": "The Ollama API under /ollama for Ollama clients (Open WebUI, Continue, the ollama libraries, LangChain's ChatOllama): set the client's host to <router>/ollama. Chat, generate and embed calls run on the same keys, lanes and signed receipts as chat completions; the key is sent as Authorization: Bearer."
+    },
+    {
+      "name": "Batches",
+      "description": "The Batch API: many chat completions or embeddings requests sent in one call and run in the background on the router's worker, at 50% of the normal price, with results kept for 24 hours after the batch finishes."
     }
   ],
   "paths": {
@@ -5241,6 +5245,339 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/batches": {
+      "post": {
+        "tags": [
+          "Batches"
+        ],
+        "operationId": "createBatch",
+        "summary": "Create a batch of chat or embeddings requests, run in the background at a discount",
+        "description": "Also at POST /v1/batches. The OpenAI Batch API shape without files: send the lines inline as requests (a list) or input_jsonl (JSON Lines text), one request per line with a unique custom_id (at most 64 characters), method POST, a url of /v1/chat/completions or /v1/embeddings (the /api/v1 forms are accepted too) and the request body. endpoint, when given, must match every line's url. input_file_id is refused with 400: there is no files endpoint, so send requests or input_jsonl. stream true, council mode (model anyroute/council) and verify are refused in a batch. A batch with an invalid line is not created: the 400 invalid_request carries error.metadata.errors, a list of { line, code, message } with 1-based line numbers. Needs a prepaid key. The lines run on the router's worker in spare capacity, so a batch can take minutes; lines not run within the 24h completion window expire and are not charged. Each line is billed at 50% of the normal price (BATCH_DISCOUNT_BPS 5000), a failed line is not charged, and every answered line gets its own signed receipt. Lanes, provider preferences, key budgets and key rate limits apply to each line exactly as to a normal call. Limits (operator settings): BATCH_MAX_LINES (1000 lines), BATCH_MAX_BYTES (8 MiB of input) and BATCH_MAX_ACTIVE (2 unfinished batches per key; one more is refused with 429 batch_limit); a batch over the line or byte limit is refused. The request lines and answers are never written to the database: until the results expire they are kept sealed (AES-256-GCM, with a key derived from the router's secret) in Redis, or in the router's memory without Redis, and then deleted. The database keeps only counts, costs, statuses and generation ids.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The batch was accepted; its status is validating until the worker picks it up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Batches"
+        ],
+        "operationId": "listBatches",
+        "summary": "List the key's batches, newest first",
+        "description": "Also at GET /v1/batches. Pages with limit and after (the id of the last batch of the previous page).",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Batches per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "A batch id: list the batches after it.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of batches, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/batches/{id}": {
+      "get": {
+        "tags": [
+          "Batches"
+        ],
+        "operationId": "getBatch",
+        "summary": "Read a batch: status, counts and cost",
+        "description": "Also at GET /v1/batches/{id}. Poll it until status is completed, failed, expired or cancelled, then read the output and errors files.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The batch id (batch_...).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The batch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/batches/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Batches"
+        ],
+        "operationId": "cancelBatch",
+        "summary": "Cancel a batch",
+        "description": "Also at POST /v1/batches/{id}/cancel. The status becomes cancelling, then cancelled: lines already running finish and are billed, lines not started are never run or billed and appear in the errors file.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The batch id (batch_...).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The batch, cancelling or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Batch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/batches/{id}/output": {
+      "get": {
+        "tags": [
+          "Batches"
+        ],
+        "operationId": "getBatchOutput",
+        "summary": "The answered lines of a batch, as JSONL",
+        "description": "Also at GET /v1/batches/{id}/output. One line per answered request: { id: batch_req_..., custom_id, response: { status_code: 200, request_id: the generation id, body: the normal chat or embeddings response, usage.cost and receipt included }, error: null }. Kept for BATCH_RESULTS_TTL (24 hours by default) after the batch finishes.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The batch id (batch_...).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answered lines.",
+            "content": {
+              "application/jsonl": {
+                "schema": {
+                  "type": "string",
+                  "description": "JSON Lines: one BatchResultLine object per line."
+                },
+                "x-line-schema": {
+                  "$ref": "#/components/schemas/BatchResultLine"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "description": "The results were deleted: they are kept for BATCH_RESULTS_TTL (24 hours by default) after the batch finishes (batch_results_expired).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/batches/{id}/errors": {
+      "get": {
+        "tags": [
+          "Batches"
+        ],
+        "operationId": "getBatchErrors",
+        "summary": "The failed and unrun lines of a batch, as JSONL",
+        "description": "Also at GET /v1/batches/{id}/errors. One line per failed or unrun request: { id, custom_id, response: { status_code, request_id, body: { error } } or null for a line that never ran, error: { code, message } }. Failed and unrun lines are not charged. Kept for BATCH_RESULTS_TTL (24 hours by default) after the batch finishes.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The batch id (batch_...).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The failed and unrun lines.",
+            "content": {
+              "application/jsonl": {
+                "schema": {
+                  "type": "string",
+                  "description": "JSON Lines: one BatchResultLine object per line."
+                },
+                "x-line-schema": {
+                  "$ref": "#/components/schemas/BatchResultLine"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "description": "The results were deleted: they are kept for BATCH_RESULTS_TTL (24 hours by default) after the batch finishes (batch_results_expired).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
           },
           "default": {
             "$ref": "#/components/responses/ApiError"
@@ -12459,6 +12796,391 @@
               "null"
             ],
             "description": "The verify page for this receipt, when the router's address is known."
+          }
+        }
+      },
+      "BatchRequestLine": {
+        "type": "object",
+        "required": [
+          "custom_id",
+          "method",
+          "url",
+          "body"
+        ],
+        "properties": {
+          "custom_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Your id for the line, unique in the batch; results carry it back."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "enum": [
+              "/v1/chat/completions",
+              "/v1/embeddings",
+              "/api/v1/chat/completions",
+              "/api/v1/embeddings"
+            ]
+          },
+          "body": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The chat completions or embeddings request body. stream true, model anyroute/council and verify are refused."
+          }
+        }
+      },
+      "BatchCreateRequest": {
+        "type": "object",
+        "description": "Send requests or input_jsonl. input_file_id is refused with 400 (there is no files endpoint).",
+        "oneOf": [
+          {
+            "required": [
+              "requests"
+            ]
+          },
+          {
+            "required": [
+              "input_jsonl"
+            ]
+          }
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/BatchRequestLine"
+            }
+          },
+          "input_jsonl": {
+            "type": "string",
+            "description": "The lines as JSON Lines text: one BatchRequestLine object per line."
+          },
+          "endpoint": {
+            "type": "string",
+            "enum": [
+              "/v1/chat/completions",
+              "/v1/embeddings"
+            ],
+            "description": "When given, every line's url must match it."
+          },
+          "completion_window": {
+            "type": "string",
+            "enum": [
+              "24h"
+            ],
+            "default": "24h"
+          }
+        }
+      },
+      "Batch": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "status",
+          "completion_window",
+          "created_at",
+          "request_counts",
+          "cost",
+          "output_url",
+          "errors_url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "batch_ followed by a random id."
+          },
+          "object": {
+            "type": "string",
+            "const": "batch"
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The endpoint of the lines, as sent or as the lines' url."
+          },
+          "errors": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Problems found in the batch as a whole, else null.",
+            "properties": {
+              "object": {
+                "type": "string",
+                "const": "list"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "input_file_id": {
+            "type": "null",
+            "description": "Always null: the lines are sent inline."
+          },
+          "completion_window": {
+            "type": "string",
+            "const": "24h"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "validating",
+              "in_progress",
+              "completed",
+              "failed",
+              "expired",
+              "cancelling",
+              "cancelled"
+            ],
+            "description": "validating: accepted, waiting for the worker. completed, failed, expired and cancelled are final."
+          },
+          "output_file_id": {
+            "type": "null",
+            "description": "Always null: read the results at output_url."
+          },
+          "error_file_id": {
+            "type": "null",
+            "description": "Always null: read the errors at errors_url."
+          },
+          "output_url": {
+            "type": "string",
+            "description": "/api/v1/batches/{id}/output"
+          },
+          "errors_url": {
+            "type": "string",
+            "description": "/api/v1/batches/{id}/errors"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix seconds."
+          },
+          "in_progress_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix seconds, or null."
+          },
+          "expires_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "When unfinished lines expire (the end of the completion window), unix seconds."
+          },
+          "finalizing_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix seconds, or null."
+          },
+          "completed_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix seconds, or null."
+          },
+          "failed_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix seconds, or null."
+          },
+          "expired_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix seconds, or null."
+          },
+          "cancelling_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix seconds, or null."
+          },
+          "cancelled_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix seconds, or null."
+          },
+          "request_counts": {
+            "type": "object",
+            "required": [
+              "total",
+              "completed",
+              "failed"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "completed": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              }
+            }
+          },
+          "cost": {
+            "type": "object",
+            "required": [
+              "usd",
+              "discount_bps",
+              "list_usd"
+            ],
+            "properties": {
+              "usd": {
+                "type": "number",
+                "description": "What the answered lines cost so far, at the batch price."
+              },
+              "discount_bps": {
+                "type": "integer",
+                "description": "The discount in basis points; 5000 is half the normal price."
+              },
+              "list_usd": {
+                "type": "number",
+                "description": "What the same lines would cost as normal calls."
+              }
+            }
+          },
+          "results_expire_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "When the output and errors files are deleted, unix seconds; null until the batch finishes."
+          },
+          "metadata": {
+            "type": "null"
+          }
+        }
+      },
+      "BatchList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Batch"
+            }
+          },
+          "first_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        }
+      },
+      "BatchResultLine": {
+        "type": "object",
+        "required": [
+          "id",
+          "custom_id",
+          "response",
+          "error"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "batch_req_ followed by a random id."
+          },
+          "custom_id": {
+            "type": "string"
+          },
+          "response": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The response to the line; null for a line that never ran.",
+            "properties": {
+              "status_code": {
+                "type": "integer"
+              },
+              "request_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The generation id (and receipt id) of an answered line."
+              },
+              "body": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "The normal response body (usage.cost and receipt included), or { error } for a failed line."
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "null for an answered line.",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
           }
         }
       },
