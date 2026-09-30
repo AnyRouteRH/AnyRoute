@@ -1,5 +1,6 @@
 import { loadBreakerState } from "./breaker-state.ts";
-import { desc, eq, getTableColumns, lt, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, lt, sql } from "drizzle-orm";
+import { checkpointAutonomy, readAutonomy, autonomyRetention } from "./autonomy.ts";
 import type { Db, Tx } from "../db/client.ts";
 import { accounts, holds, keys, ledger } from "../db/schema.ts";
 import { agentPolicies, agentPolicyEvents } from "./schema.ts";
@@ -20,6 +21,7 @@ export async function appendEvent(tx: Db | Tx, entry: Pick<EventRow, "keyHash" |
   const row = { ...entry, ts: now, decision: entry.decision ?? null, reasons: entry.reasons ?? [], intent: entry.intent ?? null, prevHash };
   const hash = eventHash(prevHash, { key_hash: row.keyHash, ts: now.toISOString(), kind: row.kind, decision: row.decision, reasons: row.reasons, intent: row.intent, policy_sha256: row.policySha256 });
   const [inserted] = await tx.insert(agentPolicyEvents).values({ ...row, hash }).returning();
+  await checkpointAutonomy(tx, inserted, now);
   return eventJson(inserted);
 }
 export async function lockAccount(tx: Db | Tx, accountId: string) {
@@ -29,7 +31,7 @@ export async function lockAccount(tx: Db | Tx, accountId: string) {
 export async function policiesFor(db: Db | Tx, keyHash: string): Promise<PolicyRow[]> {
   return db.selectDistinct(getTableColumns(agentPolicies)).from(agentPolicies).where(sql`${agentPolicies.keyHash} = ${keyHash} or ${agentPolicies.keyHash} in (select parent_key_hash from agent_sessions where key_hash = ${keyHash})`);
 }
-export async function policyState(db: Db | Tx, policy: Pick<PolicyRow, "keyHash" | "killed"> & Partial<Pick<PolicyRow, "spec">>, now: Date): Promise<AgentPolicyState> {
+export async function policyState(db: Db | Tx, policy: Pick<PolicyRow, "keyHash" | "killed"> & Partial<Pick<PolicyRow, "spec" | "sha256">>, now: Date): Promise<AgentPolicyState> {
   const scope = sql`(select key_hash from keys where key_hash = ${policy.keyHash} union select key_hash from agent_sessions where parent_key_hash = ${policy.keyHash})`;
   const since = (ms: number) => new Date(now.getTime() - ms).toISOString();
   const [charges] = await db.select({
@@ -39,7 +41,7 @@ export async function policyState(db: Db | Tx, policy: Pick<PolicyRow, "keyHash"
   }).from(ledger).where(sql`${ledger.keyHash} in ${scope} and ${ledger.amount} < 0 and ${ledger.kind} = 'usage' and ${ledger.createdAt} > ${since(604_800_000)} and ${ledger.createdAt} <= ${now.toISOString()}`);
   const [open] = await db.select({ total: sql<string>`coalesce(sum(${holds.amount}), 0)` }).from(holds).where(sql`${holds.keyHash} in ${scope} and ${holds.status} = 'held' and ${holds.kind} = 'usage'`);
   const inflight = BigInt(open.total);
-  return { ...(policy.spec?.breakers ? { breakers: await loadBreakerState(db, policy.keyHash, now) } : {}), killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight } };
+  return { ...(policy.spec?.autonomy ? { autonomy: await readAutonomy(db, policy as PolicyRow, now) } : {}), ...(policy.spec?.breakers ? { breakers: await loadBreakerState(db, policy.keyHash, now) } : {}), killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight } };
 }
 export async function setPolicy(db: Db, accountId: string, keyHash: string, policy: AgentPolicy, actor: string) {
   return db.transaction(async tx => {
@@ -70,6 +72,6 @@ export async function pruneAgentPolicyEvents(db: Db, now = new Date()) {
     const cutoff = new Date(now.getTime() - 90 * 86_400_000);
     const rows = await tx.selectDistinct({ accountId: keys.accountId }).from(keys).innerJoin(agentPolicyEvents, eq(keys.keyHash, agentPolicyEvents.keyHash)).where(lt(agentPolicyEvents.ts, cutoff));
     for (const row of rows.sort((a, b) => a.accountId.localeCompare(b.accountId))) await lockAccount(tx, row.accountId);
-    return (await tx.delete(agentPolicyEvents).where(lt(agentPolicyEvents.ts, cutoff)).returning({ id: agentPolicyEvents.id })).length;
+    return (await tx.delete(agentPolicyEvents).where(and(lt(agentPolicyEvents.ts, cutoff), autonomyRetention)).returning({ id: agentPolicyEvents.id })).length;
   });
 }

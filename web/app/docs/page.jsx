@@ -6,6 +6,7 @@ import E2eeDocs from "../../components/E2eeDocs";
 import PageFrame from "../../components/PageFrame";
 import { Button, Code } from "../../components/UI";
 import { sampleRequest } from "../../components/Extensions";
+import AgentAutonomyDocs from "../../components/AgentAutonomyDocs";
 import AgentRulebookDocs from "../../components/AgentRulebookDocs";
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentApprovalDocs from "../../components/AgentApprovalDocs";
@@ -804,7 +805,7 @@ export default function Docs() {
           <div className="note" data-reveal>
             The router serves this site, so your base URL is this site’s address followed by /api/v1. Create a key in the dashboard, deposit USDG to it and call it from any OpenAI- or OpenRouter-compatible client.
           </div>
-          <AgentRulebookDocs /><AgentBreakersDocs />
+          <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <AgentApprovalDocs />
           <h2 id="quickstart">Two changes to get started.</h2>
           <p>

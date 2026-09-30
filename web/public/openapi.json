@@ -233,7 +233,7 @@
           "Agent rulebook"
         ],
         "summary": "Read the calling key’s rulebook",
-        "description": "Includes own and inherited parent rulebooks, remaining rolling caps and kill state. A session and its parent must both pass. Off returns 404.",
+        "description": "Includes own and inherited parent rulebooks, remaining rolling caps and kill state. Optional autonomy reports rung, since, clean_requests, last_clean_at, caps_multiplier and next (rung, after_days, clean_requests, caps_multiplier, elapsed_days, days_remaining, requests_remaining), or null at the top. effective_caps scales only spending caps. Progress resets on selected deny, kill or recorded breaker events and on rulebook saves. A session and its parent must both pass. Off returns 404.",
         "security": [
           {
             "BearerAuth": []
@@ -12494,6 +12494,7 @@
               "kill"
             ]
           },
+          "autonomy": {"type": "object", "additionalProperties": false, "required": ["rungs", "demote_on"], "properties": {"rungs": {"type": "array", "minItems": 1, "maxItems": 5, "description": "Requirements cannot decrease; spending multipliers must strictly increase above 1. Both thresholds apply at each rung.", "items": {"type": "object", "additionalProperties": false, "required": ["after_days", "clean_requests", "caps_multiplier"], "properties": {"after_days": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}, "clean_requests": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}, "caps_multiplier": {"type": "number", "exclusiveMinimum": 1, "maximum": 10}}}}, "demote_on": {"type": "array", "maxItems": 3, "items": {"type": "string", "enum": ["deny", "kill", "breaker"]}}}},
           "breakers": {
             "$ref": "#/components/schemas/AgentBreakers"
           }

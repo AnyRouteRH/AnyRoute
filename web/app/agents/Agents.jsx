@@ -1,4 +1,5 @@
 'use client';
+import Autonomy from "./Autonomy";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/UI';
 import { api, loadKey, saveKey, clearKey, validKey } from '../../lib/api';
@@ -138,6 +139,7 @@ export default function Agents() {
     {off ? <section className="empty" role="status"><h2>{FEATURE_OFF}</h2><p>This router is not serving agent rulebooks.</p></section> : <>
       {key && <section aria-label="Agent keys"><div className={s.heading}><h2>Agent keys</h2><button className="text-button" disabled={busy} onClick={() => setRevision(r => r+1)}>Refresh</button></div>{busy && <p role="status">Reading agent keys…</p>}{loaded && !agents.length && <div className="empty"><p>No agent keys returned for this account.</p><a className="inline-link" href="/dashboard/#api-keys">Manage API keys</a></div>}<div className={s.list}>{agents.map(a => <button key={a.key_hash} className={s.agent} aria-pressed={selected === a.key_hash} onClick={() => { setSelected(a.key_hash); setError(''); }}><div className={s.heading}><strong>{a.name || 'Unnamed agent'}</strong><span className={s.badges}><span className="badge">Rulebook {a.has_policy ? 'on' : 'off'}</span>{a.killed && <span className="badge dark">Killed</span>}</span></div><span className={s.hash}>Policy SHA {a.policy_sha256 ? a.policy_sha256.slice(0,12) : 'None'}</span><Spend agent={a}/></button>)}</div></section>}
       {key && <Approvals key={key} request={request} agents={agents} onError={onError}/>}
+      {key && agent && <Autonomy agent={agent}/> }
       {key && agent && <AgentDetail key={key+agent.key_hash} agent={agent} request={request} onError={onError} refreshVersion={revision} refreshList={() => setRevision(r => r+1)}/>}
       {key && <TryIt key={key} principalKey={key} onError={onError}/>}
       {!key && <p className="note">Connect your key to read and manage agent rulebooks.</p>}

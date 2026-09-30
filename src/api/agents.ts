@@ -1,10 +1,11 @@
+import { autonomyDescription, autonomyMultiplier, spendingCapPico } from "../agents/autonomy.ts";
 import type { Context, Hono } from "hono";
 import { and, desc, eq, lt } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
 import { agentSessions, keys } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
-import { picoToUsd, usdToPico } from "../lib/money.ts";
+import { picoToUsd } from "../lib/money.ts";
 import { requireKey, requireRole, type KeyRow } from "./auth.ts";
 import { readJson } from "./common.ts";
 import { agentIntentSchema, agentPolicySchema } from "../agents/policy.ts";
@@ -37,10 +38,10 @@ async function describe(ctx: Ctx, key: KeyRow, rows: PolicyRow[], now: Date) {
     const spent = Object.fromEntries(Object.entries(state.spent_pico).map(([w, v]) => [w, picoToUsd(v)]));
     const remaining = Object.fromEntries((["hour", "day", "week"] as const).map(w => {
       const cap = row.spec.caps[`per_${w}_usd`];
-      const value = cap === undefined ? null : usdToPico(cap) - state.spent_pico[w];
+      const value = cap === undefined ? null : spendingCapPico(cap, autonomyMultiplier(row.spec, state.autonomy)) - state.spent_pico[w];
       return [w, value === null ? null : picoToUsd(value > 0n ? value : 0n)];
     }));
-    return { key_hash: row.keyHash, inherited: row.keyHash !== key.keyHash, ...jsonPolicy(row), spent, remaining };
+    return { key_hash: row.keyHash, inherited: row.keyHash !== key.keyHash, ...jsonPolicy(row), spent, remaining, ...autonomyDescription(row.spec, state.autonomy, now) };
   }));
 }
 export function agentsRoutes(app: Hono, ctx: Ctx) {
@@ -56,7 +57,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
       const descriptions = await describe(ctx, key, policies, new Date());
       const own = descriptions.find(p => !p.inherited) ?? descriptions[0];
       const uncapped = own ? null : await policyState(ctx.db, { keyHash: key.keyHash, killed: false }, new Date());
-      return { key_hash: key.keyHash, name: key.name, has_policy: !!own, killed: descriptions.some(p => p.killed), policy_sha256: own?.sha256 ?? null, spent: own?.spent ?? Object.fromEntries(Object.entries(uncapped!.spent_pico).map(([w, v]) => [w, picoToUsd(v)])), caps: own?.policy.caps ?? {}, policies: descriptions };
+      return { key_hash: key.keyHash, name: key.name, has_policy: !!own, killed: descriptions.some(p => p.killed), policy_sha256: own?.sha256 ?? null, spent: own?.spent ?? Object.fromEntries(Object.entries(uncapped!.spent_pico).map(([w, v]) => [w, picoToUsd(v)])), caps: own?.effective_caps ?? own?.policy.caps ?? {}, policies: descriptions };
     }));
     return c.json({ data });
   });
@@ -68,7 +69,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
       const limits = policies.map(p => p.remaining[window]).filter((v): v is number => typeof v === "number");
       return [window, limits.length ? Math.min(...limits) : null];
     }));
-    return c.json({ data: { key_hash: key.keyHash, name: key.name, policy: own?.policy ?? null, sha256: own?.sha256 ?? null, killed: policies.some(p => p.killed), remaining, policies } });
+    return c.json({ data: { key_hash: key.keyHash, name: key.name, policy: own?.policy ?? null, sha256: own?.sha256 ?? null, killed: policies.some(p => p.killed), remaining, policies, ...(own?.autonomy ? { autonomy: own.autonomy, effective_caps: own.effective_caps } : {}) } });
   });
   app.post("/api/v1/agents/check", async c => {
     const key = await requireKey(ctx, c.req.header("authorization"));

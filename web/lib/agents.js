@@ -1,4 +1,5 @@
 import { breakerForm, buildBreakers, breakerReasonText } from "./agent-breakers.js";
+import { autonomyForm, autonomyPolicy } from "./agent-autonomy.js";
 // Rulebook forms and REST view models. No credentials or prompt text are stored here.
 export const LANES = ['public', 'attested', 'unlinkable'];
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -59,7 +60,7 @@ export function eventsPage(json) {
 const entries = value => String(value || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
 export function policyForm(policy) {
   const p = policy || {};
-  return { breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
+  return { ...autonomyForm(p), breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
     toolAllow: (p.tools?.allow || []).join('\n'), toolDeny: (p.tools?.deny || []).join('\n'),
     restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES],
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
@@ -79,7 +80,7 @@ export function buildPolicy(form) {
     if (!Number.isFinite(n) || n <= 0 || n > LIMITS.usd) errors.push(`${label}: enter USD greater than 0 and up to 1,000,000.`);
     return n;
   };
-  const policy = { version: 1, models: {}, caps: {}, on_breach: form.onBreach };
+  const policy = { ...autonomyPolicy(form), version: 1, models: {}, caps: {}, on_breach: form.onBreach };
   for (const [input, group, field, label] of [['modelAllow','models','allow','Allowed models'], ['modelDeny','models','deny','Denied models'], ['toolAllow','tools','allow','Allowed tools'], ['toolDeny','tools','deny','Denied tools']]) {
     const items = list(form[input], label);
     if (items.length) { policy[group] ||= {}; policy[group][field] = items; }

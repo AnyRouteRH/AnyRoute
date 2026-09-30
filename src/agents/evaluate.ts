@@ -1,7 +1,8 @@
 import { breakerReasons, breakerMessages, type BreakerReasonCode, type BreakerState } from "./breakers.ts";
+import { autonomyMultiplier, spendingCapPico, type AutonomyState } from "./autonomy.ts";
 import type { AgentIntent, AgentPolicy } from "./policy.ts";
 import { usdToPico } from "../lib/money.ts";
-export type AgentPolicyState = { killed: boolean; spent_pico: { hour: bigint; day: bigint; week: bigint }; breakers?: BreakerState };
+export type AgentPolicyState = { killed: boolean; spent_pico: { hour: bigint; day: bigint; week: bigint }; breakers?: BreakerState; autonomy?: AutonomyState };
 export type ReasonCode = BreakerReasonCode | "killed" | "model_not_allowed" | "lane_not_allowed" | "over_per_request" | "over_per_hour" | "over_per_day" | "over_per_week" | "max_tokens" | "tool_not_allowed" | "outside_window" | "approval_required";
 export type AgentDecision = { decision: "allow" | "deny" | "approval_required"; reasons: { code: ReasonCode; message: string }[] };
 const messages: Record<ReasonCode, string> = {
@@ -22,11 +23,11 @@ export function evaluateAgentPolicy(policy: AgentPolicy, state: AgentPolicyState
   if (intent.kind === "inference") {
     if (!permitted(policy.models, intent.model, modelMatches)) add("model_not_allowed");
     if (policy.lanes && !policy.lanes.includes(intent.lane)) add("lane_not_allowed");
-    const cost = intent.est_cost_pico;
-    if (policy.caps.per_request_usd !== undefined && cost > usdToPico(policy.caps.per_request_usd)) add("over_per_request");
+    const cost = intent.est_cost_pico, multiplier = autonomyMultiplier(policy, state.autonomy);
+    if (policy.caps.per_request_usd !== undefined && cost > spendingCapPico(policy.caps.per_request_usd, multiplier)) add("over_per_request");
     for (const window of ["hour", "day", "week"] as const) {
       const cap = policy.caps[`per_${window}_usd`];
-      if (cap !== undefined && state.spent_pico[window] + cost > usdToPico(cap)) add(`over_per_${window}`);
+      if (cap !== undefined && state.spent_pico[window] + cost > spendingCapPico(cap, multiplier)) add(`over_per_${window}`);
     }
     if (policy.caps.max_output_tokens !== undefined && (intent.max_output_tokens === undefined || intent.max_output_tokens > policy.caps.max_output_tokens)) add("max_tokens");
   }
