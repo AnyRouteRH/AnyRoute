@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import {auditNetwork} from './audit-network.mjs';
+import {auditNetworkJoin} from './audit-network-join.mjs'; auditNetworkJoin(path.resolve(process.argv[2]||'out'));
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';

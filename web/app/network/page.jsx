@@ -2,6 +2,7 @@ import PageFrame from "../../components/PageFrame";
 import { Button } from "../../components/UI";
 import { checkerDigest } from "../../lib/network-check";
 import Waitlist from "./Waitlist";
+import Join from "./Join"; import { joinDigest } from "../../lib/network-join";
 import s from "./network.module.css";
 
 export const metadata = { title: "AnyRoute Network — Anyroute", description: "Private AI needs private hardware. Yours counts. We’re gauging interest in an open hardware network. Check your machine and join the waitlist." };
@@ -24,6 +25,7 @@ export default function NetworkPage() {
       <section id="who"><h2>Bring the hardware. Or the demand.</h2><ul><li><strong>Confidential GPU owners and fleet operators:</strong> NVIDIA H100, H200 or B200-class servers with GPU confidential-computing support on Intel TDX or AMD SEV-SNP hosts.</li><li><strong>Confidential cloud users:</strong> rented TDX or SEV-SNP machines with spare capacity. Renting solely to host may not cover your costs.</li><li><strong>Small-server owners:</strong> TDX or SEV-SNP CPU servers for small models.</li><li><strong>Relay operators and witnesses:</strong> record your interest in supporting the proposed network.</li><li><strong>Developers and agents:</strong> tell us you need more private inference capacity.</li></ul></section>
       <section id="readiness"><span className="eyebrow">READ-ONLY · NO NETWORK CALLS</span><h2>What can your machine do?</h2><p>Download the checker, compare its SHA-256 with the value below, inspect it, then run it. It checks guest devices, host support hints and NVIDIA confidential-computing queries. It changes nothing and sends nothing. Kernel log permissions can limit the answer; sudo may reveal more, but the checker never asks for root.</p><pre className={s.code}><code>curl -fsSLO https://anyroute.tech/network/check.sh &amp;&amp; sha256sum check.sh &amp;&amp; sh check.sh</code></pre><p className={s.small}>The command prints the digest before running. Compare the downloaded file before running it; you can perform the three steps separately.</p><dl className={s.digest}><dt>check.sh SHA-256</dt><dd><code data-network-check-sha256={sha}>{sha}</code></dd></dl><p><a href="/network/check.sh">Read or download check.sh</a></p><p><strong>This is a hint.</strong> Real eligibility is proven by attestation when hosting opens. A capability mention or an enabled GPU mode is not proof of an eligible machine. Paste the summary into the form only if you choose.</p></section>
       <section id="waitlist"><span className="eyebrow">WAITLIST</span><h2>Tell us what you’d bring.</h2><p>No names required. Contact details are optional. This form works on this site’s onion address using the same relative API path, with no third-party requests.</p><Waitlist /></section>
+      <Join sha={joinDigest()} />
       <section id="faq"><h2>A few straight answers.</h2>{FAQ.map(([q, a]) => <details className={s.faq} key={q}><summary>{q}</summary><p>{a}</p></details>)}</section>
     </article></div></main></PageFrame>;
 }

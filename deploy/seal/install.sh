@@ -606,4 +606,5 @@ say "host_id:   $HOST_ID"
 if [ "$APPLY" = 0 ]; then say "start:     sh install.sh <same options> --apply --sidecar-image <name@sha256:...>"; fi
 say "verify:    bun scripts/seal-cli.ts verify https://<public address>:$PORT"
 say "registry:  $ROUTER/registry/<provider id>/   (once the router lists this endpoint)"
+say "network:   download https://anyroute.tech/network/join.mjs, compare its SHA-256 on /network/, then node join.mjs --help; host registration is not open yet."
 say "planned:   https://verify.anyroute.xyz/$HOST_ID   (placeholder address, not live yet)"

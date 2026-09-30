@@ -40,3 +40,7 @@
 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5
 # Receipt v2 test vector leaf in packages/client/test/fixtures/receipt-v2.json: keccak256(keccak256(COSE bytes)) of a public vector
 0xbc3a2ec426665ddb4b4f3cace4094668fd63c16e0722013584d01f051717f08e
+# secp256k1 public curve constants (field prime p, group order n, GLV beta), bundled in web/public/network/join.mjs
+0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f
+0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
+0x7ae96a2b657c07106e64479eac3434e99cf0497512f58995c1396c28719501ee
