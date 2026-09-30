@@ -35,13 +35,13 @@ test('a history survives a lock and comes back with the same passphrase',async()
 test('what is stored is ciphertext: no text, title or count in the clear',async()=>{
  const {storage,history}=open();
  await history.create(PASS);
- await history.put(chat('c1'));
+ await history.put(chat('chat-canary-1')); // '-' is not a base64 character, so the id cannot appear in ciphertext by chance
  const record=await storage.get();
  assert.deepEqual(Object.keys(record).sort(),['ct','iterations','iv','kdf','salt','v']);
  assert.equal(record.kdf,'PBKDF2-SHA256');
  assert.equal(record.iterations,ROUNDS);
  const raw=JSON.stringify(record);
- for(const needle of [SECRET,'swordfish','c1','noted','m/one','assistant',PASS])assert.equal(raw.includes(needle),false,needle);
+ for(const needle of [SECRET,'swordfish','chat-canary-1','noted','m/one','assistant',PASS])assert.equal(raw.includes(needle),false,needle);
  assert.equal(Buffer.from(record.iv,'base64').length,12);
  assert.equal(Buffer.from(record.salt,'base64').length,16);
 });
