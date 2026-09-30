@@ -8,6 +8,7 @@ import PageFrame from "../../components/PageFrame";
 import { Button, Code } from "../../components/UI";
 import { sampleRequest } from "../../components/Extensions";
 import AgentAutonomyDocs from "../../components/AgentAutonomyDocs";
+import AgentAlertDocs from "../../components/AgentAlertDocs";
 import AgentRulebookDocs from "../../components/AgentRulebookDocs";
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentCertificateDocs from "../../components/AgentCertificateDocs";
@@ -809,6 +810,7 @@ export default function Docs() {
           </div>
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <AgentLedgerDocs />
+          <AgentAlertDocs />
           <AgentApprovalDocs />
           <AgentCertificateDocs />
           <h2 id="quickstart">Two changes to get started.</h2>

@@ -15,12 +15,13 @@ beforeAll(async () => {
 });
 afterAll(async () => { await h?.close(); });
 
-test("ledger receipts, autonomy, breaker kills and record certificates coexist", async () => {
+test("ledger receipts, alerts, autonomy, breaker kills and record certificates coexist", async () => {
   const key = await h.fundedKey();
   const path = `/api/v1/agents/${key.hash}`;
   const saved = await h.request(path + "/policy", { method: "PUT", headers: key.auth, json: {
     version: 1, models: {}, caps: {}, on_breach: "deny",
     breakers: { max_requests_per_minute: 2 },
+    alerts: { denials_in_10min: 1, channels: [] },
     autonomy: { rungs: [{ after_days: 0, clean_requests: 1, caps_multiplier: 2 }], demote_on: ["breaker"] },
   } });
   expect(saved.status).toBe(200);
@@ -41,6 +42,12 @@ test("ledger receipts, autonomy, breaker kills and record certificates coexist",
   const stopped = await state();
   expect(stopped.killed).toBe(true);
   expect(stopped.autonomy?.rung).toBe(0);
+
+  const alerts = await h.request(path + "/alerts", { headers: key.auth });
+  expect(alerts.status).toBe(200);
+  const feed = (await alerts.json()).data;
+  expect(feed.map((alert: any) => alert.kind).sort()).toEqual(["denials", "killed"]);
+  expect(JSON.stringify(feed)).not.toContain("combined ledger sentinel");
 
   const response = await h.request(path + "/ledger", { headers: key.auth });
   expect(response.status).toBe(200);

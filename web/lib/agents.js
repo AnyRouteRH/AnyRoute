@@ -1,5 +1,6 @@
 import { breakerForm, buildBreakers, breakerReasonText } from "./agent-breakers.js";
 import { autonomyForm, autonomyPolicy } from "./agent-autonomy.js";
+import { alertSettingsErrors } from './agent-alerts.js';
 // Rulebook forms and REST view models. No credentials or prompt text are stored here.
 export const LANES = ['public', 'attested', 'unlinkable'];
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -65,7 +66,7 @@ export function policyForm(policy) {
     restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES],
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
     restrictWindows: p.windows !== undefined, windows: (p.windows || []).map(w => ({ ...w, days: [...w.days] })),
-    approval: p.approval?.above_usd == null ? '' : String(p.approval.above_usd), onBreach: p.on_breach || 'deny' };
+    ...(p.alerts === undefined ? {} : {alerts:structuredClone(p.alerts)}), approval: p.approval?.above_usd == null ? '' : String(p.approval.above_usd), onBreach: p.on_breach || 'deny' };
 }
 
 export function buildPolicy(form) {
@@ -109,6 +110,7 @@ export function buildPolicy(form) {
   }
   buildBreakers(form.breakers, policy, errors);
   if (!['deny', 'kill'].includes(form.onBreach)) errors.push('On breach, choose deny or kill.');
+  if (form.alerts !== undefined) { policy.alerts = structuredClone(form.alerts); errors.push(...alertSettingsErrors(form.alerts)); }
   return { policy, errors: [...new Set(errors)] };
 }
 

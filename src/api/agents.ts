@@ -1,4 +1,5 @@
 import { autonomyDescription, autonomyMultiplier, spendingCapPico } from "../agents/autonomy.ts";
+import { agentAlertsRoutes } from "./agent-alerts.ts";
 import type { Context, Hono } from "hono";
 import { and, desc, eq, lt } from "drizzle-orm";
 import { z } from "zod";
@@ -46,6 +47,7 @@ async function describe(ctx: Ctx, key: KeyRow, rows: PolicyRow[], now: Date) {
 }
 export function agentsRoutes(app: Hono, ctx: Ctx) {
   configureAgentPolicies(ctx);
+  agentAlertsRoutes(app, ctx);
   app.use("/api/v1/agents/*", async (_c, next) => { if (!ctx.cfg.agentPolicyEnabled) fail(404, "Not found.", "not_found"); await next(); });
   app.use("/api/v1/agents", async (_c, next) => { if (!ctx.cfg.agentPolicyEnabled) fail(404, "Not found.", "not_found"); await next(); });
   app.get("/api/v1/agents", async c => {

@@ -2,6 +2,7 @@ import { recordBreakerRequest, withBreakerModels } from "./breaker-state.ts";
 import { breakerKillReason } from "./breakers.ts";
 import { recordAutonomyBreaker, recordAutonomyClean } from "./autonomy.ts";
 import { ledgerActive, ledgerActor, ledgerReservation } from "./ledger-context.ts";
+import { captureAgentCaps } from "./alerts.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Ctx } from "../context.ts";
 import type { Db, Tx } from "../db/client.ts";
@@ -78,6 +79,7 @@ async function enforceReservation(db: Db, r: ReserveInput, reserve: (db: Db) => 
     try { value = await reserve(tx as unknown as Db); } catch (error) { return { error }; }
     await approval.use?.();
     if (!refusal) await recordAutonomyClean(tx, rows, now);
+    await captureAgentCaps(tx, rows, r.accountId, row => policyState(tx, row, new Date()));
     return { value };
   });
   if ("error" in outcome) throw outcome.error;

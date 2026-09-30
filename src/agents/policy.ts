@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { agentBreakersSchema } from "./breakers.ts";
 import { autonomySchema } from "./autonomy-schema.ts";
+import { agentAlertsSchema } from "./alert-policy.ts";
 import { canonicalJson, sha256 } from "../lib/util.ts";
 
 const name = z.string().min(1).max(160);
@@ -19,6 +20,7 @@ export const agentPolicySchema = z.strictObject({
   approval: z.strictObject({ above_usd: usd }),
   breakers: agentBreakersSchema.optional(),
   autonomy: autonomySchema.optional(),
+  alerts: agentAlertsSchema.optional(),
   on_breach: z.enum(["deny", "kill"]),
 }).partial({ approval: true });
 export type AgentPolicy = z.infer<typeof agentPolicySchema>;

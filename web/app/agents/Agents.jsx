@@ -8,6 +8,8 @@ import s from './agents.module.css';
 import Approvals from './Approvals';
 import { BreakersForm, TrippedBadge } from './Breakers';
 import AgentWorkspace from './AgentWorkspace';
+import Alerts from './Alerts';
+import AlertFields from './AlertFields';
 
 function Field({ label, id, children }) {
   return <div className="field"><label htmlFor={id}>{label}</label>{children}</div>;
@@ -42,6 +44,7 @@ function RulebookForm({ policy, onSave, onRemove, busy, hasPolicy }) {
     </fieldset>
     <fieldset disabled={busy} className={s.fieldset}><legend>Approval and breaches</legend><Field label="Require approval above (USD)" id="approval"><input id="approval" type="number" step="any" max={LIMITS.usd} value={form.approval} onChange={e => set('approval',e.target.value)}/></Field><Field label="On breach" id="breach"><select id="breach" value={form.onBreach} onChange={e => set('onBreach',e.target.value)}><option value="deny">Deny this request</option><option value="kill">Kill agent</option></select></Field><p className="help-text">A kill breach stops future requests until the principal resumes the agent.</p></fieldset>
     <BreakersForm values={form.breakers} onChange={values => set('breakers', values)} busy={busy}/>
+    <AlertFields value={form.alerts} onChange={value => set('alerts',value)} disabled={busy}/>
     <Errors errors={errors}/><div className="button-row"><Button type="submit" disabled={busy}>Save rulebook</Button>{hasPolicy && <Button type="button" secondary disabled={busy} onClick={() => { if (window.confirm('Remove this rulebook? Its restrictions will no longer apply.')) onRemove(); }}>Remove rulebook</Button>}<button type="button" className="text-button" aria-expanded={json} onClick={() => setJson(!json)}>{json ? 'Hide JSON' : 'View JSON'}</button></div>
     {json && <><Errors errors={built.errors}/><pre className={s.json}>{JSON.stringify(built.policy,null,2)}</pre></>}
   </form>;
@@ -142,6 +145,7 @@ export default function Agents() {
       {key && <Approvals key={key} request={request} agents={agents} onError={onError}/>}
       {key && agent && <Autonomy agent={agent}/> }
       {key && agent && <AgentWorkspace key={key+agent.key_hash} agent={agent} request={request} refreshVersion={revision}><AgentDetail agent={agent} request={request} onError={onError} refreshVersion={revision} refreshList={() => setRevision(r => r+1)}/></AgentWorkspace>}
+      {key && agent && <Alerts key={key+agent.key_hash} keyHash={agent.key_hash} request={request} refreshVersion={revision} onError={onError}/>}
       {key && <TryIt key={key} principalKey={key} onError={onError}/>}
       {!key && <p className="note">Connect your key to read and manage agent rulebooks.</p>}
     </>}
