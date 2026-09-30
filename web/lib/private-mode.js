@@ -18,7 +18,7 @@ export const SWITCH_KEY = "anyroute-harness-private";
 
 /** Where the private-token page and the guide to using the unlinkable lane over Tor (the private proxy) live. */
 export const TOKENS_HREF = "/tokens/";
-export const PROXY_HREF = "/docs/#unlinkable-tor";
+export const PROXY_HREF = "/docs/#private";
 
 /** The header that puts a request on the attested lane; nothing while private mode is off. */
 export const laneHeaders = (on) => (on ? { [LANE_HEADER]: LANE } : {});
