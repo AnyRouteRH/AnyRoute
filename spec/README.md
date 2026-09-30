@@ -28,7 +28,7 @@ A request chooses a lane (`provider.lane` in the body or the `X-Anyroute-Lane` h
 | :--- | :--- | :--- | :--- |
 | `public` | TLS to the router, then to any provider | Any provider | API key, credits, per-call payment or blind token |
 | `attested` | TLS to the router, then to an enclave whose attestation the router verified recently | Attested providers only | API key, credits, per-call payment or blind token |
-| `unlinkable` | Oblivious HTTP through an independent relay to the router's gateway, then to an attested enclave | Attested providers only | Blind tokens only; an API key or a wallet is refused |
+| `unlinkable` | Oblivious HTTP through an independent relay to the router's gateway, or Tor to the router's onion service; then to an attested enclave | Attested providers only | Blind tokens only; an API key or a wallet is refused |
 
 ## Guarantees (design targets)
 
@@ -40,7 +40,7 @@ These are the properties SEAL is designed to provide once every part in the stat
 | G2 | **Weights identity.** The digest of the served weights is measured at boot and named in every receipt. |
 | G3 | **Confidentiality.** Plaintext exists only in confidential-VM memory and confidential-GPU memory; requests are encrypted from the client to a key the enclave's evidence binds. |
 | G4 | **Unlinkable payment.** The credit issuer cannot link a purchase to a redemption, and a DLEQ proof shows it signed with the published key rather than a per-user one. |
-| G5 | **Network privacy.** On the `unlinkable` lane the client's address is hidden from the router by an Oblivious HTTP relay run by another operator. |
+| G5 | **Network privacy.** On the `unlinkable` lane the client's address is hidden from the router by an Oblivious HTTP relay run by another operator, or by Tor when the request reaches the router's onion service. |
 | G6 | **Verifiable receipt.** Each response has a signed receipt with request and response hashes, a hash chain over streamed chunks, the execution profile and the policy hash; receipt roots are anchored on chain. |
 | G7 | **Verifiable policy.** What the enclave blocks is defined by a measured policy document whose hash is public; nothing else is filtered and no content is logged. |
 | G8 | **No key partitioning.** Every key or configuration a client encrypts to or verifies against is in a witnessed transparency log, and clients refuse keys that are not. |
@@ -50,7 +50,7 @@ These are the properties SEAL is designed to provide once every part in the stat
 | Symbol | Party | Learns | Does not learn |
 | :--- | :--- | :--- | :--- |
 | U | User or agent, with the client SDK | Everything about its own requests | |
-| R | Oblivious HTTP relay (another operator) | U's address, ciphertext sizes and timing | Content, destination host or model, payer |
+| R | Oblivious HTTP relay (another operator); on the Tor path, the volunteer relays of U's Tor circuit instead | U's address (on the Tor path only the entry relay, which does not learn the destination), ciphertext sizes and timing | Content, destination host or model, payer |
 | G | Anyroute gateway and router | That a valid credit was presented, cost, destination host, ciphertext | U's address (behind R), U's identity, plaintext (on the E2EE path) |
 | M | Credit issuer (mint) | That someone bought N credits on some rail | Which requests those credits paid for |
 | H | Host operator running the sidecar | That its enclave served ciphertext, token counts | Plaintext, U's address, payer |
@@ -65,6 +65,7 @@ These hold for the design, not only for today's code, and are published with it.
 * GPU attestation on shipping Hopper and Blackwell parts proves a genuine confidential-computing GPU is reachable. It does not bind that GPU to the confidential VM (no TDISP yet). Physical memory-interposer attacks on DDR5 are out of scope.
 * AMD SEV-SNP hosts cannot carry confidential-GPU claims yet: SNP has no runtime measurement register to bind GPU evidence into.
 * Unlinkability holds against Anyroute, against hosts and against any single relay. It does not hold against a relay colluding with the gateway, or against a global network observer correlating timing.
+* On the Tor path of `unlinkable`, Tor takes the place of the independent relay. Anyroute runs the onion service and never learns the client's address, because a Tor onion service is never given it. Anyroute does see each request's plaintext (as on the relay path, until inner ciphertext is carried through the router), and its size and timing directly, with no relay in between. An observer who watches both the client's entry into Tor and the router's side can match them by timing, and requests sent on one Tor circuit can be linked to each other.
 * Deterministic (batch-invariant) serving and confidential-computing mode both cost throughput.
 * Credits are non-transferable prepaid inference, not money and not an investment.
 * A minimal, measured block list runs inside the enclave and its hash is public. Nothing else is filtered.
@@ -92,7 +93,8 @@ These hold for the design, not only for today's code, and are published with it.
 | Independent Oblivious HTTP relay | 0002 | Implemented | [`relay/`](../relay) |
 | Chunked Oblivious HTTP for streaming responses | 0002 | Implemented, off by default | [`src/ohttp/chunked.ts`](../src/ohttp/chunked.ts), [`relay/`](../relay), [`packages/client/src/ohttp.ts`](../packages/client/src/ohttp.ts) |
 | Tor onion service in front of the router | 0002 | Implemented | [`deploy/onion/`](../deploy/onion) |
-| Lanes `public`, `attested`, `unlinkable` in the router: per request, per key and per saved route; no fallback off an attested lane (`no_attested_endpoint`); lane-aware selection weight | 0002 | Implemented; `unlinkable` needs Oblivious HTTP and blind tokens switched on | [`src/router/disclosure.ts`](../src/router/disclosure.ts), [`src/router/select.ts`](../src/router/select.ts), [`src/ohttp/lane.ts`](../src/ohttp/lane.ts) |
+| Lane `unlinkable` over the onion service: Tor instead of an independent relay, blind tokens only, onion requests recognised only by the proxy's secret | 0002 | Implemented, off by default | [`src/onion/`](../src/onion), [`src/ohttp/lane.ts`](../src/ohttp/lane.ts) |
+| Lanes `public`, `attested`, `unlinkable` in the router: per request, per key and per saved route; no fallback off an attested lane (`no_attested_endpoint`); lane-aware selection weight | 0002 | Implemented; `unlinkable` needs blind tokens and Oblivious HTTP or the onion path switched on | [`src/router/disclosure.ts`](../src/router/disclosure.ts), [`src/router/select.ts`](../src/router/select.ts), [`src/ohttp/lane.ts`](../src/ohttp/lane.ts) |
 | Blind RSA tokens (Privacy Pass type 0x0002), per-epoch issuer keys, on-chain key commitments | 0003 | Implemented, off by default | [`src/blind/`](../src/blind), [`contracts/src/BlindIssuer.sol`](../contracts/src/BlindIssuer.sol) |
 | Blinded e-cash credits (BDHKE, DLEQ, P2PK, swap and change); issuer in an enclave; sealed nullifier store | 0003 | Planned | |
 | Receipts v1: Ed25519 over canonical JSON, from the router and from the sidecar | 0004 | Implemented | [`src/receipts/`](../src/receipts), [`sidecar/src/receipts.ts`](../sidecar/src/receipts.ts) |

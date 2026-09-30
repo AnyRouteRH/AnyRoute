@@ -160,7 +160,7 @@ G resolves the lane of a request in this order:
 
 1. If the body or the header names a lane, the stricter of the two (`public` < `attested` < `unlinkable`). A key's default (`routing.provider.lane`) and a saved route's `provider.lane` fill in the body field when the request leaves it unset, so a lane the request names itself wins over both. A saved route MAY set only `public` or `attested`, since it is called with an API key.
 2. Otherwise, if G runs the gateway and blind tokens, the request arrived through the gateway from an independent relay, and it presents a blind token and no API key, wallet or per-call payment: `unlinkable`.
-3. Otherwise `public`.
+3. Otherwise `public`. A request that arrives through the onion service (Section 5.6) is not given `unlinkable` by default; it names the lane.
 
 ### 5.2 Enforcement (implemented)
 
@@ -188,7 +188,7 @@ attested_bonus = bonus[lane] for an endpoint served under the attested class, el
 
 ### 5.4 Availability (implemented)
 
-`GET /api/v1/models` lists `lanes` for each model and each endpoint: `public` whenever it has a live endpoint, `attested` while one endpoint is served under the attested class, and `unlinkable` as well where G runs the gateway and blind tokens. `GET /api/v1/models?lane=` keeps the models that list that lane. `GET /api/v1/status` has a `lanes` section with `available`, `models`, `endpoints` and `attested_bonus` for each lane.
+`GET /api/v1/models` lists `lanes` for each model and each endpoint: `public` whenever it has a live endpoint, `attested` while one endpoint is served under the attested class, and `unlinkable` as well where G serves that lane (the gateway, or the onion path of Section 5.6, with blind tokens). `GET /api/v1/models?lane=` keeps the models that list that lane. `GET /api/v1/status` has a `lanes` section with `available`, `models`, `endpoints` and `attested_bonus` for each lane, and `lanes.unlinkable.via`, the transports that carry `unlinkable` on this router: `ohttp`, `onion`, both, or none when it is not available.
 
 ### 5.5 Transport and payment per lane
 
@@ -196,16 +196,16 @@ attested_bonus = bonus[lane] for an endpoint served under the attested class, el
 | :--- | :--- | :--- | :--- |
 | `public` | TLS to G | TLS to any provider | Key, credits, per-call payment or blind token |
 | `attested` | TLS to G | TLS from G to E, pinned where the evidence binds a key (today); HPKE from U to E (planned) | Key, credits, per-call payment or blind token |
-| `unlinkable` | Oblivious HTTP through an independent relay | TLS from G to E, pinned where the evidence binds a key (today); HPKE from U to E (planned) | Blind token only |
+| `unlinkable` | Oblivious HTTP through an independent relay, or Tor to G's onion service (Section 5.6) | TLS from G to E, pinned where the evidence binds a key (today); HPKE from U to E (planned) | Blind token only |
 
 G MUST refuse lane `unlinkable` unless all of the following hold, checked in this order, and MUST do so before pricing the request or spending a token:
 
 | Condition | Refusal |
 | :--- | :--- |
-| The router runs the gateway and blind tokens at all | 501 `lane_not_available` |
+| The router serves the lane at all: the gateway or the onion path, with blind tokens | 501 `lane_not_available` |
 | It carries no API key, wallet or per-call payment, all of which name the payer | 403 `lane_requires_anonymous_auth` |
-| The request arrived through the gateway from a relay | 403 `unlinkable_requires_relay` |
-| That relay is independent | 403 `unlinkable_requires_independent_relay` |
+| The request arrived through the gateway from a relay, or through G's onion service where G serves the onion path | 403 `unlinkable_requires_relay` |
+| That relay is independent (the relay path only) | 403 `unlinkable_requires_independent_relay` |
 | It is paid with `Authorization: PrivateToken` | 401 `unlinkable_requires_token`, with the token challenge |
 
 A client MAY allow a downgrade with `provider.lane_downgrade: "attested"` or `X-Anyroute-Lane-Downgrade: attested`. A request for `unlinkable` that carries an identity-bearing credential is then served on `attested`, and `X-Anyroute-Lane` and the receipt say `attested`. G MUST NOT downgrade by default, and MUST NOT downgrade to `public`. On `unlinkable`, G records no application attribution (`HTTP-Referer`, `X-Title`) for the request, and the receipt names no payer: it carries the spent token's nullifier and the issuing key.
@@ -213,6 +213,18 @@ A client MAY allow a downgrade with `provider.lane_downgrade: "attested"` or `X-
 **Limit today.** On `attested` and `unlinkable`, G terminates TLS and sees the request in plaintext before forwarding it to the enclave over TLS pinned to the attested key (Section 2). The host outside the enclave cannot read it; G can. Carrying inner ciphertext through G is planned (Section 3.2).
 
 The gateway records that it dispatched a request, and for which relay, in memory keyed by the request object it constructed. Nothing a client sends (header, query, body) can set or forge that record.
+
+### 5.6 The onion path (implemented, off by default)
+
+G MAY also serve `unlinkable` to requests that reach it through its own onion service (Section 4.6), with Tor in place of the independent relay. It does so only where it is switched on (`UNLINKABLE_VIA_ONION`), and then MUST refuse to start unless the onion service's address, the proxy secret and blind tokens are all configured. The relay-operator minimum of Section 4.4 applies to the relay path; the onion path is a separate way to serve the lane and does not relax it.
+
+* **Recognising an onion request.** The onion proxy sets a header to a secret it shares with G on every request it forwards, and deletes any copy a client sent. G treats a request as coming through the onion service only when that header equals a configured secret, compared in constant time over fixed-length digests. The header without the secret, any other header, a query parameter, the client's address and the Host header never count, so a client of G's public address cannot claim the onion path.
+* **Addresses.** The proxy deletes every header that names an address (`Forwarded`, `X-Forwarded-For`, `X-Real-IP` and similar). G deletes them again on onion requests before any route runs, keys no rate limit by an address on them (they share one onion bucket per limit), and records no address for them.
+* **Admission.** The rules of Section 5.5 apply unchanged: a blind token and nothing that names the payer, attested endpoints only, no fallback, the same refusals and the same downgrade. A request through the onion service passes the relay rows of the refusal table; a request that did not come through it is refused with 403 `unlinkable_requires_relay`, whose message then names the onion address.
+* **Streaming.** Tor carries ordinary HTTP, so `"stream": true` is served on this path as on the clearnet.
+* **Receipts.** `X-Anyroute-Lane` and the receipt say `unlinkable`. They do not say which transport carried the request.
+
+What the onion path hides and what it does not: Tor's rendezvous design never gives an onion service the client's address, so G, which runs the onion service, never learns it, and the payment is unlinkable as on the relay path. G still terminates TLS and sees the request in plaintext (Section 2), and it sees each request's size and timing directly rather than through a relay. An observer of both the client's entry into Tor and G's side can correlate the two by timing, and requests sent on one Tor circuit can be linked to one another; clients SHOULD use a separate circuit for requests they want kept apart.
 
 ## 6. Planned end state for `unlinkable`
 
