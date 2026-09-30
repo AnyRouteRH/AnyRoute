@@ -970,8 +970,8 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
 }
 
 async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, unknown>; hit: { response: any; upstream: bigint; similarity: number }; billing: Billing; model: ModelRow; t0: number; bodySha: string; disc: DisclosureRequest }) {
-  await enforceAgentCached(ctx, p.billing.key, p.model.id, p.disc.lane, p.body);
   const id = genId();
+  await enforceAgentCached(ctx, p.billing.key, p.model.id, p.disc.lane, p.body, id);
   const payload = {
     v: 1,
     id,

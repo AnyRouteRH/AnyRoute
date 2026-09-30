@@ -1,0 +1,6 @@
+.scroll { overflow-x: auto; margin: 24px 0; }
+.table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.table caption { text-align: left; font-weight: 600; margin-bottom: 12px; }
+.table th, .table td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; min-width: 110px; }
+.table small, .table a { display: block; margin-top: 6px; }
+.table td:last-child { font-family: monospace; max-width: 220px; white-space: pre-wrap; }

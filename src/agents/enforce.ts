@@ -1,6 +1,7 @@
 import { recordBreakerRequest, withBreakerModels } from "./breaker-state.ts";
 import { breakerKillReason } from "./breakers.ts";
 import { recordAutonomyBreaker, recordAutonomyClean } from "./autonomy.ts";
+import { ledgerActive, ledgerActor, ledgerReservation } from "./ledger-context.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Ctx } from "../context.ts";
 import type { Db, Tx } from "../db/client.ts";
@@ -36,6 +37,7 @@ export function decisionError(decision: AgentDecision, row: PolicyRow) {
   return new ApiError(403, decision.reasons.map(r => r.message).join(" "), type, { reasons: decision.reasons, policy_sha256: row.sha256 });
 }
 async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentIntent[], actor: string, now: Date) {
+  ledgerActor(actor);
   let refusal: ApiError | undefined;
   for (const row of rows) {
     const state = withBreakerModels(await policyState(tx, row, now), intents);
@@ -58,7 +60,8 @@ async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentIntent[]
   return refusal;
 }
 /** Serialize policy decisions with reserve/settle and principal edits using the existing account lock. */
-export async function enforceAgentReservation(db: Db, r: ReserveInput, reserve: (db: Db) => Promise<bigint>, hasPolicy = false): Promise<bigint> {
+export const enforceAgentReservation = (db: Db, r: ReserveInput, reserve: (db: Db) => Promise<bigint>, hasPolicy = false) => ledgerReservation(db, !!enabled.get(db) || ledgerActive(), r.keyHash, r.id, () => enforceReservation(db, r, reserve, hasPolicy));
+async function enforceReservation(db: Db, r: ReserveInput, reserve: (db: Db) => Promise<bigint>, hasPolicy = false): Promise<bigint> {
   if (checked.getStore() || !enabled.get(db) || !r.keyHash) return reserve(db);
   if (!hasPolicy && approvalRequest.getStore() === undefined && !(await policiesFor(db, r.keyHash)).length) return reserve(db);
   const outcome = await db.transaction(async tx => {
@@ -80,7 +83,7 @@ export async function enforceAgentReservation(db: Db, r: ReserveInput, reserve: 
   if ("error" in outcome) throw outcome.error;
   return outcome.value!;
 }
-export async function enforceAgentCached(ctx: Ctx, key: { keyHash: string; accountId: string } | undefined, model: string, lane: AgentReservation["lane"], body: Record<string, unknown>) {
+async function enforceCached(ctx: Ctx, key: { keyHash: string; accountId: string } | undefined, model: string, lane: AgentReservation["lane"], body: Record<string, unknown>) {
   if (!ctx.cfg.agentPolicyEnabled || !key || (approvalRequest.getStore() === undefined && !(await policiesFor(ctx.db, key.keyHash)).length)) return;
   const error = await ctx.db.transaction(async tx => {
     await lockAccount(tx, key.accountId);
@@ -114,3 +117,5 @@ export async function enforceAgentCouncil(ctx: Ctx, billing: { accountId: string
   const amount = legs.reduce((sum, leg) => sum + leg.hold, 0n);
   await enforceAgentReservation(ctx.db, { id: "council-policy", accountId: billing.accountId, keyHash: billing.key.keyHash, amount, agent: { models: legs.flatMap(l => l.models), lane, max_output_tokens: Math.max(...legs.map(l => l.max_output_tokens)), body: { tools: legs.flatMap(l => Array.isArray(l.body.tools) ? l.body.tools : []), functions: legs.flatMap(l => Array.isArray(l.body.functions) ? l.body.functions : []) } } }, async db => { await checked.run(true, () => run({ ...ctx, db })); return amount; }, true);
 }
+
+export const enforceAgentCached = (ctx: Ctx, key: { keyHash: string; accountId: string } | undefined, model: string, lane: AgentReservation["lane"], body: Record<string, unknown>, generationId: string) => ledgerReservation(ctx.db, ctx.cfg.agentPolicyEnabled, key?.keyHash, generationId, () => enforceCached(ctx, key, model, lane, body));

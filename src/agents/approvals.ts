@@ -1,3 +1,4 @@
+import { ledgerApproval } from "./ledger-context.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import { and, eq, gt, inArray, lte } from "drizzle-orm";
@@ -34,6 +35,7 @@ export async function expireApprovals(tx: Db | Tx, keyHash: string, now = new Da
   await tx.update(agentApprovals).set({ status: "expired" }).where(and(eq(agentApprovals.keyHash, keyHash), inArray(agentApprovals.status, ["pending", "approved"]), lte(agentApprovals.expiresAt, now)));
 }
 async function event(tx: Db | Tx, row: ApprovalRow, kind: string, rows?: PolicyRow[], now = new Date()) {
+  ledgerApproval(row.id, kind);
   const policies = rows ?? await policiesFor(tx, row.keyHash);
   await appendEvent(tx, { keyHash: row.keyHash, kind, intent: row.intent, policySha256: policies[0]?.sha256 ?? "" }, now);
 }

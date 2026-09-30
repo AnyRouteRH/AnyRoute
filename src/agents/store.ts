@@ -1,6 +1,7 @@
 import { loadBreakerState } from "./breaker-state.ts";
 import { and, desc, eq, getTableColumns, lt, sql } from "drizzle-orm";
 import { checkpointAutonomy, readAutonomy, autonomyRetention } from "./autonomy.ts";
+import { linkLedgerEvent } from "./ledger-context.ts";
 import type { Db, Tx } from "../db/client.ts";
 import { accounts, holds, keys, ledger } from "../db/schema.ts";
 import { agentPolicies, agentPolicyEvents } from "./schema.ts";
@@ -22,6 +23,7 @@ export async function appendEvent(tx: Db | Tx, entry: Pick<EventRow, "keyHash" |
   const hash = eventHash(prevHash, { key_hash: row.keyHash, ts: now.toISOString(), kind: row.kind, decision: row.decision, reasons: row.reasons, intent: row.intent, policy_sha256: row.policySha256 });
   const [inserted] = await tx.insert(agentPolicyEvents).values({ ...row, hash }).returning();
   await checkpointAutonomy(tx, inserted, now);
+  await linkLedgerEvent(tx, inserted.id, inserted.kind, now);
   return eventJson(inserted);
 }
 export async function lockAccount(tx: Db | Tx, accountId: string) {

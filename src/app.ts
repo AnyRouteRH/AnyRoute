@@ -1,4 +1,6 @@
 import { networkBurnRoutes } from "./network/burn-routes.ts";
+import { agentLedgerMiddleware } from "./agents/ledger-context.ts";
+import { agentLedgerRoutes } from "./api/agent-ledger.ts";
 import { networkHostRoutes } from "./api/network-hosts.ts";
 import { networkSanctionsRoutes } from "./api/network-sanctions.ts";
 import { e2eeRoutes } from "./api/e2ee.ts";
@@ -154,6 +156,7 @@ export async function createApp(opts: AppOptions = {}) {
 
   app.use("*", onionIngress(cfg)); // onion requests: drop every client address header before any route reads one
   app.use("*", statusMiddleware(ctx)); // public-lane outcomes per API surface for /api/v1/status/slo; private lanes are not counted here
+  app.use("*", agentLedgerMiddleware(ctx));
   app.use("*", agentApprovalMiddleware(ctx));
   chatRoutes(app, ctx);
   e2eeRoutes(app, ctx);
@@ -171,6 +174,7 @@ export async function createApp(opts: AppOptions = {}) {
   memoryRoutes(app, ctx);
   agentsRoutes(app, ctx);
   agentCertificatesRoutes(app, ctx);
+  agentLedgerRoutes(app, ctx);
   agentApprovalsRoutes(app, ctx);
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);

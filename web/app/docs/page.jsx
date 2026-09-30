@@ -1,5 +1,6 @@
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import HostBondsDocs from "../../components/HostBondsDocs";
+import AgentLedgerDocs from "../../components/AgentLedgerDocs";
 import NetworkHostsDocs from "../../components/NetworkHostsDocs";
 import SanctionsSection from "./SanctionsSection";
 import E2eeDocs from "../../components/E2eeDocs";
@@ -807,6 +808,7 @@ export default function Docs() {
             The router serves this site, so your base URL is this site’s address followed by /api/v1. Create a key in the dashboard, deposit USDG to it and call it from any OpenAI- or OpenRouter-compatible client.
           </div>
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
+          <AgentLedgerDocs />
           <AgentApprovalDocs />
           <AgentCertificateDocs />
           <h2 id="quickstart">Two changes to get started.</h2>
