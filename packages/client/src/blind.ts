@@ -1,4 +1,5 @@
 import { base64ToBytes, bytesToBase64Url, bytesToHex, concatBytes, hexToBytes, randomBytes } from "./bytes.js";
+import { buildTokenFile, storedToken, type TokenFile } from "./blind-file.js";
 import { sha256 } from "./hash.js";
 import type { Fetch } from "./types.js";
 
@@ -146,7 +147,10 @@ export async function finalizeTokens(key: DirectoryKey, pending: PendingToken[],
   return tokens;
 }
 
-export type Bought = { tokens: string[]; denomination: number; epoch: number; costUsd: string; keyId: string };
+export type Bought = { tokens: string[]; denomination: number; epoch: number; costUsd: string; keyId: string; key: DirectoryKey };
+
+/** The tokens of a purchase as a token file (see blind-file.ts), ready for `serializeTokenFile` and ~/.anyroute/tokens.json. */
+export const boughtToFile = (bought: Bought, boughtAt: Date = new Date()): TokenFile => buildTokenFile(bought.tokens.map((token) => storedToken(token, bought.key, boughtAt)));
 
 /** Buy `count` tokens of one denomination with a router API key. */
 export async function buyTokens(o: { baseUrl: string; apiKey: string; denomination: number; count: number; fetch?: Fetch }): Promise<Bought> {
@@ -162,5 +166,5 @@ export async function buyTokens(o: { baseUrl: string; apiKey: string; denominati
   });
   const json = (await res.json()) as { data?: { signatures: string[]; cost_usd: string; epoch: number; denomination: number }; error?: { message: string } };
   if (!res.ok || !json.data) throw new Error(`purchase failed (${res.status}): ${json.error?.message ?? "unknown error"}`);
-  return { tokens: await finalizeTokens(key, pending, json.data.signatures), denomination: json.data.denomination, epoch: json.data.epoch, costUsd: json.data.cost_usd, keyId: key.token_key_id };
+  return { tokens: await finalizeTokens(key, pending, json.data.signatures), denomination: json.data.denomination, epoch: json.data.epoch, costUsd: json.data.cost_usd, keyId: key.token_key_id, key };
 }

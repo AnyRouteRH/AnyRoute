@@ -4,6 +4,8 @@ export { AnyRouteError, AttestationRefused, ReceiptInvalid } from "./errors.js";
 export { canonical, canonicalJson } from "./canonical.js";
 export { defaultEd25519Verify, UnsupportedCrypto } from "./ed25519.js";
 export type { Ed25519Verifier } from "./ed25519.js";
+export { TOKEN_FILE_PATH, TOKEN_FILE_VERSION, TokenFileError, buildTokenFile, mergeTokenFiles, parseTokenFile, serializeTokenFile, storedToken, tokenKeyIdOf, withoutTokens } from "./blind-file.js";
+export type { StoredToken, TokenFile, TokenKeyInfo, UnconfirmedToken } from "./blind-file.js";
 export { keccak256, keccak256Hex, sha256, sha256Hex } from "./hash.js";
 export { bytesToHex, hexToBytes, base64ToBytes, bytesToBase64, bytesToBase64Url, concatBytes, equalBytes, fromUtf8, utf8 } from "./bytes.js";
 export { RECEIPT_KEYS_PATH, canonicalBytes, fetchReceiptKeys, keyIdOf, parseKeySet, receiptLeaf, verifyMerkleProof, verifyReceipt } from "./receipts.js";

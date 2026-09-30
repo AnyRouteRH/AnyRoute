@@ -1,7 +1,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { RSABSSA } from "@cloudflare/blindrsa-ts";
-import { AnyRoute, base64ToBytes, bytesToBase64, bytesToBase64Url, bytesToHex, concatBytes, hexToBytes, sha256 } from "../src/index.js";
-import { authorizationHeader, blindTokens, buyTokens, fetchDirectory, issuingKey, parseIssuerSpki, tokenInput, tokenKeyId, tokenNullifier, type Directory } from "../src/blind.js";
+import { AnyRoute, base64ToBytes, parseTokenFile, serializeTokenFile, bytesToBase64, bytesToBase64Url, bytesToHex, concatBytes, hexToBytes, sha256 } from "../src/index.js";
+import { authorizationHeader, blindTokens, boughtToFile, buyTokens, fetchDirectory, issuingKey, parseIssuerSpki, tokenInput, tokenKeyId, tokenNullifier, type Directory } from "../src/blind.js";
 import { json, stubFetch } from "./helpers.js";
 
 setDefaultTimeout(60_000);
@@ -60,6 +60,24 @@ describe("blind tokens", () => {
     expect(new Set(bought.tokens).size).toBe(2);
     expect(await tokenNullifier(bought.tokens[0])).toMatch(/^[0-9a-f]{64}$/);
     expect(authorizationHeader(base64ToBytes(bought.tokens[0]))).toBe(`PrivateToken token=${bought.tokens[0]}`);
+  });
+
+  test("a purchase becomes a token file that reads back, with the key's size and expiry", async () => {
+    const iss = await issuer();
+    const { fetch } = stubFetch({
+      "/api/v1/blind/keys": () => json({ data: iss.dir }),
+      "POST /api/v1/blind/purchase": async ({ init }) => {
+        const body = JSON.parse(String(init!.body));
+        const signatures = await Promise.all(body.blinded_msgs.map(async (m: string) => bytesToBase64Url(await suite.blindSign(iss.privateKey, base64ToBytes(m)))));
+        return json({ data: { signatures, cost_usd: "0.02", epoch: 1, denomination: 1000 } });
+      },
+    });
+    const bought = await buyTokens({ baseUrl: "https://router.test", apiKey: "sk-key", denomination: 1000, count: 3, fetch });
+    const file = boughtToFile(bought, new Date("2026-09-30T13:45:10Z"));
+    const read = parseTokenFile(serializeTokenFile(file));
+    expect(read).toEqual(file);
+    expect(read.tokens.map((t) => t.token)).toEqual(bought.tokens);
+    expect(read.tokens[0]).toMatchObject({ key_id: iss.keyId, denomination: 1000, value_usd: "0.01", epoch: 1, bought_at: "2026-09-30T13:45:10.000Z" });
   });
 
   test("a router that publishes a key under the wrong id is refused before anything is blinded", async () => {
