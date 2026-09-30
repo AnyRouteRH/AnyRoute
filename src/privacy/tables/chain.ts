@@ -1,0 +1,181 @@
+import type { TableDoc } from "../types.ts";
+import { CREATED, JSON_FIELDS, KEPT, UPDATED, rv } from "./common.ts";
+
+// Chain: what the router has read from, and written to, the blockchain. Blockchain data is public; these tables are a working copy
+// of it plus the router's own bookkeeping for deposits, pay-with and slashing.
+
+export const chainTables: Record<string, TableDoc> = {
+  chain_events: {
+    category: "chain",
+    purpose: "Contract events the router has read from the chain, each processed once.",
+    request: "no",
+    retention: KEPT,
+    columns: {
+      tx_hash: "The transaction.",
+      log_index: "The log's position in the transaction.",
+      contract: "The contract that emitted it.",
+      event: "The event name.",
+      block_number: "The block.",
+      args: { purpose: "The event's decoded arguments: addresses, amounts and hashes.", review: JSON_FIELDS("Decoded on-chain event arguments; public blockchain data.") },
+      processed: "Whether the router has acted on it.",
+      processed_at: "When it did.",
+      error: {
+        purpose: "Why processing the event failed, when it did.",
+        review: rv(["name:content"], "no-request-content", "An error string from the chain indexer while handling a public on-chain event; the indexer never sees a request."),
+      },
+      created_at: CREATED,
+    },
+  },
+
+  chain_cursor: {
+    category: "chain",
+    purpose: "How far the router has read each chain.",
+    request: "no",
+    retention: "One row per cursor, overwritten as the chain advances.",
+    columns: { id: "The cursor's name.", block: "The last block read.", updated_at: UPDATED },
+  },
+
+  escrow_deposits: {
+    category: "chain",
+    purpose: "Stock Token and $ANYR transfers into the escrow wallet: one row per transfer, its price, its status and whether it was credited.",
+    request: "no",
+    retention: KEPT,
+    columns: {
+      id: "<transaction>:<log index>.",
+      tx_hash: "The transaction.",
+      log_index: "The log's position in the transaction.",
+      block_number: "The block.",
+      token: "The token contract.",
+      symbol: "The token symbol.",
+      from_address: {
+        purpose: "The wallet that sent the tokens, as recorded on chain.",
+        review: rv(["name:network"], "wallet-address", "A blockchain wallet address that is public in the transfer itself; not a network address."),
+      },
+      raw_amount: "The amount in token base units.",
+      status: "pending_finality, pending, credited, orphaned or reversed.",
+      block_hash: "The block hash when recorded; the credit is checked against it.",
+      account_id: "The account it was credited to.",
+      price18: "USD per whole token at 18 decimals, as read from the price feed.",
+      price_updated_at: "When the feed last updated.",
+      credited: "The pico-USD credited after the haircut.",
+      error: {
+        purpose: "Why crediting failed, when it did.",
+        review: rv(["name:content"], "no-request-content", "An error string from the escrow indexer about an on-chain transfer; no request is involved."),
+      },
+      created_at: CREATED,
+      credited_at: "When it was credited.",
+      checked_at: "When the credit was last re-verified against the canonical chain.",
+      reversed_at: "When a credit was reversed.",
+      review_reason: "Set when an operator has to look: a reversal, or an orphan after finality.",
+      reviewed_at: "Set once an operator has reconciled it.",
+    },
+  },
+
+  paywith_sessions: {
+    category: "chain",
+    purpose: "Pay-with sessions: a wallet's daily cap for paying with a Stock Token through a key.",
+    request: "no",
+    retention: KEPT,
+    columns: {
+      key_hash: "The key's chain hash.",
+      wallet: "The wallet that opened the session.",
+      token: "The token contract.",
+      symbol: "The token symbol.",
+      cap_raw_day: "The daily cap in token base units.",
+      spent_raw_today: { purpose: "Spent today in token base units.", request: "aggregate" },
+      day_start: "When today's window began.",
+      active: "Whether the session is active.",
+      opened_tx: "The transaction that opened it.",
+      updated_at: UPDATED,
+    },
+  },
+
+  paywith_debts: {
+    category: "chain",
+    purpose: "What a pay-with call owes in tokens, until a swap settles it.",
+    request: "yes",
+    retention: KEPT,
+    columns: {
+      id: "Debt id.",
+      chain_key_hash: "The key's chain hash.",
+      account_id: "The account.",
+      generation_id: "The generation that created the debt.",
+      token: "The token contract.",
+      amount: "Pico-USD owed.",
+      raw_estimate: "Estimated token units.",
+      fair_price18: "The fair price used, 18 decimals.",
+      swap_id: "The swap that settled it.",
+      raw_allocated: "Token units allocated to it by the swap.",
+      created_at: CREATED,
+    },
+  },
+
+  paywith_swaps: {
+    category: "chain",
+    purpose: "Swaps that turn pay-with tokens into USDG to settle debts.",
+    request: "aggregate",
+    retention: KEPT,
+    columns: {
+      id: "Swap id.",
+      key_hash: "The key's chain hash.",
+      token: "The token contract.",
+      raw_spent: "Token units spent.",
+      fair_price: "The fair price used.",
+      usdg_out: "USDG base units received.",
+      tx: "The swap transaction.",
+      status: "pending, submitted, confirmed or failed.",
+      error: {
+        purpose: "Why the swap failed, when it did.",
+        review: rv(["name:content"], "no-request-content", "An error string from a swap transaction; no request is involved."),
+      },
+      ts: "When the swap was created.",
+      allocations: { purpose: "Which debts the swap settled and how much of it each got.", review: JSON_FIELDS("Debt ids and token amounts written by the pay-with aggregator.") },
+    },
+  },
+
+  slashes: {
+    category: "chain",
+    purpose: "Penalties proposed against a provider for empty answers, precision fraud, poor uptime or dropped parameters, with the evidence and where it stands.",
+    request: "aggregate",
+    retention: KEPT,
+    columns: {
+      id: "Slash id.",
+      provider_id: "The provider.",
+      model_id: "The model, when the penalty is per model.",
+      kind: "empty200, quant_fraud, uptime or param_drop.",
+      amount_usdg: "The amount in USDG base units.",
+      delist: "Whether the provider is delisted with it.",
+      evidence_root: "A Merkle root over the evidence.",
+      evidence: {
+        purpose: "The evidence: counts of requests and empty answers, canary results or uptime figures, and the window they cover.",
+        review: JSON_FIELDS("Assembled by gatherEvidence in slasher.ts from counts, canary results and time windows; no request or answer text is read."),
+      },
+      status: "proposed, disputed, cancelled, executed or auto_refunded.",
+      proposed_at: "When it was proposed.",
+      executable_at: "When it may be executed.",
+      executed_at: "When it was.",
+      dispute_hash: "The hash of the provider's dispute.",
+      disputed_at: "When it disputed.",
+      onchain_id: "The id on chain.",
+      tx_hash: "The transaction.",
+      refunded: "Pico-USD refunded to callers affected.",
+    },
+  },
+
+  spent_roots: {
+    category: "chain",
+    purpose: "A Merkle root over every key's cumulative spend, posted on chain so balances can be settled.",
+    request: "aggregate",
+    retention: KEPT,
+    columns: {
+      epoch: "The epoch.",
+      root: "The Merkle root.",
+      as_of: "The time the spend is counted to.",
+      total_spent_usdg: "Total spend in USDG base units.",
+      leaves: { purpose: "Pairs of a key's chain hash and its cumulative spend in USDG base units, in tree order.", review: JSON_FIELDS("[chainKeyHash, cumulativeSpentUsdg] pairs built from ledger totals.") },
+      tx_hash: "The transaction that posted the root.",
+      status: "pending, submitted or confirmed.",
+      created_at: CREATED,
+    },
+  },
+};

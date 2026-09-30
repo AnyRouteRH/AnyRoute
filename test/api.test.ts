@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { MODELS, sse, startRouter, type Harness } from "./helpers.ts";
 import { balanceOf, verifyInvariants } from "../src/ledger/ledger.ts";
 import { keys as keysTable } from "../src/db/schema.ts";
+import { checkDatabaseColumns, columnsHoldingRequestData, type DatabaseColumn } from "../src/privacy/inventory.ts";
 
 const LLAMA = "meta-llama/llama-3.3-70b-instruct";
 const chat = (h: Harness, auth: Record<string, string>, body: Record<string, unknown>, extraHeaders: Record<string, string> = {}) =>
@@ -136,11 +137,16 @@ describe("API parity (OpenRouter shapes)", () => {
   });
 
   test("privacy: no prompt/output columns anywhere in the schema", async () => {
-    const r = await h.ctx.db.execute(sql`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`);
+    const r = await h.ctx.db.execute(sql`SELECT table_name, column_name, data_type, udt_name FROM information_schema.columns WHERE table_schema = 'public'`);
     const cols = ((r as any).rows ?? r) as { table_name: string; column_name: string }[];
     // Hashes (…_sha256) and prices (price_…) are allowed; anything that could hold text is not.
     const bad = cols.filter((c) => /(^|_)(prompt|content|messages?|completion|output|response|input|answer|text|body)($|_)/.test(c.column_name) && !/_sha256$|^price_|^max_out$|^tokens_|_tokens$/.test(c.column_name));
     expect(bad.map((c) => `${c.table_name}.${c.column_name}`)).toEqual([]);
+    // The data inventory (src/privacy) goes further, on the database as the migrations built it: every column has an entry; every column
+    // whose name or type suggests request content or a network address (prompt, content, messages, body, text, ip, address, user_agent,
+    // jsonb, inet ...) carries a reviewed justification; and none is reviewed as holding request text or a caller's address.
+    expect(checkDatabaseColumns(cols as unknown as DatabaseColumn[])).toEqual([]);
+    expect(columnsHoldingRequestData()).toEqual([]);
   });
 });
 
