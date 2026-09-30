@@ -379,7 +379,7 @@ const readShort = (l: PrivacyLabel): string => {
 const netShort = (l: PrivacyLabel): string => {
   const n = l.label.network;
   if (n.hidden) return `hidden (${n.via === "tor" ? "Tor" : n.via === "relay" ? "relay" : "Tor or relay"})`;
-  return n.counter === "about_a_minute" ? "seen, held ~1 min for rate limits" : "seen, not saved";
+  return n.counter === "about_a_minute" ? "seen, held ~1 min for rate limits" : n.counter === "possible" ? "seen, may be held ~1 min for rate limits" : "seen, not saved";
 };
 const payShort = (l: PrivacyLabel): string =>
   ({ blind_token: "blind token, no account", pay_with_stock_token: "Stock Token via API key", own_provider_key: "own provider key", key_balance: "API key balance", x402: "wallet, x402", wallet_balance: "wallet balance", cache_hit: "nothing (cache)", unknown: "not recorded" })[l.label.payment.kind];

@@ -141,6 +141,7 @@ describe("the label, from a receipt alone", () => {
     expect(l.label.hardware.text).toContain("does not record whether");
     expect(l.summary).toHaveLength(5);
     expect(l.summary[2]).toBe("Paid with: not recorded in this receipt.");
+    expect(l.short).toBe("Read by: router + provider · IP: seen, may be held ~1 min for rate limits · Paid: not recorded");
     expect(l.verify_url).toBeNull(); // no router recorded, and none given
     // With the router's own address it can link to the verify page.
     expect(privacyLabel({ payload: { id: "gen-old-1" } }, { baseUrl: "https://r.example/" }).verify_url).toBe("https://r.example/verify?r=gen-old-1");
@@ -178,7 +179,7 @@ describe("the label, from a receipt alone", () => {
     expect(hit.label.payment).toMatchObject({ kind: "cache_hit", identifies: "api_key" });
     expect(hit.label.stored.cache).toBe("cache_hit");
     expect(hit.label.hardware).toMatchObject({ attested: false, verified_by: null });
-    expect(hit.short).toBe("Read by: router only (cache) · IP: seen, not saved · Paid: nothing (cache)");
+    expect(hit.short).toBe("Read by: router only (cache) · IP: seen, may be held ~1 min for rate limits · Paid: nothing (cache)");
   });
 
   test("a documented policy is not hardware, and a development report is never called attested", () => {
