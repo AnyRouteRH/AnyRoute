@@ -517,6 +517,7 @@ type DualInput = Base & {
   guardCfg: GuardrailConfig | null;
   middle: { removed: number; truncated: number } | null;
   savedRoute: string | null;
+  preset?: { name: string; version: number; hash: string } | null;
 };
 
 /** Providers that can honour temperature and seed (or do not say either way, so both are sent). */
@@ -571,7 +572,7 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
   const abort = new AbortController();
   c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });
   const call = { ctx, kind, billing: bill, byok, signal: abort.signal };
-  const meta = { guard, middle, paywithNote, cacheMode: null, excluded: p.excluded, route: savedRoute };
+  const meta = { guard, middle, paywithNote, cacheMode: null, excluded: p.excluded, route: savedRoute, preset: p.preset ?? null };
   // Each answer's gateway receipt check (providers/aci.ts), made once: it decides the attested block and goes into the receipt.
   const checkedUpstream = new WeakMap<Done, Awaited<ReturnType<Toolkit["upstreamAttestationOf"]>>>();
   const settle = (leg: Leg, done: Done, verification: unknown) => {

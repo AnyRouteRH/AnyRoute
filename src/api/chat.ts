@@ -24,6 +24,7 @@ import { bearer, requireRole, resolveKey, walletAuth, type KeyRow } from "./auth
 import { addressBucket, generationHeaders, readJson, sharedPolicyHash } from "./common.ts";
 import { grantFor, recordDebt, type PaywithGrant } from "../pay/paywith.ts";
 import { resolveSavedRoute } from "../routing/saved-routes.ts";
+import { resolvePreset } from "../routing/presets.ts";
 import { payPerCall } from "../pay/percall.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import type { HolderTier } from "../config.ts";
@@ -262,6 +263,10 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   // Saved route (`model: "@route/<slug>"`, the caller's account only): fills in the fallback models,
   // provider prefs and default params the request leaves unset. Precedence: request > alias > route > key.
   const savedRoute = await resolveSavedRoute(ctx.db, key?.accountId ?? wallet?.accountId ?? null, body);
+  // Preset (`model: "@preset/<name>[@<version>]"`): a versioned saved route that can also carry a system prompt, tools and a
+  // response_format (routing/presets.ts). Same precedence and the same stricter-wins privacy settings as a saved route.
+  const preset = savedRoute ? null : await resolvePreset(ctx.db, key?.accountId ?? wallet?.accountId ?? null, body, kind);
+  const presetMeta = preset ? { name: preset.name, version: preset.version, hash: preset.hash } : null;
   if (routing?.provider) body.provider = { ...routing.provider, ...((body.provider as object) ?? {}) };
   // Disclosure ceiling and lane: `provider.disclosure` / `provider.lane` and the X-Anyroute-* headers, the
   // stricter of the two winning, after the key's default and the saved route filled in what the request left unset.
@@ -295,6 +300,12 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
       if (r) allowed.add(r.model.id);
     }
   }
+  // Likewise a key allowed `@preset/<name>` may use the models of the preset version it resolved.
+  if (preset && allowed.has(`@preset/${preset.name}`) && key)
+    for (const m of preset.models) {
+      const r = ctx.catalog.resolve(m);
+      if (r) allowed.add(r.model.id);
+    }
   const resolved: { model: ModelRow; modifiers: Set<Modifier>; requested: string }[] = [];
   for (const id of modelIds) {
     const r = ctx.catalog.resolve(id);
@@ -336,7 +347,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const cacheMode: CacheMode | null = !strict && billing?.mode !== "blind" && !resolved.some((r) => isRestricted(ctx.catalog.laneOf(r.model).variant)) && (cacheSpec?.mode === "exact" || cacheSpec?.mode === "semantic") ? cacheSpec.mode : null;
   // `user` is forwarded to the provider as the end-user identity; a response made for one end user
   // must never be replayed to another behind the same key (exact or semantic).
-  const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })), ...(savedRoute ? { route: savedRoute } : {}) }))}` : "";
+  const cacheScope = billing ? `${billing.accountId}:policy-v3:${sha256(canonicalJson({ key: key?.keyHash ?? null, user: body.user ?? null, guardrails: guardCfg, provider: prefs, kind, models: resolved.map((r) => ({ id: r.model.id, modifiers: [...r.modifiers].sort() })), ...(savedRoute ? { route: savedRoute } : {}), ...(presetMeta ? { preset: presetMeta } : {}) }))}` : "";
   if (cacheMode && billing && !stream && body.verify == null) {
     const hit = await ctx.cache.get(cacheMode, cacheScope, body, ctx.cfg.gateway.semanticThreshold);
     if (hit) return cachedResponse(ctx, c, { body, hit, billing, model: primary, t0, bodySha, disc });
@@ -351,7 +362,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
     fail(404, "No providers match this request's model and routing preferences.", "no_providers", { excluded: excluded.slice(0, 50) });
 
   // Dual verification (`verify: "dual"`): the same request to two providers, outputs compared.
-  if (body.verify != null) return runDual(toolkit, { ctx, c, kind, body, bodySha, t0, key, wallet, tier, billing, paywithNote, prefs, disc, resolved, targets, excluded, promptTokens, byok, guard, guardCfg, middle, savedRoute });
+  if (body.verify != null) return runDual(toolkit, { ctx, c, kind, body, bodySha, t0, key, wallet, tier, billing, paywithNote, prefs, disc, resolved, targets, excluded, promptTokens, byok, guard, guardCfg, middle, savedRoute, preset: presetMeta });
 
   // ---- 6. Hold the worst case --------------------------------------------------------------------
   const fees = { royaltyBps: 0, perCallMarginBps: ctx.cfg.fees.perCallMarginBps, byokFeeBps: ctx.cfg.fees.byokFeeBps };
@@ -393,7 +404,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });
   const keyFor = (cand: Candidate) => providerKey(cand, ctx.cfg.appSecret, byok.get(cand.providerId));
   const path = kind === "chat" ? ("/chat/completions" as const) : ("/completions" as const);
-  const meta = { guard, middle, paywithNote, cacheMode, excluded, route: savedRoute };
+  const meta = { guard, middle, paywithNote, cacheMode, excluded, route: savedRoute, preset: presetMeta };
   // Streams send their headers before a provider is chosen, so the header is only set up front when every
   // provider this request can reach is served under the same class; the signed receipt always carries the truth.
   const classes = new Set(attemptable.map(({ cand }) => servedDisclosure(ctx, cand).class));
@@ -509,7 +520,7 @@ export type Common = {
   stream: boolean;
   kind: Kind;
   byok: Map<string, string>;
-  meta: { guard: ReturnType<typeof applyGuardrails>; middle: { removed: number; truncated: number } | null; paywithNote?: string; cacheMode: CacheMode | null; excluded: unknown[]; route: string | null };
+  meta: { guard: ReturnType<typeof applyGuardrails>; middle: { removed: number; truncated: number } | null; paywithNote?: string; cacheMode: CacheMode | null; excluded: unknown[]; route: string | null; preset?: { name: string; version: number; hash: string } | null };
   guardCfg: GuardrailConfig | null;
   promptTokens: number;
   tier: HolderTier | null;
@@ -758,6 +769,7 @@ async function finalize(p: FinalizeInput) {
     extras: (redactions: number) => {
       const x: Record<string, unknown> = {};
       if (p.meta.route) x.route = p.meta.route; // the saved route (`@route/<slug>`) that resolved this call
+      if (p.meta.preset) x.preset = p.meta.preset; // the preset version (`@preset/<name>@<version>`) that resolved this call
       if (p.meta.guard || redactions) x.guardrails = { ...(p.meta.guard ?? {}), output_redactions: redactions };
       if (p.meta.middle && (p.meta.middle.removed || p.meta.middle.truncated)) x.transforms = { "middle-out": p.meta.middle };
       if (p.meta.paywithNote) x.pay_with_fallback = p.meta.paywithNote;

@@ -28,6 +28,33 @@ export const operationTables: Record<string, TableDoc> = {
     },
   },
 
+  preset_versions: {
+    category: "operations",
+    purpose:
+      "The versions of a preset an account calls as @preset/<name>[@<version>]: one row per saved version, never changed after it is written. A preset is a saved route plus the defaults a route cannot hold: a system prompt, a response_format and tool definitions the account owner writes.",
+    request: "no",
+    retention: "Kept until the account deletes the preset (DELETE /api/v1/presets/:name), which deletes every version.",
+    columns: {
+      id: "Version id.",
+      account_id: "The account that owns it.",
+      name: "The name used in @preset/<name>.",
+      version: "The version number: 1, 2, 3, ... per preset.",
+      hash: "SHA-256 of the version's canonical JSON, so two versions with the same content have the same hash.",
+      config: {
+        purpose: "The preset: models, provider preferences, sampling controls and, when the owner sets them, a description (up to 280 characters), a system prompt (up to 16,000 characters), a response_format and up to 32 tool definitions.",
+        review: rv(
+          ["type:json"],
+          "config",
+          "Written by the account owner through PUT /api/v1/presets/:name and validated by a strict schema (presetDocSchema) with size caps. The system prompt is text the owner saves as a setting, not text taken from a call: requests that use the preset are not stored here or anywhere else.",
+        ),
+      },
+      source: "put for a saved change, rollback for a version restored from an earlier one.",
+      restored_from: "The version a rollback copied; empty otherwise.",
+      created_by: "The key that saved the version.",
+      created_at: CREATED,
+    },
+  },
+
   spend_alerts: {
     category: "operations",
     purpose: "Alert rules on spend (threshold, share of a budget, anomaly), evaluated by the spend-watch job. They read spending totals, not requests.",

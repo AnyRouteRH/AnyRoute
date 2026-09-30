@@ -27,6 +27,7 @@ import { generationRoutes } from "./api/generation.ts";
 import { keysRoutes } from "./api/keys.ts";
 import { escrowRoutes } from "./api/escrow.ts";
 import { savedRoutesRoutes } from "./api/saved-routes.ts";
+import { presetsRoutes } from "./api/presets.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
 import { spendRoutes } from "./api/spend.ts";
 import { holdersRoutes } from "./api/holders.ts";
@@ -132,6 +133,7 @@ export async function createApp(opts: AppOptions = {}) {
   keysRoutes(app, ctx);
   escrowRoutes(app, ctx);
   savedRoutesRoutes(app, ctx);
+  presetsRoutes(app, ctx);
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
   holdersRoutes(app, ctx);

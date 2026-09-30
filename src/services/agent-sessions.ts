@@ -1,7 +1,7 @@
 import { and, count, desc, eq, inArray, isNull, lt, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
-import { agentSessions, generations, holds, keys, savedRoutes } from "../db/schema.ts";
+import { agentSessions, generations, holds, keys, presetVersions, savedRoutes } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
 import { picoToUsd, usdToPico, type Pico } from "../lib/money.ts";
 import { uid } from "../lib/util.ts";
@@ -20,6 +20,8 @@ export type EndReason = "ended" | "expired" | "budget";
 export const LIMITS = { maxBudgetUsd: 1000, minTtlMinutes: 1, maxTtlMinutes: 1440, defaultTtlMinutes: 60, metadataBytes: 2048, maxModels: 50 } as const;
 
 const ROUTE_PREFIX = "@route/";
+const PRESET_PREFIX = "@preset/";
+const PRESET_RE = /^[a-z0-9][a-z0-9-]{1,47}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 // Metadata labels a run (ticket, repo, agent version). Keys that name prompt or completion text are refused.
 const PROMPT_KEYS = /^(prompts?|messages?|content|completions?|input|output|system|instructions?|text|response)$/i;
@@ -105,7 +107,7 @@ async function checkMetadata(meta: Record<string, unknown> | undefined) {
   return meta;
 }
 
-/** Canonical allowlist: catalog model ids (routing suffixes dropped) and the account's saved routes. */
+/** Canonical allowlist: catalog model ids (routing suffixes dropped) and the account's saved routes and presets. */
 async function checkModels(ctx: Ctx, caller: KeyRow, requested: string[] | undefined) {
   const parent = caller.allowedModels?.length ? caller.allowedModels : null;
   if (!requested?.length) return parent; // inherit the creating key's allowlist, if any
@@ -116,10 +118,19 @@ async function checkModels(ctx: Ctx, caller: KeyRow, requested: string[] | undef
   const known = routes.length
     ? new Set((await ctx.db.select({ slug: savedRoutes.slug }).from(savedRoutes).where(and(eq(savedRoutes.accountId, caller.accountId), inArray(savedRoutes.slug, routes)))).map((r) => r.slug))
     : new Set<string>();
+  // A preset is allowed by name (every version of it); a pinned `@preset/<name>@<version>` is not an allowlist entry.
+  const presets = requested.filter((m) => m.startsWith(PRESET_PREFIX)).map((m) => m.slice(PRESET_PREFIX.length));
+  for (const name of presets) if (!PRESET_RE.test(name)) fail(400, `${PRESET_PREFIX}${name} is not a valid preset name (allow the preset by name, without a version).`, "invalid_request");
+  const knownPresets = presets.length
+    ? new Set((await ctx.db.selectDistinct({ name: presetVersions.name }).from(presetVersions).where(and(eq(presetVersions.accountId, caller.accountId), inArray(presetVersions.name, presets)))).map((r) => r.name))
+    : new Set<string>();
   for (const m of requested) {
     let id: string;
     if (m.startsWith(ROUTE_PREFIX)) {
       if (!known.has(m.slice(ROUTE_PREFIX.length))) fail(400, `No saved route ${m} on this account.`, "invalid_request");
+      id = m;
+    } else if (m.startsWith(PRESET_PREFIX)) {
+      if (!knownPresets.has(m.slice(PRESET_PREFIX.length))) fail(400, `No preset ${m} on this account.`, "invalid_request");
       id = m;
     } else {
       const r = ctx.catalog.resolve(m);

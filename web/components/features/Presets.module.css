@@ -1,0 +1,23 @@
+/* Presets tab: version list, diff and rollback. Colour fields and type, no rules or boxes. */
+.doc{width:100%;min-height:320px;padding:14px;border:1px solid var(--line-strong);background:var(--white);font:400 13px/1.55 var(--mono);resize:vertical;tab-size:2}
+.history{margin:28px 0 8px}
+.historyGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:20px;align-items:start}
+.versions{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+.versions li{display:grid;gap:4px;padding:12px 14px;background:var(--paper)}
+.versions li.latest{background:var(--paper-2)}
+.versions li strong{font-weight:600}
+.versions li small{font-size:12px;color:var(--muted)}
+.versions :global(.badge){margin-left:8px}
+.versionActions{display:flex;flex-wrap:wrap;gap:14px}
+.versionActions button[aria-pressed=true]{color:var(--signal-deep);font-weight:600}
+.diff{padding:18px 20px;background:var(--white);font-size:14px;line-height:1.5;min-width:0}
+.changes{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:8px}
+.changes li{display:grid;gap:3px;padding:8px 10px;overflow-wrap:anywhere;font:400 12px/1.5 var(--mono)}
+.changes li code{font-weight:600}
+.changes del{text-decoration:line-through;color:#96161b}
+.changes ins{text-decoration:none;color:var(--ink)}
+.add{background:rgba(30,120,70,.08)}
+.remove{background:rgba(150,22,27,.07)}
+.replace{background:var(--paper)}
+.pin{margin:14px 0 0;font-size:13px;color:var(--muted)}
+@media (max-width:760px){.historyGrid{grid-template-columns:minmax(0,1fr)}}

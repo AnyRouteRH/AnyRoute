@@ -49,7 +49,7 @@ function notFound(slug: string): never {
   fail(404, `No saved route @route/${slug.slice(0, 60)} in this account.`, "route_not_found");
 }
 
-async function assertModels(ctx: Ctx, ids: string[]) {
+export async function assertModels(ctx: Ctx, ids: string[]) {
   await ctx.catalog.ensureFresh();
   const unknown = unknownModels(ctx.catalog, ids);
   if (unknown.length) fail(400, `Unknown model${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. See GET /api/v1/models.`, "model_not_found", { unknown_models: unknown });
@@ -79,7 +79,7 @@ function classesOf(ctx: Ctx, provider: RouteConfig["provider"]): ClassesOf {
  * provider that meets it now: every call would fail closed on that model, so saying so at save time beats finding out
  * on the first request. Reads the in-memory catalog only (call `ctx.catalog.ensureFresh()` first).
  */
-function assertRouteLane(ctx: Ctx, config: RouteConfig) {
+export function assertRouteLane(ctx: Ctx, config: RouteConfig) {
   const off = modelsOffLane(config, classesOf(ctx, config.provider));
   if (!off.length) return;
   const { lane, max } = routeCeiling(config.provider);

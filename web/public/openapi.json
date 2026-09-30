@@ -61,6 +61,10 @@
       "description": "Named routing policies callable as model @route/<slug>."
     },
     {
+      "name": "Presets",
+      "description": "Versioned configs callable as model @preset/<name> or @preset/<name>@<version>: a saved route plus a system prompt, tools and a response_format, with diff and rollback."
+    },
+    {
       "name": "Agent Sessions",
       "description": "Short-lived, budget-capped session keys for agent runs."
     },
@@ -1992,6 +1996,494 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/presets": {
+      "get": {
+        "tags": [
+          "Presets"
+        ],
+        "operationId": "listPresets",
+        "summary": "List the account's presets at their latest version",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Presets, sorted by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Preset"
+                      }
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "limits": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/presets/{name}": {
+      "get": {
+        "tags": [
+          "Presets"
+        ],
+        "operationId": "getPreset",
+        "summary": "Get a preset (the latest version, or ?version=)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A version number (3 or v3) or a hash prefix of at least 7 hex characters."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The preset version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Preset"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Presets"
+        ],
+        "operationId": "putPreset",
+        "summary": "Create a preset or save a new version",
+        "description": "Owner or admin. The body is the whole document. A change appends an immutable version; an unchanged document adds nothing (changed: false). Models, the lane and the size caps are checked as for a saved route.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetDocument"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A new version, or the unchanged latest one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Preset"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created as version 1.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Preset"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "preset_limit_reached (100 per account), preset_version_limit (100 versions per preset), or route_lane_unavailable (a model has no provider that meets the preset's lane or disclosure ceiling right now).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Presets"
+        ],
+        "operationId": "deletePreset",
+        "summary": "Delete a preset and every version of it",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "deleted": {
+                          "type": "boolean"
+                        },
+                        "versions": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/presets/{name}/versions": {
+      "get": {
+        "tags": [
+          "Presets"
+        ],
+        "operationId": "listPresetVersions",
+        "summary": "List a preset's versions, newest first",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PresetVersion"
+                      }
+                    },
+                    "latest": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/presets/{name}/diff": {
+      "get": {
+        "tags": [
+          "Presets"
+        ],
+        "operationId": "diffPresetVersions",
+        "summary": "JSON diff between two versions of a preset",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Defaults to the version before `to`."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Defaults to the latest version."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The changes from `from` to `to`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PresetDiff"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/presets/{name}/rollback": {
+      "post": {
+        "tags": [
+          "Presets"
+        ],
+        "operationId": "rollbackPreset",
+        "summary": "Restore an earlier version as a new version",
+        "description": "Owner or admin. Appends a version with the content (and hash) of the one named; nothing is rewritten or deleted.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "version"
+                ],
+                "properties": {
+                  "version": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "description": "A version number or a hash prefix."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new latest version (changed: false when it was already current).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Preset"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "preset_version_limit, preset_invalid, or route_lane_unavailable: the version's models can no longer be served under its lane.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
             }
           }
         ]
@@ -5384,7 +5876,7 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Public model ID, optionally with a supported routing modifier. The reserved ID anyroute/council selects council mode when the router enables it."
+            "description": "Public model ID, optionally with a supported routing modifier. The reserved ID anyroute/council selects council mode when the router enables it. @route/<slug> calls a saved route and @preset/<name> (or @preset/<name>@<version> to pin one version) calls a preset of the key's account."
           },
           "models": {
             "type": "array",
@@ -11344,6 +11836,216 @@
               "null"
             ],
             "description": "The verify page for this receipt, when the router's address is known."
+          }
+        }
+      },
+      "PresetDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "models"
+        ],
+        "description": "A preset: the routing part of a saved route plus prompt-side defaults. The whole document is at most 64 KB as JSON.",
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 280
+          },
+          "models": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "string"
+            },
+            "description": "Catalog model ids in fallback order; no @route/ or @preset/ entries."
+          },
+          "provider": {
+            "type": "object",
+            "description": "The same provider preferences as a saved route (SavedRouteConfig.provider), including lane (public|attested) and disclosure (none|policy|any), where the stricter of the preset and the request applies."
+          },
+          "params": {
+            "type": "object",
+            "description": "The same closed list of sampling defaults as a saved route (SavedRouteConfig.params). Request values win."
+          },
+          "system_prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000,
+            "description": "Prepended as a system message only when the request's messages have no system or developer message. Chat completions only."
+          },
+          "response_format": {
+            "type": "object",
+            "description": "text, json_object or json_schema (at most 16 KB). Used when the request sets no response_format."
+          },
+          "tools": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "object"
+            },
+            "description": "Function tool definitions (unique names, at most 32 KB). Used with tool_choice when the request sets no tools."
+          },
+          "tool_choice": {
+            "description": "none, auto, required, or a function the preset's tools define.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "auto",
+                  "required"
+                ]
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "Preset": {
+        "type": "object",
+        "required": [
+          "name",
+          "model",
+          "version",
+          "hash",
+          "config"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+          },
+          "model": {
+            "type": "string",
+            "description": "Use as the request model, e.g. @preset/support; add @<version> to pin one."
+          },
+          "description": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The version shown: the latest unless one was asked for."
+          },
+          "hash": {
+            "type": "string",
+            "description": "SHA-256 (hex) of the version's canonical JSON. Equal content, equal hash."
+          },
+          "config": {
+            "$ref": "#/components/schemas/PresetDocument"
+          },
+          "versions": {
+            "type": "integer",
+            "description": "In the list: how many versions the preset has."
+          },
+          "latest_version": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "boolean",
+            "description": "PUT and rollback: false when the document equals the latest version, so no version was added."
+          },
+          "restored_from": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PresetVersion": {
+        "type": "object",
+        "required": [
+          "version",
+          "hash",
+          "model",
+          "source",
+          "created_at"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "hash": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "description": "The pinned model name, e.g. @preset/support@3."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "put",
+              "rollback"
+            ]
+          },
+          "restored_from": {
+            "type": "integer",
+            "description": "For a rollback: the version whose content it copied."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PresetDiff": {
+        "type": "object",
+        "required": [
+          "name",
+          "from",
+          "to",
+          "identical",
+          "changes"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "from": {
+            "$ref": "#/components/schemas/PresetVersion"
+          },
+          "to": {
+            "$ref": "#/components/schemas/PresetVersion"
+          },
+          "identical": {
+            "type": "boolean"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "op",
+                "path"
+              ],
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "add",
+                    "remove",
+                    "replace"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "description": "JSON Pointer into the preset document."
+                },
+                "from": {},
+                "to": {}
+              }
+            }
           }
         }
       }

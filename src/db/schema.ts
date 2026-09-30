@@ -678,6 +678,25 @@ export const savedRoutes = pgTable(
   (t) => [uniqueIndex("saved_routes_account_slug_uq").on(t.accountId, t.slug)],
 );
 
+// Presets: versioned saved routes an account calls as `model: "@preset/<name>[@<version>]"`. Append-only: every change
+// (and every rollback) is a new row; the latest version is the preset. Deleting the preset deletes its rows.
+export const presetVersions = pgTable(
+  "preset_versions",
+  {
+    id: text("id").primaryKey(), // pv_...
+    accountId: text("account_id").notNull(),
+    name: text("name").notNull(),
+    version: integer("version").notNull(), // 1, 2, 3, ... per (account, name)
+    hash: text("hash").notNull(), // sha256 hex of the normalized document's canonical JSON
+    config: jsonb("config").notNull(), // the preset document (src/routing/presets.ts presetDocSchema)
+    source: text("source").notNull().default("put"), // put | rollback
+    restoredFrom: integer("restored_from"), // the version a rollback copied
+    createdBy: text("created_by"), // key hash
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("preset_versions_account_name_version_uq").on(t.accountId, t.name, t.version)],
+);
+
 // Agent Sessions: a short-lived sub-key for one agent run, with its own budget and expiry.
 export const agentSessions = pgTable(
   "agent_sessions",

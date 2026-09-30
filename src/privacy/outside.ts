@@ -412,6 +412,14 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     evidence: [ev("src/api/saved-routes.ts", "routeCreateSchema.parse(await readJson(c))")],
   },
   {
+    file: "src/api/presets.ts",
+    carries: "settings",
+    reads: "A preset: fallback models, provider preferences, sampling controls and the owner's own system prompt, response_format and tool definitions.",
+    then: "Validated against a strict schema with size caps, then stored as a new version.",
+    kept: "The preset's versions in preset_versions.",
+    evidence: [ev("src/api/presets.ts", "presetDocSchema.parse(await readJson(c))")],
+  },
+  {
     file: "src/api/spend.ts",
     carries: "settings",
     reads: "A spend alert rule.",

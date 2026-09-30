@@ -628,6 +628,7 @@ const endpoints = [
   ["POST /api/v1/paywith/allowance/typed-data · /allowance · GET /charges · POST /charges/{id}/signature", "Wallet authorizations: a bounded allowance, or a signature per charge"],
   ["POST /api/v1/byok · /teams", "Bring your own provider key; team roles"],
   ["GET · POST · PATCH · DELETE /api/v1/routes", "Saved Routes: named routing policies you call as model \"@route/<slug>\", optionally pinned to the attested lane"],
+  ["GET · PUT · DELETE /api/v1/presets/:name · /versions · /diff · POST /rollback", "Presets: versioned saved routes with a system prompt, tools and response_format, called as model \"@preset/<name>\" or pinned as \"@preset/<name>@<version>\""],
   ["POST · GET · DELETE /api/v1/sessions · GET /sessions/current", "Agent Sessions: short-lived, budget-capped keys for agent runs"],
   ["GET /api/v1/spend · /spend/alerts", "Spend Watch: totals, projection, breakdowns, key budgets and alert rules"],
   ["GET /api/v1/disclosure/:providerId", "A provider’s documented retention, jurisdiction, legal hold and training use, each with a source and date, and the class it is served under now"],
@@ -675,6 +676,7 @@ export default function Docs() {
             <span className="side-nav-label">On this page</span>
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
+            <a href="#presets">Presets</a>
             <a href="#disclosure">Disclosure</a>
             <a href="#lanes">Lanes</a>
             <a href="#tor">Tor</a>
@@ -720,6 +722,33 @@ export default function Docs() {
                 models: ["qwen/qwen3-32b"],
                 messages: [{ role: "user", content: "Your prompt" }],
                 provider: { allow_fallbacks: true, data_collection: "deny", sort: "latency", private: true },
+              },
+              null,
+              2,
+            )}
+          </Code>
+          <h2 id="presets">Presets: config as code, with versions.</h2>
+          <p>
+            A preset is a saved route with a version history. It holds the same fallback models, provider preferences and sampling defaults as @route/&lt;slug&gt;, plus what a route may not hold: a system_prompt (up to 16,000 characters), a
+            response_format and up to 32 tool definitions with a tool_choice. PUT /api/v1/presets/&lt;name&gt; saves the whole document. Each change adds an immutable version, numbered 1, 2, 3 and identified by the SHA-256 of its canonical
+            JSON; saving the same content again adds nothing. Call the latest with model &quot;@preset/&lt;name&gt;&quot;, or pin one with &quot;@preset/&lt;name&gt;@3&quot; or a hash prefix of at least 7 characters. The response carries
+            preset: name, version and hash.
+          </p>
+          <p>
+            The request wins over the preset for every parameter, provider field, models list, tools and response_format it sets. For provider.lane and provider.disclosure the stricter of the two applies, as for a saved route. The
+            system prompt is added as the first message only when the request has no system or developer message; a request with its own keeps it and gets no second one. Legacy /completions has no messages, so a preset with a system
+            prompt, tools or a response_format is refused there (400 preset_unsupported). GET /api/v1/presets/&lt;name&gt;/versions lists the history, /diff?from=1&amp;to=2 returns a JSON diff (JSON Pointer paths with the old and new
+            value), and POST /rollback with {"{"}&quot;version&quot;: 1{"}"} adds a new version with that content, so nothing is rewritten and every pin keeps resolving until the preset is deleted. A key or agent session allowed
+            &quot;@preset/&lt;name&gt;&quot; may use that preset’s models. Limits: 100 presets per account, 100 versions per preset, 64 KB per version.
+          </p>
+          <Code label="PUT /api/v1/presets/support">
+            {JSON.stringify(
+              {
+                description: "Support replies in one line",
+                models: ["qwen/qwen3-32b", "meta-llama/llama-3.3-70b-instruct"],
+                provider: { data_collection: "deny" },
+                params: { temperature: 0.2, max_tokens: 200 },
+                system_prompt: "You are the support assistant. Answer in one line.",
               },
               null,
               2,

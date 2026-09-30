@@ -284,11 +284,11 @@ export function ragRoutes(app: Hono, ctx: Ctx) {
       if (m && allowed.length && !allowed.includes(m.id)) fail(403, `This key may not use ${m.id}.`, "model_not_allowed");
     };
     const chatRes = named(req.model);
-    // An alias of the key, a saved route or a router model are resolved by the chat route itself.
-    const routed = req.model.startsWith("@route/") || req.model.startsWith("anyroute/") || !!(key.routing as { aliases?: Record<string, unknown> } | null)?.aliases?.[req.model];
+    // An alias of the key, a saved route, a preset or a router model are resolved by the chat route itself.
+    const routed = req.model.startsWith("@route/") || req.model.startsWith("@preset/") || req.model.startsWith("anyroute/") || !!(key.routing as { aliases?: Record<string, unknown> } | null)?.aliases?.[req.model];
     if (!chatRes && !routed) fail(404, `Model ${req.model} is not available. See GET /api/v1/models.`, "model_not_found");
     if (!chatRes && !stated)
-      fail(400, `${req.model} is resolved by the router (a saved route, an alias of this key or a router model), and it can pin a lane of its own, so the lane for the embeddings step cannot be chosen for you. Set provider.lane to "attested" or "public". Nothing was sent.`, "lane_required");
+      fail(400, `${req.model} is resolved by the router (a saved route, a preset, an alias of this key or a router model), and it can pin a lane of its own, so the lane for the embeddings step cannot be chosen for you. Set provider.lane to "attested" or "public". Nothing was sent.`, "lane_required");
     guardAllowed(chatRes?.model);
     const chat = chatRes ? availability(ctx, chatRes.model) : null;
     if (chat && chat.embedding && !chat.chat) fail(400, `${chat.id} is an embedding model. \`model\` must be a chat model; name the embedding model in \`embedding_model\`.`, "invalid_request");

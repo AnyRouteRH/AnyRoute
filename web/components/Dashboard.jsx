@@ -6,6 +6,7 @@ import { connect, ensureChain, hasWallet, sendTransactions, shortAddress, signTy
 import { Button, Modal, Code, CopyButton } from "./UI";
 import ModelCatalog from "./ModelCatalog";
 import SavedRoutes from "./features/SavedRoutes";
+import Presets from "./features/Presets";
 import EvalLab from "./features/EvalLab";
 import BatchStudio from "./features/BatchStudio";
 import AgentSessions from "./features/AgentSessions";
@@ -13,7 +14,7 @@ import SpendWatch from "./features/SpendWatch";
 import Holders from "./features/Holders";
 import PayAnyrDialog from "./PayAnyr";
 
-const tabs = ["Overview", "Playground", "Saved Routes", "Eval Lab", "Batch Studio", "Models", "API keys", "Agent Sessions", "Receipts", "Spend Watch", "Payments", "Holders", "Providers", "Settings"];
+const tabs = ["Overview", "Playground", "Saved Routes", "Presets", "Eval Lab", "Batch Studio", "Models", "API keys", "Agent Sessions", "Receipts", "Spend Watch", "Payments", "Holders", "Providers", "Settings"];
 const tabId = (t) => t.toLowerCase().replace(" ", "-");
 const publicTabs = ["Models", "Providers", "Holders"];
 
@@ -1330,7 +1331,7 @@ export default function Dashboard() {
           {notice}
         </div>
       )}
-      {error && ["Saved Routes", "Eval Lab", "Batch Studio", "Agent Sessions", "Spend Watch"].includes(tab) && (
+      {error && ["Saved Routes", "Presets", "Eval Lab", "Batch Studio", "Agent Sessions", "Spend Watch"].includes(tab) && (
         <div className="error" role="alert">
           {error}
         </div>
@@ -1867,10 +1868,11 @@ export default function Dashboard() {
               />
             </>
           )}
-          {["Saved Routes", "Eval Lab", "Batch Studio", "Agent Sessions", "Spend Watch"].includes(tab) &&
+          {["Saved Routes", "Presets", "Eval Lab", "Batch Studio", "Agent Sessions", "Spend Watch"].includes(tab) &&
             (() => {
               const featureProps = { live, apiKey, ws, status, catalog, refresh, notify: setNotice, fail: setError, navigate };
               if (tab === "Saved Routes") return <SavedRoutes {...featureProps} />;
+              if (tab === "Presets") return <Presets {...featureProps} />;
               if (tab === "Eval Lab") return <EvalLab {...featureProps} />;
               if (tab === "Batch Studio") return <BatchStudio {...featureProps} />;
               if (tab === "Agent Sessions") return <AgentSessions {...featureProps} />;

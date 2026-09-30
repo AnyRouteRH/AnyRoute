@@ -196,7 +196,7 @@ export function summarize(tables: TableOut[], ext: ExternalDoc): Summary {
   if (settings.length)
     caveats.push({
       title: "Settings you type are stored as you typed them",
-      text: `${list(settings.map((c) => c.id))} hold configuration you write: descriptions, routing and guardrail settings, session labels. The API checks their shape and size, but it cannot know what you choose to write in a description or a label.`,
+      text: `${list(settings.map((c) => c.id))} hold configuration you write: descriptions, routing and guardrail settings, the system prompts and tool definitions of your presets, session labels. The API checks their shape and size, but it cannot know what you choose to write in a description or a label.`,
     });
 
   return {

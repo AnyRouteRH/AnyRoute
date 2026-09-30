@@ -11,7 +11,7 @@ export const CATEGORY_INFO: Record<Category, { label: string; summary: string }>
   keys: { label: "Keys & auth", summary: "API keys (stored as hashes), teams, agent sessions, keys you bring, and the issuer and gateway keys behind blind tokens and Oblivious HTTP." },
   providers: { label: "Providers & attestation", summary: "The provider registry and model catalogue, attestation results, measurements, disclosure profiles and the day-zero model lane." },
   chain: { label: "Chain", summary: "Blockchain events the router has read, escrow deposits, pay-with sessions and swaps, provider payouts and slashes." },
-  operations: { label: "Operations", summary: "Settings you save (routes, spend alerts) and the router's own key-value state." },
+  operations: { label: "Operations", summary: "Settings you save (routes, presets, spend alerts) and the router's own key-value state." },
 };
 
 /** Whether a value is recorded per user request. "aggregate" means it is summed or derived from requests. */
