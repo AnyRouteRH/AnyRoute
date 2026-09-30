@@ -131,6 +131,10 @@
     {
       "name": "Teams",
       "description": "Anonymous organisations: an owner that is an account, a wallet or a Safe (EIP-1271), members who join by passkey or wallet, roles (owner, admin, dev, viewer, agent), an org budget, and a hash-chained audit log you can export and verify offline."
+    },
+    {
+      "name": "Status page",
+      "description": "The public status page: availability, latency and error budgets per privacy lane and API surface, and incidents with Atom and RSS feeds. The public lane is summed from request outcomes; the attested and unlinkable lanes come only from the differentially private hourly releases at /api/v1/stats (source: dp-noised)."
     }
   ],
   "paths": {
@@ -7881,6 +7885,497 @@
           }
         }
       }
+    },
+    "/api/v1/status/slo": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "operationId": "getStatusSlo",
+        "summary": "Availability, latency and error budget per lane and surface",
+        "description": "Public, cached for 30 seconds. For each privacy lane (public, attested, unlinkable) and each API surface (chat, embeddings, batch, messages, ollama, and rerank where served): availability over 1 hour, 24 hours, 7 days and 30 days, p50 and p95 latency over 24 hours, error counts by class, the SLO target, the 30-day error budget, 90 daily availability figures and the open and recent incidents. The public lane is summed from public-lane request outcomes in five-minute buckets. The attested and unlinkable lanes use only the differentially private hourly releases published at /api/v1/stats and say so with source: dp-noised; they share one set of noisy counters and have no per-surface breakdown.",
+        "responses": {
+          "200": {
+            "description": "The SLO document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/StatusSlo"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status/incidents": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "operationId": "listStatusIncidents",
+        "summary": "Confirmed incidents of the last 90 days",
+        "description": "Public: confirmed incidents, newest first. With all=true and the operator token (ADMIN_TOKEN), also automatic suggestions and dismissed ones.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "description": "Operator only.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incidents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/StatusIncident"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Status page"
+        ],
+        "operationId": "createStatusIncident",
+        "summary": "Open an incident (operator)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Operator only (ADMIN_TOKEN as Bearer or x-admin-token).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "lanes",
+                  "message"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 140
+                  },
+                  "lanes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "public",
+                        "attested",
+                        "unlinkable"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "surfaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "chat",
+                        "embeddings",
+                        "batch",
+                        "messages",
+                        "ollama",
+                        "rerank"
+                      ]
+                    }
+                  },
+                  "impact": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "minor",
+                      "major",
+                      "critical"
+                    ],
+                    "default": "minor"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "investigating",
+                      "identified",
+                      "monitoring"
+                    ],
+                    "default": "investigating"
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The incident.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/StatusIncident"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/status/incidents/{id}": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "operationId": "getStatusIncident",
+        "summary": "One confirmed incident",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The incident.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/StatusIncident"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Status page"
+        ],
+        "operationId": "patchStatusIncident",
+        "summary": "Change an incident's title, impact, lanes or surfaces (operator)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 140
+                  },
+                  "lanes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "public",
+                        "attested",
+                        "unlinkable"
+                      ]
+                    },
+                    "minItems": 1
+                  },
+                  "surfaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "chat",
+                        "embeddings",
+                        "batch",
+                        "messages",
+                        "ollama",
+                        "rerank"
+                      ]
+                    }
+                  },
+                  "impact": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "minor",
+                      "major",
+                      "critical"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The incident.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/StatusIncident"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/status/incidents/{id}/updates": {
+      "post": {
+        "tags": [
+          "Status page"
+        ],
+        "operationId": "postStatusIncidentUpdate",
+        "summary": "Post a status update (operator)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Adds an update and moves the incident to its status. On an automatic suggestion, investigating, identified or monitoring confirms it (it becomes public) and dismissed drops it. resolved and dismissed are final: a later update is refused with 409.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "message"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "investigating",
+                      "identified",
+                      "monitoring",
+                      "resolved",
+                      "dismissed"
+                    ]
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "impact": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "minor",
+                      "major",
+                      "critical"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The incident.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/StatusIncident"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The incident is closed, or only a suggestion can be dismissed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status/incidents.atom": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "operationId": "getStatusIncidentsAtom",
+        "summary": "Incidents as an Atom feed",
+        "responses": {
+          "200": {
+            "description": "Atom 1.0 feed of confirmed incidents.",
+            "content": {
+              "application/atom+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/status/incidents.rss": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "operationId": "getStatusIncidentsRss",
+        "summary": "Incidents as an RSS feed",
+        "responses": {
+          "200": {
+            "description": "RSS 2.0 feed of confirmed incidents.",
+            "content": {
+              "application/rss+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -14263,7 +14758,42 @@
               "hardware"
             ],
             "properties": {
-              "output": {"type":"object","required":["unit_type","units","kind","text"],"properties":{"unit_type":{"type":"string"},"units":{"type":["number","null"]},"kind":{"type":"string","enum":["text","image","video","audio","call","compute","unknown"]},"text":{"type":"string"}},"description":"Usage unit and quantity from the receipt. Missing unit types default to token; unfamiliar types carry no inferred content-retention guarantee."},
+              "output": {
+                "type": "object",
+                "required": [
+                  "unit_type",
+                  "units",
+                  "kind",
+                  "text"
+                ],
+                "properties": {
+                  "unit_type": {
+                    "type": "string"
+                  },
+                  "units": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "image",
+                      "video",
+                      "audio",
+                      "call",
+                      "compute",
+                      "unknown"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "description": "Usage unit and quantity from the receipt. Missing unit types default to token; unfamiliar types carry no inferred content-retention guarantee."
+              },
               "prompt_readers": {
                 "type": "object",
                 "required": [
@@ -14272,7 +14802,13 @@
                   "text"
                 ],
                 "properties": {
-                  "participants": {"type":"array","items":{"type":"string"},"description":"Provider ids named in an aggregate council receipt; individual receipts describe their access."},
+                  "participants": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Provider ids named in an aggregate council receipt; individual receipts describe their access."
+                  },
                   "router": {
                     "type": "boolean",
                     "const": true,
@@ -14345,8 +14881,14 @@
                     ]
                   },
                   "stored": {
-                    "type": ["boolean", "null"],
-                    "enum": [false, null],
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "enum": [
+                      false,
+                      null
+                    ],
                     "description": "AnyRoute's software writes the client address to no table on current routes; null means handling is not established for an unfamiliar output type."
                   },
                   "counter": {
@@ -14417,16 +14959,34 @@
                 ],
                 "properties": {
                   "prompt_text": {
-                    "type": ["boolean", "null"],
-                    "enum": [false, null]
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "enum": [
+                      false,
+                      null
+                    ]
                   },
                   "reply_text": {
-                    "type": ["boolean", "null"],
-                    "enum": [false, null]
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "enum": [
+                      false,
+                      null
+                    ]
                   },
                   "client_address": {
-                    "type": ["boolean", "null"],
-                    "enum": [false, null]
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "enum": [
+                      false,
+                      null
+                    ]
                   },
                   "fingerprints": {
                     "type": "boolean",
@@ -14446,7 +15006,8 @@
                     "enum": [
                       "never",
                       "only_if_requested",
-                      "cache_hit", "not_recorded"
+                      "cache_hit",
+                      "not_recorded"
                     ],
                     "description": "The opt-in response cache holds an encrypted copy of the reply, never the prompt itself, until it expires; semantic caching also keeps a hashed word vector. Unrecognized content paths report eligibility as not_recorded. It is never used on the attested or unlinkable lanes or with a blind token; on the public lane only if the request asked for it."
                   },
@@ -16568,6 +17129,269 @@
           "expires_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "StatusIncident": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "impact",
+          "lanes",
+          "surfaces",
+          "source",
+          "started_at",
+          "resolved_at",
+          "updated_at",
+          "updates"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "investigating",
+              "identified",
+              "monitoring",
+              "resolved",
+              "dismissed"
+            ],
+            "description": "suggested and dismissed are seen only by the operator."
+          },
+          "impact": {
+            "type": "string",
+            "enum": [
+              "none",
+              "minor",
+              "major",
+              "critical"
+            ]
+          },
+          "lanes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "public",
+                "attested",
+                "unlinkable"
+              ]
+            },
+            "minItems": 1
+          },
+          "surfaces": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "chat",
+                "embeddings",
+                "batch",
+                "messages",
+                "ollama",
+                "rerank"
+              ]
+            },
+            "description": "Empty for all surfaces."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "operator",
+              "auto"
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updates": {
+            "type": "array",
+            "description": "Newest first.",
+            "items": {
+              "type": "object",
+              "required": [
+                "at",
+                "status",
+                "text"
+              ],
+              "properties": {
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "evidence": {
+            "type": "object",
+            "description": "Automatic suggestions only: lanes, surfaces, window (5m for the public lane, 1h for the private lanes), availability, target, requests and source (request-aggregates or dp-noised)."
+          }
+        }
+      },
+      "StatusSlo": {
+        "type": "object",
+        "required": [
+          "object",
+          "generated_at",
+          "windows",
+          "targets",
+          "lanes",
+          "surfaces",
+          "incidents"
+        ],
+        "properties": {
+          "object": {
+            "const": "status.slo"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cache_seconds": {
+            "type": "integer"
+          },
+          "windows": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ]
+            }
+          },
+          "targets": {
+            "type": "object",
+            "description": "Availability target per lane, as a fraction (STATUS_SLO_PUBLIC 0.995, STATUS_SLO_ATTESTED 0.99, STATUS_SLO_UNLINKABLE 0.99)."
+          },
+          "lanes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "lane",
+                "source",
+                "target",
+                "state",
+                "windows",
+                "latency_24h",
+                "error_budget",
+                "daily"
+              ],
+              "properties": {
+                "lane": {
+                  "type": "string",
+                  "enum": [
+                    "public",
+                    "attested",
+                    "unlinkable"
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "request-aggregates",
+                    "dp-noised"
+                  ],
+                  "description": "dp-noised: every figure is summed from the differentially private hourly releases, never from per-request records."
+                },
+                "target": {
+                  "type": "number"
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "operational",
+                    "degraded",
+                    "outage",
+                    "no_data"
+                  ]
+                },
+                "scope": {
+                  "type": "string",
+                  "description": "Private lanes: attested+unlinkable, because the two lanes share one set of noisy counters."
+                },
+                "windows": {
+                  "type": "object",
+                  "description": "Per window (1h, 24h, 7d, 30d): availability (null without enough data), eligible requests (5xx and successes; 4xx and 429 are left out) and error counts by class."
+                },
+                "latency_24h": {
+                  "type": "object",
+                  "description": "p50_ms and p95_ms as the upper edge of the fixed latency bucket each falls in. Public lane: time to first token for streams, full response otherwise. Private lanes: total generation time, the only latency the noisy counters keep."
+                },
+                "error_budget": {
+                  "type": "object",
+                  "description": "Over 30 days: allowed_failures, failures, remaining (share of the budget unspent) and exhausted."
+                },
+                "daily": {
+                  "type": "array",
+                  "description": "90 UTC days, oldest first: availability (null without data) and eligible requests.",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "privacy": {
+                  "type": "object",
+                  "description": "Private lanes: mechanism, epsilon per hour, noise scale and the minimum noisy eligible count before a share is shown."
+                }
+              }
+            }
+          },
+          "surfaces": {
+            "type": "array",
+            "description": "Per API surface, public lane only. rerank appears only where the router serves it.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "synthetic_24h": {
+            "type": "object",
+            "description": "Provider probes and canaries over 24 hours."
+          },
+          "incidents": {
+            "type": "object",
+            "properties": {
+              "open": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StatusIncident"
+                }
+              },
+              "recent": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StatusIncident"
+                }
+              }
+            }
           }
         }
       }

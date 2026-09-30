@@ -520,6 +520,14 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     evidence: [ev("src/api/lane.ts", "laneInput.parse(await readJson(c))")],
   },
   {
+    file: "src/api/status.ts",
+    carries: "settings",
+    reads: "An operator's incident notice for the status page: title, affected lanes and surfaces, impact, status and update text.",
+    then: "Checked for an operator token, validated against a strict schema with size caps and stored.",
+    kept: "status_incidents.",
+    evidence: [ev("src/api/status.ts", "createSchema.parse(await readJson(c))"), ev("src/api/status.ts", "updateSchema.parse(await readJson(c))")],
+  },
+  {
     file: "src/api/disclosure.ts",
     carries: "settings",
     reads: "A provider disclosure profile written by an operator.",

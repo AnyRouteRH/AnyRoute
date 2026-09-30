@@ -1106,3 +1106,53 @@ export const batchLines = pgTable(
   },
   (t) => [primaryKey({ columns: [t.batchId, t.idx] }), index("batch_lines_queue_idx").on(t.status, t.notBefore)],
 );
+
+// ---- Public status page (services/slo.ts) ----
+// Public-lane request outcomes, summed per API surface into five-minute buckets. Private-lane requests are never counted
+// here: the attested and unlinkable lanes are published only from the differentially private hourly releases below.
+export const statusWindows = pgTable(
+  "status_windows",
+  {
+    surface: text("surface").notNull(), // chat | embeddings | batch | messages | ollama | rerank
+    bucket: ts("bucket").notNull(), // start of the five-minute bucket (UTC)
+    ok: integer("ok").notNull().default(0), // 2xx and 3xx
+    failed: integer("failed").notNull().default(0), // 5xx: counts against availability
+    rejected: integer("rejected").notNull().default(0), // 4xx other than 429: the caller's error, not counted
+    rateLimited: integer("rate_limited").notNull().default(0), // 429: not counted
+    latency: integer("latency").array().notNull(), // served requests per fixed latency bucket (the lib/dpstats.ts edges), in edge order
+  },
+  (t) => [primaryKey({ columns: [t.surface, t.bucket] }), index("status_windows_bucket_idx").on(t.bucket)],
+);
+
+// Differentially private hourly releases of the private-lane counters, copied as released (post-processing): one row per
+// router process and hour. Summing the rows of several processes is post-processing too.
+export const statusDpHours = pgTable(
+  "status_dp_hours",
+  {
+    instance: text("instance").notNull(), // random id of the router process that released the hour
+    hour: ts("hour").notNull(),
+    epsilon: real("epsilon").notNull(),
+    counts: jsonb("counts").notNull(), // { requests, blocked, latency }: noisy counts per fixed label
+  },
+  (t) => [primaryKey({ columns: [t.instance, t.hour] }), index("status_dp_hours_hour_idx").on(t.hour)],
+);
+
+export const statusIncidents = pgTable(
+  "status_incidents",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    status: text("status").notNull(), // suggested | investigating | identified | monitoring | resolved | dismissed
+    impact: text("impact").notNull().default("minor"), // none | minor | major | critical
+    lanes: jsonb("lanes").notNull(), // subset of public | attested | unlinkable
+    surfaces: jsonb("surfaces").notNull(), // subset of the status surfaces, [] for all
+    source: text("source").notNull(), // operator | auto
+    updates: jsonb("updates").notNull(), // [{ at, status, text }], oldest first
+    evidence: jsonb("evidence"), // auto suggestions: { lane, surface, window, availability, target, requests, source }
+    startedAt: ts("started_at").notNull().defaultNow(),
+    resolvedAt: ts("resolved_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("status_incidents_started_idx").on(t.startedAt)],
+);

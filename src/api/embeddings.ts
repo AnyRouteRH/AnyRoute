@@ -21,6 +21,7 @@ import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
 import { requestLane } from "../ohttp/lane.ts";
+import { noteLane } from "../services/private-stats.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken } from "../blind/redeem.ts";
 
 // POST /api/v1/embeddings — prepaid keys, or no key at all: an unpaid call gets the same 402 as chat
@@ -64,6 +65,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
     // A per-call payment names its payer as a wallet does: it is identity-bearing for lane "unlinkable".
     const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!c.req.header("x-payment")), hasToken: !!pass });
+    noteLane(c.req.raw, disc.lane); // the status page counts public-lane requests only (services/slo.ts)
     const strict = disc.max !== "any";
     const plan = (p: ProviderPrefs) =>
       selectProviders({

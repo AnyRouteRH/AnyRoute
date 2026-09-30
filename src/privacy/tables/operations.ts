@@ -81,6 +81,72 @@ export const operationTables: Record<string, TableDoc> = {
     },
   },
 
+  status_windows: {
+    category: "operations",
+    purpose:
+      "The public status page's record of the public lane (GET /api/v1/status/slo): per API surface and five-minute bucket, how many public-lane requests succeeded, failed with a 5xx, were refused with a 4xx or were rate limited, and how many served requests fell in each fixed latency bucket. Requests on the attested and unlinkable lanes are never counted here.",
+    request: "aggregate",
+    retention: "Deleted after 91 days by the status loop (services/slo.ts pruneStatus).",
+    columns: {
+      surface: "The API surface: chat, embeddings, batch, messages, ollama or rerank.",
+      bucket: "Start of the five-minute bucket (UTC).",
+      ok: "Public-lane requests answered with a 2xx or 3xx.",
+      failed: "Public-lane requests answered with a 5xx: these count against availability.",
+      rejected: "Public-lane requests refused with a 4xx other than 429: the caller's error, not counted against availability.",
+      rate_limited: "Public-lane requests refused with a 429.",
+      latency: "Served public-lane requests per fixed latency bucket (the edges in lib/dpstats.ts), in edge order: time to first token for streams, time to the full response otherwise.",
+    },
+  },
+
+  status_dp_hours: {
+    category: "operations",
+    purpose:
+      "The differentially private hourly releases of the private-lane counters (the same releases GET /api/v1/stats publishes), copied as released so the status page can show 90 days for the attested and unlinkable lanes. Copying and summing released values is post-processing: it spends no privacy budget and adds nothing about any request.",
+    request: "aggregate",
+    retention: "Deleted after 91 days by the status loop (services/slo.ts pruneStatus).",
+    columns: {
+      instance: "A random id of the router process that released the hour (a new one each start), so the releases of several processes can be summed.",
+      hour: "The UTC hour the release covers.",
+      epsilon: "The privacy budget the release spent (the sum over its families).",
+      counts: {
+        purpose: "The released noisy counts: requests per lane, refusals per fixed reason and requests per fixed latency bucket.",
+        review: JSON_FIELDS("Three objects of noisy integers keyed by the fixed, public label lists of lib/dpstats.ts and services/private-stats.ts, copied from a release that was already public. No request, key or time finer than the hour."),
+      },
+    },
+  },
+
+  status_incidents: {
+    category: "operations",
+    purpose:
+      "Incidents on the public status page: written by the operator through the incident API, or recorded as a suggestion when a lane's availability falls below its target (a suggestion is not shown until the operator confirms it).",
+    request: "no",
+    retention: "No automatic deletion: the incident history is part of the public record.",
+    columns: {
+      id: "Incident id (inc_... for an operator's incident, sug_... for an automatic suggestion).",
+      title: {
+        purpose: "The incident's headline, up to 140 characters.",
+        review: rv(["name:content"], "config", "Written by the operator through POST /api/v1/status/incidents (or a fixed sentence for a suggestion). It is a status notice, not a request."),
+      },
+      status: "suggested, investigating, identified, monitoring, resolved or dismissed.",
+      impact: "none, minor, major or critical.",
+      lanes: { purpose: "The privacy lanes affected.", review: JSON_FIELDS("An array of lane names from the fixed list public, attested, unlinkable.") },
+      surfaces: { purpose: "The API surfaces affected; empty for all.", review: JSON_FIELDS("An array of surface names from the fixed list in services/slo.ts.") },
+      source: "operator or auto.",
+      updates: {
+        purpose: "The status updates, oldest first: time, status and the operator's text (up to 2,000 characters each).",
+        review: rv(["type:json"], "config", "Each update is a time, a status from a fixed list and text the operator writes through POST /api/v1/status/incidents/:id/updates; a suggestion's first update is a fixed sentence with numbers. No request text is ever written here."),
+      },
+      evidence: {
+        purpose: "For an automatic suggestion: the lanes, surfaces, window, measured availability, target, request count and whether the figure was DP-noised.",
+        review: JSON_FIELDS("Numbers and names from fixed lists, computed from status_windows or status_dp_hours, which are themselves sums."),
+      },
+      started_at: "When the incident began.",
+      resolved_at: "When it was resolved.",
+      created_at: CREATED,
+      updated_at: UPDATED,
+    },
+  },
+
   kv: {
     category: "operations",
     purpose: "The router's small key-value store: job status, cursors, cached facts about providers, pending sign-in challenges and Telegram bot state. No request or answer text is written here.",

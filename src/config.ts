@@ -185,6 +185,12 @@ const schema = z.object({
   // 0 records nothing and switches the two history endpoints off; rows already stored are left alone.
   ATTESTATION_HISTORY_DAYS: z.coerce.number().int().min(0).max(366).default(30),
   ALLOW_DEV_ATTESTATION: bool.default(false),
+  // Public status page (GET /api/v1/status/slo): availability targets per lane, as fractions, and how many requests a window
+  // needs before a dip below target is recorded as an incident suggestion for an operator to confirm.
+  STATUS_SLO_PUBLIC: z.coerce.number().min(0.5).max(1).default(0.995),
+  STATUS_SLO_ATTESTED: z.coerce.number().min(0.5).max(1).default(0.99),
+  STATUS_SLO_UNLINKABLE: z.coerce.number().min(0.5).max(1).default(0.99),
+  STATUS_SUGGEST_MIN_REQUESTS: z.coerce.number().int().min(1).default(20),
   NVIDIA_NRAS_URL: z.string().default("https://nras.attestation.nvidia.com/v3/attest/gpu"),
   TDX_VERIFIER_URL: opt,
   TDX_VERIFIER_KEY: opt,
@@ -624,6 +630,10 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     },
     hfBaseUrl: e.HF_BASE_URL.replace(/\/$/, ""),
     webDir: e.WEB_DIR,
+    status: {
+      targets: { public: e.STATUS_SLO_PUBLIC, attested: e.STATUS_SLO_ATTESTED, unlinkable: e.STATUS_SLO_UNLINKABLE },
+      suggestMinRequests: e.STATUS_SUGGEST_MIN_REQUESTS,
+    },
     attestation: {
       intervalMs: e.ATTESTATION_INTERVAL_MS,
       historyDays: e.ATTESTATION_HISTORY_DAYS,
