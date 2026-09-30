@@ -271,7 +271,7 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
       ? "This call was not eligible for the response cache, so no copy of the prompt or the reply was kept anywhere."
       : cacheState === "cache_hit"
         ? "This answer was served from the response cache, which holds an encrypted copy of an earlier prompt and reply in memory or Redis until they expire."
-        : "The response cache is opt-in. If the request asked for it, an encrypted copy of the prompt and the reply stayed in memory or Redis until it expired; the receipt does not record whether it did.";
+        : "The response cache is opt-in. If the request asked for it, an encrypted copy of the reply stayed in memory or Redis until it expired (the prompt itself is not cached; the semantic cache keeps only a hashed word vector of it, in memory); the receipt does not record whether it did.";
   const stored: PrivacyLabel["label"]["stored"] = {
     prompt_text: false,
     reply_text: false,
