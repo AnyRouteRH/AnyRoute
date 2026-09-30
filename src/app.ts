@@ -17,6 +17,7 @@ import { MemoryRateLimiter, RedisRateLimiter, type RateLimiter } from "./lib/rat
 import { ChainService } from "./chain/service.ts";
 import { ResponseCache } from "./gateway/cache.ts";
 import { Telemetry } from "./gateway/otel.ts";
+import { TracingExporter } from "./services/tracing.ts";
 import { Jobs } from "./services/jobs.ts";
 import type { Ctx } from "./context.ts";
 import { ApiError } from "./lib/errors.ts";
@@ -92,6 +93,7 @@ export async function createApp(opts: AppOptions = {}) {
     chain: opts.chain ?? new ChainService(cfg),
     cache: new ResponseCache(cfg.appSecret, 5_000, redis),
     telemetry: new Telemetry(cfg.gateway.otlpEndpoint, cfg.gateway.otelServiceName),
+    tracing: new TracingExporter(cfg.appSecret),
     jobs: new Jobs(cfg.redisUrl, async (state) => {
       const value = { ...state, last_error: state.last_error ? "Job failed; inspect private operator logs." : null };
       await handle.db.insert(kv).values({ key: `job-health:${state.name}`, value }).onConflictDoUpdate({ target: kv.key, set: { value, updatedAt: new Date() } });
@@ -217,6 +219,7 @@ export async function createApp(opts: AppOptions = {}) {
     await ctx.tlog?.stop();
     await ctx.health.flush(ctx.db).catch(() => undefined);
     await ctx.telemetry.close();
+    await ctx.tracing.close();
     await limiter.close();
     redis?.disconnect();
     await handle.close();

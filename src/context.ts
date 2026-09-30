@@ -7,6 +7,7 @@ import type { HealthTracker } from "./services/health.ts";
 import type { ChainService } from "./chain/service.ts";
 import type { ResponseCache } from "./gateway/cache.ts";
 import type { Telemetry } from "./gateway/otel.ts";
+import type { TracingExporter } from "./services/tracing.ts";
 import type { Jobs } from "./services/jobs.ts";
 import type { BlindIssuer } from "./blind/issuer.ts";
 import type { OhttpKeys } from "./ohttp/keys.ts";
@@ -23,6 +24,8 @@ export type Ctx = {
   chain: ChainService;
   cache: ResponseCache;
   telemetry: Telemetry;
+  /** Customer trace export: spans of public-lane calls sent to the destination a key's owner configured. */
+  tracing: TracingExporter;
   jobs: Jobs;
   /** Set only when TELEGRAM_BOT_TOKEN is configured; stopped before the jobs on shutdown. */
   telegram?: { stop(): Promise<void> };

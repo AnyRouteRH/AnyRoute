@@ -6193,6 +6193,163 @@
           }
         }
       }
+    },
+    "/api/v1/keys/{hash}": {
+      "get": {
+        "tags": [
+          "Keys"
+        ],
+        "operationId": "getKey",
+        "summary": "Get one key, with its tracing export status",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The key's hash (Key.hash)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The key's metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Key"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Keys"
+        ],
+        "operationId": "updateKey",
+        "summary": "Update a key's limits, guardrails or tracing destination",
+        "description": "Accepts the fields of KeyCreateRequest. `tracing` sets where spans of this key's public-lane calls go: your OpenTelemetry collector (OTLP/HTTP JSON), Langfuse or Helicone. Spans follow the OpenTelemetry GenAI semantic conventions and add anyroute.cost_usd, anyroute.receipt_id, anyroute.lane and anyroute.provider. Prompt and completion text is included only with include_content: true. Attested and unlinkable lane calls are never exported.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The key's hash (Key.hash)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyCreateRequest"
+              },
+              "examples": {
+                "honeycomb": {
+                  "summary": "Honeycomb over OTLP",
+                  "value": {
+                    "tracing": {
+                      "type": "otlp",
+                      "endpoint": "https://api.honeycomb.io",
+                      "headers": {
+                        "x-honeycomb-team": "YOUR_API_KEY"
+                      }
+                    }
+                  }
+                },
+                "langfuse": {
+                  "summary": "Langfuse, with content",
+                  "value": {
+                    "tracing": {
+                      "type": "langfuse",
+                      "public_key": "pk-lf-...",
+                      "secret_key": "sk-lf-...",
+                      "include_content": true
+                    }
+                  }
+                },
+                "off": {
+                  "summary": "Stop exporting",
+                  "value": {
+                    "tracing": null
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The key's metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Key"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7725,6 +7882,17 @@
           "management": {
             "type": "boolean",
             "description": "Only honored for authorized authenticated sub-key creation; root-key management is never granted by this field."
+          },
+          "tracing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TracingSettings"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trace export for this key's public-lane calls; null removes it."
           }
         },
         "additionalProperties": false
@@ -7775,6 +7943,16 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "tracing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Tracing"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -14095,6 +14273,170 @@
           }
         },
         "additionalProperties": false
+      },
+      "TracingSettings": {
+        "type": "object",
+        "description": "Where to send one span per public-lane call made with this key. Calls on the attested and unlinkable lanes are never exported. URLs must be public https:// addresses. The endpoint, headers and keys are encrypted at rest and never returned. A secret left out of a PATCH keeps the stored one when the type is unchanged.",
+        "required": [
+          "type"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "otlp",
+              "langfuse",
+              "helicone"
+            ],
+            "description": "otlp: OTLP/HTTP JSON to your collector. langfuse: Langfuse public ingestion API. helicone: Helicone custom log API."
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "otlp: collector base URL; /v1/traces is appended unless present. No query string."
+          },
+          "headers": {
+            "type": "object",
+            "maxProperties": 16,
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "description": "otlp: headers sent with every export, e.g. x-honeycomb-team or Authorization. Write-only."
+          },
+          "host": {
+            "type": "string",
+            "format": "uri",
+            "description": "langfuse (default https://cloud.langfuse.com) or helicone (default https://api.worker.helicone.ai)."
+          },
+          "public_key": {
+            "type": "string",
+            "description": "langfuse public key."
+          },
+          "secret_key": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "langfuse secret key. Write-only."
+          },
+          "api_key": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "helicone API key. Write-only."
+          },
+          "include_content": {
+            "type": "boolean",
+            "default": false,
+            "description": "Also export the prompt messages and the completion text. Off unless set."
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "Tracing": {
+        "type": "object",
+        "description": "A key's tracing destination as the API returns it: no URL path, header value or secret.",
+        "required": [
+          "type",
+          "enabled",
+          "include_content",
+          "target",
+          "header_names",
+          "secrets_set",
+          "updated_at"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "otlp",
+              "langfuse",
+              "helicone"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "include_content": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": "string",
+            "description": "Scheme and host only, e.g. https://api.honeycomb.io/…"
+          },
+          "header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "public_key_hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "langfuse: the public key's first and last characters."
+          },
+          "secrets_set": {
+            "type": "boolean",
+            "const": true
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "This router process's export counters for the key (GET /api/v1/keys/{hash} and PATCH only). null before the first export.",
+            "properties": {
+              "queued": {
+                "type": "integer"
+              },
+              "exported": {
+                "type": "integer"
+              },
+              "dropped": {
+                "type": "integer",
+                "description": "Dropped because the queue was full or the circuit was open."
+              },
+              "failed": {
+                "type": "integer",
+                "description": "Given up after retries."
+              },
+              "retries": {
+                "type": "integer"
+              },
+              "circuit": {
+                "type": "string",
+                "enum": [
+                  "closed",
+                  "open",
+                  "half_open"
+                ]
+              },
+              "last_error": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "http_<status>, timeout, network or destination_blocked."
+              },
+              "last_success_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          }
+        }
       }
     }
   }

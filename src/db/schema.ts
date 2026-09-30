@@ -75,6 +75,7 @@ export const keys = pgTable(
     management: boolean("management").notNull().default(false),
     routing: jsonb("routing"), // imported presets (LiteLLM aliases, default provider prefs)
     guardrails: jsonb("guardrails"),
+    tracing: jsonb("tracing"), // customer trace export destination; its URL and credentials sealed with APP_SECRET
     disabled: boolean("disabled").notNull().default(false),
     expiresAt: ts("expires_at"),
     createdAt: ts("created_at").notNull().defaultNow(),

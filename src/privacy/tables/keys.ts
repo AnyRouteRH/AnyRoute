@@ -40,6 +40,10 @@ export const keyTables: Record<string, TableDoc> = {
         purpose: "The key's input guardrails: PII mode, phrases to block, a maximum input length and whether to redact output.",
         review: rv(["type:json"], "config", "The owner's filter settings. Deny phrases are words the owner wants blocked (up to 50 of 200 characters); they are rules, not requests."),
       },
+      tracing: {
+        purpose: "Where the key's owner asked for traces of this key's public-lane calls to go (their own OpenTelemetry collector, Langfuse or Helicone), and whether to include prompt and completion text. The destination URL and credentials are AES-256-GCM encrypted with APP_SECRET and never returned by the API.",
+        review: rv(["type:json"], "config", "Destination settings written by the key's owner: a type, flags, a masked host, header names and one sealed string. The schema has no field for message text; content is only ever sent to the owner's destination, never stored here."),
+      },
       disabled: "Whether the key is turned off.",
       expires_at: "When the key stops working, if it expires.",
       created_at: CREATED,

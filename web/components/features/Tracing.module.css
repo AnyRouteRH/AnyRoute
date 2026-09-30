@@ -1,0 +1,15 @@
+/* Tracing section of the API keys tab. Colour fields and type, no rules or boxes. */
+.tracing{margin:36px 0 0;padding:22px 24px;background:var(--paper)}
+.head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px}
+.head h3{margin:0}
+.ok,.wait,.bad,.off{font-size:13px;font-weight:600}
+.ok{color:#1e7846}
+.wait{color:var(--muted)}
+.bad{color:#96161b}
+.off{color:var(--muted)}
+.current{margin:10px 0 0;font-size:14px;overflow-wrap:anywhere}
+.current code{font:400 13px/1.4 var(--mono)}
+.form{display:grid;gap:4px;max-width:560px;margin-top:14px}
+.form textarea{font:400 13px/1.5 var(--mono);resize:vertical}
+.check{display:flex;align-items:center;gap:8px;margin:6px 0 10px;font-size:14px}
+@media (max-width:760px){.tracing{padding:18px 16px}}

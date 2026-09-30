@@ -11,6 +11,7 @@ import EvalLab from "./features/EvalLab";
 import BatchStudio from "./features/BatchStudio";
 import AgentSessions from "./features/AgentSessions";
 import SpendWatch from "./features/SpendWatch";
+import Tracing from "./features/Tracing";
 import Holders from "./features/Holders";
 import PayAnyrDialog from "./PayAnyr";
 
@@ -1642,6 +1643,7 @@ export default function Dashboard() {
                   <p>{live ? "Create a key to start routing." : "Create a demo key to start routing."}</p>
                 </div>
               )}
+              <Tracing live={live && signedIn} apiKey={apiKey} ws={ws} notify={setNotice} fail={setError} />
               {error && (
                 <div className="error" role="alert">
                   {error}

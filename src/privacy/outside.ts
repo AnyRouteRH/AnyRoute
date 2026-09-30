@@ -435,9 +435,9 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   {
     file: "src/api/keys.ts",
     carries: "settings",
-    reads: "Key settings (name, budget, limits, allowed models), amounts, BYOK provider keys, team roles and wallet sign-in challenges.",
+    reads: "Key settings (name, budget, limits, allowed models, tracing destination), amounts, BYOK provider keys, team roles and wallet sign-in challenges.",
     then: "Validated and written to the keys, byok_keys, teams and kv tables as described above.",
-    kept: "The settings and, for a BYOK key, the key encrypted under APP_SECRET.",
+    kept: "The settings and, for a BYOK key or a tracing destination, the key or the destination URL and credentials encrypted under APP_SECRET.",
     evidence: [ev("src/api/keys.ts", "const spec = keySpec.parse(await readJson(c));")],
   },
   {
@@ -639,6 +639,19 @@ export const EXTERNAL: ExternalDoc = {
         ev("src/api/chat.ts", "if (!privateLane) ctx.telemetry.span(\"chat \" + r.model.id"),
         ev("src/api/chat.ts", "p.c.req.header(\"traceparent\")?.split(\"-\")[1]"),
         ev("src/gateway/otel.ts", "Spans never carry prompt or completion content."),
+      ],
+    },
+    {
+      id: "customer-tracing",
+      name: "Trace export to a key owner's own destination, off unless the owner sets one",
+      purpose: "A key's owner can set a tracing destination on the key (their OpenTelemetry collector, Langfuse or Helicone). Each public-lane call made with that key is then sent there: model, provider, token counts, sampling settings, finish reason, latency, cost, receipt id and lane. Prompt and completion text is included only if the owner set include_content. Calls on the attested and unlinkable lanes are never sent.",
+      holds: "The listed fields of recent calls, in a bounded in-memory queue (2,000 calls at most across all keys; more are dropped and counted) until they are delivered or given up.",
+      ttl: "In memory for seconds, or until retries end; kept by the destination the key's owner chose.",
+      requestText: "answer-text",
+      evidence: [
+        ev("src/api/chat.ts", "if (billing.key?.tracing && shouldExportTrace({ lane: p.disc.lane, privateLaneRequest: privateLane, privateRoute }))"),
+        ev("src/services/tracing.ts", "export function shouldExportTrace(o: { lane: string; privateLaneRequest: boolean; privateRoute: boolean }) {"),
+        ev("src/services/tracing.ts", "if (!stored.include_content) {"),
       ],
     },
     {

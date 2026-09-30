@@ -33,6 +33,7 @@ import { COUNCIL_MODEL, applyDualDecoding, runCouncil, runDual, validateMulti } 
 import { gatewayOrigin } from "../ohttp/origin.ts";
 import { requestLane } from "../ohttp/lane.ts";
 import { blockReasonForStatus, isPrivateLaneRequest, noteLane, recordPrivateLane } from "../services/private-stats.ts";
+import { parseTraceparent, shouldExportTrace } from "../services/tracing.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken, type BlindPass } from "../blind/redeem.ts";
 
 export type Kind = "chat" | "completion";
@@ -739,6 +740,34 @@ async function finalize(p: FinalizeInput) {
     "anyroute.attempts": r.attempts.length,
     "anyroute.streamed": p.stream,
   }, undefined, p.c.req.header("traceparent")?.split("-")[1]);
+  // The key owner's own trace export (services/tracing.ts): public-lane calls only. An attested or unlinkable call
+  // never reaches the queue, whatever the key is configured to do. Queued without waiting; it cannot fail the call.
+  if (billing.key?.tracing && shouldExportTrace({ lane: p.disc.lane, privateLaneRequest: privateLane, privateRoute })) {
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+    ctx.tracing.enqueue(billing.key.keyHash, billing.key.tracing, {
+      generationId: id,
+      startMs: p.t0,
+      endMs: Date.now(),
+      ...parseTraceparent(p.c.req.header("traceparent")),
+      operation: p.kind === "chat" ? "chat" : "text_completion",
+      provider: r.candidate.providerId,
+      requestModel: String(p.body.model ?? r.model.id),
+      responseModel: r.model.id,
+      inputTokens: p.usage.prompt,
+      outputTokens: p.usage.completion,
+      temperature: num(p.body.temperature),
+      topP: num(p.body.top_p),
+      maxTokens: num(p.body.max_tokens ?? p.body.max_completion_tokens),
+      finishReasons: p.finishReason ? [p.finishReason] : [],
+      costUsd: picoToUsd(charged),
+      timeToFirstTokenMs: r.latencyMs,
+      mode,
+      streamed: p.stream,
+      attempts: r.attempts.length,
+      input: p.kind === "chat" ? p.body.messages : p.body.prompt,
+      output: p.responseText,
+    });
+  }
 
   const usageJson = {
     prompt_tokens: p.usage.prompt,

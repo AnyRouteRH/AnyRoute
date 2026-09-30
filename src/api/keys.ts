@@ -14,6 +14,7 @@ import { balanceOf, ensureAccount } from "../ledger/ledger.ts";
 import { encrypt, uid, randomHex } from "../lib/util.ts";
 import { SENTINEL_NEIGHBOUR, SpentTree, type SpentNeighbour } from "../receipts/merkle.ts";
 import { addressBucket, readJson } from "./common.ts";
+import { parseStoredTracing, sealTracing, tracingInput, tracingJson } from "../services/tracing.ts";
 import { bearer, registerRootKey, requireKey, requireRole, walletAccountId, type KeyRow } from "./auth.ts";
 
 const keySpec = z.object({
@@ -34,6 +35,8 @@ const keySpec = z.object({
     .optional(),
   routing: z.record(z.string(), z.unknown()).nullable().optional(),
   management: z.boolean().optional(),
+  // Trace export for this key's public-lane calls; null removes it. Secrets are sealed and never returned.
+  tracing: tracingInput.nullable().optional(),
 });
 
 export function keyJson(k: KeyRow) {
@@ -54,6 +57,7 @@ export function keyJson(k: KeyRow) {
     pay_with_default: k.payWithDefault,
     management: k.management,
     guardrails: k.guardrails,
+    tracing: tracingJson(k.tracing),
     chain_key_hash: k.chainKeyHash,
     key_address: k.keyAddress,
     created_at: k.createdAt.toISOString(),
@@ -86,6 +90,15 @@ async function ownedKey(ctx: Ctx, caller: KeyRow, hash: string) {
   }
   return k;
 }
+
+/** The keys.tracing update for a spec: sealed with APP_SECRET; a secret left out keeps the stored one (same type). */
+function tracingPatch(ctx: Ctx, v: z.infer<typeof keySpec>, prev: unknown) {
+  if (v.tracing === undefined) return {};
+  return { tracing: v.tracing === null ? null : sealTracing(ctx.cfg.appSecret, v.tracing, parseStoredTracing(prev)) };
+}
+
+/** keyJson plus this router's export counters for the key's tracing destination. */
+const keyJsonWithTracing = (ctx: Ctx, k: KeyRow) => ({ ...keyJson(k), tracing: tracingJson(k.tracing, ctx.tracing.stats(k.keyHash)) });
 
 function applySpec(v: z.infer<typeof keySpec>) {
   const budget = v.budget_usd !== undefined ? v.budget_usd : v.limit;
@@ -127,6 +140,7 @@ export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeo
     rpm: ctx.cfg.limits.defaultRpm || null,
     tpm: ctx.cfg.limits.defaultTpm || null,
     ...applySpec(spec),
+    ...tracingPatch(ctx, spec, null),
   });
   if (teamId) await db.insert(teamMembers).values({ teamId, keyHash: d.keyHash, role: "member" }).onConflictDoNothing();
   const [row] = await db.select().from(keys).where(eq(keys.keyHash, d.keyHash));
@@ -156,7 +170,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
       const r = await ctx.limiter.take(`newkey:${from.id}`, 1, from.scale(ctx.cfg.limits.newKeysPerHour), 3_600_000);
       if (!r.ok) fail(429, "Too many new keys from this address. Try again later.", "rate_limited");
       const k = await registerRootKey(ctx, secret, spec.name ?? "");
-      const patch = applySpec({ ...spec, management: undefined, team: undefined });
+      const patch = { ...applySpec({ ...spec, management: undefined, team: undefined }), ...tracingPatch(ctx, spec, null) };
       if (Object.keys(patch).length) await ctx.db.update(keys).set(patch).where(eq(keys.keyHash, k.keyHash));
       const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, k.keyHash));
       return c.json({ data: keyJson(row), key: secret, deposit: depositInfo(ctx, row) }, 201);
@@ -177,7 +191,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
   app.get("/api/v1/keys/:hash", async (c) => {
     const caller = await sub(ctx, c);
     await requireRole(ctx, caller, ["owner", "admin", "viewer"]);
-    return c.json({ data: keyJson(await ownedKey(ctx, caller, c.req.param("hash"))) });
+    return c.json({ data: keyJsonWithTracing(ctx, await ownedKey(ctx, caller, c.req.param("hash"))) });
   });
   app.patch("/api/v1/keys/:hash", async (c) => {
     const caller = await sub(ctx, c);
@@ -189,10 +203,10 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     if (session) fail(409, "This key belongs to an agent session; manage it with /api/v1/sessions.", "session_key");
     const spec = keySpec.parse(await readJson(c));
     if (spec.management !== undefined && !caller.management) fail(403, "Only a management key can change management rights.", "forbidden");
-    const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}) };
+    const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}), ...tracingPatch(ctx, spec, k.tracing) };
     if (Object.keys(patch).length) await ctx.db.update(keys).set(patch).where(eq(keys.keyHash, k.keyHash));
     const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, k.keyHash));
-    return c.json({ data: keyJson(row) });
+    return c.json({ data: keyJsonWithTracing(ctx, row) });
   });
   app.delete("/api/v1/keys/:hash", async (c) => {
     const caller = await sub(ctx, c);

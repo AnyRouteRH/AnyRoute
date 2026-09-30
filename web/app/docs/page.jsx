@@ -673,7 +673,7 @@ const endpoints = [
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
   ["GET /api/v1/models · /models/:author/:slug/endpoints", "Catalog, prices, policies, quantization, attestation (best class, manifest reference, policy hash) and datacenter region; per-provider health and attested policy hash"],
   ["GET /api/v1/generation?id=… · /generations", "Full generation record with receipt and anchor proof; your recent generations"],
-  ["POST · GET · PATCH · DELETE /api/v1/keys", "Create a self-custodial key (no auth), or budgeted sub-keys with rpm/tpm, model allowlists, guardrails"],
+  ["POST · GET · PATCH · DELETE /api/v1/keys", "Create a self-custodial key (no auth), or budgeted sub-keys with rpm/tpm, model allowlists, guardrails and a tracing destination"],
   ["GET /api/v1/key · /credits", "Current key; balance, held and total usage"],
   ["POST /api/v1/credits/deposit-tx · /withdraw-request", "Unsigned wallet transactions to deposit, or a key-signed withdrawal request"],
   ["GET /api/v1/credits/withdrawal-proof", "Merkle proof and calldata to finalize a withdrawal"],
@@ -732,6 +732,7 @@ export default function Docs() {
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
             <a href="#presets">Presets</a>
+            <a href="#tracing">Tracing</a>
             <a href="#disclosure">Disclosure</a>
             <a href="#lanes">Lanes</a>
             <a href="#tor">Tor</a>
@@ -811,6 +812,34 @@ export default function Docs() {
               2,
             )}
           </Code>
+          <h2 id="tracing">Tracing: your spans, in your own tools.</h2>
+          <p>
+            Give a key a tracing destination and every public-lane call made with it is sent there as one span that follows the OpenTelemetry GenAI semantic conventions: gen_ai.system, gen_ai.request.model, gen_ai.response.model,
+            gen_ai.usage.input_tokens and output_tokens, gen_ai.request.temperature and max_tokens, gen_ai.response.finish_reasons, plus anyroute.cost_usd, anyroute.receipt_id, anyroute.lane, anyroute.provider and the server latency. Send a
+            W3C traceparent header and the span joins your trace. Set it with PATCH /api/v1/keys/&lt;hash&gt; and a tracing object; tracing: null turns it off.
+          </p>
+          <p>
+            Prompt and completion text is exported only with include_content: true; it is off by default. Calls on the attested and unlinkable lanes are never exported, whatever the key says: those lanes promise that a call’s model, timing,
+            size and cost do not leave the router tied to a key. The endpoint, headers and keys are encrypted at rest and never returned; GET shows the type, the host, the header names and export counters. Leave a secret out of a later PATCH
+            to keep the stored one. Export runs after the response, from a bounded queue: a full queue drops and counts, failures are retried with backoff, and a destination that keeps failing is paused for a minute. Your calls are never slowed
+            or failed by it. Destinations must be public https:// addresses.
+          </p>
+          <Code label="Honeycomb (OTLP)">
+            {JSON.stringify({ tracing: { type: "otlp", endpoint: "https://api.honeycomb.io", headers: { "x-honeycomb-team": "YOUR_INGEST_KEY" } } }, null, 2)}
+          </Code>
+          <Code label="Grafana Cloud Tempo (OTLP)">
+            {JSON.stringify({ tracing: { type: "otlp", endpoint: "https://otlp-gateway-prod-<region>.grafana.net/otlp", headers: { authorization: "Basic <base64 of instanceId:token>" } } }, null, 2)}
+          </Code>
+          <Code label="Langfuse (ingestion API; host defaults to https://cloud.langfuse.com)">
+            {JSON.stringify({ tracing: { type: "langfuse", public_key: "pk-lf-...", secret_key: "sk-lf-...", host: "https://us.cloud.langfuse.com", include_content: true } }, null, 2)}
+          </Code>
+          <Code label="Helicone (custom log API; host defaults to https://api.worker.helicone.ai)">
+            {JSON.stringify({ tracing: { type: "helicone", api_key: "sk-helicone-..." } }, null, 2)}
+          </Code>
+          <p>
+            Any OTLP/HTTP collector works: /v1/traces is added to the endpoint unless it is already there, and the body is OTLP JSON. For a self-hosted Tempo or an OpenTelemetry Collector, expose its OTLP/HTTP receiver over https and put its
+            auth in headers.
+          </p>
           <h2 id="disclosure">Route by what a provider discloses.</h2>
           <p>
             Each provider has a disclosure profile its operator documents: retention (attested, policy or logs), jurisdiction, legal-hold status and training use, each with a source and a date. Anything undocumented reads as the conservative
