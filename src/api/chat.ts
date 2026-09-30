@@ -27,6 +27,7 @@ import { addressBucket, generationHeaders, readJson, sharedPolicyHash } from "./
 import { grantFor, recordDebt, type PaywithGrant } from "../pay/paywith.ts";
 import { resolveSavedRoute } from "../routing/saved-routes.ts";
 import { resolvePreset } from "../routing/presets.ts";
+import { recordCharacterUse, resolveCharacter, type CharacterMeta } from "../characters/registry.ts";
 import { payPerCall } from "../pay/percall.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import type { HolderTier } from "../config.ts";
@@ -199,17 +200,22 @@ function chunkBase(id: string, created: number, model: ModelRow, provider: strin
   return { id, object: kind === "chat" ? "chat.completion.chunk" : "text_completion", created, model: model.id, provider };
 }
 
+/**
+ * One chat or completion call. A refused private-lane request is counted (noisily, see services/private-stats.ts) under the
+ * reason it was refused. `characterId` forces a character (POST /api/v1/characters/:id/chat, src/api/characters.ts).
+ */
+export async function runChat(ctx: Ctx, c: Context, kind: Kind, characterId?: string): Promise<Response> {
+  const t0 = Date.now();
+  try {
+    return await handle(ctx, c, kind, characterId);
+  } catch (e) {
+    if (isPrivateLaneRequest(c.req.raw)) recordPrivateLane(ctx, c.req.raw, { blocked: isApiError(e) ? blockReasonForStatus(e.status, e.type) : "upstream_error", latencyMs: Date.now() - t0 });
+    throw e;
+  }
+}
+
 export function chatRoutes(app: Hono, ctx: Ctx) {
-  // A refused private-lane request is counted (noisily, see services/private-stats.ts) under the reason it was refused.
-  const run = async (c: Context, kind: Kind) => {
-    const t0 = Date.now();
-    try {
-      return await handle(ctx, c, kind);
-    } catch (e) {
-      if (isPrivateLaneRequest(c.req.raw)) recordPrivateLane(ctx, c.req.raw, { blocked: isApiError(e) ? blockReasonForStatus(e.status, e.type) : "upstream_error", latencyMs: Date.now() - t0 });
-      throw e;
-    }
-  };
+  const run = (c: Context, kind: Kind) => runChat(ctx, c, kind);
   app.post("/api/v1/chat/completions", (c) => run(c, "chat"));
   app.post("/api/v1/completions", (c) => run(c, "completion"));
   // OpenAI-SDK style base URLs (…/api/v1) already covered; also accept /v1/* for convenience.
@@ -217,7 +223,7 @@ export function chatRoutes(app: Hono, ctx: Ctx) {
   app.post("/v1/completions", (c) => run(c, "completion"));
 }
 
-async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
+async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): Promise<Response> {
   const t0 = Date.now();
   const body = await readJson(c);
   validate(kind, body);
@@ -272,6 +278,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   // response_format (routing/presets.ts). Same precedence and the same stricter-wins privacy settings as a saved route.
   const preset = savedRoute ? null : await resolvePreset(ctx.db, key?.accountId ?? wallet?.accountId ?? null, body, kind);
   const presetMeta = preset ? { name: preset.name, version: preset.version, hash: preset.hash } : null;
+  // Character (`model: "@character/<id>"`, or POST /api/v1/characters/:id/chat): the card becomes the system prompt, assembled
+  // in memory for this call only; the lane defaults to attested when the model has an attested provider (characters/registry.ts).
+  const character = savedRoute || preset ? null : await resolveCharacter(ctx, c, body, key?.accountId ?? wallet?.accountId ?? null, kind, characterId);
   if (routing?.provider) body.provider = { ...routing.provider, ...((body.provider as object) ?? {}) };
   // Disclosure ceiling and lane: `provider.disclosure` / `provider.lane` and the X-Anyroute-* headers, the
   // stricter of the two winning, after the key's default and the saved route filled in what the request left unset.
@@ -412,7 +421,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });
   const keyFor = (cand: Candidate) => providerKey(cand, ctx.cfg.appSecret, byok.get(cand.providerId));
   const path = kind === "chat" ? ("/chat/completions" as const) : ("/completions" as const);
-  const meta = { guard, middle, paywithNote, cacheMode, excluded, route: savedRoute, preset: presetMeta };
+  const meta = { guard, middle, paywithNote, cacheMode, excluded, route: savedRoute, preset: presetMeta, character };
   // Streams send their headers before a provider is chosen, so the header is only set up front when every
   // provider this request can reach is served under the same class; the signed receipt always carries the truth.
   const classes = new Set(attemptable.map(({ cand }) => servedDisclosure(ctx, cand).class));
@@ -528,7 +537,7 @@ export type Common = {
   stream: boolean;
   kind: Kind;
   byok: Map<string, string>;
-  meta: { guard: ReturnType<typeof applyGuardrails>; middle: { removed: number; truncated: number } | null; paywithNote?: string; cacheMode: CacheMode | null; excluded: unknown[]; route: string | null; preset?: { name: string; version: number; hash: string } | null };
+  meta: { guard: ReturnType<typeof applyGuardrails>; middle: { removed: number; truncated: number } | null; paywithNote?: string; cacheMode: CacheMode | null; excluded: unknown[]; route: string | null; preset?: { name: string; version: number; hash: string } | null; character?: CharacterMeta | null };
   guardCfg: GuardrailConfig | null;
   promptTokens: number;
   tier: HolderTier | null;
@@ -723,6 +732,8 @@ async function finalize(p: FinalizeInput) {
     responseSha256: payload.response_sha256,
   });
   if (billing.mode === "blind") await confirmToken(ctx, billing.pass, id);
+  // Creator attribution for a public character: a count and a cost per day, never on the unlinkable lane.
+  if (p.meta.character?.attribute && p.disc.lane !== "unlinkable") await recordCharacterUse(ctx, p.meta.character.id, charged);
 
   // A private-lane request is counted once in the noisy counters and sends no per-request trace span.
   const privateLane = isPrivateLaneRequest(p.c.req.raw);
@@ -810,6 +821,7 @@ async function finalize(p: FinalizeInput) {
       const x: Record<string, unknown> = {};
       if (p.meta.route) x.route = p.meta.route; // the saved route (`@route/<slug>`) that resolved this call
       if (p.meta.preset) x.preset = p.meta.preset; // the preset version (`@preset/<name>@<version>`) that resolved this call
+      if (p.meta.character) x.character = { id: p.meta.character.id, card_hash: p.meta.character.card_hash, lane: p.meta.character.lane, lorebook_entries: p.meta.character.lore.length, greeting: p.meta.character.greeting, ...(p.meta.character.note ? { note: p.meta.character.note } : {}) };
       if (p.meta.guard || redactions) x.guardrails = { ...(p.meta.guard ?? {}), output_redactions: redactions };
       if (p.meta.middle && (p.meta.middle.removed || p.meta.middle.truncated)) x.transforms = { "middle-out": p.meta.middle };
       if (p.meta.paywithNote) x.pay_with_fallback = p.meta.paywithNote;

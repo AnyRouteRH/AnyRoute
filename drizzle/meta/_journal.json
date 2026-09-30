@@ -176,6 +176,13 @@
       "when": 1790775736321,
       "tag": "0024_v4_status",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790777238138,
+      "tag": "0025_v4_characters",
+      "breakpoints": true
     }
   ]
 }

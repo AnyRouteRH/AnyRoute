@@ -4,6 +4,7 @@ import { schemaTables, type SchemaTable } from "./schema.ts";
 import { EXTERNAL } from "./outside.ts";
 import { billingTables } from "./tables/billing.ts";
 import { chainTables } from "./tables/chain.ts";
+import { characterTables } from "./tables/characters.ts";
 import { keyTables } from "./tables/keys.ts";
 import { operationTables } from "./tables/operations.ts";
 import { providerTables } from "./tables/providers.ts";
@@ -19,7 +20,7 @@ import { CATEGORIES, CATEGORY_INFO, type AboutRequest, type ColumnDoc, type Exte
 
 export const INVENTORY_FORMAT = "anyroute.data-inventory/1";
 
-export const TABLE_DOCS: Record<string, TableDoc> = { ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables };
+export const TABLE_DOCS: Record<string, TableDoc> = { ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables };
 export { EXTERNAL };
 
 // ---- consistency -----------------------------------------------------------------------------------------------------
@@ -201,7 +202,13 @@ export function summarize(tables: TableOut[], ext: ExternalDoc): Summary {
   if (settings.length)
     caveats.push({
       title: "Settings you type are stored as you typed them",
-      text: `${list(settings.map((c) => c.id))} hold configuration you write: descriptions, routing and guardrail settings, the system prompts and tool definitions of your presets, session labels. The API checks their shape and size, but it cannot know what you choose to write in a description or a label.`,
+      text: `${list(settings.map((c) => c.id))} hold configuration you write: descriptions, routing and guardrail settings, the system prompts and tool definitions of your presets, the character cards you publish, session labels. The API checks their shape and size, but it cannot know what you choose to write in a description or a label.`,
+    });
+
+  if (tables.some((t) => t.name === "character_memory"))
+    caveats.push({
+      title: "Character memory is kept only as ciphertext, with a vector if you opt in",
+      text: "Memories you keep for a character are sealed on your device under a key the router never receives; the database holds the ciphertext. If you opt in to memory search, it also holds a vector your client computed from each memory, which cannot be turned back into the text but can reveal what it is about.",
     });
 
   return {

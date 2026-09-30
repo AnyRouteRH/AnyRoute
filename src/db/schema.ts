@@ -1156,3 +1156,55 @@ export const statusIncidents = pgTable(
   },
   (t) => [index("status_incidents_started_idx").on(t.startedAt)],
 );
+
+// Characters (src/characters, src/api/characters.ts): Tavern cards a creator publishes. A public or unlisted card is the
+// creator's published text, kept as written; a private card is kept only as the ciphertext the client sealed, plus its hash.
+export const characters = pgTable(
+  "characters",
+  {
+    id: text("id").primaryKey(), // ch_<24 hex>
+    accountId: text("account_id").notNull(), // the owner
+    visibility: text("visibility").notNull(), // public | unlisted | private
+    name: text("name"), // null for a private card
+    tags: text("tags").array().notNull().default(sql`'{}'::text[]`), // empty for a private card
+    creator: text("creator"), // the card's creator field; null for a private card
+    spec: text("spec"), // chara_card_v2 | chara_card_v3; null for a private card
+    card: jsonb("card"), // the normalized card (public and unlisted only)
+    sealedCard: text("sealed_card"), // private only: arm1.<iv>.<ciphertext> sealed on the client
+    cardHash: text("card_hash").notNull(), // sha256 hex of the normalized card's canonical JSON
+    defaultModel: text("default_model"), // the model @character/<id> uses when the request names none
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("characters_account_idx").on(t.accountId), index("characters_visibility_idx").on(t.visibility, t.updatedAt)],
+);
+
+// Creator attribution for public cards: calls and cost per character per UTC day. No request, user or content.
+export const characterUsage = pgTable(
+  "character_usage",
+  {
+    characterId: text("character_id").notNull(),
+    period: text("period").notNull(), // YYYY-MM-DD (UTC)
+    calls: integer("calls").notNull().default(0),
+    cost: money("cost").notNull().default(sql`0`),
+  },
+  (t) => [primaryKey({ columns: [t.characterId, t.period] })],
+);
+
+// Character memory (src/api/memory.ts): ciphertext the client sealed under a viewing key the router never receives.
+export const characterMemory = pgTable(
+  "character_memory",
+  {
+    id: text("id").primaryKey(), // mem_<24 hex>
+    accountId: text("account_id").notNull(),
+    scope: text("scope").notNull(), // 32 hex, an HMAC of the character id under the client's key: opaque to the router
+    kind: text("kind").notNull(), // summary | fact | lorebook | state
+    sealed: text("sealed").notNull(), // arm1.<iv>.<ciphertext>
+    keyId: text("key_id").notNull(), // 16 hex fingerprint of the client's key, so a client can tell which key sealed it
+    bytes: integer("bytes").notNull(),
+    embedding: real("embedding").array(), // only when the client opts in
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("character_memory_account_scope_idx").on(t.accountId, t.scope)],
+);

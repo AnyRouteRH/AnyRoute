@@ -30,6 +30,11 @@
       "bun": "./src/ohttp.ts",
       "types": "./dist/ohttp.d.ts",
       "import": "./dist/ohttp.js"
+    },
+    "./characters": {
+      "bun": "./src/characters.ts",
+      "types": "./dist/characters.d.ts",
+      "import": "./dist/characters.js"
     }
   },
   "files": [

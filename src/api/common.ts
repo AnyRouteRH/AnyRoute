@@ -79,7 +79,7 @@ export function generationHeaders(id: string, lane: string, policyHash?: string 
 }
 
 /** The response headers listed above plus the others a browser client may read. */
-export const EXPOSED_RESPONSE_HEADERS = ["x-generation-id", "x-receipt-id", "inference-id", "x-anyroute-lane", "x-anyroute-policy-hash", "x-payment-required", "x-payment-response", "x-anyroute-disclosure", "x-anyroute-cache", "retry-after"];
+export const EXPOSED_RESPONSE_HEADERS = ["x-generation-id", "x-receipt-id", "inference-id", "x-anyroute-lane", "x-anyroute-policy-hash", "x-payment-required", "x-payment-response", "x-anyroute-disclosure", "x-anyroute-cache", "x-anyroute-character", "x-anyroute-character-lane", "x-anyroute-character-note", "x-anyroute-character-session", "retry-after"];
 
 /** The policy hash a header may state for a response that stands for several calls: only one they all share. */
 export const sharedPolicyHash = (hashes: (string | null | undefined)[]): string | null => (hashes.length && hashes.every((h) => h && h === hashes[0]) ? hashes[0]! : null);

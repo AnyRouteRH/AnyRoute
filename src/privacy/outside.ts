@@ -487,6 +487,23 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     evidence: [ev("src/api/presets.ts", "presetDocSchema.parse(await readJson(c))")],
   },
   {
+    file: "src/api/characters.ts",
+    carries: "prompt-or-answer",
+    reads:
+      "A character card (JSON or PNG) or, for a private card, only its ciphertext and hash; and on POST /api/v1/characters/:id/chat a chat request with the conversation, the memory the client decrypted and, for a private card, the decrypted card.",
+    then: "A public or unlisted card is normalized and stored. A chat is assembled into a prompt in memory and sent through the chat route (src/api/chat.ts), like any other call; a private card sent with it is checked against its stored hash and used for that call only.",
+    kept: "Public and unlisted cards in characters; for a private card only the ciphertext and hash. Nothing of a chat, its memory or a decrypted private card; public characters add one to a daily call and cost counter (character_usage).",
+    evidence: [ev("src/api/characters.ts", "const v = bodySchema.parse(await readJson(c));"), ev("src/characters/registry.ts", "for (const k of EXTRA_FIELDS) delete body[k]; // never forwarded to a provider")],
+  },
+  {
+    file: "src/api/memory.ts",
+    carries: "settings",
+    reads: "A memory blob the client sealed (ciphertext), its opaque scope, kind and key fingerprint, and an embedding vector only when the client opts in.",
+    then: "Checked to be in sealed form (plaintext is refused), then stored.",
+    kept: "The ciphertext and its labels in character_memory, and the vector when the client opted in.",
+    evidence: [ev("src/api/memory.ts", "plaintext is refused")],
+  },
+  {
     file: "src/api/teams.ts",
     carries: "payment-or-signature",
     reads:

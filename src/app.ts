@@ -30,6 +30,8 @@ import { teamsRoutes } from "./api/teams.ts";
 import { escrowRoutes } from "./api/escrow.ts";
 import { savedRoutesRoutes } from "./api/saved-routes.ts";
 import { presetsRoutes } from "./api/presets.ts";
+import { characterRoutes } from "./api/characters.ts";
+import { memoryRoutes } from "./api/memory.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
 import { spendRoutes } from "./api/spend.ts";
 import { holdersRoutes } from "./api/holders.ts";
@@ -147,6 +149,8 @@ export async function createApp(opts: AppOptions = {}) {
   escrowRoutes(app, ctx);
   savedRoutesRoutes(app, ctx);
   presetsRoutes(app, ctx);
+  characterRoutes(app, ctx);
+  memoryRoutes(app, ctx);
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
   holdersRoutes(app, ctx);
