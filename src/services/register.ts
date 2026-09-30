@@ -18,8 +18,9 @@ import { runSlasher } from "./slasher.ts";
 import { runBuyback } from "./buyback.ts";
 import { ALERT_INTERVAL_MS, runAlertNotifier } from "./alerts.ts";
 import { TelegramBot, type RouterCall } from "./telegram.ts";
+import { runBatches, type Dispatch } from "./batches.ts";
 
-export function registerJobs(ctx: Ctx, router?: RouterCall) {
+export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
   const chainOn = () => ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty", "staking"].some((n) => ctx.chain.address(n as never));
   jobs.register("health-flush", 5_000, () => ctx.health.flush(ctx.db));
@@ -55,6 +56,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall) {
   // Transparency log (TLOG_ENABLED): log keys published since the last run and sign a checkpoint for the newest tree.
   if (ctx.tlog) jobs.register("tlog", cfg.tlog.intervalMs, () => ctx.tlog!.run(), { atStart: true });
   jobs.register("alert-notifier", ALERT_INTERVAL_MS, () => runAlertNotifier(ctx), { atStart: true });
+  // Batch API: runs queued batch lines in spare capacity, expires overdue batches and deletes results past BATCH_RESULTS_TTL.
+  if (dispatch) jobs.register("batches", cfg.batch.intervalMs, () => runBatches(ctx, dispatch));
   // Long-polls Telegram: one getUpdates cycle per run, re-run every second (Jobs never overlaps a job with itself).
   if (cfg.telegram.botToken && router) {
     const bot = new TelegramBot(ctx, { token: cfg.telegram.botToken, router });

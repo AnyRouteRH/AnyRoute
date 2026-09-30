@@ -122,6 +122,8 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
   const provider = providerRaw && PROVIDER_ID.test(providerRaw) ? providerRaw : null;
   const simulated = p.attestation_simulated === true;
   const ua = obj(p.upstream_attestation);
+  // A line of a batch (POST /api/v1/batches): its request and reply are kept sealed outside the database until the batch's results expire.
+  const batch = obj(p.batch) !== null;
   const cached = mode === "cache";
   const pool = provider === "cache";
   const fromCache = cached || pool;
@@ -266,6 +268,8 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     "a ledger line for the charge",
     ...(lane === "unlinkable" ? [] : ["the app name and address the request sent in HTTP-Referer or X-Title, if it sent one"]),
   ];
+  const BATCH_SENTENCE =
+    "This call was a line of a batch, so its prompt and reply were kept encrypted in Redis or the router's memory (never in the database) until the batch's results expired: 24 hours after the batch finished, unless the operator set another time.";
   const cacheSentence =
     cacheState === "never"
       ? "This call was not eligible for the response cache, so no copy of the prompt or the reply was kept anywhere."
@@ -281,7 +285,7 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     cache: cacheState,
     records,
     public_by_id: true,
-    text: `AnyRoute's database kept a record of this call: ${records.join("; ")}. It has no column for the prompt, the reply or your network address. ${cacheSentence} The signed receipt is readable by anyone who has its id.`,
+    text: `AnyRoute's database kept a record of this call: ${records.join("; ")}. It has no column for the prompt, the reply or your network address. ${batch ? BATCH_SENTENCE : cacheSentence} The signed receipt is readable by anyone who has its id.`,
   };
 
   // ---- summary --------------------------------------------------------------------------------------------------
@@ -311,8 +315,9 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     cache_hit: "Paid with: nothing. A cached answer is free.",
     unknown: "Paid with: not recorded in this receipt.",
   }[payment.kind];
-  const keptLine =
-    cacheState === "never"
+  const keptLine = batch
+    ? "Kept: token counts, cost, timing and hashes. As a batch line, the prompt and reply were also kept encrypted, outside the database, until the batch's results expired."
+    : cacheState === "never"
       ? "Kept: token counts, cost, timing and hashes of the request and reply. Not kept: the prompt or the reply text."
       : cacheState === "cache_hit"
         ? "Kept: token counts, cost, timing and hashes. The response cache holds an encrypted copy of the earlier prompt and reply until it expires."

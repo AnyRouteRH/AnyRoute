@@ -212,6 +212,20 @@ const redisFamilies: RedisFamily[] = [
     evidence: [ev("src/api/auth.ts", "`walletauth:${id}`, \"1\", \"PX\", 600_000, \"NX\"")],
   },
   {
+    key: "batch:<batch id>:in and batch:<batch id>:out",
+    purpose:
+      "The Batch API (POST /api/v1/batches). A batch's requests (:in) and its answers (:out), one field per line, each sealed with AES-256-GCM under a key derived from the router's APP_SECRET, the batch id and the hash of the key that sent it, so only that key's batch can read them back. They are kept here, never in the database, so the worker can run the lines and the key can fetch the results.",
+    holds: "nothing-personal",
+    requestText: "request-and-answer-text",
+    ttl: "The sealed requests are deleted when the batch finishes; the sealed answers BATCH_RESULTS_TTL after that (86,400 seconds, 24 hours, unless the operator changed it). A batch that never finishes ends when its 24-hour completion window closes, so nothing outlives the window plus that time.",
+    evidence: [
+      ev("src/services/batches.ts", "saveInputs = (b: BatchRow, lines: LineInput[], ttlMs: number) => this.hset(`batch:${b.id}:in`"),
+      ev("src/services/batches.ts", "private seal = (b: Pick<BatchRow, \"id\" | \"keyHash\">, v: unknown) => encrypt(this.scope(b), JSON.stringify(v));"),
+      ev("src/services/batches.ts", "await this.del(`batch:${b.id}:in`);"),
+      ev("src/services/batches.ts", "await batchStore(ctx).purge(b);"),
+    ],
+  },
+  {
     key: "bull:anyroute-jobs-<group>:*",
     purpose: "The background job queue (BullMQ) that makes exactly one replica run each recurring job. The job data is empty ({}), so no request or user data is in it; a finished job's result or failure message is kept for the last 100 completed and 100 failed jobs.",
     holds: "nothing-personal",
@@ -329,6 +343,14 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     then: "Read in memory to route the call on every lane: validated, checked against guardrails, priced, then sent to the provider chosen. The request is hashed (request_sha256) and the answer is hashed (response_sha256). Streaming answers are passed through chunk by chunk.",
     kept: "Not stored. Kept in memory for the length of the call. The one exception is the opt-in response cache (see the Redis section), and a failed provider attempt can keep up to 200 characters of that provider's own error message.",
     evidence: [ev("src/api/chat.ts", "const body = await readJson(c);"), ev("src/api/chat.ts", "const bodySha = requestHash(body);"), ev("src/api/chat.ts", "response_sha256: sha256(p.responseText),")],
+  },
+  {
+    file: "src/api/batches.ts",
+    carries: "prompt-or-answer",
+    reads: "The JSON body of a batch: up to BATCH_MAX_LINES chat or embeddings requests (requests or input_jsonl).",
+    then: "Checked line by line, then sealed at once and kept in Redis (or memory) for the worker, which runs each line through the chat or embeddings handler as the key that sent the batch.",
+    kept: "Not in the database: the database gets counts, statuses, costs and generation ids. The sealed requests are deleted when the batch finishes and the sealed answers when its results expire (see the Redis section).",
+    evidence: [ev("src/api/batches.ts", "const body = await readJson(c);"), ev("src/services/batches.ts", "await batchStore(ctx).saveInputs(row, lines, storeTtl(ctx, row));")],
   },
   {
     file: "src/api/embeddings.ts",
@@ -570,6 +592,15 @@ export const EXTERNAL: ExternalDoc = {
     evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify({ t: new Date().toISOString(), level, msg, ...fields }")],
   },
   otherStores: [
+    {
+      id: "batch-memory",
+      name: "Batch requests and answers in the router's memory, without Redis",
+      purpose: "Without Redis (a single router in development), the Batch API keeps the same sealed requests and answers in the router process's memory instead.",
+      holds: "The same sealed requests and answers as the Redis keys batch:<batch id>:in and :out.",
+      ttl: "The sealed requests are deleted when the batch finishes; the sealed answers BATCH_RESULTS_TTL after that (86,400 seconds, 24 hours, unless the operator changed it). A batch that never finishes ends when its 24-hour completion window closes, so nothing outlives the window plus that time. A restart loses them.",
+      requestText: "request-and-answer-text",
+      evidence: [ev("src/services/batches.ts", "private mem = new Map<string, { fields: Map<string, string>; expires: number }>();")],
+    },
     {
       id: "response-cache-memory",
       name: "Response cache in the router's memory",

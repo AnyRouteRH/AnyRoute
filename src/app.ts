@@ -41,6 +41,7 @@ import { dayzeroRoutes } from "./api/dayzero.ts";
 import { creatorClaimRoutes } from "./api/creator-claims.ts";
 import { publicRoutes } from "./api/public.ts";
 import { embeddingsRoutes } from "./api/embeddings.ts";
+import { batchesRoutes } from "./api/batches.ts";
 import { adminRoutes } from "./admin/trpc.ts";
 import { paymasterRoutes } from "./api/paymaster.ts";
 import { registerJobs } from "./services/register.ts";
@@ -130,6 +131,7 @@ export async function createApp(opts: AppOptions = {}) {
   app.use("*", onionIngress(cfg)); // onion requests: drop every client address header before any route reads one
   chatRoutes(app, ctx);
   embeddingsRoutes(app, ctx);
+  batchesRoutes(app, ctx);
   modelsRoutes(app, ctx);
   generationRoutes(app, ctx);
   keysRoutes(app, ctx);
@@ -198,7 +200,8 @@ export async function createApp(opts: AppOptions = {}) {
     return c.json(new ApiError(500, "Internal router error.", "internal").toJSON(), 500);
   });
 
-  registerJobs(ctx, (path, init) => app.request(path, init));
+  // Batch lines are dispatched in process with a marker in `env` that no network request can carry (router/batch-line.ts).
+  registerJobs(ctx, (path, init) => app.request(path, init), (path, init, env) => app.request(path, init, env as never));
   if (opts.startJobs ?? cfg.workers.enabled) await ctx.jobs.start();
 
   // Passive health belongs to each API replica, not the shared registry worker's memory.

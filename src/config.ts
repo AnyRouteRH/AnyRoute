@@ -252,6 +252,18 @@ const schema = z.object({
   RAG_MAX_CHUNKS: int(2000),
   RAG_MAX_EMBEDDING_CALLS: int(64), // embeddings calls one request may make (a small-context embedding model needs more, smaller ones)
 
+  // Batch API (POST /api/v1/batches): lines run on the worker, in spare capacity, at a discount. Requests and answers are kept
+  // sealed in Redis (or memory), never in Postgres, until BATCH_RESULTS_TTL seconds after the batch finishes.
+  BATCH_DISCOUNT_BPS: z.coerce.number().int().min(0).max(10_000).default(5000), // 5000 = batch lines cost half the normal price
+  BATCH_MAX_LINES: int(1000), // lines in one batch
+  BATCH_MAX_BYTES: int(8 * 1024 * 1024), // bytes of input in one batch
+  BATCH_MAX_ACTIVE: int(2), // unfinished batches one key may have at a time
+  BATCH_RESULTS_TTL: z.coerce.number().int().min(60).default(86_400), // seconds results are kept after a batch finishes
+  BATCH_INTERVAL_MS: int(2_000), // how often the worker drains queued lines
+  BATCH_LINES_PER_TICK: int(20), // most lines started per drain
+  BATCH_CONCURRENCY: int(4), // lines run at once
+  BATCH_LINE_MAX_ATTEMPTS: int(3), // tries for a line whose providers were all unavailable
+
   // Default per-key limits (0 = unlimited)
   DEFAULT_RPM: int(600),
   DEFAULT_TPM: int(0),
@@ -645,6 +657,17 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     features: { council: e.ANYROUTE_FEATURE_COUNCIL },
     council: { models: councilModels, judge: e.ANYROUTE_COUNCIL_JUDGE ?? null, mode: e.ANYROUTE_COUNCIL_MODE },
     rag: { maxDocuments: e.RAG_MAX_DOCUMENTS, maxBytes: e.RAG_MAX_BYTES, maxChunks: e.RAG_MAX_CHUNKS, maxEmbeddingCalls: e.RAG_MAX_EMBEDDING_CALLS },
+    batch: {
+      discountBps: e.BATCH_DISCOUNT_BPS,
+      maxLines: e.BATCH_MAX_LINES,
+      maxBytes: e.BATCH_MAX_BYTES,
+      maxActive: e.BATCH_MAX_ACTIVE,
+      resultsTtlS: e.BATCH_RESULTS_TTL,
+      intervalMs: e.BATCH_INTERVAL_MS,
+      linesPerTick: e.BATCH_LINES_PER_TICK,
+      concurrency: Math.max(1, e.BATCH_CONCURRENCY),
+      maxAttempts: Math.max(1, e.BATCH_LINE_MAX_ATTEMPTS),
+    },
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
     telegram: { botToken: e.TELEGRAM_BOT_TOKEN },

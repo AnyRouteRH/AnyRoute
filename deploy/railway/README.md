@@ -40,7 +40,7 @@ Reference Railway variables instead of copying values, for example `${{Postgres.
 | `grants` | `MIGRATION_DATABASE_URL` (the same owner URL as `migrate`), `RUNTIME_DB_PASSWORD` (at least 24 URL-safe characters, e.g. `openssl rand -hex 32`; keep it as one shared variable) |
 | `provider-init` | `DATABASE_URL` (runtime role), `APP_SECRET`, `UPSTREAM_API_KEY`, `UPSTREAM_BASE_URL` (optional: `UPSTREAM_PROVIDER_ID`, `UPSTREAM_PROVIDER_NAME`, `UPSTREAM_SMOKE_TEST`) |
 | `api` | `RUNTIME_ROLE=api`, `DATABASE_URL` (runtime role: user `anyroute_runtime` with password `RUNTIME_DB_PASSWORD`), `REDIS_URL`, `APP_SECRET`, `ADMIN_TOKEN`, `PUBLIC_BASE_URL`, `PAYMENTS_MODE`, the escrow/chain variables, `BACKUP_REQUIRED`, optionally `ANYROUTE_BUILD_COMMIT` (a build variable: the commit the site's "What we keep" page reports, since the image build cannot see git) |
-| `worker` | as `api`, plus `RUNTIME_ROLE=worker`, `WORKER_JOBS` (add `alert-notifier`), optional `ALERT_WEBHOOK_URL` and `ALERT_WEBHOOK_FORMAT` |
+| `worker` | as `api`, plus `RUNTIME_ROLE=worker`, `WORKER_JOBS` (add `alert-notifier`, and `batches` to run the Batch API), optional `ALERT_WEBHOOK_URL` and `ALERT_WEBHOOK_FORMAT` |
 | `onion` | `ONION_UPSTREAM` (the api's private URL), `ONION_PROXY_SECRET` (a shared variable, also set on `api`), `PORT=8081`; optional `ONION_SINGLE_HOP`. `api` then gets `ONION_ADDRESS` and `ONION_PROXY_SECRET`. Steps, and what the service does and does not log: [deploy/onion/README.md](../onion/README.md) |
 | `backup` | `DATABASE_URL` (runtime role), `BACKUP_AGE_RECIPIENTS`, `BACKUP_S3_ENDPOINT`, `BACKUP_S3_REGION`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`; optional `BACKUP_S3_PREFIX`, `BACKUP_S3_VIRTUAL_HOSTED`, `POSTGRES_CLIENT_IMAGE` |
 

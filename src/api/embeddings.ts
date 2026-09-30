@@ -7,7 +7,8 @@ import { genId, log, sha256 } from "../lib/util.ts";
 import { reserve, release, settle } from "../ledger/ledger.ts";
 import { selectProviders, type ProviderPrefs } from "../router/select.ts";
 import { disclosureRefusal, profileOf } from "../router/disclosure.ts";
-import { priceUsage, readUsage } from "../router/pricing.ts";
+import { batchHold, batchPrice, priceUsage, readUsage } from "../router/pricing.ts";
+import { batchKey, batchLineOf } from "../router/batch-line.ts";
 import { callUpstream, providerKey, upstreamBody } from "../providers/upstream.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
 import { bearer, requireKey, requireRole } from "./auth.ts";
@@ -33,7 +34,9 @@ import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken
 export function embeddingsRoutes(app: Hono, ctx: Ctx) {
   const handler = async (c: import("hono").Context) => {
     const t0 = Date.now();
-    const key = bearer(c.req.header("authorization")) ? await requireKey(ctx, c.req.header("authorization")) : null;
+    // A line of a batch (POST /api/v1/batches), dispatched in process by the batch runner as the key that submitted it.
+    const batchLine = batchLineOf(c);
+    const key = batchLine ? await batchKey(ctx, batchLine.keyHash) : bearer(c.req.header("authorization")) ? await requireKey(ctx, c.req.header("authorization")) : null;
     if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
     let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null; // $ANYR holders get a higher rpm
     const from = addressBucket(c, ctx.cfg); // over Tor: the shared onion bucket, not a client address
@@ -88,12 +91,13 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: key || pass ? 0 : ctx.cfg.fees.perCallMarginBps, byokFeeBps: 0 };
     const worst = (cand: (typeof sel.ordered)[number]) =>
       priceUsage(cand, r.model, { prompt: promptTokens, completion: 0, reasoning: 0, cachedRead: 0, cacheWrite: 0, webSearch: 0, images: 0, estimated: true }, mode, fees, false).total;
-    const hold = maxPico(...sel.ordered.slice(0, ctx.cfg.routing.maxAttempts).map(worst));
+    const worstHold = maxPico(...sel.ordered.slice(0, ctx.cfg.routing.maxAttempts).map(worst));
+    const hold = batchLine ? batchHold(worstHold, batchLine.discountBps) : worstHold; // a batch line is held at its discounted worst case
     // No key: the caller pays this call up front (402 quote, or the X-Payment retry); the payment funds the hold.
     const paid = key || pass ? null : await payPerCall(ctx, c, { pricePico: hold * 2n + 1n, bodySha: requestHash(body), modelId: r.model.id });
     const accountId = key?.accountId ?? (pass ? BLIND_POOL : paid!.accountId);
     if (paid) tier = await holderTier(ctx, paid.payer); // a wallet paying per call: its $ANYR tier lowers the margin
-    const id = genId();
+    const id = batchLine?.generationId ?? genId();
     if (pass) {
       requireValue(ctx, pass, hold * 2n + 1n); // the token pays for at most its face value
       await claimToken(ctx, pass); // spends once; given back below if nothing is served
@@ -130,7 +134,8 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         attempts.push({ provider: cand.providerId, model: r.model.id, ok: true, status: 200, latency_ms: Math.round(res.latencyMs) });
         ctx.health.record({ modelId: cand.modelId, providerId: cand.providerId, ok: true, latencyMs: res.latencyMs, source: "traffic" });
         const usage = readUsage(res.json.usage, { prompt: promptTokens, completion: 0 });
-        const cost = priceUsage(cand, r.model, { ...usage, completion: 0 }, mode, { ...fees, discountBps: tier?.discountBps ?? 0 }, false);
+        const listCost = priceUsage(cand, r.model, { ...usage, completion: 0 }, mode, { ...fees, discountBps: tier?.discountBps ?? 0 }, false);
+        const cost = batchLine ? batchPrice(listCost, batchLine.discountBps) : { ...listCost, batchDiscount: 0n };
         const { charged } = await settle(ctx.db, id, cost.total, { description: `${r.model.id} embeddings via ${cand.providerId}`, generationId: id });
         // An attested gateway's receipt for this exchange: checked before anything is returned.
         const ua = await toolkit.upstreamAttestationOf(ctx, { candidate: cand, exchange: res.exchange }, new Map());
@@ -146,7 +151,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           provider: cand.providerId,
           tokens: { prompt: usage.prompt, completion: 0, reasoning: 0, cached: 0, estimated: usage.estimated },
           cost: picoToUsdString(charged),
-          cost_details: { upstream: picoToUsdString(cost.upstream), royalty: picoToUsdString(cost.royalty), margin: picoToUsdString(cost.margin) },
+          cost_details: { upstream: picoToUsdString(cost.upstream), royalty: picoToUsdString(cost.royalty), margin: picoToUsdString(cost.margin), ...(batchLine ? { batch_discount: picoToUsdString(cost.batchDiscount) } : {}) },
           paid_with: null,
           latency_ms: Math.round(res.latencyMs),
           quant: cand.quant,
@@ -160,6 +165,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           request_sha256: sha256(JSON.stringify(body)),
           response_sha256: sha256(JSON.stringify(res.json.data)),
           ...(ua ? { upstream_attestation: compactUpstream(ua) } : {}),
+          ...(batchLine ? { batch: { id: batchLine.batchId, line: batchLine.idx } } : {}),
         };
         const signed = ctx.signer.sign(payload);
         await ctx.db.insert(generations).values({
@@ -188,7 +194,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           responseSha256: payload.response_sha256,
         });
         if (pass) await confirmToken(ctx, pass, id);
-        const usageJson = { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) } };
+        const usageJson = { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}), ...(batchLine ? { batch_discount: picoToUsd(cost.batchDiscount) } : {}) } };
         const receiptJson = { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload };
         const headers = { ...generationHeaders(id, disc.lane, servedPolicyHash(ctx, cand)), "x-anyroute-disclosure": served.class, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) };
         // The gateway had already done (and billed) the work: the vectors are withheld, and the receipt records why.

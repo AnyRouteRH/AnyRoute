@@ -11,7 +11,8 @@ import { selectProviders, type ProviderPrefs } from "../router/select.ts";
 import { isRestricted } from "../router/lane.ts";
 import { disclosureClass, disclosureRefusal, profileOf, type DisclosureClass, type DisclosureRequest } from "../router/disclosure.ts";
 import { servedDisclosure, servedPolicyHash } from "./disclosure.ts";
-import { estimatePromptTokens, maxOutputTokens, priceUsage, readUsage, worstCase, type Mode, type Usage } from "../router/pricing.ts";
+import { batchHold, batchPrice, estimatePromptTokens, maxOutputTokens, priceUsage, readUsage, worstCase, type Mode, type Usage } from "../router/pricing.ts";
+import { batchKey, batchLineOf } from "../router/batch-line.ts";
 import { route, type Attempt, type RouteSuccess, type RouteTarget } from "../router/execute.ts";
 import { providerKey } from "../providers/upstream.ts";
 import { compactUpstream, recordGpuAttested, unverifiedUpstream, verifyAciExchange, type UpstreamAttestation } from "../providers/aci.ts";
@@ -225,14 +226,16 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
 
   // ---- 1. Who is calling -------------------------------------------------------------------
   const secret = bearer(c.req.header("authorization"));
+  // A line of a batch (POST /api/v1/batches), dispatched in process by the batch runner as the key that submitted it.
+  const batchLine = batchLineOf(c);
   let key: KeyRow | null = null;
   let wallet: { accountId: string; wallet: string; exists: boolean } | null = null;
   // A verified Privacy Pass token (Authorization: PrivateToken), when ANYROUTE_FEATURE_BLIND is on.
   let pass: BlindPass | null = null;
   // $ANYR holder tier of the wallet behind this request (null unless HOLDER_TIERS is live).
   let tier: HolderTier | null = null;
-  if (secret) {
-    key = await resolveKey(ctx, secret);
+  if (batchLine || secret) {
+    key = batchLine ? await batchKey(ctx, batchLine.keyHash) : await resolveKey(ctx, secret!);
     if (!key) fail(401, "Unknown API key. Create one (POST /api/v1/keys) or deposit USDG to its key hash first.", "invalid_key");
     await requireRole(ctx, key, ["owner", "admin", "member"]);
     tier = await holderTier(ctx, walletOfAccount(key.accountId));
@@ -285,6 +288,8 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   if (pass && ((ctx.cfg.features.council && body.model === COUNCIL_MODEL) || body.verify != null))
     fail(400, "Council mode and dual verification make several provider calls, so they cannot be paid with a blind token. Use an API key.", "blind_unsupported");
 
+  if (batchLine && (stream || body.verify != null || (ctx.cfg.features.council && body.model === COUNCIL_MODEL)))
+    fail(400, "Batch lines cannot stream, use council mode or use dual verification.", "invalid_request");
   // Council mode (`model: "anyroute/council"`): several member calls plus a judge call, each billed and receipted.
   if (ctx.cfg.features.council && body.model === COUNCIL_MODEL) return runCouncil(toolkit, { ctx, c, kind, body, bodySha, t0, key, wallet, tier, prefs, disc });
 
@@ -368,7 +373,8 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   const fees = { royaltyBps: 0, perCallMarginBps: ctx.cfg.fees.perCallMarginBps, byokFeeBps: ctx.cfg.fees.byokFeeBps };
   const modeForPrice: Mode = billing?.mode ?? "per_call";
   const attemptable = targets.flatMap((t) => t.ordered.map((cand) => ({ cand, model: t.model }))).slice(0, ctx.cfg.routing.maxAttempts);
-  const hold = maxPico(...attemptable.map(({ cand, model }) => worstCase(cand, model, body, promptTokens, modeForPrice, fees, byok.has(cand.providerId))));
+  const worst = maxPico(...attemptable.map(({ cand, model }) => worstCase(cand, model, body, promptTokens, modeForPrice, fees, byok.has(cand.providerId))));
+  const hold = batchLine ? batchHold(worst, batchLine.discountBps) : worst; // a batch line is held at its discounted worst case
 
   if (!billing) {
     const r = await payPerCall(ctx, c, { pricePico: hold, bodySha, modelId: primary.id });
@@ -382,7 +388,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   }
   if (billing.key?.tpm) await limitOrThrow(ctx, `kt:${billing.key.keyHash}`, promptTokens, scaleLimit(billing.key.tpm, tier), "tokens");
 
-  const holdId = genId();
+  const holdId = batchLine?.generationId ?? genId(); // a batch line's id is chosen by the runner, so an interrupted line can be traced to its charge
   try {
     await reserve(ctx.db, {
       id: holdId,
@@ -570,7 +576,10 @@ async function finalize(p: FinalizeInput) {
   const isByok = p.byok.has(r.candidate.providerId);
   const mode: Mode = isByok ? "byok" : billing.mode;
   const fees = { royaltyBps: r.model.royaltyBps, perCallMarginBps: ctx.cfg.fees.perCallMarginBps, byokFeeBps: ctx.cfg.fees.byokFeeBps, discountBps: p.tier?.discountBps ?? 0 };
-  const cost = priceUsage(r.candidate, r.model, p.usage, billing.mode === "per_call" ? "per_call" : mode, fees, isByok);
+  const listCost = priceUsage(r.candidate, r.model, p.usage, billing.mode === "per_call" ? "per_call" : mode, fees, isByok);
+  // A batch line is charged the discounted price (BATCH_DISCOUNT_BPS); everything else the list price.
+  const batchLine = batchLineOf(p.c);
+  const cost = batchLine ? batchPrice(listCost, batchLine.discountBps) : { ...listCost, batchDiscount: 0n };
   const id = p.holdId;
   const budget = p.extra?.budget;
   const overBudget = budget != null && cost.total > budget;
@@ -607,7 +616,7 @@ async function finalize(p: FinalizeInput) {
     provider: r.candidate.providerId,
     tokens: { prompt: p.usage.prompt, completion: p.usage.completion, reasoning: p.usage.reasoning, cached: p.usage.cachedRead, estimated: p.usage.estimated },
     cost: picoToUsdString(charged),
-    cost_details: { upstream: picoToUsdString(cost.upstream), royalty: picoToUsdString(cost.royalty), margin: picoToUsdString(cost.margin), ...(overBudget ? { over_budget: picoToUsdString(cost.total) } : {}) },
+    cost_details: { upstream: picoToUsdString(cost.upstream), royalty: picoToUsdString(cost.royalty), margin: picoToUsdString(cost.margin), ...(overBudget ? { over_budget: picoToUsdString(cost.total) } : {}), ...(batchLine ? { batch_discount: picoToUsdString(cost.batchDiscount) } : {}) },
     paid_with: paidWith,
     latency_ms: Math.round(r.latencyMs),
     generation_ms: p.generationMs,
@@ -625,6 +634,7 @@ async function finalize(p: FinalizeInput) {
     request_sha256: p.bodySha,
     response_sha256: sha256(p.responseText),
     ...(ua ? { upstream_attestation: compactUpstream(ua) } : {}),
+    ...(batchLine ? { batch: { id: batchLine.batchId, line: batchLine.idx } } : {}),
     ...(p.extra?.payload ?? {}),
   };
   const signed = ctx.signer.sign(payload);
@@ -736,7 +746,7 @@ async function finalize(p: FinalizeInput) {
     total_tokens: p.usage.prompt + p.usage.completion,
     cost: picoToUsd(charged),
     is_byok: isByok,
-    cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), margin: picoToUsd(cost.margin), ...(p.tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) },
+    cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), margin: picoToUsd(cost.margin), ...(p.tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}), ...(batchLine ? { batch_discount: picoToUsd(cost.batchDiscount) } : {}) },
     prompt_tokens_details: { cached_tokens: p.usage.cachedRead, cache_write_tokens: p.usage.cacheWrite },
     completion_tokens_details: { reasoning_tokens: p.usage.reasoning },
   };

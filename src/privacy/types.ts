@@ -64,7 +64,7 @@ export type RedisFamily = {
   /** Seconds the key lives, or a sentence when it depends on the request. */
   ttl: string;
   /** Set when the key holds (sealed) request or answer text. */
-  requestText?: "answer-text";
+  requestText?: "answer-text" | "request-and-answer-text";
   evidence: Evidence[];
 };
 
@@ -99,7 +99,7 @@ export type ExternalDoc = {
     retention: string;
     evidence: Evidence[];
   };
-  otherStores: { id: string; name: string; purpose: string; holds: string; ttl: string; requestText: "none" | "answer-text" | "hashes"; evidence: Evidence[] }[];
+  otherStores: { id: string; name: string; purpose: string; holds: string; ttl: string; requestText: "none" | "answer-text" | "request-and-answer-text" | "hashes"; evidence: Evidence[] }[];
   /** Everything that reads the network address of the caller. */
   addressReaders: Touchpoint[];
   /** Everything that reads the body of a request. Routes that read a body but touch no prompt say so. */

@@ -5,6 +5,56 @@ import { CREATED, JSON_FIELDS, KEPT, rv } from "./common.ts";
 // prompt or an answer. What each call leaves is a generation row, a health row and, when the caller sent them, an app row.
 
 export const requestTables: Record<string, TableDoc> = {
+  batches: {
+    category: "request",
+    purpose:
+      "One row per batch sent to the Batch API (POST /api/v1/batches): the key that sent it, its status, how many lines it has and how many succeeded or failed, and what it cost. The requests and answers of its lines are never written to the database: they are kept sealed in Redis or the router's memory (see the Redis section) until the batch's results expire.",
+    request: "aggregate",
+    retention: "No automatic deletion of the row itself; when the batch's results expire (results_expire_at), its line rows and its sealed requests and answers are deleted and purged_at is set.",
+    columns: {
+      id: "The batch id (batch_ and random hex).",
+      account_id: "The account the batch's lines are billed to.",
+      key_hash: "The hash of the API key that sent the batch; only that key can read or cancel it.",
+      api: "Which API every line calls: chat or embeddings.",
+      status: "validating, in_progress, cancelling, completed, failed, expired or cancelled.",
+      total: "How many lines the batch has.",
+      completed: { purpose: "How many lines succeeded.", request: "aggregate" },
+      failed: { purpose: "How many lines failed.", request: "aggregate" },
+      cost: { purpose: "What the batch's lines were charged, after the batch discount, in pico-USD.", request: "aggregate" },
+      list_cost: { purpose: "What the same calls would have cost without the batch discount, in pico-USD.", request: "aggregate" },
+      discount_bps: "The batch discount in basis points (BATCH_DISCOUNT_BPS when the batch was sent; 5000 is half price).",
+      created_at: CREATED,
+      started_at: "When the worker started the batch.",
+      cancelling_at: "When the key asked to cancel the batch.",
+      finished_at: "When the batch's last line ended.",
+      expires_at: "The end of the 24-hour completion window: lines not run by then end unrun and unbilled.",
+      results_expire_at: "When the batch's answers and line rows are deleted (finished_at plus BATCH_RESULTS_TTL).",
+      purged_at: "When they were deleted.",
+    },
+  },
+
+  batch_lines: {
+    category: "request",
+    purpose:
+      "One row per line of a batch: its status, the HTTP status its call returned, the generation (and so the signed receipt) it produced and what it was charged. No request or answer text: that is sealed outside the database.",
+    request: "yes",
+    retention: "Deleted with the batch's sealed answers when its results expire (BATCH_RESULTS_TTL after the batch finished, 24 hours unless the operator changed it).",
+    columns: {
+      batch_id: "The batch the line belongs to.",
+      idx: "The line's position in the batch, from 0.",
+      api: "chat or embeddings.",
+      status: "queued, running, succeeded, failed, cancelled or expired.",
+      attempts: "How many times the worker started the line (a line whose providers were all unavailable is tried again, up to BATCH_LINE_MAX_ATTEMPTS).",
+      status_code: "The HTTP status the line's call returned.",
+      generation_id: "The generation the line produced, whose receipt it has.",
+      cost: "What the line was charged, after the batch discount, in pico-USD.",
+      list_cost: "What the line would have cost without the discount, in pico-USD.",
+      failure_code: "For a line that did not succeed, the error type (for example insufficient_credits or batch_cancelled). A fixed code, never text from a request.",
+      not_before: "The earliest the line runs (a rate-limited line waits), or, while it runs, when it counts as interrupted.",
+      finished_at: "When the line ended.",
+    },
+  },
+
   generations: {
     category: "request",
     purpose:

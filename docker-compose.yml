@@ -101,7 +101,7 @@ services:
       <<: *runtime
       RUNTIME_ROLE: worker
       WORKERS: "true"
-      WORKER_JOBS: health-flush,holds-expire,catalog-refresh,provider-registry,health-probes,canaries,attestor,chain-indexer
+      WORKER_JOBS: health-flush,holds-expire,catalog-refresh,provider-registry,health-probes,canaries,attestor,chain-indexer,batches
     command: ["bun", "src/worker.ts"]
     networks: [storage, egress]
     depends_on:

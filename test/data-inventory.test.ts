@@ -260,7 +260,9 @@ describe("Redis", () => {
     expect([...prefixes].sort()).toEqual(["cache:", "rl:", "walletauth:"]);
     for (const p of prefixes) expect(families.some((f) => f.key.startsWith(p)), p).toBe(true);
     const users = files.filter((f) => /["']ioredis["']|["']bullmq["']/.test(read(f)));
-    expect(users).toEqual(["src/api/auth.ts", "src/app.ts", "src/gateway/cache.ts", "src/lib/ratelimit.ts", "src/services/jobs.ts"]);
+    expect(users).toEqual(["src/api/auth.ts", "src/app.ts", "src/gateway/cache.ts", "src/lib/ratelimit.ts", "src/services/batches.ts", "src/services/jobs.ts"]);
+    // The Batch API writes its sealed requests and answers under keys it builds from the batch id (services/batches.ts).
+    expect(families.filter((f) => f.requestText === "request-and-answer-text").map((f) => f.key)).toEqual(["batch:<batch id>:in and batch:<batch id>:out"]);
     expect(families.some((f) => f.key.startsWith("bull:anyroute-jobs-"))).toBe(true);
   });
 

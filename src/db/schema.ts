@@ -1014,3 +1014,50 @@ export const tlogRekorAnchors = pgTable(
   },
   (t) => [uniqueIndex("tlog_rekor_anchors_uuid_uq").on(t.rekorUrl, t.uuid), index("tlog_rekor_anchors_status_size_idx").on(t.status, t.size)],
 );
+
+// Batch API (src/services/batches.ts): one row per batch and one per line, with statuses, counts, costs and generation ids
+// only. The lines' requests and answers are never written to Postgres: they are kept sealed in Redis (or the router's
+// memory) until the batch's results expire (BATCH_RESULTS_TTL), and the line rows are deleted at the same time.
+export const batches = pgTable(
+  "batches",
+  {
+    id: text("id").primaryKey(), // batch_<hex>
+    accountId: text("account_id").notNull(),
+    keyHash: text("key_hash").notNull(), // the key that submitted it; only that key can read or cancel it
+    api: text("api").notNull(), // chat | embeddings | mixed
+    status: text("status").notNull().default("validating"), // validating | in_progress | cancelling | completed | failed | expired | cancelled
+    total: integer("total").notNull(),
+    completed: integer("completed").notNull().default(0),
+    failed: integer("failed").notNull().default(0),
+    cost: money("cost").notNull().default(sql`0`), // charged, after the batch discount
+    listCost: money("list_cost").notNull().default(sql`0`), // what the same calls cost without the discount
+    discountBps: integer("discount_bps").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    startedAt: ts("started_at"),
+    cancellingAt: ts("cancelling_at"),
+    finishedAt: ts("finished_at"),
+    expiresAt: ts("expires_at").notNull(), // end of the completion window: lines not run by then expire unbilled
+    resultsExpireAt: ts("results_expire_at"), // finished_at + BATCH_RESULTS_TTL
+    purgedAt: ts("purged_at"), // when the sealed results and the line rows were deleted
+  },
+  (t) => [index("batches_key_created_idx").on(t.keyHash, t.createdAt), index("batches_status_idx").on(t.status, t.createdAt)],
+);
+
+export const batchLines = pgTable(
+  "batch_lines",
+  {
+    batchId: text("batch_id").notNull(),
+    idx: integer("idx").notNull(), // 0-based line number
+    api: text("api").notNull(), // chat | embeddings
+    status: text("status").notNull().default("queued"), // queued | running | succeeded | failed | cancelled | expired
+    attempts: integer("attempts").notNull().default(0),
+    statusCode: integer("status_code"),
+    generationId: text("generation_id"),
+    cost: money("cost").notNull().default(sql`0`),
+    listCost: money("list_cost").notNull().default(sql`0`),
+    failureCode: text("failure_code"), // the error type, such as insufficient_credits
+    notBefore: ts("not_before").notNull().defaultNow(), // a rate-limited or retried line waits until then
+    finishedAt: ts("finished_at"),
+  },
+  (t) => [primaryKey({ columns: [t.batchId, t.idx] }), index("batch_lines_queue_idx").on(t.status, t.notBefore)],
+);

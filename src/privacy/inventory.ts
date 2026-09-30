@@ -183,6 +183,11 @@ export function summarize(tables: TableOut[], ext: ExternalDoc): Summary {
       title: "The response cache keeps answers when you ask it to",
       text: `A request that turns the response cache on has its answer kept, sealed with AES-256-GCM, in Redis and in the router's memory. ${f.ttl} Requests that do not ask for caching leave nothing here, and a call paid with a blind token, a call on the attested lane or with any disclosure ceiling, a restricted model variant and a streamed answer are never cached. A semantic cache also keeps a 1,024-number hashed word vector of the prompt in memory.`,
     });
+  for (const f of ext.redis.families.filter((x) => x.requestText === "request-and-answer-text"))
+    caveats.push({
+      title: "The Batch API keeps a batch's requests and answers until its results expire",
+      text: `A batch sent to POST /api/v1/batches has its requests and answers kept, sealed with AES-256-GCM, in Redis (or the router's memory without Redis), never in the database. ${f.ttl} Calls that are not part of a batch leave nothing here.`,
+    });
   if (fragments.length)
     caveats.push({
       title: "A failed provider attempt can keep a short piece of the provider's own error message",
