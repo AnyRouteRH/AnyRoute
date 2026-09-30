@@ -23,8 +23,21 @@ export type Candidate = OfferRow & { provider: ProviderRow };
 
 // Routing suffixes: `author/model:nitro` (fastest), `:floor` (cheapest), `:free` (free offers
 // only), `:private` (attested TEE providers only). Other suffixes are part of the model id.
+// `:nitro` is provider.sort "throughput" and `:floor` is provider.sort "price" (router/select.ts): they order the
+// providers that pass every filter, lane included, and never add one. With both, `:nitro` wins.
 export const ROUTING_SUFFIXES = ["nitro", "floor", "free", "private"] as const;
 export type Modifier = (typeof ROUTING_SUFFIXES)[number];
+/** The suffixes that only reorder providers, so every served model accepts them (GET /api/v1/models `routing_variants`). */
+export const SORT_SUFFIXES = ["nitro", "floor"] as const satisfies readonly Modifier[];
+
+/** What a model outputs, as its catalogue entry states it ("text", "embeddings", "rerank", ...). */
+export function outputModalities(m: Pick<ModelRow, "arch">): string[] {
+  const out = (m.arch as { output_modalities?: unknown } | null)?.output_modalities;
+  return Array.isArray(out) ? out.filter((x): x is string => typeof x === "string") : ["text"];
+}
+
+/** A rerank model: one whose catalogue entry lists "rerank" among its outputs (POST /api/v1/rerank serves only these). */
+export const isRerankModel = (m: Pick<ModelRow, "arch">) => outputModalities(m).includes("rerank");
 
 export class Catalog {
   models = new Map<string, ModelRow>();

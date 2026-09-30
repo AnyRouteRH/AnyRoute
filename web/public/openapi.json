@@ -123,6 +123,10 @@
     {
       "name": "Batches",
       "description": "The Batch API: many chat completions or embeddings requests sent in one call and run in the background on the router's worker, at 50% of the normal price, with results kept for 24 hours after the batch finishes."
+    },
+    {
+      "name": "Rerank",
+      "description": "Rerank documents against a query (Cohere and Jina shape), billed per token or per search unit, with a signed receipt."
     }
   ],
   "paths": {
@@ -167,6 +171,18 @@
               "type": "string",
               "examples": [
                 "abliterated,native_low_refusal"
+              ]
+            }
+          },
+          {
+            "name": "output_modalities",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated output modalities to keep (text, embeddings, rerank, ...); a model is kept when it outputs any of them. all, or unset, keeps every model.",
+            "schema": {
+              "type": "string",
+              "examples": [
+                "rerank"
               ]
             }
           }
@@ -6350,6 +6366,111 @@
           }
         }
       }
+    },
+    "/api/v1/rerank": {
+      "post": {
+        "tags": [
+          "Rerank"
+        ],
+        "operationId": "createRerank",
+        "summary": "Rerank documents",
+        "description": "Orders documents by relevance to a query through a provider's own /rerank. Served only by models whose output modalities include rerank; any other model, or a router where no provider lists a rerank model, is 404 model_not_found. Priced per token (pricing.prompt) and per search unit (pricing.request) as the provider reports them. An answer that is not a valid ranking of the documents sent is a failed attempt: the next provider is tried, and 502 providers_unavailable with nothing charged if none answers. Keys, budgets, per-call payment (HTTP 402), blind tokens, lanes, the disclosure ceiling and provider preferences work as for embeddings; the Oblivious HTTP gateway does not carry rerank calls yet. Also served at /v1/rerank.",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "PrivateToken": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Payment"
+          },
+          {
+            "$ref": "#/components/parameters/DisclosureMax"
+          },
+          {
+            "$ref": "#/components/parameters/Lane"
+          },
+          {
+            "$ref": "#/components/parameters/LaneDowngrade"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerankRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Results best first, with usage, cost and a signed receipt.",
+            "headers": {
+              "X-Anyroute-Disclosure": {
+                "$ref": "#/components/headers/Disclosure"
+              },
+              "X-Anyroute-Lane": {
+                "$ref": "#/components/headers/LaneServed"
+              },
+              "X-Receipt-Id": {
+                "$ref": "#/components/headers/ReceiptId"
+              },
+              "Inference-Id": {
+                "$ref": "#/components/headers/InferenceId"
+              },
+              "X-Generation-Id": {
+                "$ref": "#/components/headers/GenerationId"
+              },
+              "X-Anyroute-Policy-Hash": {
+                "$ref": "#/components/headers/PolicyHash"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RerankResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/DisclosureUnavailable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "501": {
+            "$ref": "#/components/responses/LaneNotAvailable"
+          },
+          "503": {
+            "$ref": "#/components/responses/DisclosureProviderDown"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6909,6 +7030,19 @@
               "null"
             ],
             "description": "The one datacenter region every live endpoint of the model reports; null when any endpoint does not report one or they differ."
+          },
+          "routing_variants": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "nitro",
+                "floor",
+                "free",
+                "private"
+              ]
+            },
+            "description": "Model suffixes that change how this model is routed right now: nitro (fastest providers first, as provider.sort throughput) and floor (cheapest first, as provider.sort price) always; free while a free endpoint serves it; private while an endpoint has a fresh TEE attestation."
           }
         }
       },
@@ -6993,7 +7127,7 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Public model ID, optionally with a supported routing modifier. The reserved ID anyroute/council selects council mode when the router enables it. @route/<slug> calls a saved route and @preset/<name> (or @preset/<name>@<version> to pin one version) calls a preset of the key's account."
+            "description": "Public model ID, optionally with routing suffixes: :nitro sorts providers by throughput (fastest first) and :floor by price (cheapest first), the same as provider.sort throughput and price and winning over it; both only order the providers the other preferences and the lane allow. :free and :private also apply. The reserved ID anyroute/council selects council mode when the router enables it. @route/<slug> calls a saved route and @preset/<name> (or @preset/<name>@<version> to pin one version) calls a preset of the key's account."
           },
           "models": {
             "type": "array",
@@ -14435,6 +14569,170 @@
                 "format": "date-time"
               }
             }
+          }
+        }
+      },
+      "RerankRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "query",
+          "documents"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "A catalogue model whose architecture.output_modalities include rerank (GET /api/v1/models?output_modalities=rerank), optionally with :nitro (fastest providers first) or :floor (cheapest first)."
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "documents": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "text"
+                  ],
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            },
+            "description": "Strings, or objects with a text. Sent to the provider as strings."
+          },
+          "top_n": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many results to return, best first. Default: every document."
+          },
+          "return_documents": {
+            "type": "boolean",
+            "default": false,
+            "description": "Attach each result's document text (the text you sent)."
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ProviderPreferences"
+          }
+        }
+      },
+      "RerankResult": {
+        "type": "object",
+        "required": [
+          "index",
+          "relevance_score"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Position of the document in the request."
+          },
+          "relevance_score": {
+            "type": "number",
+            "description": "The provider's score. The router checks it and never makes one up."
+          },
+          "document": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "description": "Present when return_documents is true."
+          }
+        }
+      },
+      "RerankResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "model",
+          "results",
+          "usage",
+          "cost",
+          "receipt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Generation and receipt id (also X-Receipt-Id)."
+          },
+          "object": {
+            "type": "string",
+            "const": "rerank"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RerankResult"
+            },
+            "description": "Best first, ties by index, at most top_n."
+          },
+          "usage": {
+            "type": "object",
+            "required": [
+              "total_tokens",
+              "search_units",
+              "cost"
+            ],
+            "properties": {
+              "total_tokens": {
+                "type": "integer"
+              },
+              "search_units": {
+                "type": "integer",
+                "description": "One query over up to 100 documents, each split into chunks of 500 tokens."
+              },
+              "estimated": {
+                "type": "boolean",
+                "description": "true when the provider did not report a quantity it is priced on and the router's estimate was billed."
+              },
+              "cost": {
+                "type": "number"
+              },
+              "cost_details": {
+                "type": "object"
+              }
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "billed_units": {
+                "type": "object",
+                "properties": {
+                  "search_units": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "description": "The billed search units where Cohere clients read them."
+          },
+          "cost": {
+            "type": "number",
+            "description": "USD charged for this call."
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt"
           }
         }
       }

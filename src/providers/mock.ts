@@ -3,11 +3,11 @@ import { randomBytes } from "node:crypto";
 
 // A configurable OpenAI-compatible provider used by tests, the local demo and canary development.
 // It speaks the provider spec (/models with pricing/quantization/features), chat/completions
-// (JSON + SSE), legacy completions, embeddings, logprobs, and a TEE-style attestation endpoint.
+// (JSON + SSE), legacy completions, embeddings, rerank, logprobs, and a TEE-style attestation endpoint.
 // Behaviours can be switched at runtime through POST /_control.
 
 export type MockBehaviour = "ok" | "empty200" | "error500" | "rate429" | "slow" | "hang" | "reject400" | "midstream_error" | "no_usage" | "auth401";
-export type MockModel = { id: string; slug?: string; prompt: string; completion: string; ctx?: number; quant?: string; features?: string[]; params?: string[]; creator?: string; output?: string[]; hf?: string };
+export type MockModel = { id: string; slug?: string; prompt: string; completion: string; request?: string; ctx?: number; quant?: string; features?: string[]; params?: string[]; creator?: string; output?: string[]; hf?: string };
 export type MockConfig = {
   name: string;
   models: MockModel[];
@@ -24,6 +24,12 @@ export type MockConfig = {
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   /** Test hook: awaited before a stream sends content part `part` (0-based), so a test can hold a stream half-way. */
   holdStream?: (part: number) => Promise<void> | void;
+  /**
+   * How /rerank answers: "jina" (default: results with relevance_score, usage.total_tokens, honours top_n and
+   * return_documents), "cohere" (results without documents, usage as meta.billed_units.search_units) or "invalid"
+   * (an index and a score that make no sense, to test that the router refuses them).
+   */
+  rerankShape?: "jina" | "cohere" | "invalid";
 };
 
 const WORDS = "the quick brown fox jumps over the lazy dog and keeps running far away".split(" ");
@@ -88,7 +94,7 @@ export function createMockProvider(initial: MockConfig) {
         quantization: m.quant ?? "bf16",
         context_length: m.ctx ?? 131072,
         max_output_length: 8192,
-        pricing: { prompt: m.prompt, completion: m.completion, request: "0", image: "0" },
+        pricing: { prompt: m.prompt, completion: m.completion, request: m.request ?? "0", image: "0" },
         supported_sampling_parameters: m.params ?? ["temperature", "top_p", "stop", "seed", "max_tokens", "logprobs", "top_logprobs"],
         supported_features: m.features ?? ["tools", "json_mode"],
       })),
@@ -180,6 +186,36 @@ export function createMockProvider(initial: MockConfig) {
     if (early) return early;
     const inputs = Array.isArray(body.input) ? body.input : [body.input];
     return c.json({ object: "list", model: body.model, data: inputs.map((s: string, i: number) => ({ object: "embedding", index: i, embedding: [s.length / 100, 0.5, -0.25] })), usage: { prompt_tokens: inputs.join(" ").length / 4, total_tokens: inputs.join(" ").length / 4 } });
+  });
+
+  // A toy cross-encoder: the share of the query's words found in each document, so scores are deterministic and ordered.
+  app.post("/rerank", async (c) => {
+    const body = await c.req.json();
+    stats.lastBody = body;
+    stats.lastAuth = c.req.header("authorization") ?? null;
+    const early = await gate();
+    if (early) return early;
+    const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+    const query = new Set(words(String(body.query ?? "")));
+    const docs: string[] = (Array.isArray(body.documents) ? body.documents : []).map((d: unknown) => (typeof d === "string" ? d : String((d as { text?: unknown })?.text ?? "")));
+    const score = (d: string) => {
+      const w = new Set(words(d));
+      let hit = 0;
+      for (const q of query) if (w.has(q)) hit++;
+      return Number((query.size ? hit / query.size : 0).toFixed(6));
+    };
+    const ranked = docs.map((d, index) => ({ index, relevance_score: score(d) })).sort((a, b) => b.relevance_score - a.relevance_score || a.index - b.index);
+    const top = Number.isInteger(body.top_n) && body.top_n > 0 ? ranked.slice(0, body.top_n) : ranked;
+    const tokens = docs.reduce((n, d) => n + Math.ceil((String(body.query ?? "").length + d.length) / 4), 0);
+    if (cfg.behaviour === "empty200") return c.json({ model: body.model, results: [], usage: { total_tokens: tokens } });
+    if (cfg.rerankShape === "invalid") return c.json({ model: body.model, results: [{ index: docs.length + 5, relevance_score: "high" }], usage: { total_tokens: tokens } });
+    if (cfg.rerankShape === "cohere")
+      return c.json({ id: "rr-" + randomBytes(4).toString("hex"), results: top, meta: { api_version: { version: "2" }, billed_units: { search_units: Math.max(1, Math.ceil(docs.length / 100)) } } });
+    return c.json({
+      model: body.model,
+      results: top.map((r) => ({ ...r, ...(body.return_documents ? { document: { text: docs[r.index] } } : {}) })),
+      ...(cfg.behaviour === "no_usage" ? {} : { usage: { total_tokens: tokens } }),
+    });
   });
 
   return { app, cfg, stats };

@@ -145,7 +145,7 @@ export async function* parseSse(body: ReadableStream<Uint8Array>, signal: AbortS
 
 export async function callUpstream(opts: {
   candidate: Candidate;
-  path: "/chat/completions" | "/completions" | "/embeddings";
+  path: "/chat/completions" | "/completions" | "/embeddings" | "/rerank";
   body: Record<string, unknown>;
   stream: boolean;
   apiKey?: string;

@@ -34,6 +34,8 @@ export const providerModelSpec = z.object({
     prompt: price,
     completion: price,
     request: price.optional(),
+    /** Rerank models: USD per search unit (one query over up to 100 document chunks), stored as the request price. */
+    search_unit: price.optional(),
     image: price.optional(),
     web_search: price.optional(),
     internal_reasoning: price.optional(),
@@ -129,7 +131,7 @@ export async function syncProvider(ctx: RegistryConfig & { db: Db | Tx }, p: typ
       providerModelId: m.id,
       pricePrompt: usdToPico(m.pricing.prompt),
       priceCompletion: usdToPico(m.pricing.completion),
-      priceRequest: usdToPico(m.pricing.request ?? "0"),
+      priceRequest: usdToPico(m.pricing.search_unit ?? m.pricing.request ?? "0"),
       priceImage: usdToPico(m.pricing.image ?? "0"),
       priceWebSearch: usdToPico(m.pricing.web_search ?? "0"),
       priceReasoning: usdToPico(m.pricing.internal_reasoning ?? "0"),

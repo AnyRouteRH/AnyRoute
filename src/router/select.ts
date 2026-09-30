@@ -226,6 +226,8 @@ export function selectProviders(input: SelectInput): Selection {
     else pass.push(c);
   }
 
+  // `:nitro` = sort "throughput", `:floor` = sort "price" (a suffix wins over provider.sort; `:nitro` over `:floor`).
+  // Sorting only orders the candidates that passed every filter above, lane included: it never adds one back.
   const sortBy = modifiers.has("nitro")
     ? "throughput"
     : modifiers.has("floor")

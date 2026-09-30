@@ -43,6 +43,7 @@ import { creatorClaimRoutes } from "./api/creator-claims.ts";
 import { publicRoutes } from "./api/public.ts";
 import { embeddingsRoutes } from "./api/embeddings.ts";
 import { batchesRoutes } from "./api/batches.ts";
+import { rerankRoutes } from "./api/rerank.ts";
 import { adminRoutes } from "./admin/trpc.ts";
 import { paymasterRoutes } from "./api/paymaster.ts";
 import { registerJobs } from "./services/register.ts";
@@ -134,6 +135,7 @@ export async function createApp(opts: AppOptions = {}) {
   chatRoutes(app, ctx);
   embeddingsRoutes(app, ctx);
   batchesRoutes(app, ctx);
+  rerankRoutes(app, ctx);
   modelsRoutes(app, ctx);
   generationRoutes(app, ctx);
   keysRoutes(app, ctx);

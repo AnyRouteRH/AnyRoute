@@ -608,6 +608,27 @@ const responsesRefusal = JSON.stringify(
   null,
   2,
 );
+const rerankCurl = `curl ${BASE}/api/v1/rerank \\
+  -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
+  -d '{"model":"<rerank model>:floor","query":"How long do refunds take?","documents":["Shipping takes 3 to 5 days.","Refunds are issued within 14 days.",{"text":"Returns need a receipt."}],"top_n":2,"return_documents":true}'`;
+const rerankResponse = JSON.stringify(
+  {
+    id: "<receipt id>",
+    object: "rerank",
+    model: "<rerank model>",
+    provider: "<provider>",
+    results: [
+      { index: 1, relevance_score: 0.93, document: { text: "Refunds are issued within 14 days." } },
+      { index: 2, relevance_score: 0.41, document: { text: "Returns need a receipt." } },
+    ],
+    usage: { total_tokens: 48, search_units: 1, cost: 0.002, cost_details: { upstream_inference_cost: 0.002, royalty: 0 } },
+    meta: { billed_units: { search_units: 1 } },
+    cost: 0.002,
+    receipt: { id: "<receipt id>", sig: "…", key_id: "…", alg: "Ed25519", payload: { kind: "rerank", search_units: 1, documents: 3, "…": "" } },
+  },
+  null,
+  2,
+);
 const ragCurl = `curl ${BASE}/api/v1/rag \\
   -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
   -d '{"documents":[{"id":"handbook","text":"Refunds are issued within 14 days of the return arriving. …"},{"id":"faq","text":"…"}],"question":"How long do refunds take?","model":"<chat model>","provider":{"lane":"attested"}}'`;
@@ -671,6 +692,7 @@ const batchOutputLine = [
 const endpoints = [
   ["POST /api/v1/chat/completions", "Chat, tools and streaming (OpenAI/OpenRouter shape); X-Pay-With, X-Payment, X-Wallet-Auth headers"],
   ["POST /api/v1/completions · /embeddings", "Legacy completions; embeddings (prepaid keys)"],
+  ["POST /api/v1/rerank · /v1/rerank", "Rerank documents against a query (Cohere and Jina shape: query, documents, top_n, return_documents), billed per token or per search unit, with a signed receipt; 404 model_not_found until a provider lists a rerank model"],
   ["GET /api/v1/models · /models/:author/:slug/endpoints", "Catalog, prices, policies, quantization, attestation (best class, manifest reference, policy hash) and datacenter region; per-provider health and attested policy hash"],
   ["GET /api/v1/generation?id=… · /generations", "Full generation record with receipt and anchor proof; your recent generations"],
   ["POST · GET · PATCH · DELETE /api/v1/keys", "Create a self-custodial key (no auth), or budgeted sub-keys with rpm/tpm, model allowlists, guardrails and a tracing destination"],
@@ -752,6 +774,7 @@ export default function Docs() {
             <a href="#responses">Responses</a>
             <a href="#rag">Private RAG</a>
             <a href="#batches">Batch API</a>
+            <a href="#rerank">Rerank</a>
             <a href="#sdk">SDKs</a>
             <a href="#run-a-provider">Run a provider</a>
             <a href="#badge">Badge</a>
@@ -770,7 +793,8 @@ export default function Docs() {
           <h2 id="routing">Make the route explicit.</h2>
           <p>
             The provider object supports order, allow_fallbacks, only, ignore, data_collection, zdr, quantizations, sort, max_price, require_parameters and preferred latency or throughput. Model suffixes :nitro, :floor, :free and :private work
-            too. models[] lists fallback models. The private flag is an Anyroute extension: it selects only providers with a fresh TEE attestation. By default providers are weighted by 1/price² × 30-day uptime × canary quality, and a
+            too. :nitro puts the fastest providers first (by measured throughput) and :floor the cheapest, exactly as provider.sort throughput and price do; a suffix wins over provider.sort. They only order the providers that your other preferences and your lane already allow, so
+            provider.order still goes first and a lane never falls back outside itself. GET /api/v1/models lists them per model in routing_variants. models[] lists fallback models. The private flag is an Anyroute extension: it selects only providers with a fresh TEE attestation. By default providers are weighted by 1/price² × 30-day uptime × canary quality, and a
             provider with two failures in 30 seconds is skipped.
           </p>
           <Code label="Routing preferences">
@@ -1510,6 +1534,19 @@ export default function Docs() {
             <b>What is kept.</b> The request lines and the answers are never written to the database. Until the results expire they are kept sealed (AES-256-GCM, with a key derived from the router’s secret) in Redis, or in the router’s memory where there is no Redis, and then deleted.
             The seal protects them from someone who can read Redis without the router’s secret; the router itself can open them, which it does to return your results. The database keeps only each batch’s counts, costs and statuses and the generation id of each answered line, and every
             answered line has the generation record and signed receipt of a normal call.
+          </p>
+          <h2 id="rerank">Rerank documents against a query.</h2>
+          <p>
+            POST /api/v1/rerank (also /v1/rerank) takes the Cohere and Jina request: a model, a query, documents as strings or objects with a text, and optionally top_n and return_documents. It answers with results best first, each with the index of a document you sent and its
+            relevance_score (and the document’s text when return_documents is true), usage with total_tokens and search_units, the cost, and a signed receipt. The scores are the provider’s own: an answer that is not a valid ranking of the documents sent counts as a failed attempt, the
+            next provider is tried, and if none answers the call fails with 502 and nothing is charged. One request may carry 1,000 documents; a long document is truncated or split by the provider.
+          </p>
+          <Code label="Rerank three documents, cheapest provider first">{rerankCurl}</Code>
+          <Code label="Response (abridged)">{rerankResponse}</Code>
+          <p>
+            Only models whose architecture.output_modalities include rerank serve it; GET /api/v1/models?output_modalities=rerank lists them. Any other model, or a router where no provider lists a rerank model yet, answers 404 model_not_found. A rerank model is priced per token
+            (pricing.prompt) and per search unit (pricing.request: one query over up to 100 documents, each split into chunks of 500 tokens), from what the provider reports; when it reports nothing, from the router’s estimate, and usage.estimated says so. Keys, budgets, per-call payment,
+            blind tokens, lanes, the disclosure ceiling, provider preferences and the :nitro and :floor suffixes work as they do for embeddings. The Oblivious HTTP gateway does not carry rerank calls yet.
           </p>
           <h2 id="sdk">Verify before you send.</h2>
           <p>

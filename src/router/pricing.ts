@@ -10,6 +10,8 @@ export type Usage = {
   webSearch: number;
   images: number;
   estimated: boolean;
+  /** Rerank only: search units billed (one query over up to 100 document chunks). Each is charged the offer's request price; unset = one request. */
+  searchUnits?: number;
 };
 
 export type Mode = "prepaid" | "per_call" | "paywith" | "byok" | "cache" | "blind";
@@ -54,7 +56,7 @@ export function upstreamCost(c: Candidate, u: Usage): { cost: Pico; cacheDiscoun
     tokenCost(writes, writePrice) +
     tokenCost(u.completion - reasoning, c.priceCompletion) +
     tokenCost(reasoning, c.priceReasoning) +
-    c.priceRequest +
+    c.priceRequest * BigInt(u.searchUnits == null ? 1 : Math.max(0, Math.ceil(u.searchUnits))) +
     BigInt(u.webSearch) * c.priceWebSearch +
     BigInt(u.images) * c.priceImage;
   const cacheDiscount = readPrice < c.pricePrompt ? tokenCost(cached, c.pricePrompt - readPrice) : 0n;

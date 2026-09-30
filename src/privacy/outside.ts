@@ -36,7 +36,7 @@ const redisFamilies: RedisFamily[] = [
     purpose: `Requests per minute for a call that carries no API key. ${ADDRESS_NOTE}`,
     holds: "address",
     seconds: 60,
-    evidence: [ev("src/api/chat.ts", "await limitOrThrow(ctx, `ip:${from.id}`"), ev("src/api/embeddings.ts", "await ctx.limiter.take(`ip:${from.id}`")],
+    evidence: [ev("src/api/chat.ts", "await limitOrThrow(ctx, `ip:${from.id}`"), ev("src/api/embeddings.ts", "await ctx.limiter.take(`ip:${from.id}`"), ev("src/api/rerank.ts", "await ctx.limiter.take(`ip:${from.id}`")],
   }),
   limit({
     prefix: "blind-ip:",
@@ -44,7 +44,7 @@ const redisFamilies: RedisFamily[] = [
     purpose: `Requests per minute for a call paid with a blind token. ${ADDRESS_NOTE}`,
     holds: "address",
     seconds: 60,
-    evidence: [ev("src/api/chat.ts", "await limitOrThrow(ctx, `blind-ip:${from.id}`"), ev("src/api/embeddings.ts", "await ctx.limiter.take(`blind-ip:${from.id}`")],
+    evidence: [ev("src/api/chat.ts", "await limitOrThrow(ctx, `blind-ip:${from.id}`"), ev("src/api/embeddings.ts", "await ctx.limiter.take(`blind-ip:${from.id}`"), ev("src/api/rerank.ts", "await ctx.limiter.take(`blind-ip:${from.id}`")],
   }),
   limit({
     prefix: "newkey:",
@@ -116,7 +116,7 @@ const redisFamilies: RedisFamily[] = [
     purpose: "Requests per minute for one API key. Keyed by the SHA-256 of the key; no address is read for a call that carries a key.",
     holds: "key-hash",
     seconds: 60,
-    evidence: [ev("src/api/chat.ts", "await limitOrThrow(ctx, `k:${key.keyHash}`"), ev("src/api/embeddings.ts", "await ctx.limiter.take(`k:${key.keyHash}`")],
+    evidence: [ev("src/api/chat.ts", "await limitOrThrow(ctx, `k:${key.keyHash}`"), ev("src/api/embeddings.ts", "await ctx.limiter.take(`k:${key.keyHash}`"), ev("src/api/rerank.ts", "await ctx.limiter.take(`k:${key.keyHash}`")],
   }),
   limit({
     prefix: "kc:",
@@ -257,6 +257,13 @@ const addressReaders: Touchpoint[] = [
     evidence: [ev("src/api/embeddings.ts", "const from = addressBucket(c, ctx.cfg);")],
   },
   {
+    file: "src/api/rerank.ts",
+    reads: "The caller's address, only for a call without an API key.",
+    then: "Counted against ip:<address> or blind-ip:<address>.",
+    kept: "Only as the Redis rate-limit key.",
+    evidence: [ev("src/api/rerank.ts", "const from = addressBucket(c, ctx.cfg);")],
+  },
+  {
     file: "src/api/keys.ts",
     reads: "The caller's address when a key is created and when a wallet sign-in challenge is requested.",
     then: "Counted against newkey:<address> and wallet-login:<address>.",
@@ -359,6 +366,14 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     then: "Sent to the provider chosen and the vectors returned.",
     kept: "Not stored; a generation row and receipt with hashes and counts are written.",
     evidence: [ev("src/api/embeddings.ts", "const body = await readJson(c);")],
+  },
+  {
+    file: "src/api/rerank.ts",
+    carries: "prompt-or-answer",
+    reads: "The JSON body of a rerank call: the query and the documents.",
+    then: "Sent to the provider chosen; its scores are checked and returned, with the documents' own text when asked.",
+    kept: "Not stored; a generation row and receipt with hashes and counts are written.",
+    evidence: [ev("src/api/rerank.ts", "const body = await readJson(c);")],
   },
   {
     file: "src/api/anthropic.ts",

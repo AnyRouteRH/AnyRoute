@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
-import type { Candidate, ManifestRef, ModelRow } from "../catalog/catalog.ts";
+import { SORT_SUFFIXES, outputModalities, type Candidate, type ManifestRef, type ModelRow, type Modifier } from "../catalog/catalog.ts";
 import { priceString } from "../lib/money.ts";
 import { blendedPrice, attestationFresh } from "../router/select.ts";
 import { fail } from "../lib/errors.ts";
@@ -119,6 +119,20 @@ export function datacenterRegion(offers: Candidate[]): string | null {
   return regions.size === 1 ? [...regions][0] : null;
 }
 
+/** The routing suffixes a model accepts with effect, given its servable endpoints (see ROUTING_SUFFIXES). */
+export function routingVariants(ctx: Ctx, offers: Candidate[]): Modifier[] {
+  if (!offers.length) return [];
+  const free = offers.some((o) => o.pricePrompt === 0n && o.priceCompletion === 0n && o.priceRequest === 0n);
+  const attested = offers.some((o) => attestationFresh(o, ctx.cfg.attestation.intervalMs * 3, ctx.cfg.production));
+  return [...SORT_SUFFIXES, ...(free ? (["free"] as const) : []), ...(attested ? (["private"] as const) : [])];
+}
+
+/** ?output_modalities=rerank (comma-separated; "all" or unset keeps every model): models that output any of them. */
+export function parseOutputModalities(raw: unknown): Set<string> | null {
+  const parts = String(raw ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return !parts.length || parts.includes("all") ? null : new Set(parts);
+}
+
 export function modelJson(ctx: Ctx, m: ModelRow) {
   const offers = servable(ctx, m);
   const paid = offers.filter((o) => o.pricePrompt > 0n || o.priceCompletion > 0n);
@@ -159,6 +173,9 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     disclosure: { best: classes.attested ? "attested" : classes.policy ? "policy" : classes["vendor-forwarded"] ? "vendor-forwarded" : null, endpoints: classes },
     // The lanes this model can be served on right now (public, attested, unlinkable); see provider.lane.
     lanes: modelLanes(ctx, offers),
+    // Model suffixes that change how this model is routed right now: `:nitro` (fastest first) and `:floor` (cheapest
+    // first) always; `:free` while a free endpoint serves it; `:private` while an endpoint has a fresh TEE attestation.
+    routing_variants: routingVariants(ctx, offers),
     attestation: modelAttestation(ctx, offers),
     datacenter_region: datacenterRegion(offers),
     creator: m.creator ?? null,
@@ -187,8 +204,11 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
     // ?variant= keeps models of those variants (mainstream, native_low_refusal, abliterated). A restricted variant is
     // listed only while an attested provider that reports the classifier serves it.
     const variants = parseVariants(c.req.query("variant"));
+    // ?output_modalities=rerank (or embeddings, text, ...) keeps models that output any of those.
+    const outputs = parseOutputModalities(c.req.query("output_modalities"));
     const data = [...ctx.catalog.models.values()]
       .filter((m) => !m.hidden && servable(ctx, m).length > 0)
+      .filter((m) => !outputs || outputModalities(m).some((o) => outputs.has(o)))
       .map((m) => modelJson(ctx, m))
       .filter((m) => need.every((p) => m.supported_parameters.includes(p)))
       .filter((m) => !lane || m.lanes.includes(lane))
