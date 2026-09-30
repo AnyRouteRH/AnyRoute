@@ -16,9 +16,9 @@ export const MODELS_PATH = "/api/v1/models?lane=" + LANE;
 export const STATUS_PATH = "/api/v1/status";
 export const SWITCH_KEY = "anyroute-harness-private";
 
-/** Where the private-token page and the private proxy live. */
+/** Where the private-token page and the guide to using the unlinkable lane over Tor (the private proxy) live. */
 export const TOKENS_HREF = "/tokens/";
-export const PROXY_HREF = "/docs/#private-proxy";
+export const PROXY_HREF = "/docs/#unlinkable-tor";
 
 /** The header that puts a request on the attested lane; nothing while private mode is off. */
 export const laneHeaders = (on) => (on ? { [LANE_HEADER]: LANE } : {});
@@ -78,11 +78,11 @@ export const privacyPath = (id) => `/api/v1/receipts/${encodeURIComponent(id)}/p
 
 /** Rows of the label, in the order the contract lists them. */
 export const LABEL_FIELDS = [
-  ["prompt_readers", "Who can read the prompt"],
-  ["network", "Network address"],
-  ["payment", "Payment"],
-  ["stored", "Stored"],
-  ["hardware", "Hardware"],
+  ["prompt_readers", "Who could read the prompt"],
+  ["network", "Who saw your address"],
+  ["payment", "How it was paid"],
+  ["stored", "What was kept"],
+  ["hardware", "What hardware answered"],
 ];
 
 const clean = (v, max) => String(v).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);

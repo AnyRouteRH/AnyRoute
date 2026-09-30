@@ -134,6 +134,16 @@ test('a privacy label is read bare or inside data, in the contract order',()=>{
  }
 });
 
+test('the label as the router builds it: facets are objects with text, the document sits in data',()=>{
+ const real={data:{receipt_id:'gen_2',lane:'unlinkable',label:{prompt_readers:{text:'AnyRoute read it in memory',access:'attested_enclave'},network:{text:'Hidden by Tor'},payment:{text:'A blind token',kind:'blind_token'},stored:{text:'Hashes and counts'},hardware:{text:'Attested TDX'}},summary:['a','b','c','d','e'],short:'x',verify_url:'/verify/?r=gen_2'}};
+ const l=normalizeLabel(real);
+ assert.equal(l.lane,'unlinkable');
+ assert.deepEqual(l.rows.map(r=>r.text),['AnyRoute read it in memory','Hidden by Tor','A blind token','Hashes and counts','Attested TDX']);
+ assert.equal(l.rows[1].title,'Who saw your address');
+ assert.equal(l.verifyUrl,'/verify/?r=gen_2');
+ assert.equal(normalizeLabel({...real,data:{...real.data,verify_url:null}}).verifyUrl,'');
+});
+
 test('a label the router did not fully send shows only what it sent, and junk is not a label',()=>{
  const l=normalizeLabel({lane:'public',label:{network:'x',hardware:''}});
  assert.deepEqual(l.rows.map(r=>r.key),['network']);
