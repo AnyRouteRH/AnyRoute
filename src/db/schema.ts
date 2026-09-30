@@ -174,6 +174,7 @@ export const holds = pgTable(
 );
 
 export const providers = pgTable("providers", {
+  networkHost: boolean("network_host").notNull().default(false), networkModels: text("network_models").array().notNull().default(sql`'{}'::text[]`), networkReasons: jsonb("network_reasons").$type<string[]>().notNull().default([]),
   id: text("id").primaryKey(), // slug, e.g. "deepinfra"
   name: text("name").notNull(),
   baseUrl: text("base_url").notNull(),
@@ -202,7 +203,7 @@ export const providers = pgTable("providers", {
   contact: text("contact"),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-});
+}, (t) => [uniqueIndex("providers_network_wallet_endpoint_uq").on(t.operator, t.baseUrl).where(sql`${t.networkHost} = true`)]);
 
 export const models = pgTable("models", {
   id: text("id").primaryKey(), // author/slug

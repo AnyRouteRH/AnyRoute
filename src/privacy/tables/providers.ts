@@ -15,6 +15,9 @@ export const providerTables: Record<string, TableDoc> = {
     request: "no",
     retention: PROVIDER_ROWS,
     columns: {
+      network_host: { purpose: "Whether this provider was created by wallet-authenticated self-serve network signup; false for existing providers.", review: rv(["name:network"], "config", "A boolean indicating the admission path, despite its network-related name. It cannot contain an address or any text.") },
+      network_models: "One to eight distinct requested model IDs supplied by the wallet operator, retained for network admission and re-application; separate from priced catalogue entries.",
+      network_reasons: { purpose: "Current admission refusal reasons, returned publicly by the network status API.", review: JSON_FIELDS("Admission writes policy and screening explanations and attestor failure messages about operator-supplied endpoints and model IDs. No inference body, key or contact is included; endpoint failure messages may name the host server.") },
       id: "Provider slug, such as deepinfra.",
       name: "Display name.",
       base_url: {
@@ -22,7 +25,7 @@ export const providerTables: Record<string, TableDoc> = {
         review: rv(["name:network"], "public-reference", "The address of a provider's server, set by the operator. It is not a caller's address."),
       },
       api_key_enc: "The router's own key at that provider, AES-256-GCM encrypted with APP_SECRET.",
-      kind: "openai for a standard API, tee for an attested endpoint.",
+      kind: "openai for a standard API, tee for an attested endpoint, sidecar for a network host.",
       headers: {
         purpose: "Extra HTTP headers the router sends to that provider on every call, usually credentials. Stored only as one AES-GCM ciphertext under the router's APP_SECRET.",
         review: rv(["name:network", "type:json"], "config", "Fixed headers the provider's operator supplied in its application, stored encrypted (encrypted_v1). Nothing from a caller's request is ever written to it."),
@@ -49,8 +52,8 @@ export const providerTables: Record<string, TableDoc> = {
         purpose: "The wallet address payouts go to, when the provider is paid in USDG.",
         review: rv(["name:network"], "wallet-address", "A blockchain wallet address for payouts, not a network address of a caller."),
       },
-      status: "applied, shadow, live, suspended or delisted.",
-      shadow_until: "When a shadow provider is due to be considered for live.",
+      status: "applied, shadow, live, suspended or delisted; network signup uses pending, probation or rejected.",
+      shadow_until: "When a shadow provider is due to be considered for live, or the end of a network host probation period.",
       timeout_ms: "Request timeout for this provider.",
       static_models: {
         purpose: "A model list with prices for providers whose own listing lacks pricing.",

@@ -102,7 +102,7 @@ async function verifyNvidia(ctx: Ctx, payload: string) {
   return { ok: false, reason: "NRAS overall attestation result was not true" };
 }
 
-export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect) {
+export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect, networkAdmission = false) {
   if (!["shadow", "live"].includes(p.status)) throw new Error("Provider requires operator approval before attestation.");
   const nonce = randomBytes(32).toString("hex");
   const url = new URL(p.attestationUrl!);
@@ -233,7 +233,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), updatedAt: new Date() }).where(eq(providers.id, p.id));
   await ctx.db.update(providers).set({ classifierEnabled }).where(eq(providers.id, p.id));
   await saveAttestedPolicy(ctx.db, p.id, policyHash, reportHash);
-  return { provider: p.id, ok: true, hash: reportHash, host_policy_bindings: sidecarHostPolicyBindings(report.sidecar_bindings, { ...evidence, teeKind: p.teeKind ?? "tdx" }), ...(peer ? { tls_pin: { spki_sha256: peer.spkiSha256, attestation_ref: peer.attestationRef } } : {}) };
+  return { provider: p.id, ok: true, hash: reportHash, ...(networkAdmission && ctx.cfg.networkHosts.enabled ? { networkEvidence: { tee_kind: report.intel_quote ? "tdx" : p.teeKind ?? "unknown", hardware_verified: verifiedBy.length > 0, bindings_committed: bindingsCommitted, simulated, dev: simulated, gpu_cc_verified: !simulated && !!report.nvidia_payload, bindings: report.sidecar_bindings ?? {} } } : {}), host_policy_bindings: sidecarHostPolicyBindings(report.sidecar_bindings, { ...evidence, teeKind: p.teeKind ?? "tdx" }), ...(peer ? { tls_pin: { spki_sha256: peer.spkiSha256, attestation_ref: peer.attestationRef } } : {}) };
 }
 
 /** Verify an aci/1 gateway report (see the header comment and providers/aci.ts) and record what it established. */

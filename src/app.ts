@@ -1,3 +1,4 @@
+import { networkHostRoutes } from "./api/network-hosts.ts";
 import { networkSanctionsRoutes } from "./api/network-sanctions.ts";
 import { e2eeRoutes } from "./api/e2ee.ts";
 import { siteCsp } from "./lib/csp.ts";
@@ -181,6 +182,7 @@ export async function createApp(opts: AppOptions = {}) {
   networkRoutes(app, ctx);
   publicRoutes(app, ctx);
   networkSanctionsRoutes(app, ctx);
+  networkHostRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);
   ollamaRoutes(app, ctx);
