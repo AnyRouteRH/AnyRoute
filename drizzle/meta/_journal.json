@@ -134,6 +134,13 @@
       "when": 1790727830991,
       "tag": "0018_v3_measurement_compose",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790729758494,
+      "tag": "0019_v3_tlog_rekor",
+      "breakpoints": true
     }
   ]
 }

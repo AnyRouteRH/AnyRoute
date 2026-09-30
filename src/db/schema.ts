@@ -966,3 +966,32 @@ export const tlogCosignatures = pgTable(
   },
   (t) => [primaryKey({ columns: [t.size, t.witness, t.keyId] })],
 );
+
+// Public-log anchoring of checkpoints (TLOG_REKOR_ENABLED; src/tlog/rekor.ts). One row per Rekor entry that commits to a
+// checkpoint: a hashedrekord over the signed checkpoint note, signed with TLOG_REKOR_SIGNING_KEY. A row is `pending` until
+// the entry's inclusion proof is in hand and verifies, then `verified`; only verified rows are served.
+export const tlogRekorAnchors = pgTable(
+  "tlog_rekor_anchors",
+  {
+    id: serial("id").primaryKey(),
+    size: bigint("size", { mode: "number" }).notNull(), // the checkpoint's tree size
+    rootHash: text("root_hash").notNull(), // hex
+    note: text("note").notNull(), // the artifact: checkpoint text, blank line, the log's own signature line
+    artifactSha256: text("artifact_sha256").notNull(), // hex; the hash the Rekor entry holds
+    keyId: text("key_id").notNull(), // sha256 of the anchoring key's SubjectPublicKeyInfo, hex
+    rekorUrl: text("rekor_url").notNull(),
+    uuid: text("uuid").notNull(),
+    status: text("status").notNull(), // pending | verified
+    logIndex: bigint("log_index", { mode: "number" }),
+    integratedTime: bigint("integrated_time", { mode: "number" }), // seconds
+    logId: text("log_id"),
+    entryBase64: text("entry_base64"), // the entry body as Rekor returned it (base64)
+    inclusionProof: jsonb("inclusion_proof").$type<{ logIndex: number; treeSize: number; rootHash: string; hashes: string[]; checkpoint: string | null }>(),
+    signedEntryTimestamp: text("signed_entry_timestamp"),
+    checkpointVerified: boolean("checkpoint_verified").notNull().default(false), // Rekor's checkpoint signature, against REKOR_PUBLIC_KEY
+    setVerified: boolean("set_verified").notNull().default(false), // the signed entry timestamp, against REKOR_PUBLIC_KEY
+    createdAt: ts("created_at").notNull().defaultNow(),
+    verifiedAt: ts("verified_at"),
+  },
+  (t) => [uniqueIndex("tlog_rekor_anchors_uuid_uq").on(t.rekorUrl, t.uuid), index("tlog_rekor_anchors_status_size_idx").on(t.status, t.size)],
+);
