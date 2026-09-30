@@ -17,8 +17,8 @@ test("hosting stays closed unless the router explicitly reports hosts_open true"
   assert.equal(await hostsOpen(async () => ({ ok: false })), false);
 });
 test("page shows installer, join, safety warning, limits and the build-time digest", () => {
-  const page = fs.readFileSync("app/network/page.jsx", "utf8"), join = fs.readFileSync("app/network/Join.jsx", "utf8");
-  assert.match(page, /<Join sha=\{joinDigest\(\)\}/);
+  const page = fs.readFileSync("app/network/page.jsx", "utf8"), content = fs.readFileSync("app/network/NetworkContent.jsx", "utf8"), join = fs.readFileSync("app/network/Join.jsx", "utf8");
+  assert.match(page, /joinSha=\{joinDigest\(\)\}/); assert.match(content, /<Join sha=\{joinSha\}/);
   for (const fragment of ["When hosting opens", "Hosting isn’t open yet.", "sh deploy/seal/install.sh", "node join.mjs --key-file", "dedicated operator wallet", "router still reads inference requests in memory", "data-network-join-sha256", "--dry-run", "--status PROVIDER_ID"]) assert.ok(join.includes(fragment), fragment);
   assert.doesNotMatch(join, /\b(?:demo|mock|simulated|placeholder)\b|local-build/i);
 });

@@ -30,7 +30,7 @@ test("failed requests stay failures; invalid fields never reach the network", as
 });
 test("verbatim privacy promise, delete code and hosting limits are wired into the page", () => {
   assert.equal(PRIVACY_PROMISE, "We keep only what you type here, to count interest and contact you if you asked us to. We don't store your IP address. We delete the list when the program launches or is cancelled.");
-  const form = fs.readFileSync("app/network/Waitlist.jsx", "utf8"), page = fs.readFileSync("app/network/page.jsx", "utf8");
+  const form = fs.readFileSync("app/network/Waitlist.jsx", "utf8"), page = fs.readFileSync("app/network/NetworkContent.jsx", "utf8");
   assert.match(form, /\{PRIVACY_PROMISE\}/); assert.match(form, /\{entry.delete_code\}/); assert.match(form, /name="website"/);
   assert.match(page, /router still reads requests in memory/); assert.match(page, /Hosting isn’t open yet/);
   assert.doesNotMatch(page, /curl\s*\|\s*sh|\b(?:earn|yield|APY|returns|passive income|decentralized|trustless|demo|mock|simulated|placeholder)\b/i);
@@ -41,7 +41,7 @@ test("audit verifies the actual served checker hash and rejects modified bytes",
   try {
     fs.mkdirSync(path.join(root, "network")); const bytes = fs.readFileSync("public/network/check.sh");
     fs.writeFileSync(path.join(root, "network/check.sh"), bytes);
-    fs.writeFileSync(path.join(root, "network/index.html"), `<code data-network-check-sha256="${checkerDigest()}"></code>Join the waitlist`);
+    fs.writeFileSync(path.join(root, "network/index.html"), `<code data-network-check-sha256="${checkerDigest()}"></code>Join the waitlist. Hosting isn’t open yet.`);
     auditNetwork(root); fs.appendFileSync(path.join(root, "network/check.sh"), "# changed\n"); assert.throws(() => auditNetwork(root), /digest differs/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

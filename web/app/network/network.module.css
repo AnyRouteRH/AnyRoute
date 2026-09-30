@@ -19,3 +19,5 @@
 .delete summary, .faq summary { cursor: pointer; padding: 20px 0; font-weight: 600; }
 .delete form { margin-top: 20px; }
 .faq { border-top: 1px solid var(--line-strong); }
+.copy { display: inline-grid; max-width: 100%; vertical-align: top; }
+.copyState { grid-area: 1 / 1; min-width: 0; }
