@@ -10,6 +10,7 @@ import { servedDisclosure, servedPolicyHash } from "./disclosure.ts";
 import type { DisclosureClass } from "../router/disclosure.ts";
 import { laneJson, offerEligible } from "./lane.ts";
 import { latestAttempts, summarizeAttestation } from "./provider-attestation.ts";
+import { unlinkableServed, unlinkableTransports } from "../onion/lane.ts";
 
 export function offerPricing(o: Candidate) {
   return {
@@ -35,23 +36,24 @@ export const servable = (ctx: Ctx, m: ModelRow) => {
 /**
  * The lanes an endpoint can serve right now: "public" always; "attested" while it is served under the attested class
  * (attested retention and a fresh, verified attestation, the same test routing applies); "unlinkable" as well when this
- * router runs the Oblivious HTTP gateway and blind tokens.
+ * router serves that lane (the Oblivious HTTP gateway, or UNLINKABLE_VIA_ONION, with blind tokens).
  */
 export function offerLanes(ctx: Ctx, o: Candidate): Lane[] {
   if (servedDisclosure(ctx, o).class !== "attested") return ["public"];
-  return ctx.cfg.ohttp.enabled ? ["public", "attested", "unlinkable"] : ["public", "attested"];
+  return unlinkableServed(ctx.cfg) ? ["public", "attested", "unlinkable"] : ["public", "attested"];
 }
 
 /** The lanes a model can be served on right now: the union over its servable endpoints (none when it has none). */
 export function modelLanes(ctx: Ctx, offers: Candidate[]): Lane[] {
   if (!offers.length) return [];
   const attested = offers.some((o) => servedDisclosure(ctx, o).class === "attested");
-  return !attested ? ["public"] : ctx.cfg.ohttp.enabled ? ["public", "attested", "unlinkable"] : ["public", "attested"];
+  return !attested ? ["public"] : unlinkableServed(ctx.cfg) ? ["public", "attested", "unlinkable"] : ["public", "attested"];
 }
 
 /**
  * Lane availability across the catalog, for GET /api/v1/status: per lane, how many listed models and live endpoints
- * can serve it right now; plus the attested bonus each lane's selection weight uses, and whether unlinkable is served.
+ * can serve it right now; plus the attested bonus each lane's selection weight uses, whether unlinkable is served, and
+ * over which transports (`via`: "ohttp", "onion"; empty when it is not served).
  */
 export function laneSummary(ctx: Ctx) {
   const count = { public: { models: 0, endpoints: 0 }, attested: { models: 0, endpoints: 0 }, unlinkable: { models: 0, endpoints: 0 } };
@@ -65,7 +67,7 @@ export function laneSummary(ctx: Ctx) {
   return {
     public: { available: true, ...count.public, attested_bonus: bonus.public },
     attested: { available: true, ...count.attested, attested_bonus: bonus.attested },
-    unlinkable: { available: ctx.cfg.ohttp.enabled, ...count.unlinkable, attested_bonus: bonus.unlinkable },
+    unlinkable: { available: unlinkableServed(ctx.cfg), ...count.unlinkable, attested_bonus: bonus.unlinkable, via: unlinkableTransports(ctx.cfg) },
     weight: "uptime * quality * attested_bonus / price^2",
   };
 }
@@ -181,7 +183,7 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
     await ctx.catalog.ensureFresh();
     const need = (c.req.query("supported_parameters") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     // ?lane=attested (or unlinkable, where this router serves it) keeps only models with at least one endpoint served under attested retention; public (or unset) keeps all.
-    const lane = parseLane(c.req.query("lane"), "`lane`", { unlinkable: ctx.cfg.ohttp.enabled });
+    const lane = parseLane(c.req.query("lane"), "`lane`", { unlinkable: unlinkableServed(ctx.cfg) });
     // ?variant= keeps models of those variants (mainstream, native_low_refusal, abliterated). A restricted variant is
     // listed only while an attested provider that reports the classifier serves it.
     const variants = parseVariants(c.req.query("variant"));

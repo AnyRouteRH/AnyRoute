@@ -1,5 +1,6 @@
 import { siteCsp } from "./lib/csp.ts";
 import { EXPOSED_RESPONSE_HEADERS, viaOnion } from "./api/common.ts";
+import { onionIngress } from "./onion/ingress.ts";
 import { kv } from "./db/schema.ts";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
@@ -123,6 +124,7 @@ export async function createApp(opts: AppOptions = {}) {
     if (cfg.production) c.header("strict-transport-security", "max-age=31536000; includeSubDomains");
   });
 
+  app.use("*", onionIngress(cfg)); // onion requests: drop every client address header before any route reads one
   chatRoutes(app, ctx);
   embeddingsRoutes(app, ctx);
   modelsRoutes(app, ctx);

@@ -337,6 +337,10 @@ const schema = z.object({
   ONION_ADDRESS: opt,
   ONION_PROXY_SECRET: opt,
   ONION_POOL_MULTIPLIER: int(10),
+  // Serve lane "unlinkable" over Tor as well: to requests the onion proxy forwarded that are paid with a blind token and
+  // nothing that names the payer, from attested providers only. Off by default; needs ONION_ADDRESS, ONION_PROXY_SECRET
+  // and ANYROUTE_FEATURE_BLIND. It is an alternative to OHTTP_ENABLED, not a change to it (src/onion/lane.ts).
+  UNLINKABLE_VIA_ONION: bool.default(false),
 
   // ---- Transparency log of keys and configurations (C2SP tlog-tiles with signed-note checkpoints and tlog-cosignature
   // witnesses; src/tlog). Off by default: no route is registered and nothing is appended.
@@ -640,6 +644,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     blind: blindSettings(e),
     ohttp: ohttpSettings(e, production),
     onion: onionSettings(e),
+    unlinkable: unlinkableSettings(e),
     hostAnchor: hostAnchorSettings(e),
     tlog: tlogSettings(e, production),
   };
@@ -651,6 +656,20 @@ function onionSettings(e: Env) {
   if (address && !secrets.length) throw new Error("ONION_ADDRESS requires ONION_PROXY_SECRET, the secret the onion proxy sends, so requests that arrive over Tor are not limited as one client.");
   if (!Number.isInteger(e.ONION_POOL_MULTIPLIER) || e.ONION_POOL_MULTIPLIER < 1 || e.ONION_POOL_MULTIPLIER > 1000) throw new Error("ONION_POOL_MULTIPLIER must be an integer from 1 to 1000.");
   return { address, secrets, poolMultiplier: e.ONION_POOL_MULTIPLIER };
+}
+
+/**
+ * UNLINKABLE_VIA_ONION: the second way this router serves lane "unlinkable". The network-privacy part comes from Tor
+ * instead of an independent Oblivious HTTP relay, so the switch needs the onion service this router trusts to mark its
+ * requests (ONION_ADDRESS, and the ONION_PROXY_SECRET that address already requires) and blind tokens, the lane's only
+ * payment. It changes nothing about OHTTP_ENABLED or its relay-operator guard; either one makes the lane available.
+ */
+function unlinkableSettings(e: Env) {
+  if (!e.UNLINKABLE_VIA_ONION) return { viaOnion: false as boolean };
+  if (!e.ONION_ADDRESS || !parseOnionSecrets(e.ONION_PROXY_SECRET).length)
+    throw new Error("UNLINKABLE_VIA_ONION requires ONION_ADDRESS and ONION_PROXY_SECRET: lane unlinkable is served over Tor only to requests this router's own onion service (deploy/onion) forwarded and marked with the secret.");
+  if (!e.ANYROUTE_FEATURE_BLIND) throw new Error("UNLINKABLE_VIA_ONION requires ANYROUTE_FEATURE_BLIND=true: the unlinkable lane is paid with blind tokens.");
+  return { viaOnion: true as boolean };
 }
 
 // ---- Per-host anchoring of enclave receipts (services/host-anchor.ts) ---------------------------------------

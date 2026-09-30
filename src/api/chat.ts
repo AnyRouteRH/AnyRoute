@@ -267,7 +267,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind): Promise<Response> {
   // stricter of the two winning, after the key's default and the saved route filled in what the request left unset.
   // A request naming no lane is public, except one relayed through the Oblivious HTTP gateway and paid with a blind
   // token, which defaults to unlinkable. Defaults (any, public) add nothing to `prefs`, so such requests route as before.
-  // Lane "unlinkable" (OHTTP_ENABLED): only through an independent relay, only with a blind token and no key or wallet.
+  // Lane "unlinkable" (OHTTP_ENABLED or UNLINKABLE_VIA_ONION): only through an independent relay or the onion service, only with a blind token and no key or wallet.
   // Checked before anything is priced or spent (ohttp/lane.ts).
   const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
   const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !!wallet || (!key && !pass && !!c.req.header("x-payment")), hasToken: !!pass });
