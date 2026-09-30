@@ -276,6 +276,35 @@ describe("the transparency-log entry of a measurement", () => {
     const d = await view();
     expect(d.checks.transparency_log_entry).toBe(false);
   });
+  test("after a compose change each bundle belongs to the row for its own compose hash, and only the current one is reported", async () => {
+    const first = await record();
+    const a = signedBundle(signer, { createdAt: "2026-09-29T10:00:00.000Z" });
+    const ua = await publish(a);
+    await submitRpc(a, ua);
+    expect((await view()).checks.transparency_log_entry).toBe(true);
+
+    // a redeploy with another compose file under the same image
+    const composeB = asBytes32("sha256:" + "44".repeat(32));
+    const second = await record({ digests: { imageDigest: asBytes32(DIGESTS.image), composeHash: composeB, modelDigest: asBytes32(DIGESTS.model) } });
+    expect(second).toMatchObject({ status: "created", superseded: [first.id] });
+    let d = await view();
+    expect(d.measurement).toMatchObject({ compose_hash: composeB, transparency_log: { found: false, uuid: null, bundle: null } });
+    expect(d.checks).toMatchObject({ transparency_log_entry: false, transparency_log_checkpoint_signature: false });
+    expect(d.measurement_history).toMatchObject([{ compose_hash: asBytes32(DIGESTS.compose), transparency_log: { uuid: ua, subject: "measurement_bundle", bundle_digest: "0x" + a.digest } }]);
+    // the earlier bundle, checked again, still applies only to the earlier compose hash
+    expect(await applyVerifiedBundles(h.ctx)).toEqual({ applied: 0, mismatched: 0 });
+
+    const b = signedBundle(signer, { createdAt: "2026-09-29T12:00:00.000Z", composeHash: "sha256:" + "44".repeat(32) });
+    const ub = await publish(b);
+    await submitRpc(b, ub);
+    const byId = new Map((await rows()).map((r) => [r.id, r]));
+    expect(byId.get(second.id)).toMatchObject({ status: "ready", rekorUuid: ub, supersededAt: null });
+    expect(byId.get(first.id)).toMatchObject({ status: "ready", rekorUuid: ua, supersededBy: second.id });
+    d = await view();
+    expect(d.measurement.transparency_log).toMatchObject({ found: true, uuid: ub, subject: "measurement_bundle", bundle: { digest: "0x" + b.digest } });
+    expect(d.checks).toMatchObject({ transparency_log_entry: true, transparency_log_checkpoint_signature: true });
+    expect(d.measurement_history).toMatchObject([{ compose_hash: asBytes32(DIGESTS.compose), transparency_log: { uuid: ua, bundle_digest: "0x" + a.digest } }]);
+  });
   test("a bundle for another provider's compose hash never touches this provider's measurement", async () => {
     await record();
     await h.ctx.db.update(providers).set({ status: "live" }).where(eq(providers.id, "pending"));

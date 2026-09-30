@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { encodeFunctionData, keccak256, toBytes, type Hex } from "viem";
 import { MeasurementRegistryAbi } from "../chain/abis.ts";
 import type { Ctx } from "../context.ts";
@@ -16,6 +16,12 @@ import { boundedJson } from "../providers/network.ts";
 //      who signed the entry.
 //   3. The keeper builds MeasurementRegistry.register() calldata for rows that are both attested and logged. It
 //      never submits: an operator (or the attestor wallet of the registry) sends it.
+//
+// A measurement is identified by (provider, image digest, compose hash). A provider has at most one current row, the
+// one its latest verified quote committed to; when a verified quote commits to other digests (a redeploy with a new
+// compose file, say), that becomes a new row and the previous one is superseded, never rewritten or deleted, so its
+// history and its log entry stay as they were. Superseded rows are history: they are not looked up, not given
+// calldata, and never presented as what a provider runs now.
 //
 // Status: observed -> ready -> registered (only once the registry itself reports it attested) -> revoked.
 
@@ -61,40 +67,75 @@ export type RecordInput = {
   reportHash: string;
 };
 
-/** Record (or refresh) a measurement seen in a verified attestation. Digests a provider already has a row for
- *  are never overwritten: a different model or compose hash under the same image is reported as a conflict. */
-export async function recordMeasurement(ctx: Ctx, input: RecordInput): Promise<{ status: "created" | "seen" | "conflict"; id: number }> {
+export type RecordResult = {
+  /** created: a new row; seen: an existing row, now current; conflict: nothing recorded (see below). */
+  status: "created" | "seen" | "conflict";
+  id: number;
+  /** Rows of this provider that stopped being current because of this quote. */
+  superseded: number[];
+};
+
+/**
+ * Record (or refresh) a measurement seen in a verified attestation, and make it the provider's current one.
+ *
+ * The same image digest and compose hash refresh the existing row (and make it current again if it had been
+ * superseded, as after a rollback to an earlier compose file). Any other image digest or compose hash is a new row,
+ * and the provider's previous current row is marked superseded by it. A change of the digests a provider runs is
+ * logged as a warning; the attestation history records it as a measurement change as well.
+ *
+ * A different model digest under an image digest and compose hash that already have a row is a conflict: that row is
+ * not rewritten and nothing is recorded, and since no recorded measurement describes the quote, the provider is left
+ * with no current measurement until a verified quote matches one again.
+ */
+export async function recordMeasurement(ctx: Ctx, input: RecordInput): Promise<RecordResult> {
   const quote = input.quoteHex.replace(/^0x/, "").toLowerCase();
-  const [row] = await ctx.db.select().from(measurements).where(and(eq(measurements.providerId, input.providerId), eq(measurements.imageDigest, input.digests.imageDigest)));
+  const d = input.digests;
   const now = new Date();
-  if (row) {
-    if (row.composeHash !== input.digests.composeHash || row.modelDigest !== input.digests.modelDigest) {
-      log.warn("provider reports different digests under an image it already has a measurement for", { provider: input.providerId, image: input.digests.imageDigest });
-      return { status: "conflict", id: row.id };
+  const result = await ctx.db.transaction(async (tx) => {
+    // The provider's rows, locked, so two attestor runs cannot both decide which one is current.
+    const rows = await tx.select().from(measurements).where(eq(measurements.providerId, input.providerId)).orderBy(asc(measurements.id)).for("update");
+    const current = rows.filter((r) => !r.supersededAt).map((r) => r.id);
+    const supersede = async (ids: number[], by: number | null) => {
+      if (ids.length) await tx.update(measurements).set({ supersededAt: now, supersededBy: by, updatedAt: now }).where(and(inArray(measurements.id, ids), isNull(measurements.supersededAt)));
+      return ids;
+    };
+    const same = rows.find((r) => r.imageDigest === d.imageDigest && r.composeHash === d.composeHash);
+    if (same && same.modelDigest !== d.modelDigest) return { status: "conflict" as const, id: same.id, superseded: await supersede(current, null) };
+    let id: number;
+    let status: "created" | "seen";
+    if (same) {
+      await tx.update(measurements).set({ lastSeenAt: now, supersededAt: null, supersededBy: null, updatedAt: now }).where(eq(measurements.id, same.id));
+      [id, status] = [same.id, "seen"];
+    } else {
+      const [created] = await tx
+        .insert(measurements)
+        .values({
+          providerId: input.providerId,
+          imageDigest: d.imageDigest,
+          composeHash: d.composeHash,
+          modelDigest: d.modelDigest,
+          verifier: input.verifiers.join(","),
+          teeKind: input.teeKind,
+          quote,
+          quoteProofHash: keccak256(`0x${quote}`),
+          reportHash: input.reportHash,
+          attestedAt: now,
+          lastSeenAt: now,
+        })
+        .onConflictDoNothing()
+        .returning({ id: measurements.id });
+      if (created) [id, status] = [created.id, "created"];
+      else {
+        const [raced] = await tx.select({ id: measurements.id }).from(measurements).where(and(eq(measurements.providerId, input.providerId), eq(measurements.imageDigest, d.imageDigest), eq(measurements.composeHash, d.composeHash)));
+        [id, status] = [raced!.id, "seen"];
+      }
     }
-    await ctx.db.update(measurements).set({ lastSeenAt: now, updatedAt: now }).where(eq(measurements.id, row.id));
-    return { status: "seen", id: row.id };
-  }
-  const [created] = await ctx.db
-    .insert(measurements)
-    .values({
-      providerId: input.providerId,
-      imageDigest: input.digests.imageDigest,
-      composeHash: input.digests.composeHash,
-      modelDigest: input.digests.modelDigest,
-      verifier: input.verifiers.join(","),
-      teeKind: input.teeKind,
-      quote,
-      quoteProofHash: keccak256(`0x${quote}`),
-      reportHash: input.reportHash,
-      attestedAt: now,
-      lastSeenAt: now,
-    })
-    .onConflictDoNothing()
-    .returning({ id: measurements.id });
-  if (created) return { status: "created", id: created.id };
-  const [raced] = await ctx.db.select({ id: measurements.id }).from(measurements).where(and(eq(measurements.providerId, input.providerId), eq(measurements.imageDigest, input.digests.imageDigest)));
-  return { status: "seen", id: raced!.id };
+    return { status, id, superseded: await supersede(current.filter((c) => c !== id), id) };
+  });
+  const where = { provider: input.providerId, image: d.imageDigest, compose: d.composeHash, model: d.modelDigest };
+  if (result.status === "conflict") log.warn("provider reports a different model digest under an image and compose hash it already has a measurement for; nothing recorded, and it has no current measurement", { ...where, superseded: result.superseded });
+  else if (result.superseded.length) log.warn("provider's verified quote commits to digests other than its current measurement; recorded as its current measurement, the previous one kept as history", { ...where, id: result.id, superseded: result.superseded });
+  return result;
 }
 
 // ---- Rekor -----------------------------------------------------------------------------------------------
@@ -240,15 +281,16 @@ export async function rekorEntry(f: FetchFn, baseUrl: string, uuid: string): Pro
 
 const MAX_ENTRIES_PER_DIGEST = 5;
 
-/** Look up every observed row's image digest in Rekor. A row becomes ready with the earliest entry whose
- *  inclusion proof verifies. Errors are recorded per row and never move a row backwards. */
+/** Look up the image digest of every observed current row in Rekor. A row becomes ready with the earliest entry whose
+ *  inclusion proof verifies. Errors are recorded per row and never move a row backwards. Superseded rows are history
+ *  and are not looked up. */
 export async function watchRekor(ctx: Ctx, opts: { fetchImpl?: FetchFn; limit?: number } = {}) {
   const f = opts.fetchImpl ?? fetch;
   const { rekorUrl, rekorPublicKey } = ctx.cfg.measurements;
   const rows = await ctx.db
     .select()
     .from(measurements)
-    .where(and(eq(measurements.status, "observed"), isNull(measurements.revokedAt)))
+    .where(and(eq(measurements.status, "observed"), isNull(measurements.revokedAt), isNull(measurements.supersededAt)))
     .orderBy(sql`${measurements.rekorCheckedAt} asc nulls first`, asc(measurements.id))
     .limit(opts.limit ?? 25);
   let ready = 0;
@@ -317,10 +359,10 @@ export function buildRegisterCalldata(row: Pick<Row, "providerId" | "imageDigest
   });
 }
 
-/** Build calldata for every ready row that is still being attested. Nothing is sent. */
+/** Build calldata for every ready current row that is still being attested. Nothing is sent. */
 export async function runKeeper(ctx: Ctx) {
   const staleBefore = new Date(Date.now() - ctx.cfg.attestation.intervalMs * 3);
-  const rows = await ctx.db.select().from(measurements).where(and(eq(measurements.status, "ready"), isNull(measurements.calldata), isNull(measurements.revokedAt)));
+  const rows = await ctx.db.select().from(measurements).where(and(eq(measurements.status, "ready"), isNull(measurements.calldata), isNull(measurements.revokedAt), isNull(measurements.supersededAt)));
   const target = ctx.cfg.measurements.registry;
   let built = 0;
   let skippedStale = 0;
@@ -348,24 +390,29 @@ export async function recordSubmission(ctx: Ctx, id: number, txHash: string) {
   if (!done.length) throw new Error("only a ready measurement can have a submission recorded");
 }
 
-export type IsAttestedReader = (providerIdHash: Hex, imageDigest: Hex, modelDigest: Hex) => Promise<boolean>;
+/** Whether the registry holds this provider's measurement for the image, with this model digest and compose hash. */
+export type IsAttestedReader = (providerIdHash: Hex, imageDigest: Hex, modelDigest: Hex, composeHash: Hex) => Promise<boolean>;
 
 /** Read the registry back: a ready row it reports attested becomes registered; a registered row it no longer
- *  reports attested becomes revoked. Skipped without a configured registry. */
+ *  reports attested becomes revoked. The registry keeps one measurement per provider and image, so a row counts as
+ *  registered only when the registered compose hash is the row's own. Skipped without a configured registry. */
 export async function reconcileRegistry(ctx: Ctx, read?: IsAttestedReader) {
   const registry = ctx.cfg.measurements.registry;
   if (!registry) return { skipped: "no MEASUREMENT_REGISTRY_ADDRESS" };
   const reader: IsAttestedReader =
     read ??
-    (async (pid, img, model) =>
-      (await ctx.chain.client.readContract({ address: registry, abi: MeasurementRegistryAbi, functionName: "isAttested", args: [pid, img, model] })) as boolean);
+    (async (pid, img, model, compose) => {
+      if (!((await ctx.chain.client.readContract({ address: registry, abi: MeasurementRegistryAbi, functionName: "isAttested", args: [pid, img, model] })) as boolean)) return false;
+      const m = (await ctx.chain.client.readContract({ address: registry, abi: MeasurementRegistryAbi, functionName: "measurements", args: [pid, img] })) as readonly [Hex, Hex, ...unknown[]];
+      return String(m[1]).toLowerCase() === compose.toLowerCase();
+    });
   const rows = await ctx.db.select().from(measurements).where(inArray(measurements.status, ["ready", "registered"]));
   let registered = 0;
   let revoked = 0;
   for (const row of rows) {
     let attested: boolean;
     try {
-      attested = await reader(providerIdHash(row.providerId), row.imageDigest as Hex, row.modelDigest as Hex);
+      attested = await reader(providerIdHash(row.providerId), row.imageDigest as Hex, row.modelDigest as Hex, row.composeHash as Hex);
     } catch (e) {
       log.warn("registry read failed", { provider: row.providerId, error: (e as Error).message });
       continue;
@@ -393,9 +440,20 @@ export async function runMeasurements(ctx: Ctx, opts: { fetchImpl?: FetchFn; rea
 
 // ---- Public view -----------------------------------------------------------------------------------------
 
-/** The row that best describes what a provider is running now: the most recently seen, not revoked. */
+/** The row that describes what a provider is running now: the one its latest verified quote committed to (not
+ *  superseded), unless revoked. Rows recorded before rows could be superseded are ordered by when they were last seen. */
 export async function currentMeasurement(ctx: Ctx, providerId: string): Promise<Row | null> {
-  const rows = await ctx.db.select().from(measurements).where(eq(measurements.providerId, providerId));
+  const rows = await ctx.db.select().from(measurements).where(and(eq(measurements.providerId, providerId), isNull(measurements.supersededAt)));
   const live = rows.filter((r) => r.status !== "revoked").sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime() || b.id - a.id);
   return live[0] ?? null;
+}
+
+/** A provider's superseded measurements, most recently superseded first: history, never what it runs now. */
+export async function measurementHistory(ctx: Ctx, providerId: string, limit = 10): Promise<Row[]> {
+  return ctx.db
+    .select()
+    .from(measurements)
+    .where(and(eq(measurements.providerId, providerId), isNotNull(measurements.supersededAt)))
+    .orderBy(desc(measurements.supersededAt), desc(measurements.id))
+    .limit(limit);
 }

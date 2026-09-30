@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { attestations, providers } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
-import { currentMeasurement } from "../services/measurements.ts";
+import { currentMeasurement, measurementHistory } from "../services/measurements.ts";
 import { tdxRegisters } from "../services/measurement-bundle.ts";
 import { entryUrl, verifiedBundleForEntry } from "../services/measurement-bundles.ts";
 import { loadTlsPin } from "../providers/tls-pin.ts";
@@ -49,7 +49,11 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
     const verifiers = status === "attested" ? (((okRow?.detail as { verifiers?: unknown } | null)?.verifiers as string[] | undefined) ?? []) : [];
     // The last measurement recorded stays visible while the attestation is stale or failing (attested_now says which),
     // so an operator restarting an endpoint can still compare what it serves with what the router last verified.
+    // `measurement` is the provider's current row: the digests its latest verified quote committed to. Rows a later
+    // quote superseded are listed apart as history, each with the log entry that belongs to its own compose hash.
     const m = simulatedEvidence ? null : await currentMeasurement(ctx, p.id);
+    const history = simulatedEvidence ? [] : await measurementHistory(ctx, p.id);
+    const historyBundles = await Promise.all(history.map((r) => (r.rekorUuid && r.rekorInclusionVerified ? verifiedBundleForEntry(ctx, p.id, r.composeHash, r.rekorUuid) : null)));
     const registry = ctx.cfg.measurements.registry;
     // The certificate the router's connections to this provider are pinned to, when it attested through a
     // self-signed certificate (providers/tls-pin.ts).
@@ -104,6 +108,19 @@ export function attestationRoutes(app: Hono, ctx: Ctx) {
               registry: { address: registry, state: onchain, tx_hash: m.txHash, registered_at: m.registeredAt?.toISOString() ?? null },
             }
           : null,
+        measurement_history: history.map((r, i) => ({
+          image_digest: r.imageDigest,
+          compose_hash: r.composeHash,
+          model_digest: r.modelDigest,
+          status: r.status,
+          first_attested_at: r.attestedAt.toISOString(),
+          last_seen_at: r.lastSeenAt.toISOString(),
+          superseded_at: r.supersededAt!.toISOString(),
+          transparency_log:
+            r.rekorUuid && r.rekorInclusionVerified
+              ? { uuid: r.rekorUuid, log_index: r.rekorLogIndex, entry_url: entryUrl(ctx, r.rekorUuid), subject: historyBundles[i] ? "measurement_bundle" : "image_digest", bundle_digest: historyBundles[i]?.bundleDigest ?? null }
+              : null,
+        })),
         checks: {
           quote_verified: status === "attested",
           digests_bound_to_quote: !!m && status === "attested",

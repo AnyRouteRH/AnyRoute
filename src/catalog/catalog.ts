@@ -1,4 +1,4 @@
-import { desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { laneCandidates, measurements, models, modelsLane, offers, providerDisclosure, providers } from "../db/schema.ts";
 import { loadTlsPin, loadTlsPins, type TlsPin } from "../providers/tls-pin.ts";
@@ -62,11 +62,12 @@ export class Catalog {
           this.db
             .select({ providerId: measurements.providerId, status: measurements.status, rekorUuid: measurements.rekorUuid, rekorInclusionVerified: measurements.rekorInclusionVerified, txHash: measurements.txHash })
             .from(measurements)
-            .where(isNull(measurements.revokedAt))
+            .where(and(isNull(measurements.revokedAt), isNull(measurements.supersededAt)))
             .orderBy(desc(measurements.lastSeenAt)),
         ]);
         const pm = new Map<string, ProviderRow>(p.map((x) => [x.id, { ...x, tlsPin: pins.get(x.id) ?? null, aci: gateways.get(x.id) ?? null, attestedPolicy: policies.get(x.id) ?? null }]));
-        // The measurement a provider's attestations bound most recently (rows are ordered newest first).
+        // The measurement a provider's latest verified quote bound: its current row, never a superseded one (rows are
+        // ordered newest first).
         const manifests = new Map<string, ManifestRef>();
         for (const r of meas) {
           if (manifests.has(r.providerId)) continue;

@@ -7,7 +7,7 @@
 // Needs DATABASE_URL (an already-migrated database). The registry only accepts register() from its attestor
 // address, so the transaction is sent by whoever holds that role; a row becomes "registered" only when the router
 // later reads the registry (MEASUREMENT_REGISTRY_ADDRESS) and it reports the measurement attested.
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { openDatabase } from "../src/db/client.ts";
 import { measurements } from "../src/db/schema.ts";
 import type { Ctx } from "../src/context.ts";
@@ -24,7 +24,8 @@ try {
     await recordSubmission({ db: h.db } as Ctx, id, args[2]);
     console.log(JSON.stringify({ recorded: id }));
   } else {
-    const rows = await h.db.select().from(measurements).where(and(eq(measurements.status, "ready"), isNotNull(measurements.calldata)));
+    // Current rows only: a superseded row's calldata would register digests the provider no longer runs.
+    const rows = await h.db.select().from(measurements).where(and(eq(measurements.status, "ready"), isNotNull(measurements.calldata), isNull(measurements.supersededAt)));
     console.log(
       JSON.stringify(
         rows.map((r) => ({ id: r.id, provider: r.providerId, image_digest: r.imageDigest, model_digest: r.modelDigest, rekor_entry: r.rekorEntry, to: r.calldataTarget, submitted_tx: r.txHash, calldata: r.calldata })),

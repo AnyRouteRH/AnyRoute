@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { decodeFunctionData, keccak256, type Hex } from "viem";
 import { MeasurementRegistryAbi } from "../src/chain/abis.ts";
-import { attestations, measurements, providers } from "../src/db/schema.ts";
+import { attestationEvents, attestations, measurements, providers } from "../src/db/schema.ts";
 import { runAttestor } from "../src/services/attestor.ts";
 import {
   bindingsCommittedIn,
@@ -12,6 +12,7 @@ import {
   currentMeasurement,
   digestsFromBindings,
   entryIncluded,
+  measurementHistory,
   normalizeDigest,
   providerIdHash,
   reconcileRegistry,
@@ -212,7 +213,7 @@ describe("attestation to registry calldata", () => {
     expect(row.reportHash).toBe(att.reportHash);
     expect(state.dcapBodies).toHaveLength(1);
   });
-  test("re-attesting the same digests only refreshes last-seen; different digests under the same image conflict", async () => {
+  test("re-attesting the same digests only refreshes last-seen; another model digest under the same image and compose hash conflicts", async () => {
     await attest();
     const [first] = await rows();
     await new Promise((r) => setTimeout(r, 15));
@@ -221,13 +222,74 @@ describe("attestation to registry calldata", () => {
     expect(await rows()).toHaveLength(1);
     expect(second.lastSeenAt.getTime()).toBeGreaterThan(first.lastSeenAt.getTime());
     expect(second.quote).toBe(first.quote);
-    expect(await recordMeasurement(h.ctx, { providerId: "alpha", digests: { imageDigest: first.imageDigest as Hex, composeHash: first.composeHash as Hex, modelDigest: ("0x" + "99".repeat(32)) as Hex }, verifiers: ["dcap"], teeKind: "tdx", quoteHex: "00", reportHash: "0x0" })).toMatchObject({ status: "conflict", id: first.id });
-    expect((await rows())[0].modelDigest).toBe(first.modelDigest);
-    // a new image is a new row, and the most recently seen one is current
+    expect(second.supersededAt).toBeNull();
+    // Nothing is recorded or rewritten, and since no recorded row describes that quote, none is current until one does.
+    expect(await recordMeasurement(h.ctx, { providerId: "alpha", digests: { imageDigest: first.imageDigest as Hex, composeHash: first.composeHash as Hex, modelDigest: ("0x" + "99".repeat(32)) as Hex }, verifiers: ["dcap"], teeKind: "tdx", quoteHex: "00", reportHash: "0x0" })).toEqual({ status: "conflict", id: first.id, superseded: [first.id] });
+    expect(await rows()).toHaveLength(1);
+    expect((await rows())[0]).toMatchObject({ modelDigest: first.modelDigest, supersededBy: null });
+    expect(await currentMeasurement(h.ctx, "alpha")).toBeNull();
+    await attest();
+    expect(await currentMeasurement(h.ctx, "alpha")).toMatchObject({ id: first.id, supersededAt: null });
+    // a new image is a new row too, and it supersedes the previous one
     state.doc = { digests: { ...DIGESTS, image: "sha256:" + "55".repeat(32) } };
     await attest();
     expect(await rows()).toHaveLength(2);
-    expect((await currentMeasurement(h.ctx, "alpha"))!.imageDigest).toBe("0x" + "55".repeat(32));
+    const current = (await currentMeasurement(h.ctx, "alpha"))!;
+    expect(current.imageDigest).toBe("0x" + "55".repeat(32));
+    expect(await measurementHistory(h.ctx, "alpha")).toMatchObject([{ id: first.id, supersededBy: current.id }]);
+  });
+  test("a new compose hash under the same image, in a verified quote, is a new row that supersedes the previous one", async () => {
+    const old = await readyRow();
+    await runKeeper(h.ctx);
+    state.doc = { digests: { ...DIGESTS, compose: "sha256:" + "44".repeat(32) } };
+    expect(await attest()).toMatchObject({ ok: true });
+    const [prev, next] = await h.ctx.db.select().from(measurements).orderBy(measurements.id);
+    expect(await rows()).toHaveLength(2);
+    expect(next).toMatchObject({ imageDigest: old.imageDigest, composeHash: "0x" + "44".repeat(32), modelDigest: old.modelDigest, status: "observed", rekorUuid: null, supersededAt: null, supersededBy: null });
+    // the previous row is kept as it was, with its log entry and calldata, and marked superseded by the new one
+    expect(prev).toMatchObject({ id: old.id, composeHash: old.composeHash, status: "ready", rekorUuid: UUID_A, rekorInclusionVerified: true, supersededBy: next.id });
+    expect(prev.supersededAt).not.toBeNull();
+    expect(prev.calldata).not.toBeNull();
+    expect((await currentMeasurement(h.ctx, "alpha"))!.id).toBe(next.id);
+
+    // a quote that does not verify records nothing, whatever it commits to
+    state.dcapVerified = false;
+    state.doc = { digests: { ...DIGESTS, compose: "sha256:" + "66".repeat(32) } };
+    expect(await attest()).toMatchObject({ ok: false });
+    expect(await rows()).toHaveLength(2);
+    expect((await currentMeasurement(h.ctx, "alpha"))!.id).toBe(next.id);
+
+    // going back to the earlier compose file makes its row current again, with its own entry
+    state.dcapVerified = true;
+    state.doc = {};
+    expect(await attest()).toMatchObject({ ok: true });
+    expect(await rows()).toHaveLength(2);
+    expect(await currentMeasurement(h.ctx, "alpha")).toMatchObject({ id: old.id, supersededAt: null, supersededBy: null, rekorUuid: UUID_A });
+    expect(await measurementHistory(h.ctx, "alpha")).toMatchObject([{ id: next.id, supersededBy: old.id }]);
+  });
+  test("superseded rows are history: the log is not searched for them and the keeper builds no calldata for them", async () => {
+    await attest();
+    state.doc = { digests: { ...DIGESTS, compose: "sha256:" + "44".repeat(32) } };
+    await attest();
+    const { f, calls } = rekorFetch([]);
+    expect(await watchRekor(h.ctx, { fetchImpl: f })).toMatchObject({ checked: 1, missing: 1 });
+    expect(calls).toHaveLength(1);
+    await h.ctx.db.update(measurements).set({ status: "ready", rekorUuid: UUID_A, rekorEntry: "0x" + "ab".repeat(32), rekorInclusionVerified: true });
+    expect(await runKeeper(h.ctx)).toMatchObject({ built: 1 });
+    const [prev, next] = await h.ctx.db.select().from(measurements).orderBy(measurements.id);
+    expect(prev.calldata).toBeNull();
+    expect(next.calldata).not.toBeNull();
+  });
+  test("a compose change stays visible as a measurement change in the attestation history", async () => {
+    await h.ctx.db.delete(attestationEvents);
+    await attest();
+    state.doc = { digests: { ...DIGESTS, compose: "sha256:" + "44".repeat(32) } };
+    await attest();
+    const events = await h.ctx.db.select().from(attestationEvents).where(eq(attestationEvents.providerId, "alpha")).orderBy(attestationEvents.id);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ kind: "attestation", ok: true, measurementChanged: false });
+    expect(events[1]).toMatchObject({ kind: "attestation", ok: true, measurementChanged: true, measurements: { compose_hash: "0x" + "44".repeat(32) } });
+    expect(events[1].detail).toMatchObject({ changed: ["compose_hash"], previous: { compose_hash: "0x" + "22".repeat(32) } });
   });
   test("nothing is recorded when measurements are off, and the quote still has to pass", async () => {
     h.ctx.cfg.measurements.enabled = false;
@@ -349,7 +411,7 @@ describe("attestation to registry calldata", () => {
 
     const asked: unknown[][] = [];
     expect(await reconcileRegistry(h.ctx, async (...a) => (asked.push(a), false))).toEqual({ registered: 0, revoked: 0 });
-    expect(asked[0]).toEqual([providerIdHash("alpha"), row.imageDigest, row.modelDigest]);
+    expect(asked[0]).toEqual([providerIdHash("alpha"), row.imageDigest, row.modelDigest, row.composeHash]);
     expect((await rows())[0].status).toBe("ready");
     expect(await reconcileRegistry(h.ctx, async () => true)).toEqual({ registered: 1, revoked: 0 });
     expect((await rows())[0]).toMatchObject({ status: "registered" });
@@ -365,6 +427,21 @@ describe("attestation to registry calldata", () => {
     h.ctx.cfg.measurements.registry = null;
     expect(await reconcileRegistry(h.ctx, async () => true)).toEqual({ skipped: "no MEASUREMENT_REGISTRY_ADDRESS" });
     h.ctx.cfg.measurements.registry = REGISTRY;
+  });
+  test("the registry holds one measurement per image: its record for an earlier compose hash does not register the current row", async () => {
+    const old = await readyRow();
+    state.doc = { digests: { ...DIGESTS, compose: "sha256:" + "44".repeat(32) } };
+    await attest();
+    await h.ctx.db.update(measurements).set({ status: "ready", rekorUuid: UUID_B, rekorEntry: "0x" + "cd".repeat(32), rekorInclusionVerified: true }).where(eq(measurements.composeHash, "0x" + "44".repeat(32)));
+    // the registry reports the image and model attested, but what it holds is the earlier compose hash
+    expect(await reconcileRegistry(h.ctx, async (_p, _i, _m, compose) => compose === old.composeHash)).toEqual({ registered: 1, revoked: 0 });
+    const [prev, next] = await h.ctx.db.select().from(measurements).orderBy(measurements.id);
+    expect(prev).toMatchObject({ id: old.id, status: "registered" });
+    expect(next).toMatchObject({ status: "ready", registeredAt: null });
+    const d = (await (await publicView()).json()).data;
+    expect(d.measurement).toMatchObject({ compose_hash: "0x" + "44".repeat(32), registry: { state: "not_submitted" } });
+    expect(d.checks.registered_on_chain).toBe(false);
+    expect(d.measurement_history).toMatchObject([{ compose_hash: old.composeHash, status: "registered" }]);
   });
   test("the job does nothing unless enabled, and otherwise runs lookup, keeper and read-back in order", async () => {
     await attest();
@@ -420,6 +497,37 @@ describe("attestation to registry calldata", () => {
     d = (await (await publicView()).json()).data;
     expect(d.measurement.registry.state).toBe("registered");
     expect(d.checks.registered_on_chain).toBe(true);
+  });
+  test("after a compose change the record describes only the current measurement; the earlier one is history with its own entry", async () => {
+    await readyRow();
+    await h.ctx.catalog.refresh();
+    expect(h.ctx.catalog.manifests.get("alpha")).toEqual({ rekor_entry: UUID_A, registry_tx: null });
+    let d = (await (await publicView()).json()).data;
+    expect(d.measurement).toMatchObject({ compose_hash: "0x" + "22".repeat(32), transparency_log: { found: true, uuid: UUID_A } });
+    expect(d.measurement_history).toEqual([]);
+
+    state.doc = { digests: { ...DIGESTS, compose: "sha256:" + "44".repeat(32) } };
+    await attest();
+    d = (await (await publicView()).json()).data;
+    expect(d).toMatchObject({ status: "attested" });
+    expect(d.measurement).toMatchObject({ compose_hash: "0x" + "44".repeat(32), status: "observed", attested_now: true, transparency_log: { found: false, uuid: null, entry: null, subject: null, bundle: null } });
+    // the entry that belongs to the earlier compose hash is not given to the new one
+    expect(d.checks).toMatchObject({ quote_verified: true, digests_bound_to_quote: true, transparency_log_entry: false, transparency_log_checkpoint_signature: false });
+    expect(d.measurement_history).toEqual([
+      {
+        image_digest: "0x" + "11".repeat(32),
+        compose_hash: "0x" + "22".repeat(32),
+        model_digest: "0x" + "33".repeat(32),
+        status: "ready",
+        first_attested_at: expect.any(String),
+        last_seen_at: expect.any(String),
+        superseded_at: expect.any(String),
+        transparency_log: { uuid: UUID_A, log_index: 1004, entry_url: `${REKOR}/api/v1/log/entries/${UUID_A}`, subject: "image_digest", bundle_digest: null },
+      },
+    ]);
+    // the models output carries no log entry for the provider until its current measurement has one
+    await h.ctx.catalog.refresh();
+    expect(h.ctx.catalog.manifests.get("alpha")).toEqual({ rekor_entry: null, registry_tx: null });
   });
   test("the sidecar's router cross-check reads this endpoint's response", async () => {
     // the sidecar calls GET <router>/api/v1/attestation/<provider> and looks for the served model digest in it
