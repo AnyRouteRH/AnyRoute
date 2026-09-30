@@ -143,6 +143,10 @@
     {
       "name": "Memory",
       "description": "A memory ledger for characters, encrypted on the client: the router stores ciphertext under a scope it cannot link to a character, and embeddings only when the caller opts in."
+    },
+    {
+      "name": "Skills",
+      "description": "Secured Skills Hub for agent skills (a folder with SKILL.md and its scripts and resources): import from a git repository or an archive, a static scan for data exfiltration, prompt injection, obfuscation, dangerous shell commands, untrusted package indexes and binaries, a sha256 content hash of a canonical tar, gated downloads and paid installs (90% to the author, 10% network fee) with a signed receipt. Scanned, not guaranteed."
     }
   ],
   "paths": {
@@ -9570,6 +9574,561 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/skills": {
+      "get": {
+        "tags": [
+          "Skills"
+        ],
+        "operationId": "listSkills",
+        "summary": "Search the skills registry",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Matches name, description, author and slug."
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated scan levels: trusted, caution, dangerous."
+          },
+          {
+            "name": "include_revoked",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Skills, trusted first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SkillSummary"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "download_levels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "note": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/import": {
+      "post": {
+        "tags": [
+          "Skills"
+        ],
+        "operationId": "importSkill",
+        "summary": "Import a skill from a git repository or an archive; it is hashed and scanned",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "price_usd",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0
+            },
+            "description": "For an archive body: the install price."
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "For an archive body: the skill's folder inside the archive."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Exactly one of git or archive.",
+                "properties": {
+                  "git": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "url"
+                    ],
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "description": "https:// only."
+                      },
+                      "ref": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "archive": {
+                    "type": "string",
+                    "contentEncoding": "base64",
+                    "description": "A .tar.gz, .tar or .zip of the skill folder."
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "price_usd": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 10000
+                  }
+                }
+              }
+            },
+            "application/gzip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/x-tar": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The same files were already imported; the existing skill.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Skill"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Imported and scanned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Skill"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{id}": {
+      "get": {
+        "tags": [
+          "Skills"
+        ],
+        "operationId": "getSkill",
+        "summary": "A skill: manifest, files, content hash, scan report, price and chain fields",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^sk_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The skill.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Skill"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Skills"
+        ],
+        "operationId": "updateSkill",
+        "summary": "Change a skill's price (the publishing account)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^sk_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "price_usd"
+                ],
+                "properties": {
+                  "price_usd": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 10000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The skill.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Skill"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{id}/download": {
+      "get": {
+        "tags": [
+          "Skills"
+        ],
+        "operationId": "downloadSkill",
+        "summary": "Download the canonical tar.gz (trusted and caution skills only; paid skills after an install)",
+        "description": "Returns 403 with the scan report for a dangerous or revoked skill. A paid skill needs the key of its author or of an account that installed it (402 otherwise). X-Skill-Content-Hash carries the sha256 of the uncompressed tar.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^sk_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The gzipped canonical tar.",
+            "content": {
+              "application/gzip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{id}/install": {
+      "post": {
+        "tags": [
+          "Skills"
+        ],
+        "operationId": "installSkill",
+        "summary": "Install a skill: a paid one debits the key's balance, 90% to the author and 10% network fee, with a signed receipt",
+        "description": "Idempotent per skill and account: a repeat returns the first install and receipt (200) without a second charge.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^sk_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Already installed by this account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SkillInstall"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Installed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SkillInstall"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{id}/revoke": {
+      "post": {
+        "tags": [
+          "Skills"
+        ],
+        "operationId": "revokeSkill",
+        "summary": "Revoke a skill (operator)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^sk_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 280
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The revoked skill.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Skill"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }
@@ -19049,6 +19608,356 @@
             "minimum": 1,
             "maximum": 50,
             "default": 5
+          }
+        }
+      },
+      "SkillFinding": {
+        "type": "object",
+        "required": [
+          "rule",
+          "file",
+          "line",
+          "excerpt",
+          "severity",
+          "message"
+        ],
+        "properties": {
+          "rule": {
+            "type": "string",
+            "description": "Rule id, e.g. exfil.env_to_network, injection.override, obfuscation.base64_blob, shell.rm_root, deps.untrusted_index, binary.executable."
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "Up to 160 characters of the line, with hidden characters shown escaped."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "SkillScanReport": {
+        "type": "object",
+        "required": [
+          "scanner",
+          "score",
+          "level",
+          "summary",
+          "findings",
+          "note"
+        ],
+        "properties": {
+          "scanner": {
+            "type": "string",
+            "example": "skillscan/1"
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "100 minus a weight per distinct rule and file: low 3, medium 10, high 25, critical 50."
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "trusted",
+              "caution",
+              "dangerous"
+            ],
+            "description": "dangerous with any high or critical finding or a score under 40; caution with any medium finding or a score under 90; trusted otherwise."
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillFinding"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "files_scanned": {
+            "type": "integer"
+          },
+          "bytes_scanned": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string",
+            "description": "Scanned, not guaranteed."
+          }
+        }
+      },
+      "SkillSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string",
+            "description": "sha256 (hex) of the canonical tar of the skill's files."
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "trusted",
+              "caution",
+              "dangerous"
+            ]
+          },
+          "score": {
+            "type": "integer"
+          },
+          "findings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "price_usd": {
+            "type": "number"
+          },
+          "files": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "upload",
+              "git",
+              "mirror"
+            ]
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Skill": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SkillSummary"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "manifest": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "author": {
+                    "type": "string"
+                  }
+                }
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "file",
+                        "symlink"
+                      ]
+                    },
+                    "mode": {
+                      "type": "integer"
+                    },
+                    "size": {
+                      "type": "integer"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "source": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "upload",
+                      "git",
+                      "mirror"
+                    ]
+                  },
+                  "repo": {
+                    "type": "string"
+                  },
+                  "ref": {
+                    "type": "string"
+                  },
+                  "commit": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "registry": {
+                    "type": "string"
+                  }
+                }
+              },
+              "scan": {
+                "$ref": "#/components/schemas/SkillScanReport"
+              },
+              "downloadable": {
+                "type": "boolean"
+              },
+              "revoked_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "revoked_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "installs": {
+                "type": "integer"
+              },
+              "chain": {
+                "type": "object",
+                "description": "Arguments for SkillRegistry.publish(skillHash, author, priceUSDG, trustLevel, uri).",
+                "properties": {
+                  "skill_hash": {
+                    "type": "string"
+                  },
+                  "trust_level": {
+                    "type": "integer",
+                    "enum": [
+                      1,
+                      2,
+                      3
+                    ]
+                  },
+                  "price_usdg": {
+                    "type": "string"
+                  },
+                  "uri": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SkillInstall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "skill_id": {
+            "type": "string"
+          },
+          "price_usd": {
+            "type": "number"
+          },
+          "author_usd": {
+            "type": "number"
+          },
+          "fee_usd": {
+            "type": "number"
+          },
+          "download_url": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "receipt": {
+            "type": "object",
+            "description": "Ed25519 signature (receipt key) over the canonical JSON of payload.",
+            "properties": {
+              "payload": {
+                "type": "object"
+              },
+              "signature": {
+                "type": "object",
+                "properties": {
+                  "alg": {
+                    "type": "string",
+                    "enum": [
+                      "Ed25519"
+                    ]
+                  },
+                  "key_id": {
+                    "type": "string"
+                  },
+                  "sig": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
