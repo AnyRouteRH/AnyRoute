@@ -25,4 +25,33 @@ for(const name of fs.readdirSync(root))assert(!/\.(md|py|pdf|zip|map)$/i.test(na
 {const file=path.join(root,'private.mjs');assert(fs.existsSync(file),'Missing /private.mjs');const bytes=fs.readFileSync(file);
  assert(bytes.subarray(0,2).toString()==='#!'&&bytes.length>50_000,'/private.mjs is not the program');
  assert(fs.readFileSync(path.join(root,'docs','index.html'),'utf8').includes(crypto.createHash('sha256').update(bytes).digest('hex')),'The documentation page does not show the SHA-256 of /private.mjs');}
-console.log(`PASS: ${routes.length} routes; ${count} local asset/link references; no stray files.`);
+// The PDF reader on /ask/ (pdf.js): one on-demand chunk plus a worker file, both served from this site. It is reached only by a dynamic import
+// when a PDF is added, so no page's own scripts may contain the reader, the loader (which names the worker) may sit only in /ask/'s scripts,
+// and the worker must be the same version as the reader.
+let pdfNote='';
+{const walk=dir=>fs.existsSync(dir)?fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):[path.join(dir,e.name)]):[];
+ const staticDir=path.join(root,'_next','static');
+ const scripts=new Map(walk(path.join(staticDir,'chunks')).filter(f=>/\.m?js$/.test(f)).map(f=>[f,fs.readFileSync(f,'utf8')]));
+ const READER='Setting up fake worker failed',LOADER=/GlobalWorkerOptions\.workerSrc/;
+ const readers=[...scripts].filter(([,t])=>t.includes(READER)).map(([f])=>f);
+ assert(readers.length>=1,'The PDF reader chunk is missing from the build');
+ const workers=walk(path.join(staticDir,'media')).filter(f=>/pdf\.worker\.min\.[^/\\]*\.mjs$/.test(f));
+ assert(workers.length===1,`Expected one PDF worker file in the build, found ${workers.length}`);
+ const worker=fs.readFileSync(workers[0],'utf8'),workerName=path.basename(workers[0]);
+ const version=readers.map(f=>/apiVersion:"(\d+\.\d+\.\d+)"/.exec(scripts.get(f))?.[1]).find(Boolean);
+ assert(version&&worker.includes(`"${version}"`)&&worker.length>500_000,`The PDF worker is not the reader's version (${version})`);
+ assert(!/sourceMappingURL/.test(worker),'The PDF worker names a source map');
+ for(const route of routes){
+  const html=fs.readFileSync(path.join(root,route,'index.html'),'utf8');
+  const files=[...new Set([...html.matchAll(/static\/(?:chunks|media)\/[^"'\\\s)<>]+?\.m?js/g)].map(m=>path.join(root,'_next',m[0])))];
+  assert(!files.some(f=>readers.includes(f)||workers.includes(f)),`${route} loads the PDF reader up front`);
+  let loader=false;
+  for(const f of files){const t=scripts.get(f);if(!t)continue;
+   assert(!t.includes(READER),`${route} carries the PDF reader in ${path.relative(root,f)}`);
+   if(LOADER.test(t)||t.includes(workerName)){assert(route==='/ask/',`${route} carries the PDF loader in ${path.relative(root,f)}`);loader=true;}}
+  if(route==='/ask/')assert(loader,'/ask/ does not carry the PDF loader');
+ }
+ const kib=n=>`${(n/1024).toFixed(0)} KiB`;
+ pdfNote=` PDF reader ${version} on demand on /ask/ only (chunk ${kib(Math.max(...readers.map(f=>scripts.get(f).length)))}, worker ${kib(worker.length)}, own origin).`;
+}
+console.log(`PASS: ${routes.length} routes; ${count} local asset/link references; no stray files.${pdfNote}`);
