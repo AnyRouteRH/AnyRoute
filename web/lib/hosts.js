@@ -17,6 +17,7 @@ export function rekorHref(value) {
 export function describeHost(host, now = Date.now()) {
   const h = host || {};
   const hardware = h.attested === true && h.attestation?.status === 'attested';
+  const approved = hardware && h.admission?.status === 'approved' && Number.isSafeInteger(h.admission.policy_version) && h.admission.policy_version > 0;
   const root = h.anchoring?.latest;
   const m = h.measurement;
   const proof = h.proof_time;
@@ -24,7 +25,7 @@ export function describeHost(host, now = Date.now()) {
     ...h,
     href: hostHref(h.id || ''), verifyHref: verifyHref(h.id || ''),
     hardware: { label: hardware ? 'Hardware verified' : 'No current hardware verification', tone: hardware ? 'ok' : 'warn' },
-    build: { label: 'Approval not established', tone: 'warn', text: 'Measurements record what the quote bound. This record does not establish build admission approval or prove that source matches the running software.' },
+    build: approved ? { label: `Approved build · host policy v${h.admission.policy_version}`, tone: 'ok', text: 'The quote-bound source, engine and model match the published host policy.', href: `/api/v1/network/policy/${h.admission.policy_version}` } : { label: 'Approval not established', tone: 'warn', text: 'Measurements record what the quote bound. This record does not establish build admission approval or prove that source matches the running software.' },
     anchor: { label: root?.anchored === true && root?.status === 'confirmed' && root?.tx_hash ? 'Work anchored on chain' : root?.status === 'local' ? 'Root kept off chain' : root ? 'Awaiting on-chain confirmation' : 'No work roots recorded', tone: root?.anchored === true && root?.status === 'confirmed' && root?.tx_hash ? 'ok' : 'warn' },
     uptimeText: Number.isFinite(h.uptime?.success_pct_30d) && h.uptime?.observations_30d > 0 ? `${h.uptime.success_pct_30d}% across ${h.uptime.observations_30d} observations` : 'No observations recorded',
     windows: proof?.host ? ['24h', '7d'].map(key => describeWindow(key, proof.host.fresh?.[key], proof.host.measurement_changes_7d, now)) : [],

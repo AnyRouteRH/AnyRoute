@@ -49,6 +49,7 @@ describe('read-only public hosts', () => {
   afterAll(async () => h.close());
   test('live host identifier has public facts, existing evidence, measurements and root counts', async () => {
     const { res, data } = await get(); expect(res.status).toBe(200); expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(data.admission).toBeNull();
     expect(data).toMatchObject({ id, tee_kind: 'tdx', attested: true, status: 'live', probation: true, models: [MODELS.qwen.slug], earnings: { band: '$1–10' }, anchoring: { roots: 2, anchored_roots: 1, latest: { status: 'local', anchored: false, receipts: 5 } } });
     const evidence = (await (await h.request(`/api/v1/attestation/${id}`)).json() as any).data;
     expect(data.measurement).toEqual(evidence.measurement); expect(data.measurement_history).toEqual(evidence.measurement_history);
@@ -60,7 +61,7 @@ describe('read-only public hosts', () => {
   test('list includes hardware hosts only and exposes only its allowlisted shape', async () => {
     const res = await h.request('/api/v1/hosts'); const data = (await res.json() as any).data;
     expect(data.map((p: any) => p.id)).toEqual([id]);
-    expect(Object.keys(data[0]).sort()).toEqual(['id', 'name', 'tee_kind', 'attested', 'status', 'probation', 'shadow_until', 'models', 'attestation', 'verify_url'].sort()); assertPublic(data);
+    expect(Object.keys(data[0]).sort()).toEqual(['admission', 'id', 'name', 'tee_kind', 'attested', 'status', 'probation', 'shadow_until', 'models', 'attestation', 'verify_url'].sort()); assertPublic(data);
     expect((await h.request('/api/v1/hosts/unverified')).status).toBe(404);
     expect((await h.request('/api/v1/hosts/development')).status).toBe(404);
   });

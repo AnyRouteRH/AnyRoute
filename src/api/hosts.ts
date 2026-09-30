@@ -6,6 +6,7 @@ import { fail } from "../lib/errors.ts";
 import { sha256 } from "../lib/util.ts";
 import { walletAuth } from "./auth.ts";
 import { probationRegistryFilter } from "../network/offers.ts";
+import { hostAdmission } from "../network/dashboard.ts";
 import { latestAttempts, summarizeAttestation } from "./provider-attestation.ts";
 
 // A GET has no body. Bind its wallet signature to this exact resource instead,
@@ -21,7 +22,7 @@ export function earningsBand(units: bigint) {
   return "$1,000+";
 }
 
-const facts = { id: providers.id, name: providers.name, teeKind: providers.teeKind, attested: providers.attested, attestationHash: providers.attestationHash, attestedAt: providers.attestedAt, status: providers.status, shadowUntil: providers.shadowUntil };
+const facts = { networkHost: providers.networkHost, networkReasons: providers.networkReasons, id: providers.id, name: providers.name, teeKind: providers.teeKind, attested: providers.attested, attestationHash: providers.attestationHash, attestedAt: providers.attestedAt, status: providers.status, shadowUntil: providers.shadowUntil };
 const visible = (ctx: Ctx) => and(or(inArray(providers.status, ["shadow", "live", "suspended", "delisted"]), probationRegistryFilter(ctx.cfg)), isNotNull(providers.attestedAt), isNotNull(providers.attestationHash), isNotNull(providers.teeKind), ne(providers.teeKind, "dev"));
 
 async function publicHost(ctx: Ctx, p: Pick<typeof providers.$inferSelect, keyof typeof facts>, attempts: Awaited<ReturnType<typeof latestAttempts>>) {
@@ -34,7 +35,7 @@ async function publicHost(ctx: Ctx, p: Pick<typeof providers.$inferSelect, keyof
     attested: attestation.status === "attested", status: p.status,
     probation: p.status === "shadow" || !!p.shadowUntil && p.shadowUntil.getTime() > Date.now(),
     shadow_until: p.shadowUntil?.toISOString() ?? null,
-    models: models.map((m) => m.id), attestation,
+    models: models.map((m) => m.id), attestation, admission: await hostAdmission(ctx, p, attestation),
     verify_url: `/verify/?p=${encodeURIComponent(p.id)}`,
   };
 }

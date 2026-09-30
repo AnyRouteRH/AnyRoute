@@ -82,9 +82,12 @@ describe("verified admission to registry and probation selection", () => {
     expect(offer).toMatchObject({ status: "shadow", modelId: terms.slug, providerModelId: "cpu", pricePrompt: 100000n, priceCompletion: 200000n, ctx: 32768, maxOut: 4096, quant: "fp16" });
     expect(modelsFetches).toBe(0);
     const hosts = await h.request("/api/v1/hosts");
-    expect((await hosts.json()).data).toContainEqual(expect.objectContaining({ id: p.id, status: "probation", models: [terms.slug] }));
+    expect((await hosts.json()).data).toContainEqual(expect.objectContaining({ id: p.id, status: "probation", models: [terms.slug], admission: expect.objectContaining({ status: "approved", policy_version: 1 }) }));
     const record = await h.request(`/api/v1/hosts/${p.id}`); expect(record.status).toBe(200);
-    expect((await record.json()).data.models).toEqual([terms.slug]);
+    const publicRecord = (await record.json()).data;
+    expect(publicRecord.models).toEqual([terms.slug]);
+    expect(publicRecord.admission).toMatchObject({ status: "approved", policy_version: 1, reasons: [], checked_at: expect.any(String) });
+    expect((await (await h.request(`/api/v1/network/hosts/${p.id}/status`)).json()).weight).toBe(0.1);
     const [disclosure] = await h.ctx.db.select().from(providerDisclosure).where(eq(providerDisclosure.providerId, p.id));
     expect(profileOf(disclosure)).toMatchObject({ declared: true, retention: "attested", jurisdiction: UNDECLARED.jurisdiction, legal_hold: UNDECLARED.legal_hold, training_use: UNDECLARED.training_use,
       claims: { retention: { source: "sidecar attestation checked against host policy v1", as_of: expect.any(String) }, jurisdiction: null, legal_hold: null, training_use: null } });

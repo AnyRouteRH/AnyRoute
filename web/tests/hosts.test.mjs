@@ -47,3 +47,28 @@ test('API paths and optional operator fields are documented', () => {
   for (const path of ['/api/v1/hosts', '/api/v1/hosts/{providerId}']) assert.ok(api.paths[path]?.get);
   assert.ok(api.paths['/api/v1/hosts/{providerId}'].get.parameters.some(p => p.name === 'X-Wallet-Auth'));
 });
+
+test('admitted hardware has the checked policy chip and link; stale, refused and curated hosts do not', () => {
+  const admitted = { ...host, admission: { status: 'approved', policy_version: 12, reasons: [], checked_at: '2026-09-30T00:00:00.000Z' } };
+  assert.deepEqual(describeHost(admitted).build, { label: 'Approved build · host policy v12', tone: 'ok', text: 'The quote-bound source, engine and model match the published host policy.', href: '/api/v1/network/policy/12' });
+  for (const h of [{ ...admitted, attested: false }, { ...admitted, admission: { status: 'not_approved', policy_version: 12 } }, { ...admitted, admission: null }, { ...admitted, admission: { status: 'approved', policy_version: null } }]) {
+    assert.equal(describeHost(h).build.label, 'Approval not established');
+    assert.equal(describeHost(h).build.href, undefined);
+  }
+  const source = readFileSync(new URL('../app/hosts/Hosts.jsx', import.meta.url), 'utf8');
+  assert.match(source, /href=\{v.build.href\}/);
+});
+test('network status and public admission schemas describe the real multiplier and checked record', () => {
+  const api = JSON.parse(readFileSync(new URL('../public/openapi.json', import.meta.url)));
+  for (const name of ['HostPublic', 'HostDetail']) {
+    const admission = api.components.schemas[name].properties.admission;
+    assert.ok(admission.type.includes('null'));
+    assert.deepEqual(admission.properties.status.enum, ['approved', 'not_approved']);
+  }
+  const weight = api.paths['/api/v1/network/hosts/{provider_id}/status'].get.responses['200'].content['application/json'].schema.properties.weight;
+  assert.equal(weight.const, undefined); assert.equal(weight.maximum, 1);
+  const page = readFileSync(new URL('../app/hosts/YourHost.jsx', import.meta.url), 'utf8');
+  assert.match(page, /reduced share of eligible traffic/);
+  assert.match(page, /Payouts to network hosts are not switched on yet/);
+  assert.doesNotMatch(page, /admission records do not enable traffic/i);
+});

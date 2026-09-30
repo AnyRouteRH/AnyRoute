@@ -27,6 +27,6 @@ export default function YourHost() {
     {status && <><p>Admission: <strong>{status.status}</strong>. Hardware check: {status.attested ? 'Fresh verification recorded' : 'No fresh verification recorded'}.</p>
       {status.reasons?.length > 0 && <ul>{status.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
       <p>Probation until: {status.probation_until ? new Date(status.probation_until).toLocaleString() : 'Not recorded'}. Routing weight: {status.weight}.</p></>}
-    <p>Admission records do not enable traffic or guarantee payouts. <a href="/docs/#network-host-signup">Host signup requirements</a>.</p>
+    <p>Probation hosts receive a reduced share of eligible traffic while attested and healthy. Payouts to network hosts are not switched on yet. <a href="/docs/#network-host-signup">Host signup requirements</a>.</p>
   </section>;
 }

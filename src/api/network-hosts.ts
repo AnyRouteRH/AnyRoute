@@ -10,6 +10,9 @@ import { admitHost } from "../network/admit.ts";
 import { addressBucket } from "./common.ts";
 import { keyPublished, onKeyPublished } from "../tlog/hooks.ts";
 import type { EntryInput, EntryKind } from "../tlog/entries.ts";
+import { hostRoutingWeight } from "../network/dashboard.ts";
+import { attestationFresh } from "../router/select.ts";
+import { latestAttempts, summarizeAttestation } from "./provider-attestation.ts";
 import { walletAuth } from "./auth.ts";
 
 export const networkHostSchema = z.strictObject({
@@ -73,8 +76,9 @@ export function networkHostRoutes(app: Hono, ctx: Ctx) {
   app.get("/api/v1/network/hosts/:providerId/status", async c => {
     const [p] = await ctx.db.select().from(providers).where(and(eq(providers.id, c.req.param("providerId")), eq(providers.networkHost, true)));
     if (!p) fail(404, "Network host not found.", "not_found");
-    const attested = p.attested && p.attestedAt !== null && Date.now() >= p.attestedAt.getTime() && Date.now() - p.attestedAt.getTime() <= ctx.cfg.attestation.intervalMs * 3;
-    return c.json({ provider_id: p.id, status: p.status, reasons: p.networkReasons, attested, probation_until: p.shadowUntil?.toISOString() ?? null, weight: 0 });
+    const last = (await latestAttempts(ctx, [p.id])).get(p.id);
+    const attested = attestationFresh({ provider: p }, ctx.cfg.attestation.intervalMs * 3, true) && last?.ok === true && summarizeAttestation(ctx, p, last).status === "attested";
+    return c.json({ provider_id: p.id, status: p.status, reasons: p.networkReasons, attested, probation_until: p.shadowUntil?.toISOString() ?? null, weight: await hostRoutingWeight(ctx, p) });
   });
   // The host generates this credential; signup and public /attest need no inference key.
   app.put("/api/v1/network/hosts/:providerId/credential", async c => {
