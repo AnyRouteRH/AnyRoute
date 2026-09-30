@@ -35,10 +35,10 @@ describe("AnyRoute MCP server", () => {
     expect(await (await rpc({ jsonrpc: "2.0", id: "p", method: "ping" })).json()).toEqual({ jsonrpc: "2.0", id: "p", result: {} });
   });
 
-  test("tools/list describes the six tools with input schemas", async () => {
+  test("tools/list describes the tools with input schemas", async () => {
     const j = await (await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list" })).json();
     const tools = j.result.tools as { name: string; description: string; inputSchema: { type: string } }[];
-    expect(tools.map((t) => t.name).sort()).toEqual(["chat", "get_receipt", "list_attested_models", "list_models", "verify_provider", "verify_receipt"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["anyroute_agent_check", "anyroute_agent_rules", "chat", "get_receipt", "list_attested_models", "list_models", "verify_provider", "verify_receipt"]);
     for (const t of tools) {
       expect(t.description.length).toBeGreaterThan(10);
       expect(t.inputSchema.type).toBe("object");

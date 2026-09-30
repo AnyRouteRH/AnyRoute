@@ -445,8 +445,8 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     file: "src/api/mcp.ts",
     carries: "prompt-or-answer",
     reads: "The JSON-RPC body of a tool call for the MCP endpoint, which can include a prompt.",
-    then: "Turned into a call to the router's own chat route.",
-    kept: "Nothing beyond what src/api/chat.ts keeps.",
+    then: "Chat is forwarded to the router's own chat route. Rulebook tools forward caller authentication and prompt-free intent identifiers to the existing agents routes; token estimates use catalog prices. Reading and checking rules does not create policy events.",
+    kept: "Nothing beyond what src/api/chat.ts and its existing policy enforcement keep. Rulebook reads and dry runs add no stored data.",
     evidence: [ev("src/api/mcp.ts", "const raw = await c.req.text();")],
   },
   {

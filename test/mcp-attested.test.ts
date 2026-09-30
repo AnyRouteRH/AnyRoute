@@ -39,7 +39,7 @@ describe("tool definitions", () => {
   test("chat takes lane and disclosure; the two new tools need no key and are read-only", async () => {
     const j = await (await rpc({ jsonrpc: "2.0", id: 1, method: "tools/list" })).json();
     const tools = Object.fromEntries((j.result.tools as any[]).map((t) => [t.name, t]));
-    expect(Object.keys(tools).sort()).toEqual(["chat", "get_receipt", "list_attested_models", "list_models", "verify_provider", "verify_receipt"]);
+    expect(Object.keys(tools).sort()).toEqual(["anyroute_agent_check", "anyroute_agent_rules", "chat", "get_receipt", "list_attested_models", "list_models", "verify_provider", "verify_receipt"]);
     expect(tools.chat.inputSchema.properties.lane.enum).toEqual(["public", "attested"]);
     expect(tools.chat.inputSchema.properties.disclosure.enum).toEqual(["none", "policy", "any"]);
     expect(tools.chat.inputSchema.required).toEqual(["model"]);

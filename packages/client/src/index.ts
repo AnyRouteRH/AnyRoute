@@ -36,3 +36,6 @@ export type { LabelOptions as PrivacyLabelOptions, PrivacyLabel } from "./privac
 
 export { e2eeChat, E2EE_SUITE } from "./e2ee.js";
 export type { E2eeCompletion, E2eeChatBody, E2eeOptions, E2eeAttestationVerifier } from "./e2ee.js";
+
+export { AgentPolicyDenied, AgentKilled, AgentApprovalRequired } from "./agent-errors.js";
+export type { AgentPolicy, AgentLane, AgentIntent, AgentReason, AgentDecision, AgentRemaining, AgentRulebook } from "./agent.js";

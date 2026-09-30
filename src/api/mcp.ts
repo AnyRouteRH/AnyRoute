@@ -1,3 +1,4 @@
+import { agentMcpTools, agentMcpArgs, callAgentMcp } from "./mcp-agent.ts";
 import { enforceAgentTool } from "../agents/enforce.ts";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
@@ -54,7 +55,7 @@ const text = (t: string) => ({ type: "text" as const, text: t });
 const ok = (data: Json, ...lead: string[]): ToolResult => ({ content: [...lead.map(text), text(JSON.stringify(data, null, 2))], structuredContent: data });
 const toolError = (e: ApiError, extra: Json = {}): ToolResult => ({
   content: [text(typeof extra.hint === "string" ? `${e.message} ${extra.hint}` : e.message)],
-  structuredContent: { error: { code: e.status, type: e.type, message: e.message, ...extra } },
+  structuredContent: { error: { code: e.status, type: e.type, message: e.message, ...(e.metadata ? { metadata: e.metadata } : {}), ...extra } },
   isError: true,
 });
 
@@ -82,6 +83,7 @@ const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const verifyProviderArgs = z.object({ provider_id: z.string().regex(PROVIDER_ID, "must be a provider id (letters, digits and . _ : -)") });
 
 const TOOLS = [
+  ...agentMcpTools,
   {
     name: "list_models",
     title: "List live models",
@@ -99,7 +101,7 @@ const TOOLS = [
     name: "chat",
     title: "Chat with any model",
     description:
-      "Send a prompt to any live model through AnyRoute and get the reply, a signed receipt id, the cost in USD and the latency. Billed to the API key that connected this server. Give either prompt or messages. Set lane to \"attested\" to send the prompt only to a provider whose TEE attestation the router has verified and that documents no retention: if none can answer, the call fails and nothing is sent or charged. A connection whose URL ends in ?lane=attested does this for every call. The result reports the lane, the disclosure class the answer was served under and, when the receipt carries one, the gateway's upstream_attestation (attested, gpu_attested). It also carries a privacy summary in plain English (who read the prompt, who saw the address, how it was paid, what was kept, what hardware answered), computed from the signed receipt.",
+      "Check anyroute_agent_check before expensive calls. Never retry a denied call unchanged. Send a prompt to any live model through AnyRoute and get the reply, a signed receipt id, the cost in USD and the latency. Billed to the API key that connected this server. Give either prompt or messages. Set lane to \"attested\" to send the prompt only to a provider whose TEE attestation the router has verified and that documents no retention: if none can answer, the call fails and nothing is sent or charged. A connection whose URL ends in ?lane=attested does this for every call. The result reports the lane, the disclosure class the answer was served under and, when the receipt carries one, the gateway's upstream_attestation (attested, gpu_attested). It also carries a privacy summary in plain English (who read the prompt, who saw the address, how it was paid, what was kept, what hardware answered), computed from the signed receipt.",
     inputSchema: {
       type: "object",
       properties: {
@@ -162,6 +164,7 @@ const TOOLS = [
 ];
 
 const ARGS: Record<string, z.ZodType> = {
+  ...agentMcpArgs,
   list_models: listModelsArgs,
   chat: chatArgs,
   get_receipt: receiptArgs,
@@ -169,12 +172,13 @@ const ARGS: Record<string, z.ZodType> = {
   list_attested_models: listAttestedArgs,
   verify_provider: verifyProviderArgs,
 };
-const NEEDS_KEY = new Set(["chat"]);
+const NEEDS_KEY = new Set(["chat", "anyroute_agent_rules", "anyroute_agent_check"]);
 
 export function mcpRoutes(app: Hono, ctx: Ctx) {
   /** Call one of the router's own REST routes in-process, turning its error body back into an ApiError. */
-  const internal = async (path: string, init?: RequestInit) => {
+  const internal = async (path: string, init?: RequestInit, c?: Context) => {
     const res = await app.request(path, init);
+    for (const name of ["X-Receipt-Id", "X-Anyroute-Lane", "X-Anyroute-Policy-Hash"]) { const value = res.headers.get(name); if (c && value !== null) c.header(name, value); }
     const body = (await res.json().catch(() => null)) as { id?: unknown; error?: { message?: string; type?: string; metadata?: Record<string, unknown> } } | null;
     if (!res.ok) {
       // A refusal that was billed (an attested answer withheld) carries the generation id of its receipt.
@@ -235,7 +239,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
         stream: false,
       }),
       signal: c.req.raw.signal,
-    })) as { id?: string; model?: string; provider?: string; choices?: { message?: { content?: unknown }; finish_reason?: string }[]; usage?: { cost?: number; prompt_tokens?: number; completion_tokens?: number }; receipt?: { id?: string; payload?: { disclosure?: unknown; attestation_simulated?: unknown; upstream_attestation?: Record<string, unknown> } } };
+    }, c)) as { id?: string; model?: string; provider?: string; choices?: { message?: { content?: unknown }; finish_reason?: string }[]; usage?: { cost?: number; prompt_tokens?: number; completion_tokens?: number }; receipt?: { id?: string; payload?: { disclosure?: unknown; attestation_simulated?: unknown; upstream_attestation?: Record<string, unknown> } } };
     const content = out.choices?.[0]?.message?.content;
     const reply = typeof content === "string" ? content : "";
     const served = out.receipt?.payload;
@@ -378,11 +382,14 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
     if (!schema) throw new RpcError(INVALID_PARAMS, `Unknown tool: ${p.name}.`);
     const parsed = schema.safeParse(args);
     if (!parsed.success) throw new RpcError(INVALID_PARAMS, `Invalid arguments for ${p.name}: ${issues(parsed.error)}.`);
-    await enforceAgentTool(ctx, c.req.header("authorization"), p.name);
+    if (!Object.hasOwn(agentMcpArgs, p.name)) await enforceAgentTool(ctx, c.req.header("authorization"), p.name);
     try {
       if (NEEDS_KEY.has(p.name) && !bearer(c.req.header("authorization")))
         throw new ApiError(401, `The ${p.name} tool needs an AnyRoute API key. Send it as \`Authorization: Bearer sk-ar-v1-...\` in this MCP server's HTTP headers. list_models, get_receipt and verify_receipt work without one.`, "missing_key");
       switch (p.name) {
+        case "anyroute_agent_rules":
+        case "anyroute_agent_check":
+          return ok(await callAgentMcp(p.name, parsed.data, c, internal));
         case "list_models":
           return await listModels(parsed.data as z.infer<typeof listModelsArgs>);
         case "chat":
@@ -454,7 +461,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
               capabilities: { tools: {} },
               serverInfo: { name: "anyroute", title: "AnyRoute", version: SERVER_VERSION },
               instructions:
-                "Use list_models to find a model, chat to call it (needs an API key; every call returns a signed receipt id), then get_receipt or verify_receipt to check the receipt. To keep a prompt with proven enclaves, list_attested_models shows the models that have one, chat with lane \"attested\" sends only to them (and refuses, sending nothing, when none can answer), and verify_provider shows what the router checked about a provider and what it did not." +
+                "Read anyroute_agent_rules and use anyroute_agent_check before expensive calls. Never retry a denied call unchanged. Use list_models to find a model, chat to call it (needs an API key; every call returns a signed receipt id), then get_receipt or verify_receipt to check the receipt. To keep a prompt with proven enclaves, list_attested_models shows the models that have one, chat with lane \"attested\" sends only to them (and refuses, sending nothing, when none can answer), and verify_provider shows what the router checked about a provider and what it did not." +
                 (restricted ? " This connection is restricted by its URL or headers: chat calls carry that lane or disclosure ceiling and cannot relax it." : ""),
             }),
           );

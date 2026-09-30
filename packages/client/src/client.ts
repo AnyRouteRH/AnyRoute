@@ -1,3 +1,5 @@
+import { agentClient } from "./agent.js";
+import { requestError } from "./agent-errors.js";
 import { e2eeChat, type E2eeChatBody, type E2eeOptions } from "./e2ee.js";
 import { verifyProvider, fetchRouterAttestation, type AttestFetcher, type ExpectedDigests, type ProviderVerification, type QuoteVerifier, type RouterAttestation } from "./attestation.js";
 import type { Ed25519Verifier } from "./ed25519.js";
@@ -89,6 +91,7 @@ export type ChatResult = ChatCompletion & { anyroute: AnyRouteMeta };
 
 export class AnyRoute {
   e2eeChat(body: E2eeChatBody, options: Omit<E2eeOptions, "baseUrl" | "headers" | "fetch">) { return e2eeChat(body, { ...options, baseUrl: this.baseUrl, headers: this.authHeaders(), fetch: this.f }); }
+  readonly agent: ReturnType<typeof agentClient>;
   readonly baseUrl: string;
   private readonly f: Fetch;
   private keys: KeySet | null;
@@ -101,6 +104,7 @@ export class AnyRoute {
     if (!opts?.baseUrl) throw new AnyRouteError("baseUrl is required", "bad_options");
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.f = opts.fetch ?? ((...a: Parameters<Fetch>) => fetch(...a));
+    this.agent = agentClient(this.baseUrl, this.f, () => ({ ...this.opts.headers, ...this.authHeaders() }));
     this.keys = opts.receiptKeys ?? null;
     this.transparency = opts.transparency ? new TransparencyLog({ logUrl: this.baseUrl, ...opts.transparency, fetch: this.f, ed25519: opts.ed25519 }) : null;
   }
@@ -228,7 +232,7 @@ export class AnyRoute {
         const { routed, headers, provider } = await this.prepare(body, o);
         const res = await this.post("/api/v1/chat/completions", routed, headers, o);
         const json = (await res.json().catch(() => null)) as (ChatCompletion & { error?: { message?: string; type?: string; metadata?: unknown } }) | null;
-        if (!res.ok || !json) throw new AnyRouteError(json?.error?.message ?? `chat request failed with ${res.status}`, json?.error?.type ?? "request_failed", res.status, json?.error?.metadata);
+        if (!res.ok || !json) throw requestError(json?.error?.message ?? `chat request failed with ${res.status}`, json?.error?.type ?? "request_failed", res.status, json?.error?.metadata);
         const meta = await this.finish(res, json.receipt ?? null, provider, o);
         return { ...json, anyroute: meta };
       },
@@ -241,7 +245,7 @@ export class AnyRoute {
         const res = await this.post("/api/v1/chat/completions", routed, headers, o);
         if (!res.ok || !res.body) {
           const json = (await res.json().catch(() => null)) as { error?: { message?: string; type?: string; metadata?: unknown } } | null;
-          throw new AnyRouteError(json?.error?.message ?? `chat request failed with ${res.status}`, json?.error?.type ?? "request_failed", res.status, json?.error?.metadata);
+          throw requestError(json?.error?.message ?? `chat request failed with ${res.status}`, json?.error?.type ?? "request_failed", res.status, json?.error?.metadata);
         }
         return new ChatStream(res, (receipt) => this.finish(res, receipt, provider, o));
       },
