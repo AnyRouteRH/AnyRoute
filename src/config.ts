@@ -351,6 +351,9 @@ const schema = z.object({
   TLOG_WITNESS_QUORUM: int(2), // cosignatures a checkpoint needs to count as witnessed
   TLOG_INTERVAL_MS: int(60_000), // how often the log job picks up new keys and signs a checkpoint
   TLOG_COSIGN_RPM: int(60), // cosignature submissions per minute per client address
+  // Append the SHA-256 of the data inventory this build publishes at /keep/inventory.json (src/privacy) to the log, as a
+  // data_inventory entry, when a new inventory is first deployed. Off by default; needs TLOG_ENABLED.
+  TLOG_DATA_INVENTORY: bool.default(false),
   // Public-log anchoring (src/tlog/rekor.ts), off by default: each new checkpoint, at most once per
   // TLOG_REKOR_MIN_INTERVAL_MS, is recorded in the Rekor log at REKOR_URL as a hashedrekord entry over the signed checkpoint
   // note, signed with TLOG_REKOR_SIGNING_KEY. REKOR_PUBLIC_KEY, when set, is used to check Rekor's checkpoint and signed
@@ -700,7 +703,8 @@ function hostAnchorSettings(e: Env) {
 // ---- Transparency log --------------------------------------------------------------------------------------------
 function tlogSettings(e: Env, production: boolean) {
   if (e.TLOG_REKOR_ENABLED && !e.TLOG_ENABLED) throw new Error("TLOG_REKOR_ENABLED needs TLOG_ENABLED: it records the transparency log's checkpoints in Rekor.");
-  if (!e.TLOG_ENABLED) return { enabled: false as boolean, origin: "", signingKey: Buffer.alloc(0), witnesses: [] as NoteVerifier[], quorum: e.TLOG_WITNESS_QUORUM, intervalMs: e.TLOG_INTERVAL_MS, cosignRpm: e.TLOG_COSIGN_RPM, rekor: tlogRekorSettings(e, production) };
+  if (e.TLOG_DATA_INVENTORY && !e.TLOG_ENABLED) throw new Error("TLOG_DATA_INVENTORY needs TLOG_ENABLED: it appends the data inventory's hash to the transparency log.");
+  if (!e.TLOG_ENABLED) return { enabled: false as boolean, dataInventory: false as boolean, origin: "", signingKey: Buffer.alloc(0), witnesses: [] as NoteVerifier[], quorum: e.TLOG_WITNESS_QUORUM, intervalMs: e.TLOG_INTERVAL_MS, cosignRpm: e.TLOG_COSIGN_RPM, rekor: tlogRekorSettings(e, production) };
   let origin = e.TLOG_ORIGIN?.trim() ?? "";
   let seed: Buffer | null = null;
   let pkcs8: Buffer | null = null;
@@ -764,6 +768,7 @@ function tlogSettings(e: Env, production: boolean) {
   if (!seed && !pkcs8) seed = createHmac("sha256", e.APP_SECRET ?? "dev-insecure-secret-change-me-dev-insecure").update("anyroute-tlog-signing-key/v1").digest();
   return {
     enabled: true as boolean,
+    dataInventory: e.TLOG_DATA_INVENTORY as boolean,
     origin,
     /** A 32-byte Ed25519 seed or a PKCS#8 key. */
     signingKey: (seed ?? pkcs8)!,

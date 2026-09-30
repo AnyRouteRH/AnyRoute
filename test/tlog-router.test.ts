@@ -77,7 +77,7 @@ describe("transparency log in the router", () => {
 
   test("the log describes itself: origin, pinned-key format, witnesses and quorum", async () => {
     const d = (await (await h.request("/api/v1/tlog")).json()).data;
-    expect(d).toMatchObject({ origin: ORIGIN, quorum: 2, witnesses: [{ name: W1.name, verifier_key: W1.verifierKey }, { name: W2.name, verifier_key: W2.verifierKey }], kinds: ["receipt_key", "ohttp_key_config", "blind_issuer_key", "measurement_bundle", "attestation_binding"] });
+    expect(d).toMatchObject({ origin: ORIGIN, quorum: 2, witnesses: [{ name: W1.name, verifier_key: W1.verifierKey }, { name: W2.name, verifier_key: W2.verifierKey }], kinds: ["receipt_key", "ohttp_key_config", "blind_issuer_key", "measurement_bundle", "attestation_binding", "data_inventory"] });
     expect(logKey).toBe(h.ctx.tlog!.verifierKey);
     expect(parseVerifierKey(logKey)).toMatchObject({ name: ORIGIN, type: 1 });
   });

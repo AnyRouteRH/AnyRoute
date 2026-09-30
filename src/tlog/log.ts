@@ -3,7 +3,8 @@ import type { Config } from "../config.ts";
 import type { Db } from "../db/client.ts";
 import { blindKeys, measurementBundles, ohttpKeys, receiptKeys, tlogCheckpoints, tlogCosignatures, tlogEntries } from "../db/schema.ts";
 import { log } from "../lib/util.ts";
-import { blindKeyEntry, ENTRY_KINDS, entryText, measurementBundleEntry, ohttpKeyEntry, receiptKeyEntry, type EntryInput, type EntryKind } from "./entries.ts";
+import { blindKeyEntry, dataInventoryEntry, ENTRY_KINDS, entryText, measurementBundleEntry, ohttpKeyEntry, receiptKeyEntry, type EntryInput, type EntryKind } from "./entries.ts";
+import { currentInventory } from "../privacy/inventory.ts";
 import { onKeyPublished } from "./hooks.ts";
 import { encodeEntryBundle, leafHash, MAX_ENTRY_BYTES, MerkleTree, tileWidth, TILE_WIDTH, type TileRef } from "./merkle.ts";
 import { formatCheckpoint, noteSigner, parseCheckpoint, parseNote, SIG_ED25519, signatureLine, verifyCosignature, type NoteSigner, type NoteVerifier } from "./note.ts";
@@ -34,6 +35,8 @@ export class TransparencyLog {
   readonly quorum: number;
   /** Public-log anchoring of checkpoints in Rekor (TLOG_REKOR_ENABLED), or null. */
   readonly rekor: RekorAnchor | null;
+  /** Whether to append the SHA-256 of the data inventory this build publishes (TLOG_DATA_INVENTORY). */
+  readonly dataInventory: boolean;
   /** Test hook: the clock, in milliseconds. */
   now: () => number = () => Date.now();
   private readonly tree = new MerkleTree();
@@ -51,6 +54,7 @@ export class TransparencyLog {
     this.witnesses = cfg.witnesses;
     this.quorum = cfg.quorum;
     this.rekor = cfg.rekor?.enabled ? new RekorAnchor(db, cfg.rekor) : null;
+    this.dataInventory = !!cfg.dataInventory;
   }
 
   /** The verifier key clients pin: "<origin>+<key id>+<base64 key>". */
@@ -97,6 +101,15 @@ export class TransparencyLog {
     if (kinds.includes("blind_issuer_key")) for (const k of await this.db.select().from(blindKeys).orderBy(asc(blindKeys.epoch), asc(blindKeys.denomination))) out.push(blindKeyEntry(k));
     if (kinds.includes("measurement_bundle"))
       for (const b of await this.db.select().from(measurementBundles).where(eq(measurementBundles.status, "verified")).orderBy(asc(measurementBundles.verifiedAt), asc(measurementBundles.id))) out.push(measurementBundleEntry(b));
+    // The data inventory of the code that is running. The entry is deduplicated by digest like any other, so it is appended
+    // once, the first time a router with a new inventory starts. A problem building it must not hold back the keys.
+    if (this.dataInventory && kinds.includes("data_inventory")) {
+      try {
+        out.push(dataInventoryEntry(currentInventory()));
+      } catch (e) {
+        log.warn("data inventory not logged", { error: (e as Error).message.split("\n")[0] });
+      }
+    }
     return out;
   }
 

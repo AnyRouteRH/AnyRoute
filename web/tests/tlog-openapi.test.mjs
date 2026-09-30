@@ -4,7 +4,7 @@ import fs from 'node:fs';
 
 const spec=JSON.parse(fs.readFileSync(new URL('../public/openapi.json',import.meta.url),'utf8'));
 const docs=fs.readFileSync(new URL('../app/docs/page.jsx',import.meta.url),'utf8');
-const KINDS=['receipt_key','ohttp_key_config','blind_issuer_key','measurement_bundle','attestation_binding'];
+const KINDS=['receipt_key','ohttp_key_config','blind_issuer_key','measurement_bundle','attestation_binding','data_inventory'];
 
 test('the transparency log endpoints are documented, public and in their own tag',()=>{
  const ops={

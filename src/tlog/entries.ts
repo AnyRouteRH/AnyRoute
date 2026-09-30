@@ -12,10 +12,11 @@ import { canonicalJson, sha256 } from "../lib/util.ts";
 //   blind_issuer_key     SHA-256 of the RFC 9578 SubjectPublicKeyInfo (the token_key_id)
 //   measurement_bundle   SHA-256 of the canonical bundle bytes (the digest logged in Rekor)
 //   attestation_binding  SHA-256 of the canonical JSON of a sidecar's bindings (the first half of its report_data)
+//   data_inventory       SHA-256 of the canonical JSON of the data inventory published at /keep/inventory.json
 //
 // Entries carry no log time: the log's order is its only clock.
 
-export const ENTRY_KINDS = ["receipt_key", "ohttp_key_config", "blind_issuer_key", "measurement_bundle", "attestation_binding"] as const;
+export const ENTRY_KINDS = ["receipt_key", "ohttp_key_config", "blind_issuer_key", "measurement_bundle", "attestation_binding", "data_inventory"] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 export const isEntryKind = (v: unknown): v is EntryKind => typeof v === "string" && (ENTRY_KINDS as readonly string[]).includes(v);
 
@@ -68,5 +69,20 @@ export function attestationBindingEntry(providerId: string, bindings: Record<str
     sha256: sha256(canonicalJson(bindings)),
     subject: providerId,
     key: { provider_id: providerId, attestation_ref: attestationRef, bindings },
+  };
+}
+
+/**
+ * The data inventory a build publishes at /keep/inventory.json (src/privacy): what tables, columns, Redis keys and log lines the
+ * router has. `sha256` is the SHA-256 of that file's exact bytes, so anyone can fetch the file, hash it and look the hash up here.
+ * The entry is appended once per distinct inventory, the first time a router that has it starts.
+ */
+export function dataInventoryEntry(i: { sha256: string; format: string; tables: number; columns: number }): EntryInput {
+  const digest = hex(i.sha256);
+  return {
+    kind: "data_inventory",
+    sha256: digest,
+    subject: `inventory:${digest.slice(0, 16)}`,
+    key: { format: i.format, inventory_sha256: digest, tables: i.tables, columns: i.columns, path: "/keep/inventory.json" },
   };
 }
