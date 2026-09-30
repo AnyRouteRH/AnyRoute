@@ -489,6 +489,9 @@ export default function SealPage() {
                   </a>
                   , and <a href="/verify/">Verify</a> to check a provider’s attestation and a receipt in your browser.
                 </li>
+                <li>
+                  <a href="/keep/">What we keep</a>: every table, column, Redis key and log line the router has, generated from its schema.
+                </li>
               </ul>
             </div>
 
