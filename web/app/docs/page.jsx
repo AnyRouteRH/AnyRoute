@@ -705,6 +705,9 @@ const endpoints = [
   ["POST /api/v1/byok · /teams", "Bring your own provider key; team roles"],
   ["GET · POST · PATCH · DELETE /api/v1/routes", "Saved Routes: named routing policies you call as model \"@route/<slug>\", optionally pinned to the attested lane"],
   ["GET · PUT · DELETE /api/v1/presets/:name · /versions · /diff · POST /rollback", "Presets: versioned saved routes with a system prompt, tools and response_format, called as model \"@preset/<name>\" or pinned as \"@preset/<name>@<version>\""],
+  ["POST · GET /api/v1/characters · GET · PUT · DELETE /characters/:id · GET /characters/:id/export · /greetings · /usage", "Characters: Tavern cards (V1, V2 or V3, as JSON or PNG) kept public, unlisted or private (sealed on your device), called as model \"@character/<id>\"; public discovery by tag and text; export as JSON or PNG; per-day calls and cost for the creator"],
+  ["POST /api/v1/characters/:id/chat · /characters/group/next", "Chat with a character (chat completions plus greeting, regenerate, user_name and memory), on the attested lane when the model has one; pick the next speaker in a group chat"],
+  ["POST · GET · DELETE /api/v1/memory · GET · PUT · DELETE /memory/:id · POST /memory/search", "Memory ledger for characters: entries encrypted on your device, stored as ciphertext under a scope the router cannot tie to a character; embeddings only with embedding_opt_in"],
   ["POST · GET · DELETE /api/v1/sessions · GET /sessions/current", "Agent Sessions: short-lived, budget-capped keys for agent runs"],
   ["GET /api/v1/spend · /spend/alerts", "Spend Watch: totals, projection, breakdowns, key budgets and alert rules"],
   ["GET /api/v1/disclosure/:providerId", "A provider’s documented retention, jurisdiction, legal hold and training use, each with a source and date, and the class it is served under now"],
@@ -756,6 +759,7 @@ export default function Docs() {
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
             <a href="#presets">Presets</a>
+            <a href="#characters">Characters</a>
             <a href="#tracing">Tracing</a>
             <a href="#teams">Teams</a>
             <a href="#disclosure">Disclosure</a>
@@ -840,6 +844,37 @@ export default function Docs() {
               2,
             )}
           </Code>
+          <h2 id="characters">Characters: one card, any model.</h2>
+          <p>
+            A character is a Tavern character card kept on the router. POST /api/v1/characters takes the card as JSON (card) or as a PNG that carries it (png, base64): V1 cards with flat fields, V2 (chara_card_v2) and V3 (chara_card_v3). In a PNG
+            the ccv3 text chunk wins over chara. Each character gets an id (ch_ and 24 hex characters) and a card_hash, the SHA-256 of the card as canonical JSON. GET /characters/:id/export?format=json|png&amp;spec=v2|v3 gives the card back
+            in a file SillyTavern and other card tools import.
+          </p>
+          <p>
+            Visibility is public (listed in GET /api/v1/characters, which needs no key and filters by tag and q), unlisted (readable by anyone with the id, the default) or private. A private card is encrypted on your device with sealCard
+            from @anyroute/client/characters: the router stores only the ciphertext and the card_hash, and never sees the name or the text. To chat with it, your client decrypts it and sends it in card; the router checks it against the
+            card_hash (409 card_hash_mismatch) and uses it for that call only.
+          </p>
+          <p>
+            Call a character from any OpenAI client with model &quot;@character/&lt;id&gt;&quot; on /chat/completions. The card becomes the prompt; the model that answers is models[0], or the character&apos;s default model.
+            POST /api/v1/characters/:id/chat does the same with more options: greeting (0 is first_mes, 1 and up the alternate greetings), regenerate, user_name for {"{{user}}"}, session_id, and memory ({"{"} summary, facts {"}"}),
+            which your client decrypted and which is used in memory and never stored. Lanes, budgets and signed receipts apply as on /chat/completions. The lane defaults to attested when the model has an attested provider, else public;
+            x-anyroute-character-lane says which, and x-anyroute-character-note says why when attested was not available. A lane the request asks for wins. POST /characters/group/next picks who speaks next in a group chat (round_robin or
+            named).
+          </p>
+          <p>
+            The memory ledger keeps a character&apos;s long-term memory for you without reading it. Your client seals each entry (summary, fact, lorebook or state) as arm1.&lt;iv&gt;.&lt;ciphertext&gt; and files it under a scope it
+            derives, an HMAC of the character id under your viewing key, so the router cannot tell which character a memory belongs to. POST /api/v1/memory stores an entry, GET lists sizes and kinds without the sealed values, and DELETE
+            ?scope= clears a scope. Search by embedding (POST /memory/search) works only on entries stored with embedding_opt_in: true, and it is off by default: a vector is derived from the memory&apos;s text and can leak its topic.
+          </p>
+          <p>
+            The creator of a public card sees GET /characters/:id/usage: calls and cost per day. Never what was said, and never who said it.
+          </p>
+          <Code label="SillyTavern · API Connections">{`API:                     Chat Completion
+Chat Completion Source:  Custom (OpenAI-compatible)
+Custom Endpoint:         ${BASE}/api/v1
+Custom API Key:          your Anyroute key (sk-ar-v1-...)
+Model ID:                @character/<id>`}</Code>
           <h2 id="tracing">Tracing: your spans, in your own tools.</h2>
           <p>
             Give a key a tracing destination and every public-lane call made with it is sent there as one span that follows the OpenTelemetry GenAI semantic conventions: gen_ai.system, gen_ai.request.model, gen_ai.response.model,

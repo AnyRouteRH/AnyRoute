@@ -3,7 +3,7 @@
   "info": {
     "title": "Anyroute API",
     "version": "1.0.0",
-    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the transparency log of keys and configurations with its tiles, checkpoints and witness cosignatures (present only when the router enables it) the Lane: model variants, day-zero candidates and creator royalty claims, Private RAG (answers from documents sent with the question, nothing kept), and the Batch API (many chat or embeddings requests run in the background at a discount, with the lines and answers kept sealed outside the database until the results expire). It also covers teams as anonymous organisations: roles, passkey and wallet members, org budgets and the hash-chained audit log with its export. Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
+    "description": "Scope: a documented subset of the public HTTP API that the Anyroute router implements. It covers the model catalog, chat completions, embeddings, key creation and listing, generations, status, health and receipts, plus the blind-token issuer keys and purchase (present only when the router enables blind tokens) the Oblivious HTTP gateway keys, gateway and relay list (present only when the router enables Oblivious HTTP) the transparency log of keys and configurations with its tiles, checkpoints and witness cosignatures (present only when the router enables it) the Lane: model variants, day-zero candidates and creator royalty claims, Private RAG (answers from documents sent with the question, nothing kept), and the Batch API (many chat or embeddings requests run in the background at a discount, with the lines and answers kept sealed outside the database until the results expire). It also covers teams as anonymous organisations: roles, passkey and wallet members, org budgets and the hash-chained audit log with its export, and characters: Tavern cards called as @character/<id>, with a memory ledger encrypted on the client. Other implemented routes (for example legacy completions, the /v1 aliases, key updates, credits, Stock Token payments, BYOK, wallet sign-in, rankings, provider onboarding and the paymaster) are not described here, and a route's absence from this document does not mean it is absent from the router. Endpoint availability, payment modes and model capabilities are deployment-specific. Errors share the OpenRouter-shaped ApiError body; the 4xx responses each operation can return are declared with the reusable responses in components.responses.",
     "contact": {
       "name": "AnyRoute support",
       "email": "Anyroute1@atomicmail.io"
@@ -135,6 +135,14 @@
     {
       "name": "Status page",
       "description": "The public status page: availability, latency and error budgets per privacy lane and API surface, and incidents with Atom and RSS feeds. The public lane is summed from request outcomes; the attested and unlinkable lanes come only from the differentially private hourly releases at /api/v1/stats (source: dp-noised)."
+    },
+    {
+      "name": "Characters",
+      "description": "Tavern character cards (V2 and V3, as JSON or PNG) called as model @character/<id>: public, unlisted or private (encrypted on the client), with a chat endpoint that defaults to the attested lane, group turn order and creator attribution (counts and cost only)."
+    },
+    {
+      "name": "Memory",
+      "description": "A memory ledger for characters, encrypted on the client: the router stores ciphertext under a scope it cannot link to a character, and embeddings only when the caller opts in."
     }
   ],
   "paths": {
@@ -8376,6 +8384,1195 @@
           }
         }
       }
+    },
+    "/api/v1/characters": {
+      "get": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "listCharacters",
+        "summary": "Discover public characters, or list your own",
+        "description": "With no key: public characters only, newest first, filtered by tag and a text search over name, tags and creator. With ?mine=1 and a key: the caller's own characters of every visibility.",
+        "security": [
+          {},
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Text search over name, tags and creator."
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "The caller's own characters; needs a key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Character"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "createCharacter",
+        "summary": "Create a character from a card",
+        "description": "Send a Tavern card as JSON (card) or a PNG that carries one (png). A private card is encrypted on the client with sealCard from @anyroute/client/characters: send sealed_card and card_hash, and the router keeps only the ciphertext and the hash.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Character"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "character_limit_reached: the account keeps the most characters it may. Delete one first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "payload_too_large: the PNG is over 8 MB, or the card is over the size limit as JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/characters/{id}": {
+      "get": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "getCharacter",
+        "summary": "Get a character",
+        "description": "Public and unlisted characters to anyone with the id. A private one only to its owner, with sealed_card; to anyone else it is a 404.",
+        "security": [
+          {},
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^ch_[0-9a-f]{24}$"
+            },
+            "description": "The character id, as in @character/<id>."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The character.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Character"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "updateCharacter",
+        "summary": "Replace a character's card, visibility or default model",
+        "description": "Owner only. The same body as POST; the card_hash changes with the card.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^ch_[0-9a-f]{24}$"
+            },
+            "description": "The character id, as in @character/<id>."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated character.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Character"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "description": "payload_too_large: the PNG is over 8 MB, or the card is over the size limit as JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "deleteCharacter",
+        "summary": "Delete a character",
+        "description": "Owner only. Calls to @character/<id> fail from then on; receipts of past calls are unaffected.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^ch_[0-9a-f]{24}$"
+            },
+            "description": "The character id, as in @character/<id>."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "deleted"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "deleted": {
+                          "const": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/characters/{id}/export": {
+      "get": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "exportCharacter",
+        "summary": "Download the card as JSON or PNG",
+        "description": "Public and unlisted characters. The PNG carries the card in a chara tEXt chunk (spec v2) or in both ccv3 and chara (spec v3), so SillyTavern and other card tools import it.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^ch_[0-9a-f]{24}$"
+            },
+            "description": "The character id, as in @character/<id>."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "png"
+              ],
+              "default": "json"
+            }
+          },
+          {
+            "name": "spec",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v2",
+                "v3"
+              ]
+            },
+            "description": "Defaults to the card's own spec."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The card file.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "attachment; filename=\"<name>.json\" (or .png)"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterCard"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/characters/{id}/greetings": {
+      "get": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "getCharacterGreetings",
+        "summary": "The greetings a chat can open with",
+        "description": "first_mes, then the alternate greetings. The index is what the chat endpoint's greeting field takes.",
+        "security": [
+          {},
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^ch_[0-9a-f]{24}$"
+            },
+            "description": "The character id, as in @character/<id>."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The greetings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "greetings"
+                      ],
+                      "properties": {
+                        "greetings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/characters/{id}/usage": {
+      "get": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "getCharacterUsage",
+        "summary": "Calls and cost per day, for the card's creator",
+        "description": "Owner only. Creator attribution for a public card: how many calls used it and what they cost, per day. Never the content of a call, and never who made it.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^ch_[0-9a-f]{24}$"
+            },
+            "description": "The character id, as in @character/<id>."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage per day, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CharacterUsage"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/characters/{id}/chat": {
+      "post": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "characterChat",
+        "summary": "Chat with a character",
+        "description": "A chat completion with the character's card as the prompt. The model is model, then models[0], then the card's default model. The lane defaults to attested when the model has an attested provider, else public; a request's own provider.lane wins, and a lane that cannot be served fails as on /chat/completions. Budgets, guardrails and signed receipts apply as there. Memory sent in memory is used for this call only and never stored. For a private card, send the decrypted card: without it the call fails with 400 card_required, and a card that does not hash to card_hash with 409 card_hash_mismatch. A character with no default model and no model in the request fails with 400 model_required.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^ch_[0-9a-f]{24}$"
+            },
+            "description": "The character id, as in @character/<id>."
+          },
+          {
+            "$ref": "#/components/parameters/Lane"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A chat completion, or SSE events followed by data: [DONE] when stream is true.",
+            "headers": {
+              "X-Anyroute-Character": {
+                "description": "The character id that answered.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Anyroute-Character-Lane": {
+                "description": "The lane the character call ran on.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "attested",
+                    "public"
+                  ]
+                }
+              },
+              "X-Anyroute-Character-Note": {
+                "description": "Present when the attested lane was not available for this model, in plain English.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Anyroute-Lane": {
+                "$ref": "#/components/headers/LaneServed"
+              },
+              "X-Receipt-Id": {
+                "$ref": "#/components/headers/ReceiptId"
+              },
+              "X-Anyroute-Character-Session": {
+                "description": "The session_id the request sent, echoed back.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "An OpenAI chat completion."
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "card_hash_mismatch: the decrypted card sent for a private character does not hash to its card_hash.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "no_attested_endpoint: the request asked for the attested lane and no attested endpoint can serve the model.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/characters/group/next": {
+      "post": {
+        "tags": [
+          "Characters"
+        ],
+        "operationId": "characterGroupNext",
+        "summary": "Pick who speaks next in a group chat",
+        "description": "Returns the member that should answer next; call its chat endpoint with the same messages. Nothing is stored.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterGroupNextRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The next speaker.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "next",
+                        "index"
+                      ],
+                      "properties": {
+                        "next": {
+                          "type": "string"
+                        },
+                        "index": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/memory": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "operationId": "listMemory",
+        "summary": "List memory entries (metadata only)",
+        "description": "The caller's entries, optionally for one scope, without the sealed values.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entries and their total size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "total_bytes"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemoryEntry"
+                      }
+                    },
+                    "total_bytes": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "operationId": "createMemory",
+        "summary": "Store a sealed memory entry",
+        "description": "The client encrypts the entry and derives the scope; the router stores the ciphertext and cannot read it or tell which character it is for. An embedding is stored only with embedding_opt_in: true, because a vector is derived from the text and can leak its topic.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MemoryEntry"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "413": {
+            "description": "The entry, or the caller's memory in total, is too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Memory"
+        ],
+        "operationId": "deleteMemoryScope",
+        "summary": "Delete every entry in a scope",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "scope": {
+                          "type": "string"
+                        },
+                        "deleted": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/memory/{id}": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "operationId": "getMemory",
+        "summary": "Read one sealed memory entry",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The memory entry id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entry with its sealed value.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MemoryEntry"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Memory"
+        ],
+        "operationId": "updateMemory",
+        "summary": "Replace a sealed memory entry",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The memory entry id."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MemoryEntry"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "description": "The entry is too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Memory"
+        ],
+        "operationId": "deleteMemory",
+        "summary": "Delete a memory entry",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The memory entry id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "deleted": {
+                          "const": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/memory/search": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "operationId": "searchMemory",
+        "summary": "Nearest sealed entries to an embedding",
+        "description": "Searches only entries stored with embedding_opt_in. Returns the sealed values for the client to decrypt.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemorySearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The nearest entries, best first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "score",
+                          "kind",
+                          "sealed"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "type": "number"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "sealed": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9032,7 +10229,7 @@
         "properties": {
           "model": {
             "type": "string",
-            "description": "Public model ID, optionally with routing suffixes: :nitro sorts providers by throughput (fastest first) and :floor by price (cheapest first), the same as provider.sort throughput and price and winning over it; both only order the providers the other preferences and the lane allow. :free and :private also apply. The reserved ID anyroute/council selects council mode when the router enables it. @route/<slug> calls a saved route and @preset/<name> (or @preset/<name>@<version> to pin one version) calls a preset of the key's account."
+            "description": "Public model ID, optionally with routing suffixes: :nitro sorts providers by throughput (fastest first) and :floor by price (cheapest first), the same as provider.sort throughput and price and winning over it; both only order the providers the other preferences and the lane allow. :free and :private also apply. The reserved ID anyroute/council selects council mode when the router enables it. @route/<slug> calls a saved route and @preset/<name> (or @preset/<name>@<version> to pin one version) calls a preset of the key's account. @character/<id> calls a character: the card is the prompt and models[0], or the character's default model, answers."
           },
           "models": {
             "type": "array",
@@ -17392,6 +18589,466 @@
                 }
               }
             }
+          }
+        }
+      },
+      "CharacterCard": {
+        "type": "object",
+        "description": "A Tavern character card in its canonical form. card_hash is the SHA-256 of this object as canonical JSON.",
+        "required": [
+          "spec",
+          "spec_version",
+          "data"
+        ],
+        "properties": {
+          "spec": {
+            "type": "string",
+            "enum": [
+              "chara_card_v2",
+              "chara_card_v3"
+            ]
+          },
+          "spec_version": {
+            "type": "string",
+            "examples": [
+              "2.0",
+              "3.0"
+            ]
+          },
+          "data": {
+            "type": "object",
+            "description": "The card's fields as the Tavern character card V2 and V3 specs define them. A V1 card (flat fields) is read as V2. Fields the router does not use are kept as they are.",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "personality": {
+                "type": "string"
+              },
+              "scenario": {
+                "type": "string"
+              },
+              "first_mes": {
+                "type": "string",
+                "description": "The first greeting (greeting index 0)."
+              },
+              "mes_example": {
+                "type": "string"
+              },
+              "system_prompt": {
+                "type": "string"
+              },
+              "post_history_instructions": {
+                "type": "string"
+              },
+              "alternate_greetings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Greetings 1, 2, 3 and so on."
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "creator": {
+                "type": "string"
+              },
+              "creator_notes": {
+                "type": "string"
+              },
+              "character_version": {
+                "type": "string"
+              },
+              "character_book": {
+                "type": "object",
+                "description": "The lorebook: entries with keys and content."
+              },
+              "extensions": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "Character": {
+        "type": "object",
+        "required": [
+          "id",
+          "model",
+          "visibility",
+          "name",
+          "tags",
+          "creator",
+          "spec",
+          "card_hash",
+          "default_model",
+          "owner",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ch_[0-9a-f]{24}$"
+          },
+          "model": {
+            "type": "string",
+            "description": "The model id that calls this character: @character/<id>."
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "unlisted",
+              "private"
+            ],
+            "description": "public: listed in discovery and readable by anyone. unlisted: readable by anyone with the id, not listed. private: sealed on the owner's device; only the owner can read it."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null for a private card: the router never sees it."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "creator": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spec": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "chara_card_v2",
+              "chara_card_v3",
+              null
+            ],
+            "description": "null for a private card."
+          },
+          "card_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 of the canonical card JSON. For a private card the client computes it before sealing, and a chat call's decrypted card is checked against it."
+          },
+          "default_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model that answers when a call names none (no models[0])."
+          },
+          "card": {
+            "$ref": "#/components/schemas/CharacterCard",
+            "description": "Public and unlisted cards only."
+          },
+          "sealed_card": {
+            "type": "string",
+            "description": "Private cards, to the owner only: the card encrypted on the owner's device (arm1.<iv>.<ciphertext>). The router cannot read it."
+          },
+          "owner": {
+            "type": "boolean",
+            "description": "true when the calling key owns this card."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CharacterInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Send the card as JSON (card) or as a PNG that carries it (png). A private card is sealed on the client instead: send sealed_card and card_hash, never the plaintext.",
+        "properties": {
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "unlisted",
+              "private"
+            ],
+            "default": "unlisted"
+          },
+          "card": {
+            "type": "object",
+            "description": "A Tavern character card: V1 (flat fields), V2 (chara_card_v2) or V3 (chara_card_v3) JSON."
+          },
+          "png": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "A PNG, base64, that carries the card in a ccv3 or chara tEXt chunk (ccv3 wins when both are present)."
+          },
+          "model": {
+            "type": "string",
+            "description": "The default model for @character/<id>."
+          },
+          "sealed_card": {
+            "type": "string",
+            "description": "Private only: the card encrypted on the client (sealCard in @anyroute/client/characters). The router stores it as it is and never sees the plaintext."
+          },
+          "card_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Private only: the SHA-256 of the canonical card JSON, computed before sealing."
+          }
+        }
+      },
+      "CharacterChatRequest": {
+        "description": "A chat completions request plus the character options. The character's prompt is built by the router from the card; lanes, budgets and receipts apply as on /chat/completions. model, when set, is the model that answers; otherwise models[0], then the card's default model.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ChatRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string",
+                "description": "Your own id for a conversation, so regenerate knows which turn to redo."
+              },
+              "greeting": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Which greeting opens the chat: 0 is first_mes, 1 and up are alternate_greetings."
+              },
+              "regenerate": {
+                "type": "boolean",
+                "description": "Answer the last user turn again."
+              },
+              "user_name": {
+                "type": "string",
+                "description": "Replaces {{user}} in the card."
+              },
+              "memory": {
+                "type": "object",
+                "description": "Memory the client decrypted from its ledger. Used for this call, in memory only, and never stored.",
+                "properties": {
+                  "summary": {
+                    "type": "string"
+                  },
+                  "facts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "card": {
+                "type": "object",
+                "description": "Private cards only: the card decrypted on the client. It must hash to the character's card_hash, or the call is refused."
+              }
+            }
+          }
+        ]
+      },
+      "CharacterUsage": {
+        "type": "object",
+        "required": [
+          "period",
+          "calls",
+          "cost_usd"
+        ],
+        "properties": {
+          "period": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD"
+          },
+          "calls": {
+            "type": "integer"
+          },
+          "cost_usd": {
+            "type": "number"
+          }
+        }
+      },
+      "CharacterGroupNextRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "members",
+          "messages"
+        ],
+        "properties": {
+          "members": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^ch_[0-9a-f]{24}$"
+            },
+            "description": "The characters in the group chat, in order."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "round_robin",
+              "named"
+            ],
+            "default": "round_robin",
+            "description": "round_robin: the next member after the last speaker. named: the member the last message names, else round robin."
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "The chat so far, as chat completions messages; an assistant message's name is the character that spoke."
+          }
+        }
+      },
+      "MemoryInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "kind",
+          "sealed",
+          "key_id"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16,128}$",
+            "description": "Derived on the client: an HMAC of the character id under the viewing key, so the router cannot tell which character a memory belongs to."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "fact",
+              "lorebook",
+              "state"
+            ]
+          },
+          "sealed": {
+            "type": "string",
+            "pattern": "^arm1\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+            "description": "arm1.<base64url iv>.<base64url ciphertext>, encrypted on the client. The router stores only this."
+          },
+          "key_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$",
+            "description": "Which of the client's keys sealed it."
+          },
+          "embedding": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Stored only with embedding_opt_in: true."
+          },
+          "embedding_opt_in": {
+            "const": true,
+            "description": "Store the embedding for POST /api/v1/memory/search. Off by default: a vector is derived from the memory's text and can leak its topic."
+          }
+        }
+      },
+      "MemoryEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "scope",
+          "kind",
+          "key_id",
+          "bytes",
+          "has_embedding",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "fact",
+              "lorebook",
+              "state"
+            ]
+          },
+          "key_id": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "description": "Size of the sealed value."
+          },
+          "has_embedding": {
+            "type": "boolean"
+          },
+          "dims": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sealed": {
+            "type": "string",
+            "description": "Only when one entry is read (GET /api/v1/memory/{id})."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MemorySearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "embedding"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "embedding": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 5
           }
         }
       }
