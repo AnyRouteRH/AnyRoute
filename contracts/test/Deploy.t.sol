@@ -24,6 +24,7 @@ import {PolicyRegistry} from "../src/seal/PolicyRegistry.sol";
 import {KmsGovernance} from "../src/seal/KmsGovernance.sol";
 import {HostBond} from "../src/seal/HostBond.sol";
 import {CreditMintEvents} from "../src/seal/CreditMintEvents.sol";
+import {SkillRegistry} from "../src/seal/SkillRegistry.sol";
 
 contract DeploymentSafeFixture {
     address public immutable masterCopy;
@@ -70,7 +71,7 @@ contract DeployLocalTest is Test {
 
     function test_ownershipIsDeployerWithoutTimelock() public view {
         address[] memory owned = _owned();
-        assertEq(owned.length, 15);
+        assertEq(owned.length, 16);
         for (uint256 i; i < owned.length; ++i) {
             assertEq(Ownable2Step(owned[i]).owner(), deployer, "owner");
             assertEq(Ownable2Step(owned[i]).pendingOwner(), address(0), "no pending owner");
@@ -177,6 +178,11 @@ contract DeployLocalTest is Test {
         assertEq(owned[12], d.kmsGovernance);
         assertEq(owned[13], d.hostBond);
         assertEq(owned[14], d.creditMintEvents);
+        assertEq(owned[15], d.skillRegistry);
+        SkillRegistry sreg = SkillRegistry(d.skillRegistry);
+        assertEq(sreg.publisher(), r.sealPublisher);
+        assertEq(sreg.guardian(), r.guardian);
+        assertEq(sreg.skillCount(), 0);
     }
 
     function test_adapterCallers() public view {
@@ -293,6 +299,7 @@ contract DeployLocalTest is Test {
         assertEq(vm.parseJsonAddress(json, ".contracts.kmsGovernance"), d2.kmsGovernance);
         assertEq(vm.parseJsonAddress(json, ".contracts.hostBond"), d2.hostBond);
         assertEq(vm.parseJsonAddress(json, ".contracts.creditMintEvents"), d2.creditMintEvents);
+        assertEq(vm.parseJsonAddress(json, ".contracts.skillRegistry"), d2.skillRegistry);
         assertEq(vm.parseJsonAddress(json, ".roles.sealPublisher"), r.sealPublisher);
         assertEq(vm.parseJsonAddress(json, ".roles.mintSigner"), r.mintSigner);
     }
@@ -404,7 +411,7 @@ contract DeployProductionForkTest is Test {
 
         // --- pending ownership
         address[] memory owned = script.ownedContracts();
-        assertEq(owned.length, 16);
+        assertEq(owned.length, 17);
         for (uint256 i; i < owned.length; ++i) {
             assertEq(Ownable2Step(owned[i]).owner(), deployer);
             assertEq(Ownable2Step(owned[i]).pendingOwner(), d.timelock);

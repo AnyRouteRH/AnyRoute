@@ -30,6 +30,7 @@ import {PolicyRegistry} from "../src/seal/PolicyRegistry.sol";
 import {KmsGovernance} from "../src/seal/KmsGovernance.sol";
 import {HostBond} from "../src/seal/HostBond.sol";
 import {CreditMintEvents} from "../src/seal/CreditMintEvents.sol";
+import {SkillRegistry} from "../src/seal/SkillRegistry.sol";
 import {ICredits} from "../src/interfaces/ICredits.sol";
 import {IBuybackAdapter} from "../src/interfaces/IBuybackAdapter.sol";
 import {IStockOracle} from "../src/interfaces/IStockOracle.sol";
@@ -139,6 +140,7 @@ contract Deploy is Script {
         address kmsGovernance;
         address hostBond;
         address creditMintEvents;
+        address skillRegistry;
         // local mocks
         address mockNvda;
         address mockNvdaFeed;
@@ -462,11 +464,12 @@ contract Deploy is Script {
         _d.kmsGovernance = address(new KmsGovernance(deployer));
         _d.hostBond = address(new HostBond(usdg, deployer, r.slasher, r.refundPool));
         _d.creditMintEvents = address(new CreditMintEvents(deployer, r.mintSigner));
+        _d.skillRegistry = address(new SkillRegistry(deployer, r.sealPublisher, r.guardian));
     }
 
     /// @notice Every Ownable2Step contract handed to the timelock (order = accept batch order).
     function _ownedContracts() internal view returns (address[] memory a) {
-        uint256 n = _d.uniswapV3Adapter == address(0) ? 15 : 16;
+        uint256 n = _d.uniswapV3Adapter == address(0) ? 16 : 17;
         a = new address[](n);
         a[0] = _d.credits;
         a[1] = _d.callPay;
@@ -483,7 +486,8 @@ contract Deploy is Script {
         a[12] = _d.kmsGovernance;
         a[13] = _d.hostBond;
         a[14] = _d.creditMintEvents;
-        if (n == 16) a[15] = _d.uniswapV3Adapter;
+        a[15] = _d.skillRegistry;
+        if (n == 17) a[16] = _d.uniswapV3Adapter;
     }
 
     function ownedContracts() external view returns (address[] memory) {
@@ -617,7 +621,7 @@ contract Deploy is Script {
     ///   contracts: { usdg, anyrToken, credits, callPay, receiptAnchor, royalty, providerBond, anyrStaking,
     ///                payWithStock, stockOracle, uniswapV4Adapter, uniswapV3Adapter, paymaster, entryPoint,
     ///                poolManager, swapRouter02, timelock, buybackAdapter, sealMeasurementRegistry,
-    ///                policyRegistry, kmsGovernance, hostBond, creditMintEvents },
+    ///                policyRegistry, kmsGovernance, hostBond, creditMintEvents, skillRegistry },
     ///   roles: { ownerSafe, slasher, router, settlement, anchorer, registrar, keeper, opsWallet, paymasterSigner,
     ///            refundPool, callPayTreasury, guardian, anyrRecipients[4], creditors[], adapterCallers[],
     ///            sealPublisher, mintSigner },
@@ -649,7 +653,7 @@ contract Deploy is Script {
 
     function _contractsJson() internal view returns (string memory) {
         Deployed memory d = _d;
-        string[] memory f = new string[](23);
+        string[] memory f = new string[](24);
         f[0] = _kvA("usdg", d.usdg);
         f[1] = _kvA("anyrToken", d.anyrToken);
         f[2] = _kvA("credits", d.credits);
@@ -673,6 +677,7 @@ contract Deploy is Script {
         f[20] = _kvA("kmsGovernance", d.kmsGovernance);
         f[21] = _kvA("hostBond", d.hostBond);
         f[22] = _kvA("creditMintEvents", d.creditMintEvents);
+        f[23] = _kvA("skillRegistry", d.skillRegistry);
         return _obj(f);
     }
 
