@@ -1,3 +1,4 @@
+import { enforceAgentTool } from "../agents/enforce.ts";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
@@ -377,6 +378,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
     if (!schema) throw new RpcError(INVALID_PARAMS, `Unknown tool: ${p.name}.`);
     const parsed = schema.safeParse(args);
     if (!parsed.success) throw new RpcError(INVALID_PARAMS, `Invalid arguments for ${p.name}: ${issues(parsed.error)}.`);
+    await enforceAgentTool(ctx, c.req.header("authorization"), p.name);
     try {
       if (NEEDS_KEY.has(p.name) && !bearer(c.req.header("authorization")))
         throw new ApiError(401, `The ${p.name} tool needs an AnyRoute API key. Send it as \`Authorization: Bearer sk-ar-v1-...\` in this MCP server's HTTP headers. list_models, get_receipt and verify_receipt work without one.`, "missing_key");
@@ -395,6 +397,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
           return await verify(parsed.data as z.infer<typeof receiptArgs>);
       }
     } catch (e) {
+      if (e instanceof ApiError && ["agent_policy_denied", "agent_killed", "agent_approval_required"].includes(e.type)) throw e;
       if (e instanceof ApiError) return toolError(e, p.name === "chat" ? chatFailure(e) : {});
       throw e;
     }
@@ -466,6 +469,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
           return c.json(rpcError(id, METHOD_NOT_FOUND, `Method not found: ${m.method}.`));
       }
     } catch (e) {
+      if (e instanceof ApiError) return c.json(e.toJSON(), e.status as 403);
       if (e instanceof RpcError) return c.json(rpcError(id, e.code, e.message));
       log.error("mcp request failed", { method: m.method, error: (e as Error)?.message });
       return c.json(rpcError(id, INTERNAL_ERROR, "Internal router error."));

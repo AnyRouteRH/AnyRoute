@@ -1,3 +1,4 @@
+import { agentReservation, enforceAgentCached } from "../agents/enforce.ts";
 import { blindReceipt } from "../blind/set.ts";
 import type { Context, Hono } from "hono";
 import { and, eq } from "drizzle-orm";
@@ -402,6 +403,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   const holdId = batchLine?.generationId ?? genId(); // a batch line's id is chosen by the runner, so an interrupted line can be traced to its charge
   try {
     await reserve(ctx.db, {
+      ...agentReservation(ctx, () => ({ models: attemptable.map(t => t.model.id), lane: disc.lane, max_output_tokens: Math.max(...attemptable.map(t => maxOutputTokens(body, t.cand, t.model, promptTokens))), body })),
       id: holdId,
       accountId: billing.accountId,
       keyHash: billing.key?.keyHash ?? null,
@@ -966,6 +968,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
 }
 
 async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, unknown>; hit: { response: any; upstream: bigint; similarity: number }; billing: Billing; model: ModelRow; t0: number; bodySha: string; disc: DisclosureRequest }) {
+  await enforceAgentCached(ctx, p.billing.key, p.model.id, p.disc.lane, p.body);
   const id = genId();
   const payload = {
     v: 1,

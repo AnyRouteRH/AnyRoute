@@ -1,3 +1,4 @@
+import { enforceAgentReservation, type AgentReservation } from "../agents/enforce.ts";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.ts";
 import { accounts, holds, keys, ledger } from "../db/schema.ts";
@@ -70,6 +71,7 @@ function periodStart(reset: string | null, at: Date): Date | null {
 }
 
 export type ReserveInput = {
+  agent?: AgentReservation | (() => AgentReservation);
   id: string;
   accountId: string;
   keyHash?: string | null;
@@ -80,7 +82,8 @@ export type ReserveInput = {
   creditLine?: Pico;
 };
 
-export async function reserve(db: Db, r: ReserveInput): Promise<Pico> {
+export const reserve = (db: Db, r: ReserveInput): Promise<Pico> => enforceAgentReservation(db, r, db => reserveUnchecked(db, r));
+async function reserveUnchecked(db: Db, r: ReserveInput): Promise<Pico> {
   if (r.amount < 0n) fail(400, "Invalid reservation.");
   return db.transaction(async (tx) => {
     const [acct] = await tx.select().from(accounts).where(eq(accounts.id, r.accountId)).for("update");

@@ -218,6 +218,13 @@
       "when": 1790783310322,
       "tag": "0030_v3_network_hosts",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790799534111,
+      "tag": "0031_v5_agent_policies",
+      "breakpoints": true
     }
   ]
 }

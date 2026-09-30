@@ -36,6 +36,7 @@ import { savedRoutesRoutes } from "./api/saved-routes.ts";
 import { presetsRoutes } from "./api/presets.ts";
 import { characterRoutes } from "./api/characters.ts";
 import { memoryRoutes } from "./api/memory.ts";
+import { agentsRoutes } from "./api/agents.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
 import { spendRoutes } from "./api/spend.ts";
 import { holdersRoutes } from "./api/holders.ts";
@@ -161,6 +162,7 @@ export async function createApp(opts: AppOptions = {}) {
   presetsRoutes(app, ctx);
   characterRoutes(app, ctx);
   memoryRoutes(app, ctx);
+  agentsRoutes(app, ctx);
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
   holdersRoutes(app, ctx);

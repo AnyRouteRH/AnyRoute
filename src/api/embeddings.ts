@@ -1,3 +1,4 @@
+import { agentReservation } from "../agents/enforce.ts";
 import { blindReceipt } from "../blind/set.ts";
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
@@ -106,7 +107,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
       await claimToken(ctx, pass); // spends once; given back below if nothing is served
     }
     try {
-      await reserve(ctx.db, { id, accountId, keyHash: key?.keyHash ?? null, amount: hold * 2n + 1n, ttlMs: ctx.cfg.routing.providerTimeoutMs * 2 });
+      await reserve(ctx.db, { ...agentReservation(ctx, () => ({ models: [r.model.id], lane: disc.lane, max_output_tokens: 0, body })), id, accountId, keyHash: key?.keyHash ?? null, amount: hold * 2n + 1n, ttlMs: ctx.cfg.routing.providerTimeoutMs * 2 });
     } catch (e) {
       if (pass) await unclaimToken(ctx, pass);
       throw e;

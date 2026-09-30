@@ -1,0 +1,74 @@
+import { desc, eq, getTableColumns, lt, sql } from "drizzle-orm";
+import type { Db, Tx } from "../db/client.ts";
+import { accounts, holds, keys, ledger } from "../db/schema.ts";
+import { agentPolicies, agentPolicyEvents } from "./schema.ts";
+import { canonicalJson, sha256 } from "../lib/util.ts";
+import { agentPolicySha256, type AgentPolicy } from "./policy.ts";
+import type { AgentPolicyState } from "./evaluate.ts";
+export type PolicyRow = typeof agentPolicies.$inferSelect;
+export type EventRow = typeof agentPolicyEvents.$inferSelect;
+export const GENESIS = "0".repeat(64);
+export const eventJson = (r: EventRow) => ({ id: r.id, key_hash: r.keyHash, ts: r.ts.toISOString(), kind: r.kind, decision: r.decision, reasons: r.reasons, intent: r.intent, policy_sha256: r.policySha256, prev_hash: r.prevHash, hash: r.hash });
+export function eventHash(prev: string, entry: Omit<ReturnType<typeof eventJson>, "id" | "prev_hash" | "hash">) {
+  return sha256(Buffer.concat([Buffer.from(prev, "hex"), Buffer.from(canonicalJson(entry))]));
+}
+/** Caller holds the account row lock; events and policy changes share that lock across replicas. */
+export async function appendEvent(tx: Db | Tx, entry: Pick<EventRow, "keyHash" | "kind" | "policySha256"> & Partial<Pick<EventRow, "decision" | "reasons" | "intent">>, now = new Date()) {
+  const [last] = await tx.select({ hash: agentPolicyEvents.hash }).from(agentPolicyEvents).where(eq(agentPolicyEvents.keyHash, entry.keyHash)).orderBy(desc(agentPolicyEvents.id)).limit(1);
+  const prevHash = last?.hash ?? GENESIS;
+  const row = { ...entry, ts: now, decision: entry.decision ?? null, reasons: entry.reasons ?? [], intent: entry.intent ?? null, prevHash };
+  const hash = eventHash(prevHash, { key_hash: row.keyHash, ts: now.toISOString(), kind: row.kind, decision: row.decision, reasons: row.reasons, intent: row.intent, policy_sha256: row.policySha256 });
+  const [inserted] = await tx.insert(agentPolicyEvents).values({ ...row, hash }).returning();
+  return eventJson(inserted);
+}
+export async function lockAccount(tx: Db | Tx, accountId: string) {
+  await tx.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, accountId)).for("update");
+}
+/** One indexed lookup, including the session's parent. No process cache. */
+export async function policiesFor(db: Db | Tx, keyHash: string): Promise<PolicyRow[]> {
+  return db.selectDistinct(getTableColumns(agentPolicies)).from(agentPolicies).where(sql`${agentPolicies.keyHash} = ${keyHash} or ${agentPolicies.keyHash} in (select parent_key_hash from agent_sessions where key_hash = ${keyHash})`);
+}
+export async function policyState(db: Db | Tx, policy: Pick<PolicyRow, "keyHash" | "killed">, now: Date): Promise<AgentPolicyState> {
+  const scope = sql`(select key_hash from keys where key_hash = ${policy.keyHash} union select key_hash from agent_sessions where parent_key_hash = ${policy.keyHash})`;
+  const since = (ms: number) => new Date(now.getTime() - ms).toISOString();
+  const [charges] = await db.select({
+    hour: sql<string>`coalesce(sum(-${ledger.amount}) filter (where ${ledger.createdAt} > ${since(3_600_000)}), 0)`,
+    day: sql<string>`coalesce(sum(-${ledger.amount}) filter (where ${ledger.createdAt} > ${since(86_400_000)}), 0)`,
+    week: sql<string>`coalesce(sum(-${ledger.amount}), 0)`,
+  }).from(ledger).where(sql`${ledger.keyHash} in ${scope} and ${ledger.amount} < 0 and ${ledger.kind} = 'usage' and ${ledger.createdAt} > ${since(604_800_000)} and ${ledger.createdAt} <= ${now.toISOString()}`);
+  const [open] = await db.select({ total: sql<string>`coalesce(sum(${holds.amount}), 0)` }).from(holds).where(sql`${holds.keyHash} in ${scope} and ${holds.status} = 'held' and ${holds.kind} = 'usage'`);
+  const inflight = BigInt(open.total);
+  return { killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight } };
+}
+export async function setPolicy(db: Db, accountId: string, keyHash: string, policy: AgentPolicy, actor: string) {
+  return db.transaction(async tx => {
+    await lockAccount(tx, accountId);
+    const sha256 = agentPolicySha256(policy);
+    const [row] = await tx.insert(agentPolicies).values({ keyHash, version: policy.version, spec: policy, sha256, updatedBy: actor }).onConflictDoUpdate({ target: agentPolicies.keyHash, set: { version: policy.version, spec: policy, sha256, updatedBy: actor, updatedAt: new Date() } }).returning();
+    await appendEvent(tx, { keyHash, kind: "policy_set", policySha256: sha256 });
+    return row;
+  });
+}
+export async function changeKill(tx: Db | Tx, row: PolicyRow, killed: boolean, reason: string | null, actor: string) {
+  const [updated] = await tx.update(agentPolicies).set({ killed, killedAt: killed ? new Date() : null, killedReason: killed ? reason : null, updatedAt: new Date(), updatedBy: actor }).where(eq(agentPolicies.keyHash, row.keyHash)).returning();
+  await appendEvent(tx, { keyHash: row.keyHash, kind: killed ? "killed" : "resumed", policySha256: row.sha256 });
+  return updated;
+}
+/** A retained suffix can be checked using its first prev_hash as an external checkpoint. */
+export function verifyEventChain(entries: ReturnType<typeof eventJson>[], genesis = GENESIS) {
+  let prev = genesis;
+  for (const { id: _id, prev_hash, hash, ...entry } of entries) {
+    if (prev_hash !== prev || eventHash(prev, entry) !== hash) return false;
+    prev = hash;
+  }
+  return true;
+}
+export async function pruneAgentPolicyEvents(db: Db, now = new Date()) {
+  // Lock owning accounts so pruning cannot remove a chain head during an append.
+  return db.transaction(async tx => {
+    const cutoff = new Date(now.getTime() - 90 * 86_400_000);
+    const rows = await tx.selectDistinct({ accountId: keys.accountId }).from(keys).innerJoin(agentPolicyEvents, eq(keys.keyHash, agentPolicyEvents.keyHash)).where(lt(agentPolicyEvents.ts, cutoff));
+    for (const row of rows.sort((a, b) => a.accountId.localeCompare(b.accountId))) await lockAccount(tx, row.accountId);
+    return (await tx.delete(agentPolicyEvents).where(lt(agentPolicyEvents.ts, cutoff)).returning({ id: agentPolicyEvents.id })).length;
+  });
+}

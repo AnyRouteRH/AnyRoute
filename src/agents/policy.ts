@@ -1,0 +1,31 @@
+import { z } from "zod";
+import { canonicalJson, sha256 } from "../lib/util.ts";
+
+const name = z.string().min(1).max(160);
+const list = z.array(name).max(64);
+const usd = z.number().positive().max(1_000_000);
+const tokens = z.number().int().positive().max(10_000_000);
+const names = z.strictObject({ allow: list.optional(), deny: list.optional() });
+const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+export const agentPolicySchema = z.strictObject({
+  version: z.literal(1),
+  models: names,
+  lanes: z.array(z.enum(["public", "attested", "unlinkable"])).max(64).optional(),
+  caps: z.strictObject({ per_request_usd: usd.optional(), per_hour_usd: usd.optional(), per_day_usd: usd.optional(), per_week_usd: usd.optional(), max_output_tokens: tokens.optional() }),
+  tools: names.optional(),
+  windows: z.array(z.strictObject({ days: z.array(z.number().int().min(0).max(6)).max(64), start: time, end: time })).max(64).optional(),
+  approval: z.strictObject({ above_usd: usd }),
+  on_breach: z.enum(["deny", "kill"]),
+}).partial({ approval: true });
+export type AgentPolicy = z.infer<typeof agentPolicySchema>;
+export const canonicalAgentPolicy = (policy: AgentPolicy) => canonicalJson(agentPolicySchema.parse(policy));
+export const agentPolicySha256 = (policy: AgentPolicy) => sha256(canonicalAgentPolicy(policy));
+export { canonicalJson, sha256 };
+
+const pico = z.union([z.bigint().nonnegative(), z.string().regex(/^\d+$/).transform(BigInt)]);
+export const agentIntentSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("inference"), model: name, lane: z.enum(["public", "attested", "unlinkable"]), est_cost_pico: pico, max_output_tokens: tokens.optional(), tools: list }),
+  z.strictObject({ kind: z.literal("mcp_tool"), name }),
+]);
+export type AgentIntent = z.infer<typeof agentIntentSchema>;
+export const intentJson = (intent: AgentIntent) => intent.kind === "inference" ? { ...intent, est_cost_pico: intent.est_cost_pico.toString() } : { ...intent };
