@@ -135,7 +135,7 @@
             "name": "lane",
             "in": "query",
             "required": false,
-            "description": "public (default) lists every live model. attested lists only models with at least one endpoint served under attested retention with a fresh attestation right now. unlinkable lists the same models where the router enables Oblivious HTTP (otherwise 501).",
+            "description": "public (default) lists every live model. attested lists only models with at least one endpoint served under attested retention with a fresh attestation right now. unlinkable lists the same models where the router serves that lane, through Oblivious HTTP or over its Tor onion service (otherwise 501).",
             "schema": {
               "type": "string",
               "enum": [
@@ -200,7 +200,7 @@
         ],
         "operationId": "createChatCompletion",
         "summary": "Create a chat completion",
-        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request. When the router has x402 enabled, the 402 body is also an x402 v1 payment requirement (x402Version, accepts): sign the exact-scheme USDG authorization and retry with X-PAYMENT; the paid response carries X-PAYMENT-RESPONSE. Two opt-in modes run several billed calls for one request and are off unless the router enables them: model anyroute/council (a panel of models plus a judge; see the council field) and verify \"dual\" (the same request to two providers; see the verification field). Both are non-streaming only. Where the router enables blind tokens, Authorization: PrivateToken token=<base64url> pays with one token instead of a key (see the Blind tokens tag): the call is charged to a pooled account, the signed receipt carries the token's nullifier and no payer, and the token is spent only if the call is served. A token pays for at most its value, so a request whose worst case costs more is refused with 402 token_value_too_low; council mode and verify are refused with 400 blind_unsupported. A refused, unknown, expired or already spent token is a 401 that carries WWW-Authenticate: PrivateToken challenge=\"...\". Disclosure ceilings and lanes apply to token calls exactly as to key calls. Lane unlinkable, where the router enables Oblivious HTTP, is served only for a request that arrives through the gateway (POST /api/v1/ohttp/gateway) by way of an independent relay, paid with a blind token and never a key, and only by attested providers; otherwise it is refused with 403 lane_requires_anonymous_auth for an API key or a wallet (unless provider.lane_downgrade is attested, which serves it on lane attested instead), 403 unlinkable_requires_relay or unlinkable_requires_independent_relay, 401 unlinkable_requires_token with the token challenge when no token is presented, or 503 no_attested_endpoint when no attested endpoint can serve the model. A request that arrives through an independent relay, is paid with a blind token and names no lane is served on lane unlinkable. On lanes attested and unlinkable the router never falls back to an endpoint without a fresh, verified attestation: it answers 503 no_attested_endpoint instead. Within a lane endpoints are weighted uptime x quality x attested_bonus / price^2 (attested_bonus 1.25 on public, 1 elsewhere). On attested and unlinkable the router still terminates TLS and sees the prompt; end-to-end encryption through the router is planned. Through the gateway, streaming needs chunked Oblivious HTTP (message/ohttp-chunked-req), where the router enables it; stream true in a message/ohttp-req is refused with 400 stream_unsupported.",
+        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request. When the router has x402 enabled, the 402 body is also an x402 v1 payment requirement (x402Version, accepts): sign the exact-scheme USDG authorization and retry with X-PAYMENT; the paid response carries X-PAYMENT-RESPONSE. Two opt-in modes run several billed calls for one request and are off unless the router enables them: model anyroute/council (a panel of models plus a judge; see the council field) and verify \"dual\" (the same request to two providers; see the verification field). Both are non-streaming only. Where the router enables blind tokens, Authorization: PrivateToken token=<base64url> pays with one token instead of a key (see the Blind tokens tag): the call is charged to a pooled account, the signed receipt carries the token's nullifier and no payer, and the token is spent only if the call is served. A token pays for at most its value, so a request whose worst case costs more is refused with 402 token_value_too_low; council mode and verify are refused with 400 blind_unsupported. A refused, unknown, expired or already spent token is a 401 that carries WWW-Authenticate: PrivateToken challenge=\"...\". Disclosure ceilings and lanes apply to token calls exactly as to key calls. Lane unlinkable, where the router enables Oblivious HTTP, is served only for a request that arrives through the gateway (POST /api/v1/ohttp/gateway) by way of an independent relay, paid with a blind token and never a key, and only by attested providers; where the router serves the lane over Tor (data.lanes.unlinkable.via in GET /api/v1/status includes onion), a request that arrives through its onion service (data.onion.url) and is paid with a blind token qualifies in the same way, streamed or not, and a clearnet request cannot claim to have come that way; otherwise it is refused with 403 lane_requires_anonymous_auth for an API key or a wallet (unless provider.lane_downgrade is attested, which serves it on lane attested instead), 403 unlinkable_requires_relay or unlinkable_requires_independent_relay, 401 unlinkable_requires_token with the token challenge when no token is presented, or 503 no_attested_endpoint when no attested endpoint can serve the model. A request that arrives through an independent relay, is paid with a blind token and names no lane is served on lane unlinkable. On lanes attested and unlinkable the router never falls back to an endpoint without a fresh, verified attestation: it answers 503 no_attested_endpoint instead. Within a lane endpoints are weighted uptime x quality x attested_bonus / price^2 (attested_bonus 1.25 on public, 1 elsewhere). On attested and unlinkable the router still terminates TLS and sees the prompt; end-to-end encryption through the router is planned. Through the gateway, streaming needs chunked Oblivious HTTP (message/ohttp-chunked-req), where the router enables it; stream true in a message/ohttp-req is refused with 400 stream_unsupported.",
         "security": [
           {
             "BearerAuth": []
@@ -716,7 +716,7 @@
         ],
         "operationId": "getStatus",
         "summary": "Read public router configuration",
-        "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). data.lanes reports each privacy lane (public, attested, unlinkable) with available, models and endpoints (how many can serve it right now) and the attested_bonus its selection weight uses. It is not an uptime guarantee.",
+        "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). data.lanes reports each privacy lane (public, attested, unlinkable) with available, models and endpoints (how many can serve it right now) and the attested_bonus its selection weight uses; data.lanes.unlinkable.via lists the transports that carry that lane here: ohttp (an independent Oblivious HTTP relay), onion (Tor, through the onion service), both, or none when it is not available. It is not an uptime guarantee.",
         "responses": {
           "200": {
             "description": "Current public status snapshot.",
@@ -4665,7 +4665,7 @@
           ],
           "default": "public"
         },
-        "description": "Same as provider.lane. When both are given the stricter one applies. unlinkable is served only where the router enables Oblivious HTTP (otherwise 501), and then only through a relay with a blind token."
+        "description": "Same as provider.lane. When both are given the stricter one applies. unlinkable is served only where the router enables Oblivious HTTP or serves the lane over its Tor onion service (otherwise 501), and then only through a relay, or through the onion service, with a blind token."
       },
       "LaneDowngrade": {
         "name": "X-Anyroute-Lane-Downgrade",
@@ -4720,7 +4720,7 @@
         }
       },
       "LaneServed": {
-        "description": "The lane the request was served under: public (any provider), attested (only providers under attested retention with a fresh attestation) or unlinkable (attested providers, reached through an Oblivious HTTP relay and paid with a blind token). It is the lane the router enforced: the one the request asked for (or its key's or saved route's default), attested when an unlinkable request with a key allowed that downgrade, unlinkable for a relayed blind-token request that named none, and otherwise public.",
+        "description": "The lane the request was served under: public (any provider), attested (only providers under attested retention with a fresh attestation) or unlinkable (attested providers, reached through an Oblivious HTTP relay or over Tor through the router's onion service, and paid with a blind token). It is the lane the router enforced: the one the request asked for (or its key's or saved route's default), attested when an unlinkable request with a key allowed that downgrade, unlinkable for a relayed blind-token request that named none, and otherwise public.",
         "schema": {
           "type": "string",
           "enum": [
@@ -4842,7 +4842,7 @@
         }
       },
       "LaneNotAvailable": {
-        "description": "501 lane_not_available. Lane unlinkable is not available on this router: it needs the Oblivious HTTP gateway and blind tokens, which it does not run. Nothing was sent to any provider.",
+        "description": "501 lane_not_available. Lane unlinkable is not available on this router: it needs the Oblivious HTTP gateway, or the lane over its Tor onion service, with blind tokens, which it does not run. Nothing was sent to any provider.",
         "content": {
           "application/json": {
             "schema": {
@@ -4997,7 +4997,7 @@
                 "unlinkable"
               ]
             },
-            "description": "The lanes this model can be served on right now: public whenever it has a live endpoint; attested while one of its endpoints has attested retention and a fresh, verified attestation; unlinkable as well where the router enables Oblivious HTTP. The endpoints listing carries the same field per endpoint."
+            "description": "The lanes this model can be served on right now: public whenever it has a live endpoint; attested while one of its endpoints has attested retention and a fresh, verified attestation; unlinkable as well where the router serves that lane (Oblivious HTTP, or its Tor onion service). The endpoints listing carries the same field per endpoint."
           },
           "disclosure": {
             "type": "object",
@@ -5699,7 +5699,7 @@
               "unlinkable"
             ],
             "default": "public",
-            "description": "public: any endpoint; attested endpoints get attested_bonus (default 1.25) in the selection weight. attested: only endpoints with attested retention and a fresh, verified attestation, with no fallback to any other (503 no_attested_endpoint). unlinkable: the same endpoints, and only for a request that arrived through the Oblivious HTTP gateway by way of an independent relay and is paid with a blind token (see Oblivious HTTP); 501 where the router does not enable Oblivious HTTP, 403 lane_requires_anonymous_auth for an API key or a wallet, 403 unlinkable_requires_relay or unlinkable_requires_independent_relay, 401 unlinkable_requires_token otherwise. Unset: the key's default (routing.provider.lane), then the saved route's, then public; a request through an independent relay paid with a blind token defaults to unlinkable. provider.order, only and ignore still apply inside a lane. On attested and unlinkable the router still terminates TLS and sees the prompt; end-to-end encryption through the router is planned."
+            "description": "public: any endpoint; attested endpoints get attested_bonus (default 1.25) in the selection weight. attested: only endpoints with attested retention and a fresh, verified attestation, with no fallback to any other (503 no_attested_endpoint). unlinkable: the same endpoints, and only for a request that arrived through the Oblivious HTTP gateway by way of an independent relay (see Oblivious HTTP), or through the router's Tor onion service where it serves the lane that way, and is paid with a blind token; 501 where the router serves the lane on neither path, 403 lane_requires_anonymous_auth for an API key or a wallet, 403 unlinkable_requires_relay or unlinkable_requires_independent_relay, 401 unlinkable_requires_token otherwise. Unset: the key's default (routing.provider.lane), then the saved route's, then public; a request through an independent relay paid with a blind token defaults to unlinkable. provider.order, only and ignore still apply inside a lane. On attested and unlinkable the router still terminates TLS and sees the prompt; end-to-end encryption through the router is planned."
           },
           "lane_downgrade": {
             "type": "string",

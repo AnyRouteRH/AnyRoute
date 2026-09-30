@@ -110,6 +110,27 @@ const torCurl = `curl --socks5-hostname 127.0.0.1:9050 http://<onion address>/ap
 curl --socks5-hostname 127.0.0.1:9050 http://<onion address>/api/v1/chat/completions \\
   -H "Authorization: Bearer $ANYROUTE_API_KEY" -H "Content-Type: application/json" \\
   -d '{"model":"meta-llama/llama-3.3-70b-instruct","messages":[{"role":"user","content":"Hello"}]}'`;
+const torBuyTokens = `// Buy blind tokens ahead of time with your key (Node or Bun; needs the optional package @cloudflare/blindrsa-ts).
+// The purchase names your account; the tokens it returns cannot be tied back to it when you spend them.
+import { buyTokens } from "@anyroute/client/blind";
+
+const { tokens } = await buyTokens({ baseUrl: "https://<router>", apiKey: process.env.ANYROUTE_API_KEY, denomination: 10000, count: 10 });
+console.log(tokens.join("\\n")); // one token pays for one call; keep them private until you spend them`;
+const torUnlinkable = `# Is the lane served over Tor here? lanes.unlinkable.via lists "onion", and onion.url is the address.
+curl -s --proxy socks5h://127.0.0.1:9050 http://<onion address>/api/v1/status | jq '.data.lanes.unlinkable, .data.onion'
+
+# Models an attested provider can serve on the lane right now
+curl -s --proxy socks5h://127.0.0.1:9050 "http://<onion address>/api/v1/models?lane=unlinkable" | jq -r '.data[].id'
+
+# Spend one token on one call, streamed. A SOCKS user name of its own gives the call its own Tor circuit.
+curl -N --proxy "socks5h://call-1:x@127.0.0.1:9050" http://<onion address>/api/v1/chat/completions \\
+  -H "Authorization: PrivateToken token=$TOKEN" -H "X-Anyroute-Lane: unlinkable" -H "Content-Type: application/json" \\
+  -d '{"model":"<model from the list>","messages":[{"role":"user","content":"Hello"}],"stream":true}'
+
+# The same with torsocks
+torsocks curl -N http://<onion address>/api/v1/chat/completions -H "Authorization: PrivateToken token=$TOKEN" \\
+  -H "X-Anyroute-Lane: unlinkable" -H "Content-Type: application/json" \\
+  -d '{"model":"<model from the list>","messages":[{"role":"user","content":"Hello"}]}'`;
 const claudeCode = `claude mcp add --transport http anyroute ${BASE}/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY"`;
 const claudeCodeAttested = `claude mcp add --transport http anyroute-attested "${BASE}/mcp?lane=attested" --header "Authorization: Bearer $ANYROUTE_API_KEY"
 
@@ -604,7 +625,7 @@ export default function Docs() {
           <h2 id="lanes">Three privacy lanes.</h2>
           <p>
             Every request is served on one lane. public, the default, may use any endpoint. attested uses only endpoints whose retention is declared attested and whose hardware attestation the router verified recently. unlinkable adds two
-            things on top of attested: the request arrives through an Oblivious HTTP relay, and it is paid with a blind token, so the router cannot tie the payer or the address to the prompt. Pick one with provider.lane or the X-Anyroute-Lane
+            things on top of attested: the request arrives through an Oblivious HTTP relay (or over Tor through the router’s onion service, where the router serves the lane that way), and it is paid with a blind token, so the router cannot tie the payer or the address to the prompt. Pick one with provider.lane or the X-Anyroute-Lane
             header. A key can carry a default (routing.provider.lane on PATCH /api/v1/keys/:hash), which a lane named in the request replaces. A saved route can pin a lane too (config.provider.lane, public or attested); there the stricter of the route and the request applies, as described below. A request that arrives through
             an independent relay with a blind token and names no lane is served on unlinkable.
           </p>
@@ -649,6 +670,10 @@ export default function Docs() {
             ohttp_truncated when the final chunk never came and ohttp_decrypt_failed when a chunk was altered or reordered. Chunk sizes and their timing stay visible to the relay.
           </p>
           <Code label="TypeScript SDK · a streamed completion on the unlinkable lane, through a relay">{sdkOblivious}</Code>
+          <p>
+            A router can also serve the lane over Tor instead of a relay: see <a href="#unlinkable-tor" className="inline-link">the unlinkable lane over Tor</a>. GET /api/v1/status says which paths it serves in lanes.unlinkable.via
+            (&quot;ohttp&quot;, &quot;onion&quot; or both).
+          </p>
           <Code label="Attested providers only">
             {JSON.stringify(
               {
@@ -670,9 +695,30 @@ export default function Docs() {
           <Code label="Through a local Tor client (SOCKS5 on 127.0.0.1:9050)">{torCurl}</Code>
           <p>
             Tor hides where you connect from, not what you send: an API key, a wallet signature or a prompt identifies you or your account exactly as it does on the clearnet. For payment that cannot be linked to your requests, use blind tokens, and for the
-            unlinkable lane a relay. Requests that arrive over Tor have no address the router can limit, so calls without an API key (unkeyed chat and embeddings, new keys, wallet sign-in challenges) share limits with everyone else using the
+            unlinkable lane a relay, or this onion service where the router serves the lane over Tor (below). Requests that arrive over Tor have no address the router can limit, so calls without an API key (unkeyed chat and embeddings, new keys, wallet sign-in challenges) share limits with everyone else using the
             onion address, and a call with a key is limited per key as usual: use a key or a token for a quota of your own. The first request can take several seconds while Tor builds its circuit. A relay operator can also reach a gateway’s onion address through a
             SOCKS5 proxy (RELAY_SOCKS5_PROXY in relay/), so the gateway never sees the relay’s address either.
+          </p>
+          <h3 id="unlinkable-tor">The unlinkable lane over Tor, where the router enables it</h3>
+          <p>
+            Where the router serves it (GET /api/v1/status: lanes.unlinkable.available is true and lanes.unlinkable.via includes &quot;onion&quot;), lane unlinkable also works over Tor, with no relay. Four steps: take the onion address from
+            onion.url in the status; buy blind tokens ahead of time with your key (buyTokens from @anyroute/client/blind, below); send each call to the onion address through Tor with Authorization: PrivateToken token=&lt;one token&gt; and the lane
+            named, in provider.lane or X-Anyroute-Lane; and read X-Anyroute-Lane and the receipt, which say unlinkable. A call that names no lane is served on public, as before, so name it. Streaming works as on the clearnet, because Tor carries
+            ordinary HTTP.
+          </p>
+          <p>
+            The rules are those of the lane everywhere: attested providers only, with no fallback (503 no_attested_endpoint, and the token is not spent); an API key, a wallet or a per-call payment is refused with 403 lane_requires_anonymous_auth, unless
+            you allow the downgrade to attested; no token is 401 unlinkable_requires_token. The same call to the clearnet address is refused with 403 unlinkable_requires_relay. Only the onion service can mark a call as coming over Tor: it adds a
+            secret header the router checks, and removes any copy a client sends, so sending that header yourself changes nothing.
+          </p>
+          <Code label="Buy tokens (TypeScript SDK)">{torBuyTokens}</Code>
+          <Code label="Spend them over Tor (SOCKS5 on 127.0.0.1:9050)">{torUnlinkable}</Code>
+          <p>
+            What is hidden: Tor takes the place of the relay. Your connection crosses three Tor relays run by volunteers before it meets the onion service, so neither the onion service nor the router ever learns your network address, and on onion
+            calls the router reads no address header and keeps no per-address limit (a blind-token call counts against one bucket shared by everyone using the onion address). The token cannot be tied to its purchase. What is not: the router runs the
+            onion service, sees the request in plaintext and sees its size and timing directly, as it sees the request on the relay path; an observer who can watch both your connection into Tor and the router’s side can match them by timing; calls
+            sent on one circuit can be linked to each other, so give calls you want kept apart their own circuit (a different SOCKS user name, as above, or Tor Browser’s New Identity); buying tokens right before spending them links the two by
+            time; and anything in the body that identifies you reaches the provider. End-to-end encryption through the router to the enclave is planned.
           </p>
           <h2 id="key-log">A witnessed log of every key, where the router enables it.</h2>
           <p>
