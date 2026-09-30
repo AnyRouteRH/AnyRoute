@@ -8,6 +8,7 @@ COPY scripts/migrate.ts ./scripts/migrate.ts
 COPY src/db ./src/db
 COPY src/network/schema.ts ./src/network/schema.ts
 COPY src/network/payout-schema.ts ./src/network/payout-schema.ts
+COPY src/network/bond-schema.ts ./src/network/bond-schema.ts
 COPY src/agents/schema.ts ./src/agents/schema.ts
 COPY src/agents/approval-schema.ts ./src/agents/approval-schema.ts
 COPY src/lib/util.ts ./src/lib/util.ts

@@ -23,4 +23,4 @@ export function networkWeightSettings(e: z.infer<z.ZodObject<typeof networkWeigh
   return { enabled: e.NETWORK_HOSTS_ENABLED, probationDays: e.NETWORK_PROBATION_DAYS, graduateRequests: e.NETWORK_GRADUATE_REQUESTS, graduateUptime: e.NETWORK_GRADUATE_UPTIME };
 }
 
-export type NetworkWeightSettings = ReturnType<typeof networkWeightSettings>;
+export type NetworkWeightSettings = ReturnType<typeof networkWeightSettings> & { bonds?: { enabled: boolean; fullUsdg: number; scope: string } };

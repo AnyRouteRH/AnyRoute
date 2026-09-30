@@ -239,6 +239,13 @@
       "when": 1790805157152,
       "tag": "0033_v3_network_payouts",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790810586192,
+      "tag": "0034_v3_host_bonds",
+      "breakpoints": true
     }
   ]
 }

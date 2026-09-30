@@ -1,3 +1,4 @@
+export * from "../network/bond-schema.ts";
 import { sql } from "drizzle-orm";
 import {
   pgTable,

@@ -1,4 +1,5 @@
 import { networkPayoutEnv, networkPayoutSettings } from "./network/payout-config.ts";
+import { hostBondEnv, hostBondSettings } from "./network/bond-config.ts";
 import { networkHostsEnv, networkHostsSettings } from "./network/host-config.ts";
 import { sanctionsEnv, sanctionsSettings } from "./network/config.ts";
 import { e2eeSettings } from "./e2ee/config.ts";
@@ -50,6 +51,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...hostBondEnv,
   ...networkWeightEnv,
   ...sanctionsEnv,
   ...networkHostsEnv,
@@ -475,6 +477,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
       allowed.push("agent-policy-retention", "network-fee-burn");
+      allowed.push("agent-policy-retention", "host-bond-indexer", "host-slasher");
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -482,7 +485,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       if (names.includes("host-anchor") && !e.HOST_ANCHOR_ENABLED) throw new Error("The host-anchor job needs HOST_ANCHOR_ENABLED.");
       if (!escrowMode)
         for (const [role, key] of Object.entries(roleKeys)) {
-          const enabled = names.includes(keyJobs[role as keyof typeof keyJobs]) || (role === "buyback" && names.includes("network-fee-burn"));
+          const enabled = names.includes(keyJobs[role as keyof typeof keyJobs]) || (role === "buyback" && names.includes("network-fee-burn")) || (role === "slashing" && names.includes("host-slasher") && e.NETWORK_SLASHING_ENABLED);
           if (enabled !== !!key) throw new Error(`Worker ${role} job and signing-key configuration must match.`);
         }
     }
@@ -563,7 +566,8 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     e2ee: e2eeSettings(e.E2EE_PASSTHROUGH_ENABLED, e.PROVIDERS_FILE, production, { baseUrl: e.E2EE_GATEWAY_BASE_URL, attestationUrl: e.E2EE_GATEWAY_ATTESTATION_URL }),
     networkHosts: networkHostsSettings(e, production),
     networkPayouts: networkPayoutSettings(e, production),
-    networkWeights: networkWeightSettings(e),
+    networkWeights: { ...networkWeightSettings(e), ...(e.NETWORK_BONDS_ENABLED ? { bonds: { ...hostBondSettings(e), scope: `${e.CHAIN_ID}:${e.HOST_BOND_ADDRESS?.toLowerCase()}` } } : {}) },
+    hostBonds: hostBondSettings(e),
     runtimeRole: e.RUNTIME_ROLE,
     autoMigrate: e.AUTO_MIGRATE,
     workerJobs: e.WORKER_JOBS.split(",").map((n) => n.trim()).filter(Boolean),

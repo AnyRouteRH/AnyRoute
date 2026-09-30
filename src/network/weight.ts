@@ -1,3 +1,4 @@
+import { bondedWeight, BOND_MAX_AGE_MS } from "./bonds.ts";
 import { NETWORK_WEIGHT_POLICY as POLICY, type NetworkWeightSettings } from "./weight-config.ts";
 
 export type NetworkWeightInput = {
@@ -12,8 +13,9 @@ export type NetworkWeightInput = {
   probeSuccesses: number;
   probeFailures: number;
   latencyMs?: number;
-  /** Reserved for verified bond evidence. Neutral until the bond policy is implemented. */
+  /** Active bond from the fresh canonical HostBond index and matching operator. */
   bond?: bigint;
+  bondCheckedAt?: number;
   now: number;
 };
 
@@ -32,5 +34,5 @@ export function networkWeight(input: NetworkWeightInput, settings: NetworkWeight
   const total = input.recentSuccesses + input.recentFailures;
   const errors = total > 0 && input.recentFailures / total > POLICY.errorThreshold ? POLICY.errorWeight : 1;
   const latency = input.latencyMs == null || input.latencyMs <= POLICY.latencyTargetMs ? 1 : POLICY.latencyTargetMs / input.latencyMs;
-  return (graduated ? 1 : POLICY.probationWeight) * errors * latency;
+  return bondedWeight((graduated ? 1 : POLICY.probationWeight) * errors * latency, errors * latency, !graduated, input.bondCheckedAt != null && (input.now < input.bondCheckedAt || input.now - input.bondCheckedAt > BOND_MAX_AGE_MS) ? 0n : input.bond, settings.bonds);
 }

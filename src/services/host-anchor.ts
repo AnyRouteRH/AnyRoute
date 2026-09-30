@@ -1,3 +1,4 @@
+import { recordInvalidHostReceipt } from "../network/slashing.ts";
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { keccak256, toBytes, type Hex } from "viem";
 import type { Ctx } from "../context.ts";
@@ -207,6 +208,7 @@ export async function anchorHost(ctx: Ctx, p: typeof providers.$inferSelect, pin
       pulled++;
       const reason = checkLeaf(item, b);
       if (reason) {
+        await recordInvalidHostReceipt(ctx, p.id, item, b, reason);
         discarded[reason] = (discarded[reason] ?? 0) + 1;
         continue;
       }

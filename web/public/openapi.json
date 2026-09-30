@@ -28,7 +28,10 @@
     {}
   ],
   "tags": [
-    {"name":"Agent rulebook","description":"Deterministic router enforcement for requests through AnyRoute only; AGENT_POLICY_ENABLED defaults to false. No on-chain enforcement."},
+    {
+      "name": "Agent rulebook",
+      "description": "Deterministic router enforcement for requests through AnyRoute only; AGENT_POLICY_ENABLED defaults to false. No on-chain enforcement."
+    },
     {
       "name": "Network host policy",
       "description": "Versioned signed build pins for future network host admission; existing provider admission is unchanged."
@@ -155,23 +158,1108 @@
     }
   ],
   "paths": {
-    "/api/v1/network/burns": {"get":{"summary":"Network fee swaps and burns","description":"Public aggregate pico-USD fees, burned ANYR units and up to 50 recent swap and dead-address transfer transactions with explorer links. Available with the keeper disabled. Individual host invoice amounts are omitted.","responses":{"200":{"description":"Aggregate totals, enabled status, fee_bps, conversion dust, ANYR decimals and recent transactions","content":{"application/json":{"schema":{"type":"object"}}}}}}},
-    "/api/v1/agents": {"get":{"operationId":"listAgents","tags":["Agent rulebook"],"summary":"List account agent keys","description":"Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Includes effective rulebooks, kill state, rolling spend plus reservations and caps. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"type":"array","items":{"type":"object"}}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}}}},
-    "/api/v1/agents/me": {"get":{"operationId":"agentMe","tags":["Agent rulebook"],"summary":"Read the calling key’s rulebook","description":"Includes own and inherited parent rulebooks, remaining rolling caps and kill state. A session and its parent must both pass. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"type":"object"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}}}},
-    "/api/v1/agents/approvals": {"get":{"tags":["Agent rulebook"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Approval list","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"type":"array","items":{"$ref":"#/components/schemas/AgentApproval"}}}}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Approval is no longer pending"}},"operationId":"listAgentApprovals","summary":"List principal-visible approvals","description":"AGENT_POLICY_ENABLED defaults false; off returns 404. Management key or same-account team owner/admin. Up to 100 newest rows. Pending by default. Expiry ends validity but does not delete approval rows.","parameters":[{"name":"status","in":"query","schema":{"type":"string","enum":["pending","approved","denied","expired","used"],"default":"pending"}}]}},
-    "/api/v1/agents/approvals/{id}": {"get":{"tags":["Agent rulebook"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Status only","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"type":"object","required":["id","status","expires_at"],"properties":{"id":{"type":"string"},"status":{"type":"string","enum":["pending","approved","denied","expired","used"]},"expires_at":{"type":"string","format":"date-time"}},"additionalProperties":false}}}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Approval is no longer pending"}},"operationId":"getAgentApprovalStatus","summary":"Poll approval status","description":"Principal or the requesting key; returns only id, status and expires_at. Off returns 404.","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/agents/approvals/{id}/approve": {"post":{"tags":["Agent rulebook"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Approval result","content":{"application/json":{"schema":{"type":"object","properties":{"data":{"type":"object"}}}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Approval is no longer pending"}},"operationId":"approveAgentApproval","summary":"Approve a pending approval","description":"Management key or same-account team owner/admin of the requesting key. Session and ordinary agent keys cannot decide. Records the principal key hash and a chained event. Expired or completed rows return 409. Off returns 404. Retry inference with X-Agent-Approval: <id> after approval; it is single-use, binds key/model/lane/tools/output token limit, and permits estimated cost no greater than the approved ceiling. All rulebook restrictions still apply. AGENT_APPROVAL_TTL_S defaults to 900 seconds from request time.","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/agents/approvals/{id}/deny": {"post":{"tags":["Agent rulebook"],"security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Approval result","content":{"application/json":{"schema":{"type":"object","properties":{"data":{"type":"object"}}}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Approval is no longer pending"}},"operationId":"denyAgentApproval","summary":"Deny a pending approval","description":"Management key or same-account team owner/admin of the requesting key. Session and ordinary agent keys cannot decide. Records the principal key hash and a chained event. Expired or completed rows return 409. Off returns 404. Retry inference with X-Agent-Approval: <id> after approval; it is single-use, binds key/model/lane/tools/output token limit, and permits estimated cost no greater than the approved ceiling. All rulebook restrictions still apply. AGENT_APPROVAL_TTL_S defaults to 900 seconds from request time.","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/agents/check": {"post":{"operationId":"checkAgentPolicy","tags":["Agent rulebook"],"summary":"Evaluate an Intent without recording it","description":"Calling API key. Returns a deterministic decision with no event writes or automatic kill. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"$ref":"#/components/schemas/AgentDecision"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AgentIntent"}}}}}},
-    "/api/v1/agents/{key_hash}/policy": {"get":{"operationId":"getAgentPolicy","tags":["Agent rulebook"],"summary":"Read a rulebook","description":"Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"$ref":"#/components/schemas/AgentPolicyResult"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}},"parameters":[{"name":"key_hash","in":"path","required":true,"schema":{"type":"string"}}]},"put":{"operationId":"putAgentPolicy","tags":["Agent rulebook"],"summary":"Set a rulebook","description":"Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Replaces the specification while preserving existing kill state. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"$ref":"#/components/schemas/AgentPolicyResult"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}},"parameters":[{"name":"key_hash","in":"path","required":true,"schema":{"type":"string"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AgentPolicy"}}}}},"delete":{"operationId":"deleteAgentPolicy","tags":["Agent rulebook"],"summary":"Remove a rulebook","description":"Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Removes this key’s own rulebook; a session’s inherited parent rulebook still applies. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"type":"object"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}},"parameters":[{"name":"key_hash","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/agents/{key_hash}/kill": {"post":{"operationId":"killAgent","tags":["Agent rulebook"],"summary":"Kill an agent","description":"Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. A committed kill is read on the next request by every replica, without policy caching. Requires an existing rulebook. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"$ref":"#/components/schemas/AgentPolicyResult"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}},"parameters":[{"name":"key_hash","in":"path","required":true,"schema":{"type":"string"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"properties":{"reason":{"type":"string","maxLength":160}}}}}}}},
-    "/api/v1/agents/{key_hash}/resume": {"post":{"operationId":"resumeAgent","tags":["Agent rulebook"],"summary":"Resume an agent","description":"Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Clears kill state without changing the specification. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"$ref":"#/components/schemas/AgentPolicyResult"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}},"parameters":[{"name":"key_hash","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/agents/{key_hash}/events": {"get":{"operationId":"agentEvents","tags":["Agent rulebook"],"summary":"Read policy events","description":"Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Newest first, 50 per page. next_cursor is a before-id cursor. Metadata-only hash chain; 90-day retention when the cleanup worker runs. Off returns 404.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Result","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"type":"array","items":{"type":"object"}}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}},"parameters":[{"name":"key_hash","in":"path","required":true,"schema":{"type":"string"}},{"name":"cursor","in":"query","schema":{"type":"integer","minimum":1}}]}},
-
-    "/api/v1/network/hosts": {"post":{"summary":"Apply or re-apply a network host using existing wallet authentication","description":"Available only with NETWORK_HOSTS_ENABLED=true; default false. See /docs/#network-host-signup. Policy offer terms enable shadow offers during probation; signup does not activate payouts. Scheduled renewal checks the current signed policy without promoting hosts to live. Failed attestation blocks selection; policy refusal rejects the host and disables offers. Admission records attested retention with the policy version and leaves jurisdiction, legal hold and training use undeclared; rejection clears the disclosure profile.","responses":{"200":{"description":"Current record","content":{"application/json":{"schema":{"type":"object","required":["provider_id","status","reasons","dashboard"],"properties":{"provider_id":{"type":"string"},"status":{"type":"string","enum":["probation","rejected","pending"]},"reasons":{"type":"array","items":{"type":"string"}},"dashboard":{"type":"string"}}}}}},"404":{"$ref":"#/components/responses/NotFound"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"429":{"$ref":"#/components/responses/TooManyRequests"},"201":{"description":"New host record","content":{"application/json":{"schema":{"type":"object","required":["provider_id","status","reasons","dashboard"],"properties":{"provider_id":{"type":"string"},"status":{"type":"string","enum":["probation","rejected","pending"]},"reasons":{"type":"array","items":{"type":"string"}},"dashboard":{"type":"string"}}}}}}},"security":[{"WalletAuth":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"required":["name","endpoint","payout_address","models"],"properties":{"name":{"type":"string","minLength":1,"maxLength":60},"endpoint":{"type":"string","format":"uri","description":"Sidecar root HTTPS URL. HTTP is recorded as rejected."},"payout_address":{"type":"string","pattern":"^0x[0-9a-fA-F]{40}$"},"models":{"type":"array","minItems":1,"maxItems":8,"uniqueItems":true,"items":{"type":"string","maxLength":160}},"contact":{"type":"string","maxLength":120}}}}}}}},
-    "/api/v1/network/hosts/{provider_id}/status": {"get":{"summary":"Read public network host admission status","description":"Available only with NETWORK_HOSTS_ENABLED=true; default false. See /docs/#network-host-signup. Policy offer terms enable shadow offers during probation; signup does not activate payouts.","responses":{"200":{"description":"Current record","content":{"application/json":{"schema":{"type":"object","required":["provider_id","status","reasons","attested","probation_until","weight"],"properties":{"provider_id":{"type":"string"},"status":{"type":"string"},"reasons":{"type":"array","items":{"type":"string"}},"attested":{"type":"boolean"},"probation_until":{"type":["string","null"],"format":"date-time"},"weight":{"type":"number","minimum":0,"maximum":1,"description":"Current network selector multiplier, rounded to two decimals; highest across eligible model offers, not a traffic percentage. Probation starts at 0.1 and health can reduce it. Zero with hosting off, refusal, stale or failed attestation, unhealthy evidence, or no eligible offers. Status route is absent when hosting is disabled."}}}}}},"404":{"$ref":"#/components/responses/NotFound"}},"parameters":[{"name":"provider_id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/network/hosts/{provider_id}/credential": {"put":{"summary":"Supply an operator-generated sidecar inference credential","description":"Available only with NETWORK_HOSTS_ENABLED=true; default false. See /docs/#network-host-signup. Policy offer terms enable shadow offers during probation; signup does not activate payouts.","responses":{"200":{"description":"Current record","content":{"application/json":{"schema":{"type":"object","properties":{"provider_id":{"type":"string"},"credential_configured":{"type":"boolean"}}}}}},"404":{"$ref":"#/components/responses/NotFound"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"429":{"$ref":"#/components/responses/TooManyRequests"}},"security":[{"WalletAuth":[]}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"required":["provider_id","api_key"],"properties":{"provider_id":{"type":"string","description":"Signed provider ID must match path."},"api_key":{"type":"string","minLength":16,"maxLength":500,"writeOnly":true}}}}}},"parameters":[{"name":"provider_id","in":"path","required":true,"schema":{"type":"string"}}]}},
-
+    "/api/v1/network/burns": {
+      "get": {
+        "summary": "Network fee swaps and burns",
+        "description": "Public aggregate pico-USD fees, burned ANYR units and up to 50 recent swap and dead-address transfer transactions with explorer links. Available with the keeper disabled. Individual host invoice amounts are omitted.",
+        "responses": {
+          "200": {
+            "description": "Aggregate totals, enabled status, fee_bps, conversion dust, ANYR decimals and recent transactions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "List account agent keys",
+        "description": "Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Includes effective rulebooks, kill state, rolling spend plus reservations and caps. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/me": {
+      "get": {
+        "operationId": "agentMe",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Read the calling key’s rulebook",
+        "description": "Includes own and inherited parent rulebooks, remaining rolling caps and kill state. A session and its parent must both pass. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/approvals": {
+      "get": {
+        "tags": [
+          "Agent rulebook"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AgentApproval"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Approval is no longer pending"
+          }
+        },
+        "operationId": "listAgentApprovals",
+        "summary": "List principal-visible approvals",
+        "description": "AGENT_POLICY_ENABLED defaults false; off returns 404. Management key or same-account team owner/admin. Up to 100 newest rows. Pending by default. Expiry ends validity but does not delete approval rows.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "denied",
+                "expired",
+                "used"
+              ],
+              "default": "pending"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/approvals/{id}": {
+      "get": {
+        "tags": [
+          "Agent rulebook"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "status",
+                        "expires_at"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "approved",
+                            "denied",
+                            "expired",
+                            "used"
+                          ]
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Approval is no longer pending"
+          }
+        },
+        "operationId": "getAgentApprovalStatus",
+        "summary": "Poll approval status",
+        "description": "Principal or the requesting key; returns only id, status and expires_at. Off returns 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/approvals/{id}/approve": {
+      "post": {
+        "tags": [
+          "Agent rulebook"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Approval is no longer pending"
+          }
+        },
+        "operationId": "approveAgentApproval",
+        "summary": "Approve a pending approval",
+        "description": "Management key or same-account team owner/admin of the requesting key. Session and ordinary agent keys cannot decide. Records the principal key hash and a chained event. Expired or completed rows return 409. Off returns 404. Retry inference with X-Agent-Approval: <id> after approval; it is single-use, binds key/model/lane/tools/output token limit, and permits estimated cost no greater than the approved ceiling. All rulebook restrictions still apply. AGENT_APPROVAL_TTL_S defaults to 900 seconds from request time.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/approvals/{id}/deny": {
+      "post": {
+        "tags": [
+          "Agent rulebook"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Approval is no longer pending"
+          }
+        },
+        "operationId": "denyAgentApproval",
+        "summary": "Deny a pending approval",
+        "description": "Management key or same-account team owner/admin of the requesting key. Session and ordinary agent keys cannot decide. Records the principal key hash and a chained event. Expired or completed rows return 409. Off returns 404. Retry inference with X-Agent-Approval: <id> after approval; it is single-use, binds key/model/lane/tools/output token limit, and permits estimated cost no greater than the approved ceiling. All rulebook restrictions still apply. AGENT_APPROVAL_TTL_S defaults to 900 seconds from request time.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/check": {
+      "post": {
+        "operationId": "checkAgentPolicy",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Evaluate an Intent without recording it",
+        "description": "Calling API key. Returns a deterministic decision with no event writes or automatic kill. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AgentDecision"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentIntent"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/policy": {
+      "get": {
+        "operationId": "getAgentPolicy",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Read a rulebook",
+        "description": "Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPolicyResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "putAgentPolicy",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Set a rulebook",
+        "description": "Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Replaces the specification while preserving existing kill state. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPolicyResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPolicy"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAgentPolicy",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Remove a rulebook",
+        "description": "Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Removes this key’s own rulebook; a session’s inherited parent rulebook still applies. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/{key_hash}/kill": {
+      "post": {
+        "operationId": "killAgent",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Kill an agent",
+        "description": "Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. A committed kill is read on the next request by every replica, without policy caching. Requires an existing rulebook. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPolicyResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 160
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/resume": {
+      "post": {
+        "operationId": "resumeAgent",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Resume an agent",
+        "description": "Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Clears kill state without changing the specification. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AgentPolicyResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/{key_hash}/events": {
+      "get": {
+        "operationId": "agentEvents",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Read policy events",
+        "description": "Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. Newest first, 50 per page. next_cursor is a before-id cursor. Metadata-only hash chain; 90-day retention when the cleanup worker runs. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/network/hosts": {
+      "post": {
+        "summary": "Apply or re-apply a network host using existing wallet authentication",
+        "description": "Available only with NETWORK_HOSTS_ENABLED=true; default false. See /docs/#network-host-signup. Policy offer terms enable shadow offers during probation; signup does not activate payouts. Scheduled renewal checks the current signed policy without promoting hosts to live. Failed attestation blocks selection; policy refusal rejects the host and disables offers. Admission records attested retention with the policy version and leaves jurisdiction, legal hold and training use undeclared; rejection clears the disclosure profile.",
+        "responses": {
+          "200": {
+            "description": "Current record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provider_id",
+                    "status",
+                    "reasons",
+                    "dashboard"
+                  ],
+                  "properties": {
+                    "provider_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "probation",
+                        "rejected",
+                        "pending"
+                      ]
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "dashboard": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "201": {
+            "description": "New host record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provider_id",
+                    "status",
+                    "reasons",
+                    "dashboard"
+                  ],
+                  "properties": {
+                    "provider_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "probation",
+                        "rejected",
+                        "pending"
+                      ]
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "dashboard": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "WalletAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "endpoint",
+                  "payout_address",
+                  "models"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "endpoint": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Sidecar root HTTPS URL. HTTP is recorded as rejected."
+                  },
+                  "payout_address": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{40}$"
+                  },
+                  "models": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 160
+                    }
+                  },
+                  "contact": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/hosts/{provider_id}/status": {
+      "get": {
+        "summary": "Read public network host admission status",
+        "description": "Available only with NETWORK_HOSTS_ENABLED=true; default false. See /docs/#network-host-signup. Policy offer terms enable shadow offers during probation; signup does not activate payouts.",
+        "responses": {
+          "200": {
+            "description": "Current record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provider_id",
+                    "status",
+                    "reasons",
+                    "attested",
+                    "probation_until",
+                    "weight"
+                  ],
+                  "properties": {
+                    "provider_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "attested": {
+                      "type": "boolean"
+                    },
+                    "probation_until": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "weight": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "description": "Current network selector multiplier, rounded to two decimals; highest across eligible model offers, not a traffic percentage. Probation starts at 0.1 and health can reduce it. Zero with hosting off, refusal, stale or failed attestation, unhealthy evidence, or no eligible offers. Status route is absent when hosting is disabled."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/network/hosts/{provider_id}/credential": {
+      "put": {
+        "summary": "Supply an operator-generated sidecar inference credential",
+        "description": "Available only with NETWORK_HOSTS_ENABLED=true; default false. See /docs/#network-host-signup. Policy offer terms enable shadow offers during probation; signup does not activate payouts.",
+        "responses": {
+          "200": {
+            "description": "Current record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "provider_id": {
+                      "type": "string"
+                    },
+                    "credential_configured": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "security": [
+          {
+            "WalletAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "provider_id",
+                  "api_key"
+                ],
+                "properties": {
+                  "provider_id": {
+                    "type": "string",
+                    "description": "Signed provider ID must match path."
+                  },
+                  "api_key": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 500,
+                    "writeOnly": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/v1/hosts": {
       "get": {
         "tags": [
@@ -217,7 +1305,7 @@
         ],
         "operationId": "getHost",
         "summary": "Read one host’s evidence and invoice band",
-        "description": "Available only with HOST_DASHBOARD_ENABLED=true (default false). Reuses existing attestation, measurements, proof-time and host-root records. Hardware evidence and recorded measurements do not establish build admission approval, source equivalence or prompt handling. Detail responses always use Cache-Control: no-store and Vary: X-Wallet-Auth. Earnings are lifetime settlement invoice totals after provider fees, including paid invoices and excluding the open hour. USDG units have six decimal places.",
+        "description": "With NETWORK_BONDS_ENABLED, data.bond contains host_id, contract, chain_id, asset, decimals, matched_operator, amount_units, active_units, unbonding {amount_units, available_at}, delisted, indexed_block, fresh, checked_at and slashes [{id, host_id, amount_units, reason, evidence_root, executable_at, dispute_hash, status, transactions [{event, hash, url}]}]. Amounts are decimal base-unit strings. Curated hosts have null bonds. Available only with HOST_DASHBOARD_ENABLED=true (default false). Reuses existing attestation, measurements, proof-time and host-root records. Hardware evidence and recorded measurements do not establish build admission approval, source equivalence or prompt handling. Detail responses always use Cache-Control: no-store and Vary: X-Wallet-Auth. Earnings are lifetime settlement invoice totals after provider fees, including paid invoices and excluding the open hour. USDG units have six decimal places.",
         "security": [],
         "parameters": [
           {
@@ -10734,6 +11822,73 @@
           }
         }
       }
+    },
+    "/api/v1/network/bonds": {
+      "get": {
+        "tags": [
+          "Network"
+        ],
+        "summary": "Public HostBond work deposit summary",
+        "description": "Available when NETWORK_BONDS_ENABLED is on. Canonical public chain amounts in six-decimal USDG base units; includes index freshness. A work deposit supplies bounded routing priority, subject to health, probation, attestation and lane checks.",
+        "responses": {
+          "200": {
+            "description": "Bond summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "contract": {
+                          "type": "string"
+                        },
+                        "chain_id": {
+                          "type": "integer"
+                        },
+                        "asset": {
+                          "type": "string"
+                        },
+                        "decimals": {
+                          "type": "integer"
+                        },
+                        "indexed_block": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "fresh": {
+                          "type": "boolean"
+                        },
+                        "minimum_units": {
+                          "type": "string"
+                        },
+                        "total_units": {
+                          "type": "string"
+                        },
+                        "active_units": {
+                          "type": "string"
+                        },
+                        "hosts": {
+                          "type": "integer"
+                        },
+                        "pending_slashes": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11088,17 +12243,437 @@
       }
     },
     "schemas": {
-      "AgentApproval": {"type":"object","properties":{"id":{"type":"string"},"key_hash":{"type":"string"},"intent":{"description":"Routing identifiers, output limit and estimated cost only. Multi-model requests contain an intents array. No prompt or response fields.","type":"object"},"intent_hash":{"type":"string"},"max_cost_pico":{"type":"string","pattern":"^[0-9]+$"},"status":{"type":"string","enum":["pending","approved","denied","expired","used"]},"requested_at":{"type":"string","format":"date-time"},"expires_at":{"type":"string","format":"date-time"},"decided_at":{"type":["string","null"],"format":"date-time"},"decided_by":{"type":["string","null"]},"used_at":{"type":["string","null"],"format":"date-time"}},"required":["id","key_hash","intent","intent_hash","max_cost_pico","status","requested_at","expires_at","decided_at","decided_by","used_at"]},
-      "AgentPolicy": {"type":"object","properties":{"version":{"type":"number","const":1},"models":{"type":"object","properties":{"allow":{"maxItems":64,"type":"array","items":{"type":"string","minLength":1,"maxLength":160}},"deny":{"maxItems":64,"type":"array","items":{"type":"string","minLength":1,"maxLength":160}}},"additionalProperties":false},"lanes":{"maxItems":64,"type":"array","items":{"type":"string","enum":["public","attested","unlinkable"]}},"caps":{"type":"object","properties":{"per_request_usd":{"type":"number","exclusiveMinimum":0,"maximum":1000000},"per_hour_usd":{"type":"number","exclusiveMinimum":0,"maximum":1000000},"per_day_usd":{"type":"number","exclusiveMinimum":0,"maximum":1000000},"per_week_usd":{"type":"number","exclusiveMinimum":0,"maximum":1000000},"max_output_tokens":{"type":"integer","exclusiveMinimum":0,"maximum":10000000}},"additionalProperties":false},"tools":{"type":"object","properties":{"allow":{"maxItems":64,"type":"array","items":{"type":"string","minLength":1,"maxLength":160}},"deny":{"maxItems":64,"type":"array","items":{"type":"string","minLength":1,"maxLength":160}}},"additionalProperties":false},"windows":{"maxItems":64,"type":"array","items":{"type":"object","properties":{"days":{"maxItems":64,"type":"array","items":{"type":"integer","minimum":0,"maximum":6}},"start":{"type":"string","pattern":"^(?:[01]\\d|2[0-3]):[0-5]\\d$"},"end":{"type":"string","pattern":"^(?:[01]\\d|2[0-3]):[0-5]\\d$"}},"required":["days","start","end"],"additionalProperties":false}},"approval":{"type":"object","properties":{"above_usd":{"type":"number","exclusiveMinimum":0,"maximum":1000000}},"required":["above_usd"],"additionalProperties":false},"on_breach":{"type":"string","enum":["deny","kill"]}},"required":["version","models","caps","on_breach"],"additionalProperties":false},
-      "AgentIntent": {"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","model","lane","est_cost_pico","tools"],"properties":{"kind":{"const":"inference"},"model":{"type":"string","minLength":1,"maxLength":160},"lane":{"enum":["public","attested","unlinkable"]},"est_cost_pico":{"type":"string","pattern":"^[0-9]+$","description":"Integer pico-USD, 1 USD = 10^12 pico."},"max_output_tokens":{"type":"integer","minimum":1,"maximum":10000000},"tools":{"type":"array","items":{"type":"string","minLength":1,"maxLength":160},"maxItems":64}}},{"type":"object","additionalProperties":false,"required":["kind","name"],"properties":{"kind":{"const":"mcp_tool"},"name":{"type":"string","minLength":1,"maxLength":160}}}]},
-      "AgentDecision": {"type":"object","required":["decision","reasons"],"properties":{"decision":{"enum":["allow","deny","approval_required"]},"reasons":{"type":"array","items":{"type":"object","required":["code","message"],"properties":{"code":{"enum":["killed","model_not_allowed","lane_not_allowed","over_per_request","over_per_hour","over_per_day","over_per_week","max_tokens","tool_not_allowed","outside_window","approval_required"]},"message":{"type":"string"}}}}}},
-      "AgentPolicyResult": {"type":"object","required":["policy","sha256","version","killed"],"properties":{"policy":{"$ref":"#/components/schemas/AgentPolicy"},"sha256":{"type":"string"},"version":{"const":1},"killed":{"type":"boolean"},"killed_at":{"type":["string","null"],"format":"date-time"},"killed_reason":{"type":["string","null"]}}},
-
+      "AgentApproval": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key_hash": {
+            "type": "string"
+          },
+          "intent": {
+            "description": "Routing identifiers, output limit and estimated cost only. Multi-model requests contain an intents array. No prompt or response fields.",
+            "type": "object"
+          },
+          "intent_hash": {
+            "type": "string"
+          },
+          "max_cost_pico": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "denied",
+              "expired",
+              "used"
+            ]
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "decided_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "key_hash",
+          "intent",
+          "intent_hash",
+          "max_cost_pico",
+          "status",
+          "requested_at",
+          "expires_at",
+          "decided_at",
+          "decided_by",
+          "used_at"
+        ]
+      },
+      "AgentPolicy": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "models": {
+            "type": "object",
+            "properties": {
+              "allow": {
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "deny": {
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "lanes": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "public",
+                "attested",
+                "unlinkable"
+              ]
+            }
+          },
+          "caps": {
+            "type": "object",
+            "properties": {
+              "per_request_usd": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "per_hour_usd": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "per_day_usd": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "per_week_usd": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "max_output_tokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000000
+              }
+            },
+            "additionalProperties": false
+          },
+          "tools": {
+            "type": "object",
+            "properties": {
+              "allow": {
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "deny": {
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "windows": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "days": {
+                  "maxItems": 64,
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  }
+                },
+                "start": {
+                  "type": "string",
+                  "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                },
+                "end": {
+                  "type": "string",
+                  "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+                }
+              },
+              "required": [
+                "days",
+                "start",
+                "end"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "approval": {
+            "type": "object",
+            "properties": {
+              "above_usd": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "required": [
+              "above_usd"
+            ],
+            "additionalProperties": false
+          },
+          "on_breach": {
+            "type": "string",
+            "enum": [
+              "deny",
+              "kill"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "models",
+          "caps",
+          "on_breach"
+        ],
+        "additionalProperties": false
+      },
+      "AgentIntent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "model",
+              "lane",
+              "est_cost_pico",
+              "tools"
+            ],
+            "properties": {
+              "kind": {
+                "const": "inference"
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "lane": {
+                "enum": [
+                  "public",
+                  "attested",
+                  "unlinkable"
+                ]
+              },
+              "est_cost_pico": {
+                "type": "string",
+                "pattern": "^[0-9]+$",
+                "description": "Integer pico-USD, 1 USD = 10^12 pico."
+              },
+              "max_output_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000000
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "maxItems": 64
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "name"
+            ],
+            "properties": {
+              "kind": {
+                "const": "mcp_tool"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            }
+          }
+        ]
+      },
+      "AgentDecision": {
+        "type": "object",
+        "required": [
+          "decision",
+          "reasons"
+        ],
+        "properties": {
+          "decision": {
+            "enum": [
+              "allow",
+              "deny",
+              "approval_required"
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "enum": [
+                    "killed",
+                    "model_not_allowed",
+                    "lane_not_allowed",
+                    "over_per_request",
+                    "over_per_hour",
+                    "over_per_day",
+                    "over_per_week",
+                    "max_tokens",
+                    "tool_not_allowed",
+                    "outside_window",
+                    "approval_required"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AgentPolicyResult": {
+        "type": "object",
+        "required": [
+          "policy",
+          "sha256",
+          "version",
+          "killed"
+        ],
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/AgentPolicy"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "version": {
+            "const": 1
+          },
+          "killed": {
+            "type": "boolean"
+          },
+          "killed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "killed_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "HostPublic": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "admission": {"type":["object","null"],"description":"Null for curated providers. Approval requires admitted probation/live status, no refusal reasons and a fresh successful latest hardware attestation plus the recorded checked policy.","required":["status","policy_version","reasons","checked_at"],"properties":{"status":{"type":"string","enum":["approved","not_approved"]},"policy_version":{"type":["integer","null"],"minimum":1,"description":"Version recorded by admission or renewal, not necessarily the latest published policy."},"reasons":{"type":"array","items":{"type":"string"}},"checked_at":{"type":["string","null"],"format":"date-time"}}},
+          "admission": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Null for curated providers. Approval requires admitted probation/live status, no refusal reasons and a fresh successful latest hardware attestation plus the recorded checked policy.",
+            "required": [
+              "status",
+              "policy_version",
+              "reasons",
+              "checked_at"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved",
+                  "not_approved"
+                ]
+              },
+              "policy_version": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1,
+                "description": "Version recorded by admission or renewal, not necessarily the latest published policy."
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "checked_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
           "id": {
             "type": "string"
           },
@@ -11204,7 +12779,49 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "admission": {"type":["object","null"],"description":"Null for curated providers. Approval requires admitted probation/live status, no refusal reasons and a fresh successful latest hardware attestation plus the recorded checked policy.","required":["status","policy_version","reasons","checked_at"],"properties":{"status":{"type":"string","enum":["approved","not_approved"]},"policy_version":{"type":["integer","null"],"minimum":1,"description":"Version recorded by admission or renewal, not necessarily the latest published policy."},"reasons":{"type":"array","items":{"type":"string"}},"checked_at":{"type":["string","null"],"format":"date-time"}}},
+          "admission": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Null for curated providers. Approval requires admitted probation/live status, no refusal reasons and a fresh successful latest hardware attestation plus the recorded checked policy.",
+            "required": [
+              "status",
+              "policy_version",
+              "reasons",
+              "checked_at"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved",
+                  "not_approved"
+                ]
+              },
+              "policy_version": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1,
+                "description": "Version recorded by admission or renewal, not necessarily the latest published policy."
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "checked_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            }
+          },
           "id": {
             "type": "string"
           },
@@ -21106,7 +22723,9 @@
                   "type": "string",
                   "pattern": "^sha256:[0-9a-f]{64}$"
                 },
-                "offer": {"$ref":"#/components/schemas/HostPolicyOffer"},
+                "offer": {
+                  "$ref": "#/components/schemas/HostPolicyOffer"
+                },
                 "min_gpu_cc": {
                   "type": "boolean"
                 }
@@ -21155,7 +22774,76 @@
         ],
         "additionalProperties": false
       },
-      "HostPolicyOffer": {"type":"object","additionalProperties":false,"required":["slug","name","context_length","max_completion_tokens","pricing"],"properties":{"slug":{"type":"string","minLength":1,"maxLength":160,"pattern":"^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"},"name":{"type":"string","minLength":1,"maxLength":160},"hugging_face_id":{"type":"string","minLength":1,"maxLength":160,"pattern":"^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"},"context_length":{"type":"integer","minimum":1,"maximum":2147483647},"max_completion_tokens":{"type":"integer","minimum":1,"maximum":2147483647},"quantization":{"type":"string","minLength":1,"maxLength":32,"pattern":"^[A-Za-z0-9._+-]+$"},"pricing":{"type":"object","additionalProperties":false,"required":["prompt","completion"],"properties":{"prompt":{"type":"string","minLength":1,"maxLength":32,"pattern":"^[0-9]+(\\.[0-9]+)?$","description":"Positive decimal USD per token, at most 1000000."},"completion":{"type":"string","minLength":1,"maxLength":32,"pattern":"^[0-9]+(\\.[0-9]+)?$","description":"Positive decimal USD per token, at most 1000000."}}}}},
+      "HostPolicyOffer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "name",
+          "context_length",
+          "max_completion_tokens",
+          "pricing"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "hugging_face_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+          },
+          "context_length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "quantization": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "pattern": "^[A-Za-z0-9._+-]+$"
+          },
+          "pricing": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "prompt",
+              "completion"
+            ],
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32,
+                "pattern": "^[0-9]+(\\.[0-9]+)?$",
+                "description": "Positive decimal USD per token, at most 1000000."
+              },
+              "completion": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32,
+                "pattern": "^[0-9]+(\\.[0-9]+)?$",
+                "description": "Positive decimal USD per token, at most 1000000."
+              }
+            }
+          }
+        }
+      },
       "HostPolicyPublication": {
         "type": "object",
         "required": [

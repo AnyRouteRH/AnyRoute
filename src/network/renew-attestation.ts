@@ -1,3 +1,4 @@
+import { recordPolicyRejection } from "./slashing.ts";
 import { eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { providers } from "../db/schema.ts";
@@ -14,6 +15,7 @@ export async function renewHostAttestation(ctx: Ctx, p: typeof providers.$inferS
   const checked = "host_policy_bindings" in result
     ? await checkPublishedHostPolicy(ctx, result.host_policy_bindings, p.networkModels ?? [])
     : { reasons: ["Verified quote-bound sidecar bindings are unavailable."], policy: null };
+  if ("host_policy_bindings" in result) await recordPolicyRejection(ctx, p.id, result.host_policy_bindings, checked);
   if (checked.reasons.length) {
     await rejectHost(ctx, p.id, checked.reasons);
     return { provider: p.id, ok: false, reason: checked.reasons.join(" ") };

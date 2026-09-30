@@ -1,5 +1,6 @@
 'use client';
 import NetworkHostPayout from "../../components/NetworkHostPayout";
+import HostBond from "./HostBond";
 import { useEffect, useRef, useState } from 'react';
 import { HOSTS_PATH, hostPath, hostId, describeHost, operatorHeader } from '../../lib/hosts';
 import s from './hosts.module.css';
@@ -18,6 +19,7 @@ export function HostRecord({ host }) {
       <section><h3>Uptime</h3><p className={s.number}>{v.uptimeText}</p><p>Successful observed requests and probes across served models over 30 days. This is not continuous availability.</p></section>
       <NetworkHostPayout payout={v.network_payout} /><section><h3>Invoice earnings</h3><p className={s.number}>{v.earningsText}</p><p>{v.earnings?.basis}</p>{v.operator && <dl><dt>Invoiced USDG units</dt><dd>{v.operator.invoiced_usdg_units}</dd><dt>Unpaid USDG units</dt><dd>{v.operator.unpaid_usdg_units}</dd><dt>Decimals</dt><dd>{v.operator.decimals}</dd><dt>Payout mode</dt><dd>{v.operator.payout_mode}</dd><dt>Payout address</dt><dd className={s.digest}>{v.operator.payout_address || 'Not configured'}</dd></dl>}</section>
     </div>
+    <HostBond bond={host.bond}/>
     <section><h3>Proof-time</h3><p>Time the router’s record shows a fresh hardware attestation held. Earlier time outside the record is unknown.</p>{v.windows.length ? v.windows.map(w => <div key={w.name} className={s.window}><strong>{w.label}{w.shareText && ` · ${w.shareText}`}</strong><p>{w.caption}</p></div>) : <p>No proof-time record available.</p>}</section>
     <section><h3>Models served</h3><ul>{(v.models || []).map(id => <li key={id}><code>{id}</code></li>)}</ul></section>
     <section><h3>Build measurements</h3>{v.measurements.length ? v.measurements.map((m, i) => <div className={s.measurement} key={i}><Chip>{m.current ? 'Current recorded measurement' : 'Superseded measurement'}</Chip><p>{m.status} · Last seen <When value={m.last_seen_at}/>{m.superseded_at && <> · Superseded <When value={m.superseded_at}/></>}</p><dl>{['image_digest', 'compose_hash', 'model_digest'].map(key => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd><code className={s.digest}>{m[key]}</code></dd></div>)}</dl>{m.rekorHref ? <a href={m.rekorHref} rel="noreferrer">Rekor entry →</a> : <p>No Rekor entry recorded.</p>}</div>) : <p>No measurements recorded.</p>}</section>

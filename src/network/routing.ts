@@ -1,3 +1,4 @@
+import { readRoutingBondEvidence } from "./bonds.ts";
 import { sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { providers } from "../db/schema.ts";
@@ -9,6 +10,8 @@ import { NETWORK_WEIGHT_POLICY as POLICY, type NetworkWeightSettings } from "./w
 // The optional fields compile before the additive network_host column lands.
 type NetworkProvider = ProviderRow & { networkHost?: unknown; probationUntil?: Date | null };
 export type NetworkEvidence = {
+  bond?: bigint;
+  bondCheckedAt?: number;
   probationUntil: number | null;
   attestedSuccesses: number;
   recentSuccesses: number;
@@ -58,6 +61,7 @@ export async function readNetworkEvidence(db: Db, p: NetworkProvider, settings: 
   const gen = first(results[0]);
   const probe = first(results[1]);
   return {
+    ...await readRoutingBondEvidence(db, p, settings.bonds),
     probationUntil, attestedSuccesses: Number(gen.successes),
     recentSuccesses: Number(probe.recent_successes), recentFailures: Number(probe.recent_failures),
     probeSuccesses: Number(probe.probe_successes), probeFailures: Number(probe.probe_failures),

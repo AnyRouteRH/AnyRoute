@@ -1,4 +1,6 @@
 import { runNetworkFeeBurn } from "../network/fee-burn.ts";
+import { pollHostBonds } from "../network/bond-indexer.ts";
+import { runHostSlasher } from "../network/slashing.ts";
 import { refreshSanctions } from "../network/sanctions.ts";
 import type { Ctx } from "../context.ts";
 import { pruneAgentPolicyEvents } from "../agents/store.ts";
@@ -26,6 +28,7 @@ import { runSkillsMirror } from "../skills/service.ts";
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
+  if (cfg.hostBonds.enabled) { jobs.register("host-bond-indexer", 5_000, () => pollHostBonds(ctx), { atStart: true }); jobs.register("host-slasher", 60_000, () => runHostSlasher(ctx)); }
   if (cfg.sanctions.enabled) jobs.register("sanctions-refresh", 86_400_000, () => refreshSanctions(ctx), { atStart: true });
   const chainOn = () => ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty", "staking"].some((n) => ctx.chain.address(n as never));
   jobs.register("health-flush", 5_000, () => ctx.health.flush(ctx.db));

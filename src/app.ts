@@ -2,6 +2,8 @@ import { networkBurnRoutes } from "./network/burn-routes.ts";
 import { networkHostRoutes } from "./api/network-hosts.ts";
 import { networkSanctionsRoutes } from "./api/network-sanctions.ts";
 import { e2eeRoutes } from "./api/e2ee.ts";
+import { hostBondRoutes } from "./network/bonds.ts";
+import { guardHostSlasher } from "./network/bond-config.ts";
 import { configureNetworkRouting } from "./network/routing.ts";
 import { siteCsp } from "./lib/csp.ts";
 import { EXPOSED_RESPONSE_HEADERS, viaOnion } from "./api/common.ts";
@@ -88,6 +90,7 @@ export type AppOptions = {
 
 export async function createApp(opts: AppOptions = {}) {
   const cfg = loadConfig(opts.env ?? {});
+  await guardHostSlasher(cfg);
   setLogLevel(cfg.logLevel);
   const handle = await openDatabase(cfg.databaseUrl, { migrate: cfg.autoMigrate });
   const redis = cfg.redisUrl ? new (await import("ioredis")).Redis(cfg.redisUrl, { maxRetriesPerRequest: 2, lazyConnect: false }) : undefined;
@@ -175,6 +178,7 @@ export async function createApp(opts: AppOptions = {}) {
   attestationHistoryRoutes(app, ctx); // before attestationRoutes: /attestation/summary must not be read as a provider id
   attestationRoutes(app, ctx);
   if (ctx.cfg.hostDashboard.enabled) hostRoutes(app, ctx);
+  hostBondRoutes(app, ctx);
   measurementRoutes(app, ctx);
   badgeRoutes(app, ctx);
   laneRoutes(app, ctx);

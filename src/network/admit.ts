@@ -1,3 +1,4 @@
+import { recordPolicyRejection } from "./slashing.ts";
 import { eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { providers } from "../db/schema.ts";
@@ -26,6 +27,7 @@ export async function admitHost(ctx: Ctx, provider: typeof providers.$inferSelec
       hardware = evidence.hardware_verified && !evidence.dev && !evidence.simulated;
       const checked = await checkPublishedHostPolicy(ctx, evidence, models);
       reasons.push(...checked.reasons);
+      await recordPolicyRejection(ctx, provider.id, evidence, checked);
       if (checked.policy && !reasons.length && ctx.cfg.networkHosts.enabled) {
         staticModels = admittedModels(evidence, checked.policy, models);
         policyVersion = checked.policy.version;
