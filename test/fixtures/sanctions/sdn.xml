@@ -1,0 +1,23 @@
+<?xml version="1.0" standalone="yes"?>
+<sdnList xmlns="https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/XML">
+  <publshInformation><Publish_Date>09/30/2026</Publish_Date><Record_Count>2</Record_Count></publshInformation>
+  <sdnEntry>
+    <uid>100001</uid><lastName>FIXTURE ENTITY A</lastName><sdnType>Entity</sdnType>
+    <programList><program>CYBER2</program></programList>
+    <idList>
+      <id><uid>200001</uid><idType>Digital Currency Address - ETH</idType><idNumber>0xAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa</idNumber></id>
+      <id><uid>200002</uid><idType>Digital Currency Address - USDT</idType><idNumber>0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</idNumber></id>
+      <id><uid>200003</uid><idType>Digital Currency Address - XBT</idType><idNumber>1BoatSLRHtKNngkdXEeobR76b53LETtpyT</idNumber></id>
+      <id><uid>200004</uid><idType>Digital Currency Address - BNB</idType><idNumber>bnb1fixturelegacyaddress</idNumber></id>
+      <id><uid>200005</uid><idType>Registration Number</idType><idNumber>0xcccccccccccccccccccccccccccccccccccccccc</idNumber></id>
+    </idList>
+  </sdnEntry>
+  <sdnEntry>
+    <uid>100002</uid><lastName>FIXTURE ENTITY B</lastName><sdnType>Entity</sdnType>
+    <idList>
+      <id><uid>200006</uid><idType>Digital Currency Address - BNB</idType><idNumber> 0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB </idNumber></id>
+      <id><uid>200007</uid><idType>Digital Currency Address - ETH</idType><idNumber>0x1234</idNumber></id>
+      <id><uid>200008</uid><idType>Digital Currency Address - TRX</idType><idNumber>TFixtureAddress</idNumber></id>
+    </idList>
+  </sdnEntry>
+</sdnList>

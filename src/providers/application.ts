@@ -1,3 +1,4 @@
+import { assertNotSanctioned } from "../network/sanctions.ts";
 import { sealProviderHeaders } from "./headers.ts";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -44,6 +45,7 @@ export function applicationReviewHash(p: typeof providers.$inferSelect) {
  * review hash, so an approval issued for an earlier revision is refused. Once approved, edits stop. */
 export async function submitProviderApplication(ctx: Ctx, v: z.infer<typeof providerApplication>, token?: string) {
   validateProviderUrl(v.base_url, ctx.cfg.production);
+  if (v.payout_address) await assertNotSanctioned(ctx, v.payout_address);
   if (v.tee) validateProviderUrl(v.tee.attestation_url, ctx.cfg.production);
   // Shared across REST/tRPC and replicas with Redis; cannot be evaded by spoofing IP headers.
   const limit = await ctx.limiter.take("provider-applications", 1, 30, 60_000);

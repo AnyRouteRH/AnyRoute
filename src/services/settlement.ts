@@ -1,3 +1,4 @@
+import { skipSanctionedPayout } from "../network/sanctions.ts";
 import { and, asc, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { keccak256, toBytes, type Hex } from "viem";
 import type { Ctx } from "../context.ts";
@@ -261,6 +262,7 @@ export async function runPayouts(ctx: Ctx, minAgeMs = 7 * 86_400_000) {
   for (const d of due) {
     const [p] = await ctx.db.select().from(providers).where(eq(providers.id, d.providerId));
     if (!p) continue;
+    if (await skipSanctionedPayout(ctx, p, out)) continue;
     const id = uid("pay_");
     const amount = BigInt(d.owed);
     const onchain = p.payoutMode === "usdg" && !!p.payoutAddress && ctx.chain.roleAddress("settlement");

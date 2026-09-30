@@ -1,3 +1,4 @@
+import { sanctionsEnv, sanctionsSettings } from "./network/config.ts";
 import { createHash, createHmac, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -45,6 +46,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...sanctionsEnv,
   RUNTIME_ROLE: z.enum(["all", "api", "worker"]).default("all"),
   WORKER_JOBS: z.string().default(""),
   AUTO_MIGRATE: bool.default(true),
@@ -457,7 +459,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.IPX_KEEPER_PRIVATE_KEY && (escrowMode || Object.values(roleKeys).some(Boolean))) throw new Error("IPX_KEEPER_PRIVATE_KEY must be isolated from every other signing role.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
-      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror"];
+      const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -542,6 +544,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     env: e.ANYROUTE_ENV,
     production,
     hostDashboard: { enabled: e.HOST_DASHBOARD_ENABLED },
+    sanctions: sanctionsSettings(e, production),
     runtimeRole: e.RUNTIME_ROLE,
     autoMigrate: e.AUTO_MIGRATE,
     workerJobs: e.WORKER_JOBS.split(",").map((n) => n.trim()).filter(Boolean),

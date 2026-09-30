@@ -1,3 +1,4 @@
+import SanctionsSection from "./SanctionsSection";
 import PageFrame from "../../components/PageFrame";
 import { Button, Code } from "../../components/UI";
 import { sampleRequest } from "../../components/Extensions";
@@ -905,6 +906,7 @@ Model ID:                @character/<id>`}</Code>
             Any OTLP/HTTP collector works: /v1/traces is added to the endpoint unless it is already there, and the body is OTLP JSON. For a self-hosted Tempo or an OpenTelemetry Collector, expose its OTLP/HTTP receiver over https and put its
             auth in headers.
           </p>
+          <SanctionsSection />
           <h2 id="teams">Teams: anonymous organisations with an audit log.</h2>
           <p>
             A team is an organisation with no email and no names. Its owner is the account that made it, a wallet, or a Safe: POST /api/v1/teams/&lt;id&gt;/owner/challenge returns a one-time message, and POST /owner checks the

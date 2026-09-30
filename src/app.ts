@@ -1,3 +1,4 @@
+import { networkSanctionsRoutes } from "./api/network-sanctions.ts";
 import { siteCsp } from "./lib/csp.ts";
 import { EXPOSED_RESPONSE_HEADERS, viaOnion } from "./api/common.ts";
 import { onionIngress } from "./onion/ingress.ts";
@@ -175,6 +176,7 @@ export async function createApp(opts: AppOptions = {}) {
   skillsRoutes(app, ctx);
   networkRoutes(app, ctx);
   publicRoutes(app, ctx);
+  networkSanctionsRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);
   ollamaRoutes(app, ctx);

@@ -1,3 +1,4 @@
+import { refreshSanctions } from "../network/sanctions.ts";
 import type { Ctx } from "../context.ts";
 import { expireHolds } from "../ledger/ledger.ts";
 import { pollChain } from "../chain/indexer.ts";
@@ -23,6 +24,7 @@ import { runSkillsMirror } from "../skills/service.ts";
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
+  if (cfg.sanctions.enabled) jobs.register("sanctions-refresh", 86_400_000, () => refreshSanctions(ctx), { atStart: true });
   const chainOn = () => ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty", "staking"].some((n) => ctx.chain.address(n as never));
   jobs.register("health-flush", 5_000, () => ctx.health.flush(ctx.db));
   jobs.register("holds-expire", 60_000, () => expireHolds(ctx.db));

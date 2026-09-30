@@ -657,6 +657,7 @@ export const EXTERNAL: ExternalDoc = {
     format: "JSON lines: { t, level, msg, ...fields }.",
     records: [
       "The time, the level and a message written in the code.",
+      "Sanctions refresh counts (distinct EVM entries, ignored formats and digital currency entries), publication date and source hash; screening skip/refusal reasons and provider ids. Freshness exceptions for previously paid addresses and refresh failures use fixed reason codes. No payout wallet or identity fields are added to these logs.",
       "Identifiers and counts: provider ids, model ids, job names, hold and generation ids, epochs, block numbers, transaction hashes, hashed key ids and, on rare settlement and escrow events, an account id.",
       "Wallet addresses of payers on pay-per-call and pay-with events (public on chain).",
       "For an unhandled error: the path of the request without its query string, the error message and the first five lines of the stack.",

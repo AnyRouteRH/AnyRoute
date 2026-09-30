@@ -197,6 +197,13 @@
       "when": 1790780630452,
       "tag": "0027_v3_network",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790783227815,
+      "tag": "0028_v3_sanctions",
+      "breakpoints": true
     }
   ]
 }
