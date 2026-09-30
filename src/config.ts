@@ -1,6 +1,7 @@
 import { networkHostsEnv, networkHostsSettings } from "./network/host-config.ts";
 import { sanctionsEnv, sanctionsSettings } from "./network/config.ts";
 import { e2eeSettings } from "./e2ee/config.ts";
+import { networkWeightEnv, networkWeightSettings } from "./network/weight-config.ts";
 import { createHash, createHmac, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -48,6 +49,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...networkWeightEnv,
   ...sanctionsEnv,
   ...networkHostsEnv,
   RUNTIME_ROLE: z.enum(["all", "api", "worker"]).default("all"),
@@ -555,6 +557,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     sanctions: sanctionsSettings(e, production),
     e2ee: e2eeSettings(e.E2EE_PASSTHROUGH_ENABLED, e.PROVIDERS_FILE, production, { baseUrl: e.E2EE_GATEWAY_BASE_URL, attestationUrl: e.E2EE_GATEWAY_ATTESTATION_URL }),
     networkHosts: networkHostsSettings(e, production),
+    networkWeights: networkWeightSettings(e),
     runtimeRole: e.RUNTIME_ROLE,
     autoMigrate: e.AUTO_MIGRATE,
     workerJobs: e.WORKER_JOBS.split(",").map((n) => n.trim()).filter(Boolean),

@@ -1,4 +1,5 @@
 import { openProviderHeaders } from "../providers/headers.ts";
+import { isNetworkHost, networkProbeEligible, networkProbeOfferEligible } from "../network/routing.ts";
 import { providerFetch } from "../providers/network.ts";
 import type { Ctx } from "../context.ts";
 import { decrypt } from "../lib/util.ts";
@@ -11,7 +12,7 @@ import { recordProbeChanges } from "./attestation-events.ts";
 
 export async function runProbes(ctx: Ctx) {
   await ctx.catalog.ensureFresh();
-  const live = [...ctx.catalog.providers.values()].filter((p) => p.status === "live" || p.status === "shadow");
+  const live = [...ctx.catalog.providers.values()].filter((p) => networkProbeEligible(p, ctx.cfg.networkWeights));
   const results = await Promise.all(
     live.map(async (p) => {
       const t = performance.now();
@@ -28,9 +29,9 @@ export async function runProbes(ctx: Ctx) {
         ok = false;
       }
       const latency = performance.now() - t;
-      const offers = [...ctx.catalog.offersByModel.values()].flat().filter((o) => o.providerId === p.id && o.status === "live");
+      const offers = [...ctx.catalog.offersByModel.values()].flat().filter((o) => o.providerId === p.id && networkProbeOfferEligible(p, o.status, ctx.cfg.networkWeights));
       for (const o of offers)
-        ctx.health.record({ modelId: o.modelId, providerId: p.id, ok, statusCode: status, errorKind: probeErrorKind(ok, status), latencyMs: ok ? null : latency, source: "probe" });
+        ctx.health.record({ modelId: o.modelId, providerId: p.id, ok, statusCode: status, errorKind: probeErrorKind(ok, status), latencyMs: ok && !(ctx.cfg.networkWeights.enabled && isNetworkHost(p)) ? null : latency, source: "probe" });
       return { provider: p.id, ok, status, ms: Math.round(latency) };
     }),
   );

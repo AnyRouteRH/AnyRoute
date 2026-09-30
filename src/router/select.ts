@@ -1,4 +1,5 @@
 import type { Candidate, Modifier } from "../catalog/catalog.ts";
+import { networkSelectionInput } from "../network/routing.ts";
 import { usdToPico } from "../lib/money.ts";
 import { NOT_SERVABLE_REASON, isRestricted, restrictedExclusion, type ModelLane } from "./lane.ts";
 import { DISCLOSURE_MAX_VALUES, OUTAGE_REASON, UNDECLARED, classAllowed, disclosureClass, disclosureExclusion, type DisclosureClass, type DisclosureMax, type DisclosureProfile, type Lane } from "./disclosure.ts";
@@ -156,6 +157,7 @@ export function weightedShuffle<T>(items: T[], weight: (t: T) => number, rand: (
 }
 
 export function selectProviders(input: SelectInput): Selection {
+  input = networkSelectionInput(input);
   const { prefs, modifiers, health } = input;
   const excluded: Exclusion[] = [];
   const wantPrivate = prefs.private === true || modifiers.has("private");

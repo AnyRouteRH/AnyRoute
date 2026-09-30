@@ -1,6 +1,7 @@
 import { networkHostRoutes } from "./api/network-hosts.ts";
 import { networkSanctionsRoutes } from "./api/network-sanctions.ts";
 import { e2eeRoutes } from "./api/e2ee.ts";
+import { configureNetworkRouting } from "./network/routing.ts";
 import { siteCsp } from "./lib/csp.ts";
 import { EXPOSED_RESPONSE_HEADERS, viaOnion } from "./api/common.ts";
 import { onionIngress } from "./onion/ingress.ts";
@@ -93,6 +94,7 @@ export async function createApp(opts: AppOptions = {}) {
   const catalog = new Catalog(handle.db);
   await catalog.refresh();
   const health = new HealthTracker(cfg.routing.outageWindowMs);
+  configureNetworkRouting(health, cfg.networkWeights);
   await health.refreshAggregates(handle.db).catch(() => undefined);
 
   const ctx: Ctx = {

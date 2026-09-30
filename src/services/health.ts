@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { refreshNetworkRouting } from "../network/routing.ts";
 import type { Db } from "../db/client.ts";
 import { health } from "../db/schema.ts";
 import type { HealthView, Percentiles } from "../router/select.ts";
@@ -133,7 +134,7 @@ export class HealthTracker implements HealthView {
 
   /** Persist buffered events. */
   async flush(db: Db) {
-    if (!this.pending.length) return 0;
+    if (!this.pending.length) { await refreshNetworkRouting(this, db).catch(() => undefined); return 0; }
     const batch = this.pending.splice(0, this.pending.length);
     try {
       for (let i = 0; i < batch.length; i += 500) {
@@ -165,6 +166,7 @@ export class HealthTracker implements HealthView {
 
   /** Recompute 30-day uptime and latest canary quality per model x provider. */
   async refreshAggregates(db: Db) {
+    await refreshNetworkRouting(this, db).catch(() => undefined);
     const up = await db.execute(sql`
       SELECT model_id, provider_id,
              count(*) FILTER (WHERE ok) AS ok,
