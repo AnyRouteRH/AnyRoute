@@ -135,7 +135,11 @@ describe("wallet-authenticated host admission with the existing attestor", () =>
   test("wallet auth, replay protection, bounded fields and signed credential scope are enforced", async () => {
     expect((await h.request("/api/v1/network/hosts", { method: "POST", json: body() })).status).toBe(401);
     expect((await h.request("/api/v1/network/hosts", { method: "POST", headers: { "X-Wallet-Auth": "invalid" }, json: body() })).status).toBe(401);
-    const first = await (await apply()).json(); expect((await apply()).status).toBe(401);
+    // Replay = the byte-identical header and body again (a fresh timestamp would be a new, valid signature).
+    const ts = String(Math.floor(Date.now() / 1000)), replayBody = body();
+    const header = `${wallet.address}:${ts}:${await wallet.signMessage({ message: `anyroute:${ts}:${sha256(canonicalJson(replayBody))}` })}`;
+    const send = () => h.request("/api/v1/network/hosts", { method: "POST", headers: { "X-Wallet-Auth": header }, json: replayBody });
+    const first = await (await send()).json(); expect((await send()).status).toBe(401);
     expect((await signed(`/api/v1/network/hosts/${first.provider_id}/credential`, { provider_id: "another-host", api_key: "a".repeat(32) }, "PUT")).status).toBe(400);
     expect((await apply({ name: "x".repeat(61) })).status).toBe(400);
     expect((await h.request("/api/v1/network/hosts/missing/status")).status).toBe(404);
