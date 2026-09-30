@@ -86,7 +86,7 @@ test("failed, malformed, absent and non-boolean status all render closed", async
 test("both states retain disclosures, commands, waitlist and earnings limits", () => {
   for (const open of [false, true]) {
     const html = render(open);
-    for (const text of ["AnyRoute’s router still reads requests in memory", "per token served", "USDG", "No amounts are promised", "sh deploy/seal/install.sh", "node join.mjs --key-file", "Developers and agents", "Join the waitlist"]) assert.ok(html.includes(text), text);
+    for (const text of ["AnyRoute’s router still reads requests in memory", "per token served", "USDG", "No amounts are promised", "deploy/network/approved/tdx-qwen2.5-0.5b", "node join.mjs --key-file", "Developers and agents", "Join the waitlist"]) assert.ok(html.includes(text), text);
     assert.doesNotMatch(html, /\b(?:demo|mock|simulated|placeholder|earn|yield|APY|returns|passive income)\b|local-build/i);
   }
   assert.ok(render(true).includes("Payouts to network hosts aren’t switched on yet"), "open copy states payouts are not on");

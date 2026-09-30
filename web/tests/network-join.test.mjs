@@ -19,7 +19,7 @@ test("hosting stays closed unless the router explicitly reports hosts_open true"
 test("page shows installer, join, safety warning, limits and the build-time digest", () => {
   const page = fs.readFileSync("app/network/page.jsx", "utf8"), content = fs.readFileSync("app/network/NetworkContent.jsx", "utf8"), join = fs.readFileSync("app/network/Join.jsx", "utf8");
   assert.match(page, /joinSha=\{joinDigest\(\)\}/); assert.match(content, /<Join sha=\{joinSha\}/);
-  for (const fragment of ["When hosting opens", "Hosting isn’t open yet.", "sh deploy/seal/install.sh", "node join.mjs --key-file", "dedicated operator wallet", "router still reads inference requests in memory", "data-network-join-sha256", "--dry-run", "--status PROVIDER_ID", "--api-key-file", "--api-key-env NAME", "--credential-only PROVIDER_ID", "16–500", "group or world readable", "&lt;redacted&gt;"]) assert.ok(join.includes(fragment), fragment);
+  for (const fragment of ["When hosting opens", "Hosting isn’t open yet.", "deploy/network/approved/tdx-qwen2.5-0.5b", "node join.mjs --key-file", "dedicated operator wallet", "router still reads inference requests in memory", "data-network-join-sha256", "--dry-run", "--status PROVIDER_ID", "--api-key-file", "--api-key-env NAME", "--credential-only PROVIDER_ID", "16–500", "group or world readable", "&lt;redacted&gt;"]) assert.ok(join.includes(fragment), fragment);
   assert.doesNotMatch(join, /\b(?:demo|mock|simulated|placeholder)\b|local-build/i);
 });
 test("audit rejects a missing bundle, modified bytes, stale SHA and a substituted source", () => {

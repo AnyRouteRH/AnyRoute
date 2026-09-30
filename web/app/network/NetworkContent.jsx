@@ -20,7 +20,7 @@ const OPEN_FAQ = [
   ],
   [
     "What hardware do I need?",
-    "For GPU models: an NVIDIA H100, H200 or B200-class GPU that supports confidential-computing mode, on an Intel TDX or AMD SEV-SNP host. For small models, a TDX or SEV-SNP CPU server may be enough. The checker gives hints; attestation establishes eligibility against the published host policy."
+    "Today the host policy admits one build: Intel TDX in a dstack confidential VM (for example Phala Cloud) running the approved recipe with Qwen2.5 0.5B. GPU and SEV-SNP builds aren’t on the policy yet. The checker gives hints; attestation establishes eligibility against the published host policy."
   ],
   [
     "How do I get paid?",
