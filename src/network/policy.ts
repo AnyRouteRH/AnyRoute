@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hostOfferSchema } from "./offers.ts";
 import { canonicalJson, sha256 } from "../lib/util.ts";
 
 const digest = z.string().regex(/^sha256:[0-9a-f]{64}$/);
@@ -10,7 +11,7 @@ export const hostPolicySchema = z.strictObject({
   tee_kinds: z.array(z.enum(["tdx", "snp", "nvidia-cc"])).min(1).max(3),
   sidecar: z.strictObject({ image_digests: pins, source_hashes: pins }),
   engines: z.array(z.strictObject({ name, image_digest: digest })).min(1).max(128),
-  models: z.array(z.strictObject({ id: name, model_digest: digest, min_gpu_cc: z.boolean() })).min(1).max(128),
+  models: z.array(z.strictObject({ id: name, model_digest: digest, min_gpu_cc: z.boolean(), offer: hostOfferSchema.optional() })).min(1).max(128),
   rules: z.strictObject({ require_gpu_cc_for: z.array(name).max(128), allow_dev: z.literal(false) }),
 }).superRefine((p, ctx) => {
   const ids = p.models.map((m) => m.id);

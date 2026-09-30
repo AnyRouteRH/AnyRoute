@@ -56,8 +56,8 @@ export const providerTables: Record<string, TableDoc> = {
       shadow_until: "When a shadow provider is due to be considered for live, or the end of a network host probation period.",
       timeout_ms: "Request timeout for this provider.",
       static_models: {
-        purpose: "A model list with prices for providers whose own listing lacks pricing.",
-        review: JSON_FIELDS("A list of model ids, prices and limits entered by an operator and checked before it is applied."),
+        purpose: "A model list with prices for providers whose own listing lacks pricing, or network probation offers copied from the signed policy for requested quote-bound model IDs. Rejection clears this list and disables retained offers.",
+        review: JSON_FIELDS("A list of model IDs, catalogue slugs, names, optional Hugging Face IDs and quantization, prices, token limits and text modalities entered by an operator and checked before it is applied. Network admission copies these terms only after published-policy signature and hardware quote binding verification."),
       },
       contact: {
         purpose: "A contact for the provider's operator, as given in the provider application.",

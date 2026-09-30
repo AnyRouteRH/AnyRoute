@@ -22,13 +22,13 @@ export const networkTables: Record<string, TableDoc> = {
   },
   host_policies: {
     category: "operations",
-    purpose: "Public versions of the network host admission policy, signed with the transparency log's Ed25519 key. Publication does not admit providers or change the existing admission path.",
+    purpose: "Public versions of the network host admission policy, signed with the transparency log's Ed25519 key. Publication alone does not admit providers; wallet-authenticated network admission verifies this policy before probation.",
     request: "no",
     retention: KEPT_APPEND,
     columns: {
       version: "Consecutive policy version, beginning at 1.",
       issued_at: "The policy's issue time supplied by the operator.",
-      canonical: "Canonical JSON of the operator's policy: version, issue time, TEE kinds, approved sidecar image and source hashes, engine names and image digests, model IDs and digests, and GPU CC requirements. A strict bounded schema accepts no prompt fields; names are operator-written identifiers with a restricted alphabet, so the router cannot know what meaning the operator assigns them. Public through the policy API.",
+      canonical: "Canonical JSON of the operator's policy: version, issue time, TEE kinds, approved sidecar image and source hashes, engine names and image digests, model IDs and digests, GPU CC requirements and optional model offer terms: catalogue slug, display name, Hugging Face ID, context and completion limits, quantization and positive USD-per-token prompt/completion prices. Offer terms are public operator-provided metadata, not inference content. A strict bounded schema accepts no prompt fields; names are operator-written identifiers with a restricted alphabet, so the router cannot know what meaning the operator assigns them. Public through the policy API.",
       sha256: "SHA-256 of the exact canonical policy bytes.",
       signature: "Base64 Ed25519 signature over the canonical policy bytes.",
       verifier_key: "The public signed-note verifier key identifying the log key that signed this version.",
