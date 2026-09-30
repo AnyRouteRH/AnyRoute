@@ -1,9 +1,11 @@
+import { breakerReasons, breakerMessages, type BreakerReasonCode, type BreakerState } from "./breakers.ts";
 import type { AgentIntent, AgentPolicy } from "./policy.ts";
 import { usdToPico } from "../lib/money.ts";
-export type AgentPolicyState = { killed: boolean; spent_pico: { hour: bigint; day: bigint; week: bigint } };
-export type ReasonCode = "killed" | "model_not_allowed" | "lane_not_allowed" | "over_per_request" | "over_per_hour" | "over_per_day" | "over_per_week" | "max_tokens" | "tool_not_allowed" | "outside_window" | "approval_required";
+export type AgentPolicyState = { killed: boolean; spent_pico: { hour: bigint; day: bigint; week: bigint }; breakers?: BreakerState };
+export type ReasonCode = BreakerReasonCode | "killed" | "model_not_allowed" | "lane_not_allowed" | "over_per_request" | "over_per_hour" | "over_per_day" | "over_per_week" | "max_tokens" | "tool_not_allowed" | "outside_window" | "approval_required";
 export type AgentDecision = { decision: "allow" | "deny" | "approval_required"; reasons: { code: ReasonCode; message: string }[] };
 const messages: Record<ReasonCode, string> = {
+  ...breakerMessages,
   killed: "This agent is killed.", model_not_allowed: "The model is outside the rulebook.", lane_not_allowed: "The lane is outside the rulebook.",
   over_per_request: "The request exceeds its cost cap.", over_per_hour: "The rolling hour cap would be exceeded.", over_per_day: "The rolling day cap would be exceeded.", over_per_week: "The rolling week cap would be exceeded.",
   max_tokens: "The output token cap would be exceeded.", tool_not_allowed: "A declared tool is outside the rulebook.", outside_window: "The request is outside the allowed UTC windows.", approval_required: "This cost requires principal approval.",
@@ -14,7 +16,7 @@ const permitted = (rules: { allow?: string[]; deny?: string[] }, value: string, 
 const minute = (s: string) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3));
 /** Rolling money windows and UTC schedule evaluation depend only on the supplied state and time. */
 export function evaluateAgentPolicy(policy: AgentPolicy, state: AgentPolicyState, intent: AgentIntent, now: Date): AgentDecision {
-  const reasons: AgentDecision["reasons"] = [];
+  const reasons: AgentDecision["reasons"] = breakerReasons(policy.breakers, state.breakers, state.killed, intent.kind === "inference" ? intent.est_cost_pico : 0n, intent.kind === "inference" ? intent.model : undefined);
   const add = (code: ReasonCode) => reasons.push({ code, message: messages[code] });
   if (state.killed) add("killed");
   if (intent.kind === "inference") {

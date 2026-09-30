@@ -12316,6 +12316,33 @@
           "used_at"
         ]
       },
+      "AgentBreakers": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "max_spend_usd_per_minute": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000
+          },
+          "max_requests_per_minute": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "max_denials_per_10min": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "max_distinct_models_per_hour": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "description": "Optional rolling recorded-state circuit breakers. Inclusive thresholds trip the router kill switch before the next admission with reason breaker:<field> and HTTP 403 agent_killed; no charge for the refused request. Account locking serializes observations, including inherited session admissions. Manual principal resume resets breaker observations and spend window, not cap spend. Recorded spend includes open usage reservations; in-flight work may finish. Only requests through AnyRoute. AGENT_POLICY_ENABLED defaults false."
+      },
       "AgentPolicy": {
         "type": "object",
         "properties": {
@@ -12466,6 +12493,9 @@
               "deny",
               "kill"
             ]
+          },
+          "breakers": {
+            "$ref": "#/components/schemas/AgentBreakers"
           }
         },
         "required": [
@@ -12580,7 +12610,11 @@
                     "max_tokens",
                     "tool_not_allowed",
                     "outside_window",
-                    "approval_required"
+                    "approval_required",
+                    "breaker:max_spend_usd_per_minute",
+                    "breaker:max_requests_per_minute",
+                    "breaker:max_denials_per_10min",
+                    "breaker:max_distinct_models_per_hour"
                   ]
                 },
                 "message": {

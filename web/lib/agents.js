@@ -1,3 +1,4 @@
+import { breakerForm, buildBreakers, breakerReasonText } from "./agent-breakers.js";
 // Rulebook forms and REST view models. No credentials or prompt text are stored here.
 export const LANES = ['public', 'attested', 'unlinkable'];
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -12,7 +13,7 @@ export const reasonText = reason => reason?.message || ({
   over_per_week: 'The rolling week cap would be exceeded.', max_tokens: 'The output token cap would be exceeded.',
   tool_not_allowed: 'A tool is outside the rulebook.', outside_window: 'The current UTC time is outside the allowed windows.',
   approval_required: 'This request needs approval.',
-}[reason?.code] || reason?.code || 'No reason supplied.');
+}[reason?.code] || breakerReasonText(reason?.code) || reason?.code || 'No reason supplied.');
 export const decisionText = value => ({ allow: 'Allow', deny: 'Deny', approval_required: 'Approval required', policy_set: 'Rulebook saved', killed: 'Killed', resumed: 'Resumed' }[value] || value || 'Decision not recorded');
 export const errorState = error => error?.status === 404 && error?.type === 'not_found'
   ? { off: true, message: FEATURE_OFF } : { off: false, message: error?.message || 'The request could not be completed.' };
@@ -58,7 +59,7 @@ export function eventsPage(json) {
 const entries = value => String(value || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
 export function policyForm(policy) {
   const p = policy || {};
-  return { modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
+  return { breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
     toolAllow: (p.tools?.allow || []).join('\n'), toolDeny: (p.tools?.deny || []).join('\n'),
     restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES],
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
@@ -105,6 +106,7 @@ export function buildPolicy(form) {
       if (![w.start, w.end].every(t => /^([01]\d|2[0-3]):[0-5]\d$/.test(t))) errors.push('Window times must use HH:MM in UTC.');
     }
   }
+  buildBreakers(form.breakers, policy, errors);
   if (!['deny', 'kill'].includes(form.onBreach)) errors.push('On breach, choose deny or kill.');
   return { policy, errors: [...new Set(errors)] };
 }

@@ -10,11 +10,12 @@ export type AgentPolicy = {
   tools?: { allow?: string[]; deny?: string[] };
   windows?: { days: (0 | 1 | 2 | 3 | 4 | 5 | 6)[]; start: string; end: string }[];
   approval?: { above_usd: number };
+  breakers?: { max_spend_usd_per_minute?: number; max_requests_per_minute?: number; max_denials_per_10min?: number; max_distinct_models_per_hour?: number };
   on_breach: "deny" | "kill";
 };
 /** Prompt-free wire intent. Costs are decimal strings in pico USD (10^12 per USD). */
 export type AgentIntent = { kind: "inference"; model: string; lane: AgentLane; est_cost_pico: string; max_output_tokens?: number; tools: string[] } | { kind: "mcp_tool"; name: string };
-export type AgentReason = { code: "killed" | "model_not_allowed" | "lane_not_allowed" | "over_per_request" | "over_per_hour" | "over_per_day" | "over_per_week" | "max_tokens" | "tool_not_allowed" | "outside_window" | "approval_required"; message: string };
+export type AgentReason = { code: `breaker:${"max_spend_usd_per_minute" | "max_requests_per_minute" | "max_denials_per_10min" | "max_distinct_models_per_hour"}` | "killed" | "model_not_allowed" | "lane_not_allowed" | "over_per_request" | "over_per_hour" | "over_per_day" | "over_per_week" | "max_tokens" | "tool_not_allowed" | "outside_window" | "approval_required"; message: string };
 export type AgentDecision = { decision: "allow" | "deny" | "approval_required"; reasons: AgentReason[] };
 export type AgentRemaining = { hour: number | null; day: number | null; week: number | null };
 export type AgentRulebook = { key_hash: string; name: string | null; policy: AgentPolicy | null; sha256: string | null; killed: boolean; remaining: AgentRemaining; policies: { key_hash: string; inherited: boolean; policy: AgentPolicy; sha256: string; version: number; killed: boolean; killed_at: string | null; killed_reason: string | null; spent: { hour: number; day: number; week: number }; remaining: AgentRemaining }[] };

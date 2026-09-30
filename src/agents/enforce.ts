@@ -1,3 +1,5 @@
+import { recordBreakerRequest, withBreakerModels } from "./breaker-state.ts";
+import { breakerKillReason } from "./breakers.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Ctx } from "../context.ts";
 import type { Db, Tx } from "../db/client.ts";
@@ -29,13 +31,14 @@ export function agentReservation(ctx: Ctx, build: () => AgentReservation) {
   } } : {};
 }
 export function decisionError(decision: AgentDecision, row: PolicyRow) {
-  const type = decision.reasons.some(r => r.code === "killed") ? "agent_killed" : decision.decision === "approval_required" ? "agent_approval_required" : "agent_policy_denied";
+  const type = decision.reasons.some(r => r.code === "killed") || breakerKillReason(decision) ? "agent_killed" : decision.decision === "approval_required" ? "agent_approval_required" : "agent_policy_denied";
   return new ApiError(403, decision.reasons.map(r => r.message).join(" "), type, { reasons: decision.reasons, policy_sha256: row.sha256 });
 }
 async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentIntent[], actor: string, now: Date) {
   let refusal: ApiError | undefined;
   for (const row of rows) {
-    const state = await policyState(tx, row, now);
+    const state = withBreakerModels(await policyState(tx, row, now), intents);
+    await recordBreakerRequest(tx, row, state, intents, now);
     for (const intent of intents) {
       const decision = evaluateAgentPolicy(row.spec, state, intent, now);
       await appendEvent(tx, { keyHash: row.keyHash, kind: "decision", decision: decision.decision, reasons: decision.reasons, intent: intentJson(intent), policySha256: row.sha256 }, now);
@@ -43,8 +46,8 @@ async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentIntent[]
         const error = decisionError(decision, row);
         const priority = (e: ApiError) => e.type === "agent_killed" ? 3 : e.type === "agent_policy_denied" ? 2 : 1;
         if (!refusal || priority(error) > priority(refusal)) refusal = error;
-        if (decision.decision === "deny" && row.spec.on_breach === "kill" && !state.killed) {
-          await changeKill(tx, row, true, decision.reasons.map(r => r.code).join(","), actor);
+        if (decision.decision === "deny" && (row.spec.on_breach === "kill" || breakerKillReason(decision)) && !state.killed) {
+          await changeKill(tx, row, true, breakerKillReason(decision) ?? decision.reasons.map(r => r.code).join(","), actor);
           state.killed = true;
         }
       }
