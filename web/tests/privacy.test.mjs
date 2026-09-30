@@ -35,7 +35,7 @@ test('the label is laid out in the order the page reads it, with the router’s 
  assert.equal(v.lane,'Attested lane');
  assert.deepEqual(v.summary,['a','b','c','d','e']);
  assert.deepEqual(v.rows.map((r)=>r.key),['prompt_readers','network','payment','stored','hardware']);
- assert.deepEqual(v.rows.map((r)=>r.title),['Who could read the prompt','Who saw your address','How it was paid','What was kept','What hardware answered']);
+ assert.deepEqual(v.rows.map((r)=>r.title),['Who could read the request','Who saw your address','How it was paid','What was kept','What hardware answered']);
  assert.match(v.rows[0].text,/read the prompt in memory/);
  assert.deepEqual(describePrivacy(label()),v,'a bare label is accepted too');
 });
@@ -54,4 +54,16 @@ test('anything that is not a label is refused, and long text is cut',()=>{
  assert.equal(long.summary.length,5);
  assert.equal(long.summary[0].length,400);
  assert.equal(long.rows[0].text.length,1600);
+});
+
+
+test('output usage is rendered from the label, including unfamiliar units, without inventing missing fields',()=>{
+ for(const unit of ['token','image_mp','video_sec','audio_sec','call','gpu_sec','future_unit']){
+  const text=`Output metered in ${unit}; content retention not established.`;
+  const doc=label();doc.label.output={unit_type:unit,units:2,text};
+  const view=describePrivacy(doc);
+  assert.deepEqual(view.rows[0],{key:'output',title:'Output and usage',text});
+  assert.equal(view.rows.length,6);
+ }
+ assert.equal(describePrivacy(label()).rows.length,5);
 });

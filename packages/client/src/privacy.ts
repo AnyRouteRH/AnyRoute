@@ -28,34 +28,41 @@ export type LabelOptions = {
 export type ProviderAccess = "attested_enclave" | "documented_policy" | "provider" | "unproven_provider" | "unknown" | "none";
 export type PaymentKind = "key_balance" | "pay_with_stock_token" | "own_provider_key" | "blind_token" | "wallet_balance" | "x402" | "cache_hit" | "unknown";
 
+export type OutputKind = "text" | "image" | "video" | "audio" | "call" | "compute" | "unknown";
+export type OutputLabel = { unit_type: string; units: number | null; kind: OutputKind; text: string };
+
 export type PrivacyLabel = {
   receipt_id: string | null;
   lane: Lane | null;
   label: {
+    output: OutputLabel;
     prompt_readers: {
       /** Always true: the router reads the prompt in memory to route it, on every lane. */
       router: true;
       provider: { id: string | null; access: ProviderAccess; reply_withheld: boolean | null };
+      /** Provider ids named in an aggregate council receipt; individual receipts describe their access. */
+      participants?: string[];
       text: string;
     };
     network: {
       hidden: boolean;
       via: "tor" | "relay" | "tor_or_relay" | null;
-      /** Whether AnyRoute's software wrote the client address to any table. Never. */
-      stored: false;
+      /** Whether AnyRoute's software wrote the client address to a table. Null: unfamiliar output type. */
+      stored: false | null;
       /** Whether the address was held as a rate-limit counter key: for about a minute, or not at all, or possibly. */
       counter: "none" | "about_a_minute" | "possible";
       text: string;
     };
     payment: { kind: PaymentKind; identifies: "api_key" | "wallet" | "spent_token" | null; text: string };
     stored: {
-      prompt_text: false;
-      reply_text: false;
-      client_address: false;
+      /** These describe the generation database, not caches, batches or provider retention. Null: not established. */
+      prompt_text: false | null;
+      reply_text: false | null;
+      client_address: false | null;
       fingerprints: boolean;
       linked_to: "api_key" | "wallet" | "nobody" | "unknown";
-      /** A copy of the prompt and reply in the opt-in response cache: never, only if the request asked for it, or this answer was one. */
-      cache: "never" | "only_if_requested" | "cache_hit";
+      /** A copy of the reply in the opt-in response cache: never, only if the request asked for it, or this answer was one. */
+      cache: "never" | "only_if_requested" | "cache_hit" | "not_recorded";
       records: string[];
       public_by_id: true;
       text: string;
@@ -82,6 +89,7 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.length ? 
 const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const RECEIPT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const KEY_HASH = /^0x[0-9a-fA-F]{64}$/;
+const CONTENT_HASH = /^(?:0x)?[0-9a-fA-F]{64}$/;
 const LANES: readonly string[] = ["public", "attested", "unlinkable"];
 const DISCLOSURES: readonly string[] = ["attested", "policy", "vendor-forwarded"];
 /** Text from a receipt that goes into a sentence: printable characters only, and short. */
@@ -103,6 +111,29 @@ const teeName = (kind: string | null | undefined): string | null => {
   return k ? (TEE_NAMES[k.toLowerCase()] ?? k) : null;
 };
 
+// Unit types describe metering, not the route or every input modality (a token call can contain images).
+// Do not infer search, fine-tuning, media fetching or retention from a billing unit alone.
+const UNIT_KINDS: Record<string, OutputKind> = { token: "text", image_mp: "image", video_sec: "video", audio_sec: "audio", call: "call", gpu_sec: "compute" };
+const OUTPUT_NAMES: Record<OutputKind, string> = { text: "Text / embeddings", image: "Image", video: "Video", audio: "Audio", call: "Tool / search call", compute: "GPU work / fine-tuning", unknown: "Output" };
+const count = (v: unknown): number | null => typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+function outputOf(p: Obj): OutputLabel {
+  const usage = obj(p.usage);
+  const raw = usage && "unit_type" in usage ? usage.unit_type : "unit_type" in p ? p.unit_type : "token";
+  const unit_type = plain(raw, 40) ?? "unknown";
+  const kind = Object.hasOwn(UNIT_KINDS, unit_type) ? UNIT_KINDS[unit_type]! : "unknown";
+  const units = count(usage?.units);
+  const description = {
+    text: "Token metering covers chat, embeddings, RAG, Responses, Messages and council calls. It does not identify all input modalities; a request can also include media references or tool data.",
+    image: "Image metering. The router handles request text and supplied image data or references in memory; a reference does not show that the router fetched the image bytes.",
+    video: "Video metering. The router handles request text and supplied video data or references in memory; a reference does not show that the router fetched the video bytes.",
+    audio: "Audio metering covers voice input or output. The router handles request text and supplied audio data or references in memory; a reference does not show that the router fetched the audio bytes.",
+    call: "Call metering can cover tools or search. A call unit alone does not identify the operation or show that a tool was executed.",
+    compute: "GPU time can cover computation or fine-tuning. The receipt does not establish whether training data, model weights or job artifacts were retained.",
+    unknown: "The receipt uses an unfamiliar or invalid unit type. It does not establish the content handled or its retention; no modality or retention guarantee is inferred.",
+  }[kind];
+  return { unit_type, units, kind, text: `${OUTPUT_NAMES[kind]}: ${units === null ? "quantity not recorded" : units} (${unit_type}). ${description}` };
+}
+
 /** The receipt payload, whether given as the envelope (`{ payload, ... }`) or as the payload itself. */
 function payloadOf(receipt: unknown): { id: string | null; p: Obj } {
   const r = obj(receipt) ?? {};
@@ -114,6 +145,7 @@ function payloadOf(receipt: unknown): { id: string | null; p: Obj } {
 /** The label for one receipt. `receipt` is a receipt envelope, a receipt payload, or a stored generation's `receipt`. */
 export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): PrivacyLabel {
   const { id: rawId, p } = payloadOf(receipt);
+  const output = outputOf(p);
   const id = rawId && RECEIPT_ID.test(rawId) ? rawId : null;
   const lane = (LANES.includes(p.lane as string) ? p.lane : null) as Lane | null;
   const disclosure = (DISCLOSURES.includes(p.disclosure as string) ? p.disclosure : null) as Disclosure | null;
@@ -264,17 +296,17 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     "timing, whether the reply streamed, and how it ended",
     "SHA-256 fingerprints of the request and of the reply, not their text",
     identityRecord,
-    "which providers were tried and how each attempt ended, including the error a failed provider returned",
+    "which providers were tried and how each attempt ended, including up to 200 sanitized characters of a failed provider's error, which could quote request text",
     "a ledger line for the charge",
     ...(lane === "unlinkable" ? [] : ["the app name and address the request sent in HTTP-Referer or X-Title, if it sent one"]),
   ];
   const BATCH_SENTENCE =
-    "This call was a line of a batch, so its prompt and reply were kept encrypted in Redis or the router's memory (never in the database) until the batch's results expired: 24 hours after the batch finished, unless the operator set another time.";
+    "This call was a line of a batch. Its prompt and reply were kept encrypted in Redis or the router's memory (never in the database). The prompt was deleted when the batch finished; the reply when its results expired: 24 hours after it finished, unless the operator set another time.";
   const cacheSentence =
     cacheState === "never"
-      ? "This call was not eligible for the response cache, so no copy of the prompt or the reply was kept anywhere."
+      ? "This call was not eligible for the response cache, so no response-cache copy of the reply was kept."
       : cacheState === "cache_hit"
-        ? "This answer was served from the response cache, which holds an encrypted copy of an earlier prompt and reply in memory or Redis until they expire."
+        ? "This answer was served from the response cache, which holds an encrypted copy of the earlier reply in memory or Redis until it expires; it does not cache the prompt itself. Semantic caching also keeps a hashed word vector of the prompt in memory."
         : "The response cache is opt-in. If the request asked for it, an encrypted copy of the reply stayed in memory or Redis until it expired (the prompt itself is not cached; the semantic cache keeps only a hashed word vector of it, in memory); the receipt does not record whether it did.";
   const stored: PrivacyLabel["label"]["stored"] = {
     prompt_text: false,
@@ -285,7 +317,7 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     cache: cacheState,
     records,
     public_by_id: true,
-    text: `AnyRoute's database kept a record of this call: ${records.join("; ")}. It has no column for the prompt, the reply or your network address. ${batch ? BATCH_SENTENCE : cacheSentence} The signed receipt is readable by anyone who has its id.`,
+    text: `AnyRoute's database kept a record of this call: ${records.join("; ")}. It has no column for the prompt, the reply or your network address. ${batch ? BATCH_SENTENCE : cacheSentence} Unexpected library errors can also quote content fragments in logs. The signed receipt is readable by anyone who has its id.`,
   };
 
   // ---- summary --------------------------------------------------------------------------------------------------
@@ -316,12 +348,12 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     unknown: "Paid with: not recorded in this receipt.",
   }[payment.kind];
   const keptLine = batch
-    ? "Kept: token counts, cost, timing and hashes. As a batch line, the prompt and reply were also kept encrypted, outside the database, until the batch's results expired."
+    ? "Kept: counts, cost, timing and hashes. Batch content stays sealed outside the database; prompts are deleted when the batch finishes, replies when results expire."
     : cacheState === "never"
-      ? "Kept: token counts, cost, timing and hashes of the request and reply. Not kept: the prompt or the reply text."
+      ? "Kept: token counts, cost, timing and hashes of the request and reply. No response-cache copy. Provider errors can quote request fragments."
       : cacheState === "cache_hit"
-        ? "Kept: token counts, cost, timing and hashes. The response cache holds an encrypted copy of the earlier prompt and reply until it expires."
-        : "Kept: token counts, cost, timing and hashes of the request and reply. The prompt and reply text are not stored unless the request turned on response caching.";
+        ? "Kept: token counts, cost, timing and hashes. The response cache holds an encrypted copy of the earlier reply, not the prompt, until it expires."
+        : "Kept: token counts, cost, timing and hashes of the request and reply. Only the reply is cached on request; provider errors can quote request fragments.";
   const hwLine = fromCache
     ? "Hardware: none involved; no provider ran."
     : enclave
@@ -342,6 +374,7 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     receipt_id: id,
     lane,
     label: {
+      output,
       prompt_readers: { router: true, provider: { id: provider, access, reply_withheld: access === "none" ? false : withheld }, text: readersText + byokNote },
       network,
       payment,
@@ -352,12 +385,59 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     short: "",
     verify_url: verifyUrl,
   };
+  if (output.kind !== "text") {
+    const providerNote = provider
+      ? output.kind === "unknown" ? ` The provider named in the receipt is ${provider}.` : ` The request went to the provider (${provider}) named in the receipt; its retention policy is not established by the unit type.`
+      : " No provider is named in this receipt.";
+    const search = output.kind === "call" && (p.operation === "search" || p.modality === "search");
+    out.label.prompt_readers.text = `AnyRoute's router handles request text in memory to route it. ${output.text}${providerNote}` +
+      (search && provider ? ` The query text was sent to the search provider (${provider}) named in the receipt.` : "");
+    const hashes = CONTENT_HASH.test(str(p.request_sha256) ?? "") && CONTENT_HASH.test(str(p.response_sha256) ?? "");
+    const records = [
+      ...(provider ? ["the provider id"] : []),
+      ...(str(p.model) ? ["the model id"] : []),
+      ...(obj(p.usage) ? [`usage in ${output.unit_type}${output.units === null ? " (quantity not recorded)" : ` (${output.units})`}`] : []),
+      ...(p.cost !== undefined ? ["the recorded cost"] : []),
+      ...(hashes ? ["hashes of the request and output"] : []),
+    ];
+    const content = output.kind === "image" ? "image" : output.kind === "audio" ? "audio" : output.kind === "video" ? "video" : null;
+    out.label.stored.records = records;
+    out.label.stored.fingerprints = hashes;
+    out.label.stored.cache = "not_recorded";
+    out.label.stored.prompt_text = null;
+    out.label.stored.reply_text = null;
+    out.label.stored.text = `The receipt records ${records.join("; ") || "no recognized usage, provider or output-hash fields"}. ` +
+      (content && hashes ? `The generation database keeps these hashes, not the ${content} itself. ` : "") +
+      "The unit type does not establish retention of content, references or artifacts outside that record, including by the provider." +
+      (batch ? ` ${BATCH_SENTENCE}` : "");
+    out.summary[0] = `Read by: AnyRoute's router in memory${provider ? `; provider named: ${provider}` : "; provider not recorded"}. ${OUTPUT_NAMES[output.kind]} metering.`;
+    out.summary[3] = `Kept in the receipt: ${hashes ? "request and output hashes" : "hashes not recorded"}${output.units === null ? "" : `; ${output.units} ${output.unit_type}`}. Content retention is not established by metering.${batch ? " Batch content is kept sealed until results expire." : ""}`;
+    out.label.hardware.text = out.label.hardware.text.replace(/prompt/g, "request content");
+    if (output.kind === "unknown") {
+      out.label.stored.client_address = null;
+      out.label.network = { hidden: false, via: null, stored: null, counter: "possible", text: "The receipt does not establish network-address handling for this unfamiliar output type." };
+      out.summary[1] = out.label.network.text;
+    }
+  }
+  // Council receipts name several readers: members get the request, and the judge gets their answers too.
+  const council = obj(p.council);
+  if (council && Array.isArray(council.members)) {
+    const members = council.members;
+    const ids = [...members.map((m) => obj(m)?.provider), obj(council.judge)?.provider]
+      .filter((v): v is string => typeof v === "string" && PROVIDER_ID.test(v));
+    out.label.prompt_readers.participants = [...new Set(ids)];
+    const note = ` Council members handled the request; the judge handled the request and member answers. Providers named in this receipt: ${[...new Set(ids)].join(", ") || "not recorded"}.`;
+    out.label.prompt_readers.text += note;
+    out.summary[0] = "Read by: AnyRoute's router in memory, council member providers and the judge (including member answers). See the individual receipts for each provider's handling.";
+  }
   out.short = shortLine(out);
   return out;
 }
 
 const readShort = (l: PrivacyLabel): string => {
   const pr = l.label.prompt_readers.provider;
+  if (l.label.prompt_readers.participants) return "router + council members + judge";
+  if (l.label.output?.kind === "unknown") return pr.id ? "router; provider named" : "router; provider not recorded";
   switch (pr.access) {
     case "none":
       return "router only (cache)";
@@ -373,6 +453,7 @@ const readShort = (l: PrivacyLabel): string => {
 };
 const netShort = (l: PrivacyLabel): string => {
   const n = l.label.network;
+  if (n.stored === null) return "handling not recorded";
   if (n.hidden) return `hidden (${n.via === "tor" ? "Tor" : n.via === "relay" ? "relay" : "Tor or relay"})`;
   return n.counter === "about_a_minute" ? "seen, held ~1 min for rate limits" : n.counter === "possible" ? "seen, may be held ~1 min for rate limits" : "seen, not saved";
 };
@@ -385,8 +466,9 @@ const payShort = (l: PrivacyLabel): string =>
  * address, and the bot reaches the router from the server side, so the router never sees that address.
  */
 export function shortLine(l: PrivacyLabel, via?: "telegram"): string {
-  if (via === "telegram") return `Read by: Telegram + ${readShort(l)} · IP: seen by Telegram, not AnyRoute · Paid: ${payShort(l)}`;
-  return `Read by: ${readShort(l)} · IP: ${netShort(l)} · Paid: ${payShort(l)}`;
+  const prefix = l.label.output && l.label.output.kind !== "text" ? `${OUTPUT_NAMES[l.label.output.kind]} · ` : "";
+  if (via === "telegram") return `${prefix}Read by: Telegram + ${readShort(l)} · IP: seen by Telegram, not AnyRoute · Paid: ${payShort(l)}`;
+  return `${prefix}Read by: ${readShort(l)} · IP: ${netShort(l)} · Paid: ${payShort(l)}`;
 }
 
 // ==== shared with packages/client/src/privacy.ts (end) ====

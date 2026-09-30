@@ -12842,6 +12842,7 @@
               "hardware"
             ],
             "properties": {
+              "output": {"type":"object","required":["unit_type","units","kind","text"],"properties":{"unit_type":{"type":"string"},"units":{"type":["number","null"]},"kind":{"type":"string","enum":["text","image","video","audio","call","compute","unknown"]},"text":{"type":"string"}},"description":"Usage unit and quantity from the receipt. Missing unit types default to token; unfamiliar types carry no inferred content-retention guarantee."},
               "prompt_readers": {
                 "type": "object",
                 "required": [
@@ -12850,6 +12851,7 @@
                   "text"
                 ],
                 "properties": {
+                  "participants": {"type":"array","items":{"type":"string"},"description":"Provider ids named in an aggregate council receipt; individual receipts describe their access."},
                   "router": {
                     "type": "boolean",
                     "const": true,
@@ -12922,9 +12924,9 @@
                     ]
                   },
                   "stored": {
-                    "type": "boolean",
-                    "const": false,
-                    "description": "AnyRoute's software writes the client address to no table."
+                    "type": ["boolean", "null"],
+                    "enum": [false, null],
+                    "description": "AnyRoute's software writes the client address to no table on current routes; null means handling is not established for an unfamiliar output type."
                   },
                   "counter": {
                     "type": "string",
@@ -12994,16 +12996,16 @@
                 ],
                 "properties": {
                   "prompt_text": {
-                    "type": "boolean",
-                    "const": false
+                    "type": ["boolean", "null"],
+                    "enum": [false, null]
                   },
                   "reply_text": {
-                    "type": "boolean",
-                    "const": false
+                    "type": ["boolean", "null"],
+                    "enum": [false, null]
                   },
                   "client_address": {
-                    "type": "boolean",
-                    "const": false
+                    "type": ["boolean", "null"],
+                    "enum": [false, null]
                   },
                   "fingerprints": {
                     "type": "boolean",
@@ -13023,9 +13025,9 @@
                     "enum": [
                       "never",
                       "only_if_requested",
-                      "cache_hit"
+                      "cache_hit", "not_recorded"
                     ],
-                    "description": "The opt-in response cache holds an encrypted copy of a prompt and reply until it expires. It is never used on the attested or unlinkable lanes or with a blind token; on the public lane only if the request asked for it."
+                    "description": "The opt-in response cache holds an encrypted copy of the reply, never the prompt itself, until it expires; semantic caching also keeps a hashed word vector. Unrecognized content paths report eligibility as not_recorded. It is never used on the attested or unlinkable lanes or with a blind token; on the public lane only if the request asked for it."
                   },
                   "records": {
                     "type": "array",

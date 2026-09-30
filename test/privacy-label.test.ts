@@ -234,6 +234,13 @@ describe("the label, from a receipt alone", () => {
 describe("the same label on the client", () => {
   const matrix: [Record<string, unknown>, Parameters<typeof privacyLabel>[1]][] = [
     [{}, {}],
+    [{ usage: { unit_type: "token", units: 2 } }, {}],
+    [{ usage: { unit_type: "image_mp", units: 2 } }, {}],
+    [{ usage: { unit_type: "video_sec", units: 2 } }, {}],
+    [{ usage: { unit_type: "audio_sec", units: 2 } }, {}],
+    [{ usage: { unit_type: "call", units: 2 } }, {}],
+    [{ usage: { unit_type: "gpu_sec", units: 2 } }, {}],
+    [{ usage: { unit_type: "future_unit", units: 2 } }, {}],
     [{ lane: "attested", disclosure: "attested", attestation: "0x1" }, { teeKind: "tdx" }],
     [{ lane: "attested", disclosure: "attested", provider: "gw", upstream_attestation: GATEWAY_UA }, { teeKind: "snp" }],
     [{ lane: "unlinkable", disclosure: "attested", mode: "blind", payer: null, nullifier: NULLIFIER, upstream_attestation: GATEWAY_UA }, { unlinkableTransports: ["onion"] }],
@@ -319,6 +326,13 @@ describe("the OpenAPI document", () => {
     expect(new Set(ids).size).toBe(ids.length);
     const matrix: [Record<string, unknown>, Parameters<typeof privacyLabel>[1]][] = [
       [{}, {}],
+    [{ usage: { unit_type: "token", units: 2 } }, {}],
+    [{ usage: { unit_type: "image_mp", units: 2 } }, {}],
+    [{ usage: { unit_type: "video_sec", units: 2 } }, {}],
+    [{ usage: { unit_type: "audio_sec", units: 2 } }, {}],
+    [{ usage: { unit_type: "call", units: 2 } }, {}],
+    [{ usage: { unit_type: "gpu_sec", units: 2 } }, {}],
+    [{ usage: { unit_type: "future_unit", units: 2 } }, {}],
       [{ lane: "attested", disclosure: "attested", provider: "gw", upstream_attestation: GATEWAY_UA }, { teeKind: "tdx" }],
       [{ lane: "unlinkable", disclosure: "attested", mode: "blind", payer: null, nullifier: NULLIFIER }, { unlinkableTransports: ["onion"] }],
       [{ lane: "attested", disclosure: "policy", upstream_attestation: UNPROVEN_UA }, {}],

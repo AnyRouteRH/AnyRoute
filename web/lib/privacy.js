@@ -17,7 +17,8 @@ export function receiptIdFromSearch(search) {
 export const privacyHref = (receiptId) => `/verify/?r=${encodeURIComponent(receiptId)}`;
 
 const FACETS = [
-  ["prompt_readers", "Who could read the prompt"],
+  ["output", "Output and usage"],
+  ["prompt_readers", "Who could read the request"],
   ["network", "Who saw your address"],
   ["payment", "How it was paid"],
   ["stored", "What was kept"],

@@ -193,7 +193,7 @@ const redisFamilies: RedisFamily[] = [
   {
     key: "cache:<sha256>",
     purpose:
-      "The opt-in response cache (a request that sends cache.mode or the X-Anyroute-Cache header). It holds the answer to a request, so for as long as it lives this is the one place answer text is kept: sealed with AES-256-GCM under a key derived from the router's APP_SECRET and the caller's own scope, so only that caller's identical request can read it back. The Redis key is a SHA-256 of the scope and the request, not the request.",
+      "The opt-in response cache (a request that sends cache.mode or the X-Anyroute-Cache header). It holds the answer to a request, so for as long as it lives this is a place answer text is kept: sealed with AES-256-GCM under a key derived from the router's APP_SECRET and the caller's own scope, so only that caller's identical request can read it back. The Redis key is a SHA-256 of the scope and the request, not the request.",
     holds: "digest",
     requestText: "answer-text",
     ttl: "It is kept for the time-to-live the request asked for in cache.ttl: at most CACHE_TTL_S, which is 3,600 seconds unless the operator changed it, and also the default when the request names none.",
@@ -348,7 +348,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     carries: "prompt-or-answer",
     reads: "The whole JSON body of a chat or text completion: the messages, the model and the parameters (readJson).",
     then: "Read in memory to route the call on every lane: validated, checked against guardrails, priced, then sent to the provider chosen. The request is hashed (request_sha256) and the answer is hashed (response_sha256). Streaming answers are passed through chunk by chunk.",
-    kept: "Not stored. Kept in memory for the length of the call. The one exception is the opt-in response cache (see the Redis section), and a failed provider attempt can keep up to 200 characters of that provider's own error message.",
+    kept: "Not stored. Kept in memory for the length of the call. The opt-in response cache and batch content are kept sealed outside the database (see the Redis section), and a failed provider attempt can keep up to 200 characters of that provider's own error message.",
     evidence: [ev("src/api/chat.ts", "const body = await readJson(c);"), ev("src/api/chat.ts", "const bodySha = requestHash(body);"), ev("src/api/chat.ts", "response_sha256: sha256(p.responseText),")],
   },
   {

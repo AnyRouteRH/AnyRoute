@@ -32,7 +32,7 @@ function Lookup({providerId,note}){return <div className={styles.section}>
 
 /** "What we saw": the router's plain-English label for one answer, looked up by receipt id. */
 function Saw({receiptId,asked,load,view}){return <section className={styles.section} aria-labelledby="v-saw"><h2 id="v-saw">What we saw</h2>
-  <p className={styles.lead}>A plain-English reading of one answer’s receipt: who could read the prompt, who saw your address, how it was paid, what was kept and what hardware answered. The router works it out from the signed receipt, and on every lane it reads the prompt in memory to route it. Enter the id from the <span className="mono">X-Receipt-Id</span> header.</p>
+  <p className={styles.lead}>A plain-English reading of a receipt: output and usage, who could read the request, who saw your address, how it was paid, what was kept and what hardware answered. The router works it out from the signed receipt, and on every lane it reads the prompt in memory to route it. Enter the id from the <span className="mono">X-Receipt-Id</span> header.</p>
   <form className={styles.lookup} action="/verify/" method="get">
     <div className="field"><label htmlFor="receipt-id">Receipt id</label><input id="receipt-id" name="r" defaultValue={receiptId} placeholder="gen-…" autoComplete="off" spellCheck="false" maxLength={128}/></div>
     <Button type="submit">Show what we saw</Button>
