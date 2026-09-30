@@ -9,6 +9,7 @@ import { sampleRequest } from "../../components/Extensions";
 import AgentAutonomyDocs from "../../components/AgentAutonomyDocs";
 import AgentRulebookDocs from "../../components/AgentRulebookDocs";
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
+import AgentCertificateDocs from "../../components/AgentCertificateDocs";
 import AgentApprovalDocs from "../../components/AgentApprovalDocs";
 import { API_BASE } from "../../lib/api";
 import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
@@ -807,6 +808,7 @@ export default function Docs() {
           </div>
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <AgentApprovalDocs />
+          <AgentCertificateDocs />
           <h2 id="quickstart">Two changes to get started.</h2>
           <p>
             Anyroute accepts the familiar chat-completions request. Replace the base URL and key; requests, streaming, tools, provider preferences and usage fields work unchanged. Keys are self-custodial: POST /api/v1/keys (no account) returns a key and the hash to deposit USDG to.

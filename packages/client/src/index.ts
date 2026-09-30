@@ -39,3 +39,6 @@ export type { E2eeCompletion, E2eeChatBody, E2eeOptions, E2eeAttestationVerifier
 
 export { AgentPolicyDenied, AgentKilled, AgentApprovalRequired } from "./agent-errors.js";
 export type { AgentPolicy, AgentLane, AgentIntent, AgentReason, AgentDecision, AgentRemaining, AgentRulebook } from "./agent.js";
+
+export { verifyRecordCertificate, isRecordCertificate, RECORD_CERTIFICATE_NOTICE } from "./record-certificate.js";
+export type { RecordCertificate, RecordClaim } from "./record-certificate.js";

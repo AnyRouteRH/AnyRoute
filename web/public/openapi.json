@@ -11889,6 +11889,218 @@
           }
         }
       }
+    },
+    "/api/v1/agents/me/record-certificate": {
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Issue a signed track-record certificate",
+        "description": "Signed by AnyRoute's router, which sees the agent's activity; not a zero-knowledge proof. Requests through AnyRoute only; no on-chain enforcement. AGENT_POLICY_ENABLED gates availability; TLOG_ENABLED is required for issuance. Fresh random pseudonym; no agent key hash or account id. Shared issuer key, claims and timing may correlate certificates. Five issuance attempts per account per minute. No certificates or prompt text are stored by this path. Later events do not revoke the seven-day snapshot.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "claims"
+                ],
+                "properties": {
+                  "claims": {
+                    "$ref": "#/components/schemas/AgentRecordClaims"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Certificate result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AgentRecordCertificate"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid claim request.",
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "description": "Authentication required.",
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Feature disabled.",
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Any claim false or insufficient retained history; no partial certificate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Account issuance limit exceeded; Retry-After header.",
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "Signing key log unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "issueAgentRecordCertificate"
+      }
+    },
+    "/api/v1/agents/certificates/verify": {
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Verify a track-record certificate",
+        "description": "Public when AGENT_POLICY_ENABLED is on. Checks shape, signature, issuer-key issuance window and expiry, not underlying observations. Signed by AnyRoute's router, which sees the agent's activity; not a zero-knowledge proof.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Certificate result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "valid",
+                        "notice"
+                      ],
+                      "properties": {
+                        "valid": {
+                          "type": "boolean"
+                        },
+                        "notice": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed certificate.",
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "Feature disabled.",
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRecordCertificate"
+              }
+            }
+          }
+        },
+        "operationId": "verifyAgentRecordCertificate"
+      },
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Verify a track-record certificate",
+        "description": "Public when AGENT_POLICY_ENABLED is on. Checks shape, signature, issuer-key issuance window and expiry, not underlying observations. Signed by AnyRoute's router, which sees the agent's activity; not a zero-knowledge proof.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Certificate result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "valid",
+                        "notice"
+                      ],
+                      "properties": {
+                        "valid": {
+                          "type": "boolean"
+                        },
+                        "notice": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed certificate.",
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "Feature disabled.",
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "certificate",
+            "in": "query",
+            "required": true,
+            "description": "URL-encoded certificate JSON. Prefer POST to avoid URL retention outside the router.",
+            "schema": {
+              "type": "string",
+              "maxLength": 8192
+            }
+          }
+        ],
+        "operationId": "verifyAgentRecordCertificateQuery"
+      }
     }
   },
   "components": {
@@ -12494,7 +12706,60 @@
               "kill"
             ]
           },
-          "autonomy": {"type": "object", "additionalProperties": false, "required": ["rungs", "demote_on"], "properties": {"rungs": {"type": "array", "minItems": 1, "maxItems": 5, "description": "Requirements cannot decrease; spending multipliers must strictly increase above 1. Both thresholds apply at each rung.", "items": {"type": "object", "additionalProperties": false, "required": ["after_days", "clean_requests", "caps_multiplier"], "properties": {"after_days": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}, "clean_requests": {"type": "integer", "minimum": 0, "maximum": 9007199254740991}, "caps_multiplier": {"type": "number", "exclusiveMinimum": 1, "maximum": 10}}}}, "demote_on": {"type": "array", "maxItems": 3, "items": {"type": "string", "enum": ["deny", "kill", "breaker"]}}}},
+          "autonomy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "rungs",
+              "demote_on"
+            ],
+            "properties": {
+              "rungs": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 5,
+                "description": "Requirements cannot decrease; spending multipliers must strictly increase above 1. Both thresholds apply at each rung.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "after_days",
+                    "clean_requests",
+                    "caps_multiplier"
+                  ],
+                  "properties": {
+                    "after_days": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "clean_requests": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "caps_multiplier": {
+                      "type": "number",
+                      "exclusiveMinimum": 1,
+                      "maximum": 10
+                    }
+                  }
+                }
+              },
+              "demote_on": {
+                "type": "array",
+                "maxItems": 3,
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "deny",
+                    "kill",
+                    "breaker"
+                  ]
+                }
+              }
+            }
+          },
           "breakers": {
             "$ref": "#/components/schemas/AgentBreakers"
           }
@@ -22934,6 +23199,76 @@
               "proof_url": {
                 "type": "string",
                 "description": "Inclusion proof under a signed checkpoint; independent checkpoint checks are separate."
+              }
+            }
+          }
+        }
+      },
+      "AgentRecordClaims": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 16,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "pattern": "^(requests_at_least|active_days_at_least|no_denials_days|no_kills_days):[1-9][0-9]{0,14}$"
+        },
+        "description": "Positive integer thresholds. Absence windows are at most 90 days and require an unchanged effective rulebook for the full interval. Counts use the calling key’s retained completed non-cancelled generations; active days are distinct UTC dates. No autonomy rung claim is available."
+      },
+      "AgentRecordCertificate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "payload",
+          "key_id",
+          "signature"
+        ],
+        "properties": {
+          "key_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "signature": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9+/]{86}==$"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "type",
+              "pseudonym",
+              "claims",
+              "issued_at",
+              "expires_at",
+              "notice"
+            ],
+            "properties": {
+              "version": {
+                "const": 1
+              },
+              "type": {
+                "const": "anyroute.agent.record-certificate"
+              },
+              "pseudonym": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "claims": {
+                "$ref": "#/components/schemas/AgentRecordClaims"
+              },
+              "issued_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Exactly seven days after issuance."
+              },
+              "notice": {
+                "const": "Signed by AnyRoute's router, which sees the agent's activity; not a zero-knowledge proof."
               }
             }
           }
