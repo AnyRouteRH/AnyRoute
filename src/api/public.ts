@@ -20,6 +20,7 @@ import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
 import { x402Enabled } from "../pay/x402.ts";
 import { PRIVATE_LANES, PUBLIC_LANE_ROWS, privateLaneStats } from "../services/private-stats.ts";
+import { labelForReceipt } from "../privacy/resolve.ts";
 
 export { providerApplication } from "../providers/application.ts";
 
@@ -74,6 +75,13 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
     const { index, leaf_index, from, to, ...rest } = a;
     return c.json({ data: { rid: g.id, leaf, leaf_version: version, rooted: true, anchored: a.status === "confirmed" && !!a.tx, anchor_index: index, leaf_index, window: { from, to }, ...rest } });
   });
+  // "What we saw": the plain-English privacy label for one answer, computed from its signed receipt (privacy/label.ts).
+  // Public by id, like the receipt itself.
+  app.get("/api/v1/receipts/:id/privacy", async (c) => {
+    const [g] = await ctx.db.select({ id: generations.id, receipt: generations.receipt }).from(generations).where(eq(generations.id, c.req.param("id")));
+    if (!g) fail(404, "Receipt not found.", "not_found");
+    return c.json({ data: await labelForReceipt(ctx, { id: g.id, payload: g.receipt }) });
+  });
   app.get("/api/v1/receipts/:id", async (c) => {
     const [g] = await ctx.db.select().from(generations).where(eq(generations.id, c.req.param("id")));
     if (!g) fail(404, "Receipt not found.", "not_found");
@@ -86,7 +94,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
     // Receipts carry only hashes and amounts, so they are public proofs by id. The v1 fields stay as they were; v2,
     // when the receipt has one, is added beside them.
     const v2 = g.receiptCose ? { alg: "EdDSA", kid: g.receiptKeyId, content_type: COSE_CONTENT_TYPE, cose: g.receiptCose, claims: g.receiptV2, leaf: g.receiptLeafV2, anchor: await anchorProof(ctx, g, 2) } : null;
-    return c.json({ data: { id: g.id, version: v2 ? 2 : 1, payload: g.receipt, sig: g.receiptSig, key_id: g.receiptKeyId, leaf: g.receiptLeaf, anchor: await anchorProof(ctx, g), v2 } });
+    // `privacy` is derived from the payload for readers; it is not part of what is signed.
+    return c.json({ data: { id: g.id, version: v2 ? 2 : 1, payload: g.receipt, sig: g.receiptSig, key_id: g.receiptKeyId, leaf: g.receiptLeaf, anchor: await anchorProof(ctx, g), v2, privacy: await labelForReceipt(ctx, { id: g.id, payload: g.receipt }) } });
   });
 
   // ---- Rankings: tokens per model/app, and what creators were paid ----

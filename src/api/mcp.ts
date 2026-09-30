@@ -7,6 +7,7 @@ import { log } from "../lib/util.ts";
 import { MAX_BODY_BYTES } from "./common.ts";
 import { bearer } from "./auth.ts";
 import { verifyReceipt } from "./generation.ts";
+import { labelForReceipt } from "../privacy/resolve.ts";
 
 // AnyRoute MCP: a remote Model Context Protocol server (Streamable HTTP, stateless, JSON replies) so an
 // agent can use every live model as a tool. There are no sessions and no SSE stream: each POST carries
@@ -97,7 +98,7 @@ const TOOLS = [
     name: "chat",
     title: "Chat with any model",
     description:
-      "Send a prompt to any live model through AnyRoute and get the reply, a signed receipt id, the cost in USD and the latency. Billed to the API key that connected this server. Give either prompt or messages. Set lane to \"attested\" to send the prompt only to a provider whose TEE attestation the router has verified and that documents no retention: if none can answer, the call fails and nothing is sent or charged. A connection whose URL ends in ?lane=attested does this for every call. The result reports the lane, the disclosure class the answer was served under and, when the receipt carries one, the gateway's upstream_attestation (attested, gpu_attested).",
+      "Send a prompt to any live model through AnyRoute and get the reply, a signed receipt id, the cost in USD and the latency. Billed to the API key that connected this server. Give either prompt or messages. Set lane to \"attested\" to send the prompt only to a provider whose TEE attestation the router has verified and that documents no retention: if none can answer, the call fails and nothing is sent or charged. A connection whose URL ends in ?lane=attested does this for every call. The result reports the lane, the disclosure class the answer was served under and, when the receipt carries one, the gateway's upstream_attestation (attested, gpu_attested). It also carries a privacy summary in plain English (who read the prompt, who saw the address, how it was paid, what was kept, what hardware answered), computed from the signed receipt.",
     inputSchema: {
       type: "object",
       properties: {
@@ -238,6 +239,8 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
     const reply = typeof content === "string" ? content : "";
     const served = out.receipt?.payload;
     const ua = served?.upstream_attestation;
+    // "What we saw": the plain-English label derived from this answer's signed receipt (privacy/label.ts).
+    const label = served ? await labelForReceipt(ctx, { id: out.receipt?.id ?? out.id, payload: served }).catch(() => null) : null;
     const meta = {
       receipt_id: out.receipt?.id ?? out.id ?? null,
       cost_usd: out.usage?.cost ?? 0,
@@ -247,6 +250,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
       finish_reason: out.choices?.[0]?.finish_reason ?? null,
       usage: { prompt_tokens: out.usage?.prompt_tokens ?? 0, completion_tokens: out.usage?.completion_tokens ?? 0 },
       // What was asked for, and what the signed receipt says the answer was served under (attested, policy or vendor-forwarded).
+      ...(label ? { privacy: { summary: label.summary, short: label.short, verify_url: label.verify_url } } : {}),
       lane,
       disclosure: typeof served?.disclosure === "string" ? served.disclosure : null,
       ...(served?.attestation_simulated === true ? { attestation_simulated: true } : {}),

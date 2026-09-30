@@ -27,3 +27,5 @@ export type { CheckpointStore, LoggedKey, RekorAnchor, RekorAnchorOptions, TlogK
 export { defaultP256Verify, type P256Verifier } from "./ecdsa.js";
 export type { DisclosureMax, Lane, RoutingOptions } from "./options.js";
 export type { AnchorProof, Check, CheckStatus, Fetch, JwkKey, KeySet, ReceiptEnvelope } from "./types.js";
+export { fetchPrivacyLabel, privacyLabel, privacyPath, shortLine as privacyShortLine } from "./privacy.js";
+export type { LabelOptions as PrivacyLabelOptions, PrivacyLabel } from "./privacy.js";
