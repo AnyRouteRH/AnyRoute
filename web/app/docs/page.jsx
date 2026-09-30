@@ -347,6 +347,47 @@ const anthropicReply = JSON.stringify(
   2,
 );
 const anthropicModelMap = `ANTHROPIC_MODEL_MAP={"claude-sonnet-4-5":"meta-llama/llama-3.3-70b-instruct","claude-haiku-*":"qwen/qwen3-32b"}`;
+const ollamaHost = `export OLLAMA_HOST=${BASE}/ollama
+ollama list                      # the live catalog, as Ollama names
+ollama show meta-llama/llama-3.3-70b-instruct:latest`;
+const ollamaPython = `from ollama import Client
+
+client = Client(
+    host="${BASE}/ollama",
+    headers={"Authorization": "Bearer sk-ar-v1-…", "X-Anyroute-Lane": "attested"},
+)
+reply = client.chat(
+    model="<a model from GET /ollama/api/tags>",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+print(reply.message.content)`;
+const ollamaOpenWebUi = `# Open WebUI: the Ollama connection
+OLLAMA_BASE_URL=${BASE}/ollama
+# then in Admin Settings, Connections, give that connection your key (sk-ar-v1-…) as its Bearer key`;
+const ollamaContinue = `# Continue: ~/.continue/config.yaml
+models:
+  - name: Anyroute
+    provider: ollama
+    model: meta-llama/llama-3.3-70b-instruct:latest
+    apiBase: ${BASE}/ollama
+    apiKey: sk-ar-v1-…            # sent as Authorization: Bearer
+    requestOptions:
+      headers:
+        X-Anyroute-Lane: attested`;
+const ollamaLangChain = `from langchain_ollama import ChatOllama
+
+llm = ChatOllama(
+    model="<a model from GET /ollama/api/tags>",
+    base_url="${BASE}/ollama",
+    client_kwargs={"headers": {"Authorization": "Bearer sk-ar-v1-…"}},
+)`;
+const ollamaCurl = `curl -s ${BASE}/ollama/api/chat \\
+  -H "Authorization: Bearer $ANYROUTE_API_KEY" \\
+  -H "X-Anyroute-Lane: attested" \\
+  -d '{"model":"<a model from GET /ollama/api/tags>","messages":[{"role":"user","content":"Hello"}],"stream":false}'`;
+const ollamaStream = `{"model":"meta-llama/llama-3.3-70b-instruct:latest","created_at":"2026-09-30T12:00:00.000Z","message":{"role":"assistant","content":"Hel"},"done":false}
+{"model":"meta-llama/llama-3.3-70b-instruct:latest","created_at":"2026-09-30T12:00:00.041Z","message":{"role":"assistant","content":"lo!"},"done":false}
+{"model":"meta-llama/llama-3.3-70b-instruct:latest","created_at":"2026-09-30T12:00:00.052Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","total_duration":412000000,"load_duration":0,"prompt_eval_count":9,"prompt_eval_duration":361000000,"eval_count":3,"eval_duration":51000000,"anyroute":{"receipt_id":"gen-…","lane":"attested","disclosure":"attested","provider":"…","cost_usd":0.0000021}}`;
 const x402Example = `import { privateKeyToAccount } from "viem/accounts";
 import { toHex } from "viem";
 
@@ -653,6 +694,7 @@ const endpoints = [
   ["GET /api/v1/measurements/key · /measurements/bundles/:providerId", "Where enabled: the key that signs measurement bundles (compose hash, source commit and tarball hash, model and image digests, MRTD allow-list), and a provider’s bundles with the transparency-log entry the router verified for each"],
   ["POST /mcp", "AnyRoute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["POST /v1/messages · /messages/count_tokens", "Anthropic Messages API (also under /api/v1) for the Anthropic SDKs and Claude Code: x-api-key or Authorization: Bearer; tools, images and streaming; the lane in X-Anyroute-Lane or provider.lane; the receipt in the reply and in X-Receipt-Id"],
+  ["GET /ollama/api/tags · POST /ollama/api/chat · /generate · /embed", "Ollama API for Ollama clients (Open WebUI, Continue, the ollama libraries, LangChain): set the host to <router>/ollama and send the key as Authorization: Bearer; NDJSON streaming, tools, images, format and options; also /api/show, /api/version, /api/ps and /api/embeddings; the lane in X-Anyroute-Lane; the receipt in X-Receipt-Id and the closing line"],
   ["POST /v1/responses · /api/v1/responses", "OpenAI Responses API for the OpenAI Agents SDK, the Codex CLI and other Responses clients: the chat route’s billing, lanes and signed receipts behind the Responses shape and event stream. Stateless: store must be false, there is no previous_response_id and no GET; function and custom tools only"],
   ["POST /api/v1/rag · /v1/rag", "Answers from documents you send with the question, ranked in memory and stored nowhere: it embeds, ranks and answers through the embeddings and chat routes, and returns the sources and every call’s receipt (prepaid key; the lane and disclosure options of chat)"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
@@ -692,6 +734,7 @@ export default function Docs() {
             <a href="#council">Council</a>
             <a href="#mcp">MCP</a>
             <a href="#anthropic">Anthropic</a>
+            <a href="#ollama">Ollama</a>
             <a href="#responses">Responses</a>
             <a href="#rag">Private RAG</a>
             <a href="#sdk">SDKs</a>
@@ -1250,6 +1293,54 @@ export default function Docs() {
           <p>
             Every error has Anthropic’s shape, {`{"type":"error","error":{"type","message"},"request_id"}`}, plus an anyroute object with the router’s own error type, its metadata, and the receipt id when a refused call was billed. Every response has a request-id header. A browser
             can call the endpoint directly: the router allows the x-api-key, anthropic-version, anthropic-beta and anthropic-dangerous-direct-browser-access headers.
+          </p>
+          <h2 id="ollama">Use AnyRoute from any Ollama client.</h2>
+          <p>
+            The router speaks the Ollama API under /ollama: GET /ollama/api/tags, /api/version and /api/ps, and POST /api/show, /api/chat, /api/generate, /api/embed and the older /api/embeddings. Point an Ollama client (Open WebUI, Continue, the ollama Python and JavaScript libraries, LangChain’s ChatOllama, editor and
+            notes plugins) at this router’s address followed by /ollama, and give it your Anyroute key. Each call is converted and sent through /api/v1/chat/completions (or /api/v1/embeddings) inside the router, so the key’s balance and limits, the lane, the signed receipt and the response headers are those of a chat call.
+            The models run on hosted providers: nothing is downloaded and nothing runs on your machine.
+          </p>
+          <h3>The key</h3>
+          <p>
+            Send the key as Authorization: Bearer, which most Ollama clients set from an API key or headers setting. There is no ?key= query parameter, so a key never ends up in a URL or a log line. The ollama command line tool sends no key: with OLLAMA_HOST set it lists (ollama list) and describes (ollama show) the
+            catalog, which are public, and a chat needs a client that sends the header.
+          </p>
+          <Code label="ollama CLI · OLLAMA_HOST">{ollamaHost}</Code>
+          <Code label="Python · the ollama library, on the attested lane">{ollamaPython}</Code>
+          <Code label="Open WebUI">{ollamaOpenWebUi}</Code>
+          <Code label="Continue">{ollamaContinue}</Code>
+          <Code label="LangChain · ChatOllama">{ollamaLangChain}</Code>
+          <Code label="curl">{ollamaCurl}</Code>
+          <h3>What is converted</h3>
+          <ul>
+            <li>
+              <b>Models.</b> GET /ollama/api/tags lists the live catalog. Each name is a catalog id with Ollama’s :latest tag, and a routing suffix works as a tag too (:free, :nitro, :private). size is 0, since there are no local weights, and digest is the SHA-256 of the id; details has the family, the parameter size
+              and the precision, read from the name and the live endpoints. With X-Anyroute-Lane: attested the list holds only the models that lane can serve now. POST /api/show adds capabilities (completion, tools, vision, thinking, or embedding) and the context length in model_info. A pull of a listed model succeeds
+              at once; create, copy, push, delete and blob uploads are 501s; /api/ps is always empty.
+            </li>
+            <li>
+              <b>Requests.</b> /api/chat messages (system, user, assistant, tool) map to chat messages, and images (base64, with the media type read from the bytes) become image parts. /api/generate sends system and prompt as a system and a user message. format "json" is JSON mode and a JSON schema is structured
+              output. options temperature, top_p, top_k, min_p, seed, stop, frequency_penalty and presence_penalty map directly, repeat_penalty becomes repetition_penalty and num_predict becomes max_tokens (-1 and -2 set no limit). Options that tune a local runtime (num_ctx, num_gpu, num_thread and the like), suffix,
+              template, raw and context are accepted and named in the X-Anyroute-Ignored header; keep_alive is ignored. A request with no messages or no prompt loads the model as Ollama does: done_reason load (unload with keep_alive 0), with no call and no charge.
+            </li>
+            <li>
+              <b>Tools.</b> tools are function tools, and the model’s calls come back in message.tool_calls with the arguments as an object. A tool message answers the call it names with tool_call_id, else the earlier call with the same tool_name, else the next call without an answer.
+            </li>
+            <li>
+              <b>Streaming.</b> Ollama streams unless stream is false. The reply is NDJSON (application/x-ndjson): one object per line with done false and a piece of message.content (response for /api/generate), tool calls whole in one line, then a closing line with done true, done_reason (stop or length),
+              total_duration, load_duration (0), prompt_eval_count, prompt_eval_duration, eval_count and eval_duration in nanoseconds, and an anyroute object with the receipt id, the lane, the disclosure class, the provider and the cost. Reasoning the provider returns comes back as thinking unless think is false.
+            </li>
+            <li>
+              <b>Embeddings.</b> /api/embed takes input as a string or a list and returns embeddings, in order; /api/embeddings takes prompt and returns one embedding. dimensions is passed on.
+            </li>
+            <li>
+              <b>Receipt and lane.</b> X-Anyroute-Lane, X-Anyroute-Disclosure-Max and provider in the body work as on a chat call, and X-Receipt-Id, Inference-Id, X-Anyroute-Lane and X-Anyroute-Policy-Hash come back as headers.
+            </li>
+          </ul>
+          <Code label="A streamed /api/chat reply">{ollamaStream}</Code>
+          <p>
+            Every error is Ollama’s {`{"error":"..."}`} with the router’s status: 400 for a bad field (the message names it), 401 or 402 without a usable key, 404 for an unknown model (the message names one to use), 409 or 503 when the requested lane cannot be served, and 429 with Retry-After. A request every
+            provider fails before any output is an HTTP error; a failure after output has begun ends the stream with an {`{"error"}`} line and no closing line.
           </p>
           <h2 id="responses">Use AnyRoute with the OpenAI Agents SDK and Codex.</h2>
           <p>

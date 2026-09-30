@@ -46,6 +46,7 @@ import { paymasterRoutes } from "./api/paymaster.ts";
 import { registerJobs } from "./services/register.ts";
 import { mcpRoutes } from "./api/mcp.ts";
 import { anthropicRoutes } from "./api/anthropic.ts";
+import { ollamaRoutes } from "./ollama/routes.ts";
 import { responsesRoutes } from "./api/responses.ts";
 import { ragRoutes } from "./api/rag.ts";
 import { siteRoutes } from "./api/site.ts";
@@ -109,6 +110,7 @@ export async function createApp(opts: AppOptions = {}) {
   const apiCors = cors({ origin: "*", allowHeaders: ["authorization", "content-type", "x-pay-with", "x-payment", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "x-anyroute-lane-downgrade", "http-referer", "x-title", "traceparent", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"], exposeHeaders: EXPOSED_RESPONSE_HEADERS });
   app.use("/api/*", apiCors);
   app.use("/v1/*", apiCors);
+  app.use("/ollama/*", apiCors);
   app.use("*", async (c, next) => {
     await next();
     c.header("x-content-type-options", "nosniff");
@@ -153,6 +155,7 @@ export async function createApp(opts: AppOptions = {}) {
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);
+  ollamaRoutes(app, ctx);
   responsesRoutes(app, ctx);
   ragRoutes(app, ctx);
   paymasterRoutes(app, ctx);

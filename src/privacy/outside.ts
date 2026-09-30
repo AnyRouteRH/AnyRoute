@@ -292,6 +292,13 @@ const addressReaders: Touchpoint[] = [
     evidence: [ev("src/api/responses.ts", "const from = clientIp(c, ctx.cfg.trustProxy);"), ev("src/api/responses.ts", "{ requestIP: () => ({ address: from }) }")],
   },
   {
+    file: "src/ollama/routes.ts",
+    reads: "The caller's address, so the internal chat or embeddings call it makes on the caller's behalf is limited exactly as the caller's own call would be.",
+    then: "Passed to the chat or embeddings route as an in-process value (requestIP) and then handled as in src/api/chat.ts.",
+    kept: "Nothing beyond what src/api/chat.ts keeps.",
+    evidence: [ev("src/ollama/routes.ts", "const from = clientIp(c, ctx.cfg.trustProxy);"), ev("src/ollama/routes.ts", "{ requestIP: () => ({ address: from }) }")],
+  },
+  {
     file: "src/onion/ingress.ts",
     reads: "Nothing. It deletes every header that names a client address (X-Forwarded-For, X-Real-IP, CF-Connecting-IP and others) from requests that arrived over Tor, before any route runs.",
     then: "Requests over Tor therefore carry no client address for a route, a limiter or a log line to use.",
@@ -346,6 +353,14 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     then: "Converted to a chat request and sent through the router's own chat route.",
     kept: "Nothing beyond what src/api/chat.ts keeps.",
     evidence: [ev("src/api/responses.ts", "chatRequestFrom(await readJson(c))")],
+  },
+  {
+    file: "src/ollama/routes.ts",
+    carries: "prompt-or-answer",
+    reads: "The JSON body of an Ollama-format chat, generate or embed call.",
+    then: "Converted to a chat or embeddings request and sent through the router's own route, so it is handled and kept exactly as that call is.",
+    kept: "Nothing beyond what src/api/chat.ts and src/api/embeddings.ts keep.",
+    evidence: [ev("src/ollama/routes.ts", "const raw = await readJson(c);")],
   },
   {
     file: "src/api/mcp.ts",

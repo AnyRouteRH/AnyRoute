@@ -115,6 +115,10 @@
     {
       "name": "Transparency log",
       "description": "An append-only log (C2SP tlog-tiles, RFC 6962 hashing) of the keys and configurations clients encrypt to or verify against: receipt keys, Oblivious HTTP key configurations, blind-token issuer keys, measurement bundles and sidecar key bindings. Checkpoints are signed notes (C2SP tlog-checkpoint) that witnesses cosign (C2SP tlog-cosignature, cosignature/v1). With TLOG_REKOR_ENABLED, each new checkpoint is also recorded in Sigstore's Rekor log (a hashedrekord entry signed with an ECDSA P-256 anchoring key), an alternative to witnesses. Present only when the router enables it (TLOG_ENABLED)."
+    },
+    {
+      "name": "Ollama",
+      "description": "The Ollama API under /ollama for Ollama clients (Open WebUI, Continue, the ollama libraries, LangChain's ChatOllama): set the client's host to <router>/ollama. Chat, generate and embed calls run on the same keys, lanes and signed receipts as chat completions; the key is sent as Authorization: Bearer."
     }
   ],
   "paths": {
@@ -5243,6 +5247,615 @@
           }
         }
       }
+    },
+    "/ollama/api/version": {
+      "get": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaVersion",
+        "summary": "The Ollama API version this endpoint speaks",
+        "responses": {
+          "200": {
+            "description": "The version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "examples": [
+                        "0.12.6"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
+    },
+    "/ollama/api/tags": {
+      "get": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaTags",
+        "summary": "List models in Ollama's shape",
+        "description": "The live catalog, as GET /api/v1/models lists it. Each name is a catalog id with Ollama's :latest tag (a routing suffix such as :free or :private works as a tag too). size is 0 (there are no local weights) and digest is the SHA-256 of the catalog id. X-Anyroute-Lane: attested lists only the models that lane can serve now. Public.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Lane"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The models.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "models"
+                  ],
+                  "properties": {
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OllamaModel"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
+    },
+    "/ollama/api/ps": {
+      "get": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaPs",
+        "summary": "Models held in memory (always none)",
+        "description": "Models are served on demand by hosted providers, so the list is always empty.",
+        "responses": {
+          "200": {
+            "description": "An empty list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "models"
+                  ],
+                  "properties": {
+                    "models": {
+                      "type": "array",
+                      "maxItems": 0,
+                      "items": {}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
+    },
+    "/ollama/api/show": {
+      "post": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaShow",
+        "summary": "Describe a model",
+        "description": "details, capabilities (completion, tools, vision, thinking, or embedding) and the context length in model_info. Public. An unknown model is a 404.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Older clients send the name here."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The model.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OllamaShowResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
+    },
+    "/ollama/api/chat": {
+      "post": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaChat",
+        "summary": "Chat (Ollama)",
+        "description": "Converted to a chat completion and sent through /api/v1/chat/completions in-process, so the key, its balance and limits, the lane and the signed receipt are those of a chat call. Streams NDJSON unless stream is false: lines with done false, tool calls whole in one line, then a closing line with done true, done_reason, the counts and durations (nanoseconds) and an anyroute object with the receipt id. A request the router refuses before any output is an HTTP error; a failure after output has begun is an {\"error\"} line. No messages: the model is loaded as Ollama does (done_reason load), with no call and no charge.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Lane"
+          },
+          {
+            "$ref": "#/components/parameters/DisclosureMax"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OllamaChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The reply, or its NDJSON stream.",
+            "headers": {
+              "X-Anyroute-Lane": {
+                "$ref": "#/components/headers/LaneServed"
+              },
+              "X-Receipt-Id": {
+                "$ref": "#/components/headers/ReceiptId"
+              },
+              "Inference-Id": {
+                "$ref": "#/components/headers/InferenceId"
+              },
+              "X-Generation-Id": {
+                "$ref": "#/components/headers/GenerationId"
+              },
+              "X-Anyroute-Policy-Hash": {
+                "$ref": "#/components/headers/PolicyHash"
+              },
+              "X-Anyroute-Disclosure": {
+                "$ref": "#/components/headers/Disclosure"
+              },
+              "X-Anyroute-Ignored": {
+                "description": "Present when the request asked for something that is accepted and not acted on: options that tune a local runtime (options.num_ctx and the like), suffix, template, raw or context. A comma separated list.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OllamaChatResponse"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/OllamaChatResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
+    },
+    "/ollama/api/generate": {
+      "post": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaGenerate",
+        "summary": "Generate (Ollama)",
+        "description": "system and prompt are sent as a system and a user message through /api/v1/chat/completions, with the same billing, lanes and receipts. The answer is in response. Streams NDJSON unless stream is false. suffix, template, raw and context are accepted and named in X-Anyroute-Ignored.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Lane"
+          },
+          {
+            "$ref": "#/components/parameters/DisclosureMax"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OllamaGenerateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The reply, or its NDJSON stream.",
+            "headers": {
+              "X-Anyroute-Lane": {
+                "$ref": "#/components/headers/LaneServed"
+              },
+              "X-Receipt-Id": {
+                "$ref": "#/components/headers/ReceiptId"
+              },
+              "Inference-Id": {
+                "$ref": "#/components/headers/InferenceId"
+              },
+              "X-Generation-Id": {
+                "$ref": "#/components/headers/GenerationId"
+              },
+              "X-Anyroute-Policy-Hash": {
+                "$ref": "#/components/headers/PolicyHash"
+              },
+              "X-Anyroute-Disclosure": {
+                "$ref": "#/components/headers/Disclosure"
+              },
+              "X-Anyroute-Ignored": {
+                "description": "Present when the request asked for something that is accepted and not acted on: options that tune a local runtime (options.num_ctx and the like), suffix, template, raw or context. A comma separated list.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OllamaGenerateResponse"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/OllamaGenerateResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
+    },
+    "/ollama/api/embed": {
+      "post": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaEmbed",
+        "summary": "Embeddings (Ollama)",
+        "description": "Sent through /api/v1/embeddings, with the same billing, lanes and receipts.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Lane"
+          },
+          {
+            "$ref": "#/components/parameters/DisclosureMax"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "model",
+                  "input"
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "input": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 1
+                      }
+                    ]
+                  },
+                  "dimensions": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "truncate": {
+                    "type": "boolean",
+                    "description": "Accepted and ignored."
+                  },
+                  "keep_alive": {
+                    "description": "Accepted and ignored."
+                  },
+                  "options": {
+                    "type": "object",
+                    "description": "Accepted and named in X-Anyroute-Ignored."
+                  },
+                  "provider": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The vectors, in the order of input.",
+            "headers": {
+              "X-Anyroute-Lane": {
+                "$ref": "#/components/headers/LaneServed"
+              },
+              "X-Receipt-Id": {
+                "$ref": "#/components/headers/ReceiptId"
+              },
+              "Inference-Id": {
+                "$ref": "#/components/headers/InferenceId"
+              },
+              "X-Generation-Id": {
+                "$ref": "#/components/headers/GenerationId"
+              },
+              "X-Anyroute-Policy-Hash": {
+                "$ref": "#/components/headers/PolicyHash"
+              },
+              "X-Anyroute-Disclosure": {
+                "$ref": "#/components/headers/Disclosure"
+              },
+              "X-Anyroute-Ignored": {
+                "description": "Present when the request asked for something that is accepted and not acted on: options that tune a local runtime (options.num_ctx and the like), suffix, template, raw or context. A comma separated list.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "model",
+                    "embeddings"
+                  ],
+                  "properties": {
+                    "model": {
+                      "type": "string"
+                    },
+                    "embeddings": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "total_duration": {
+                      "type": "integer"
+                    },
+                    "load_duration": {
+                      "type": "integer"
+                    },
+                    "prompt_eval_count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
+    },
+    "/ollama/api/embeddings": {
+      "post": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaEmbeddingsLegacy",
+        "summary": "One embedding (older Ollama endpoint)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Lane"
+          },
+          {
+            "$ref": "#/components/parameters/DisclosureMax"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "model",
+                  "prompt"
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The vector.",
+            "headers": {
+              "X-Anyroute-Lane": {
+                "$ref": "#/components/headers/LaneServed"
+              },
+              "X-Receipt-Id": {
+                "$ref": "#/components/headers/ReceiptId"
+              },
+              "Inference-Id": {
+                "$ref": "#/components/headers/InferenceId"
+              },
+              "X-Generation-Id": {
+                "$ref": "#/components/headers/GenerationId"
+              },
+              "X-Anyroute-Policy-Hash": {
+                "$ref": "#/components/headers/PolicyHash"
+              },
+              "X-Anyroute-Disclosure": {
+                "$ref": "#/components/headers/Disclosure"
+              },
+              "X-Anyroute-Ignored": {
+                "description": "Present when the request asked for something that is accepted and not acted on: options that tune a local runtime (options.num_ctx and the like), suffix, template, raw or context. A comma separated list.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "embedding"
+                  ],
+                  "properties": {
+                    "embedding": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
+    },
+    "/ollama/api/pull": {
+      "post": {
+        "tags": [
+          "Ollama"
+        ],
+        "operationId": "ollamaPull",
+        "summary": "Pull a model (nothing to download)",
+        "description": "A listed model is ready as soon as it is named, so the pull succeeds at once with {\"status\":\"success\"} (one NDJSON line unless stream is false). An unknown model is a 404. create, copy, push, delete and blob uploads are 501s.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "stream": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Done.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success"
+                    }
+                  }
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/OllamaError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5574,6 +6187,16 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/AnthropicErrorBody"
+            }
+          }
+        }
+      },
+      "OllamaError": {
+        "description": "Ollama's error shape, {\"error\": \"...\"}, with the router's status: 400 for a bad field (the message names it), 401 or 402 without a usable key, 404 for an unknown model (the message names one to use), 409 or 503 when the requested lane cannot be served, 429 with Retry-After, 501 for local-model operations, 502 when every provider failed before any output.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OllamaErrorBody"
             }
           }
         }
@@ -12048,6 +12671,708 @@
             }
           }
         }
+      },
+      "OllamaModel": {
+        "type": "object",
+        "required": [
+          "name",
+          "model",
+          "modified_at",
+          "size",
+          "digest",
+          "details"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "examples": [
+              "meta-llama/llama-3.3-70b-instruct:latest"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "size": {
+            "type": "integer",
+            "const": 0
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "details": {
+            "type": "object",
+            "properties": {
+              "parent_model": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              },
+              "family": {
+                "type": "string"
+              },
+              "families": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "parameter_size": {
+                "type": "string"
+              },
+              "quantization_level": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "OllamaShowResponse": {
+        "type": "object",
+        "required": [
+          "details",
+          "capabilities",
+          "model_info"
+        ],
+        "properties": {
+          "modelfile": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "string"
+          },
+          "template": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "properties": {
+              "parent_model": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              },
+              "family": {
+                "type": "string"
+              },
+              "families": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "parameter_size": {
+                "type": "string"
+              },
+              "quantization_level": {
+                "type": "string"
+              }
+            }
+          },
+          "model_info": {
+            "type": "object",
+            "description": "general.architecture, general.parameter_count where the name states it, and <family>.context_length."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "completion",
+                "tools",
+                "vision",
+                "thinking",
+                "embedding"
+              ]
+            }
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "anyroute": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "lanes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "context_length": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "OllamaChatRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "A name from GET /ollama/api/tags. :latest names the model itself."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": true
+          },
+          "format": {
+            "description": "\"json\" for JSON mode, or a JSON schema for structured output (response_format).",
+            "oneOf": [
+              {
+                "const": "json"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "options": {
+            "type": "object",
+            "description": "temperature, top_p, top_k, min_p, seed, stop, frequency_penalty and presence_penalty map directly; repeat_penalty to repetition_penalty; num_predict to max_tokens (-1 and -2 set no limit). Other options tune a local runtime and are named in X-Anyroute-Ignored.",
+            "properties": {
+              "temperature": {
+                "type": "number"
+              },
+              "top_p": {
+                "type": "number"
+              },
+              "top_k": {
+                "type": "number"
+              },
+              "min_p": {
+                "type": "number"
+              },
+              "frequency_penalty": {
+                "type": "number"
+              },
+              "presence_penalty": {
+                "type": "number"
+              },
+              "repeat_penalty": {
+                "type": "number"
+              },
+              "seed": {
+                "type": "integer"
+              },
+              "num_predict": {
+                "type": "integer"
+              },
+              "stop": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "think": {
+            "description": "false leaves the model's reasoning out of the reply.",
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            ]
+          },
+          "keep_alive": {
+            "description": "Accepted and ignored; 0 with no messages or prompt answers done_reason unload."
+          },
+          "provider": {
+            "type": "object",
+            "description": "The router's provider preferences, as on chat completions, for example {\"lane\":\"attested\"}."
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "role"
+              ],
+              "properties": {
+                "role": {
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant",
+                    "tool"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Base64 images (user messages); the media type is read from the bytes."
+                },
+                "tool_calls": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "function"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "function": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "arguments"
+                        ],
+                        "properties": {
+                          "index": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "arguments": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "tool_name": {
+                  "type": "string",
+                  "description": "On a tool message: the tool whose call it answers."
+                },
+                "tool_call_id": {
+                  "type": "string"
+                },
+                "thinking": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "function"
+              ],
+              "properties": {
+                "type": {
+                  "const": "function"
+                },
+                "function": {
+                  "type": "object",
+                  "required": [
+                    "name"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "parameters": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "OllamaGenerateRequest": {
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "A name from GET /ollama/api/tags. :latest names the model itself."
+          },
+          "stream": {
+            "type": "boolean",
+            "default": true
+          },
+          "format": {
+            "description": "\"json\" for JSON mode, or a JSON schema for structured output (response_format).",
+            "oneOf": [
+              {
+                "const": "json"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "options": {
+            "type": "object",
+            "description": "temperature, top_p, top_k, min_p, seed, stop, frequency_penalty and presence_penalty map directly; repeat_penalty to repetition_penalty; num_predict to max_tokens (-1 and -2 set no limit). Other options tune a local runtime and are named in X-Anyroute-Ignored.",
+            "properties": {
+              "temperature": {
+                "type": "number"
+              },
+              "top_p": {
+                "type": "number"
+              },
+              "top_k": {
+                "type": "number"
+              },
+              "min_p": {
+                "type": "number"
+              },
+              "frequency_penalty": {
+                "type": "number"
+              },
+              "presence_penalty": {
+                "type": "number"
+              },
+              "repeat_penalty": {
+                "type": "number"
+              },
+              "seed": {
+                "type": "integer"
+              },
+              "num_predict": {
+                "type": "integer"
+              },
+              "stop": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "think": {
+            "description": "false leaves the model's reasoning out of the reply.",
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            ]
+          },
+          "keep_alive": {
+            "description": "Accepted and ignored; 0 with no messages or prompt answers done_reason unload."
+          },
+          "provider": {
+            "type": "object",
+            "description": "The router's provider preferences, as on chat completions, for example {\"lane\":\"attested\"}."
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "system": {
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "suffix": {
+            "type": "string",
+            "description": "Accepted and named in X-Anyroute-Ignored."
+          },
+          "template": {
+            "type": "string",
+            "description": "Accepted and named in X-Anyroute-Ignored."
+          },
+          "raw": {
+            "type": "boolean"
+          },
+          "context": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Deprecated in Ollama; accepted and named in X-Anyroute-Ignored."
+          }
+        }
+      },
+      "OllamaChatResponse": {
+        "type": "object",
+        "required": [
+          "model",
+          "created_at",
+          "done"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "message": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "assistant"
+              },
+              "content": {
+                "type": "string"
+              },
+              "thinking": {
+                "type": "string"
+              },
+              "tool_calls": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "function"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "function": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "arguments"
+                      ],
+                      "properties": {
+                        "index": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "arguments": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "done_reason": {
+            "enum": [
+              "stop",
+              "length",
+              "load",
+              "unload"
+            ]
+          },
+          "total_duration": {
+            "type": "integer",
+            "description": "Nanoseconds."
+          },
+          "load_duration": {
+            "type": "integer",
+            "const": 0
+          },
+          "prompt_eval_count": {
+            "type": "integer"
+          },
+          "prompt_eval_duration": {
+            "type": "integer"
+          },
+          "eval_count": {
+            "type": "integer"
+          },
+          "eval_duration": {
+            "type": "integer"
+          },
+          "anyroute": {
+            "type": "object",
+            "description": "On the closing object: the receipt and where the call was served.",
+            "properties": {
+              "receipt_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lane": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "disclosure": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "policy_hash": {
+                "type": "string"
+              },
+              "provider": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cost_usd": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "OllamaGenerateResponse": {
+        "type": "object",
+        "required": [
+          "model",
+          "created_at",
+          "done"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "response": {
+            "type": "string"
+          },
+          "thinking": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "done_reason": {
+            "enum": [
+              "stop",
+              "length",
+              "load",
+              "unload"
+            ]
+          },
+          "total_duration": {
+            "type": "integer",
+            "description": "Nanoseconds."
+          },
+          "load_duration": {
+            "type": "integer",
+            "const": 0
+          },
+          "prompt_eval_count": {
+            "type": "integer"
+          },
+          "prompt_eval_duration": {
+            "type": "integer"
+          },
+          "eval_count": {
+            "type": "integer"
+          },
+          "eval_duration": {
+            "type": "integer"
+          },
+          "anyroute": {
+            "type": "object",
+            "description": "On the closing object: the receipt and where the call was served.",
+            "properties": {
+              "receipt_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lane": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "disclosure": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "policy_hash": {
+                "type": "string"
+              },
+              "provider": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cost_usd": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "OllamaErrorBody": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
     }
   }
