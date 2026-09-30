@@ -11,6 +11,7 @@ import {
   routeAsModel, sampleToolResult, supportFor,
 } from "../lib/harness";
 import Markdown from "./Markdown";
+import PrivateMode, { ReplyPrivacy, usePrivateMode } from "./harness/PrivateMode";
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
 
@@ -491,6 +492,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn }
           </span>
         </footer>
       )}
+      <ReplyPrivacy msg={msg} open={last} />
     </article>
   );
 }
@@ -748,6 +750,7 @@ export default function Harness() {
   const [inflight, setInflight] = useState(0);
   const [drag, setDrag] = useState(false);
   const [announce, setAnnounce] = useState("");
+  const priv = usePrivateMode(); // private mode: the attested lane only, see harness/PrivateMode.jsx
   const controllers = useRef(new Map());
   const lanesRef = useRef(lanes);
   lanesRef.current = lanes;
@@ -776,9 +779,10 @@ export default function Harness() {
       .then((r) => setRaw(r.data || []))
       .catch((e) => setCatalogError(e?.message || "The model catalogue could not be loaded."));
   }, []);
-  const models = useMemo(() => (raw || []).filter((m) => !(m.architecture?.output_modalities || []).includes("embeddings")).map(normalizeModel), [raw]);
+  const shown = priv.on ? priv.models : raw;
+  const models = useMemo(() => (shown || []).filter((m) => !(m.architecture?.output_modalities || []).includes("embeddings")).map(normalizeModel), [shown]);
   const byId = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
-  const routes = useMemo(() => routeRows.map((r) => routeAsModel(r, byId)), [routeRows, byId]);
+  const routes = useMemo(() => (priv.on ? [] : routeRows).map((r) => routeAsModel(r, byId)), [routeRows, byId, priv.on]);
   const all = useMemo(() => [...routes, ...models], [routes, models]);
   const find = useCallback((id) => all.find((m) => m.id === id) || null, [all]);
   const counts = useMemo(() => catalogueCounts(models), [models]);
@@ -909,7 +913,7 @@ export default function Harness() {
         key,
         body,
         signal: ctl.signal,
-        headers: { "x-title": "Anyroute Harness" },
+        headers: { "x-title": "Anyroute Harness", ...priv.headers() },
         onEvent: (ev) => {
           reply = applyChunk(reply, ev);
           if (ttft === null && (reply.text || reply.reasoning || reply.toolCalls.length || reply.images.length || reply.audio)) ttft = performance.now() - t0;
@@ -1098,7 +1102,7 @@ export default function Harness() {
       <Rail
         models={models}
         routes={routes}
-        loading={!raw && !catalogError}
+        loading={!shown && !catalogError}
         error={catalogError}
         onRetry={loadCatalog}
         activeId={focusModel?.id}
@@ -1167,6 +1171,7 @@ export default function Harness() {
             )}
           </div>
         </div>
+        <PrivateMode priv={priv} lanes={lanes} setLanes={setLanes} setFocus={setFocus} busy={busy} find={find} />
 
         {compare && (
           <div className={s.laneHeads} style={{ "--lanes": lanes.length }} ref={headsRef} onScroll={(e) => syncScroll(e, lanesRef2)}>
