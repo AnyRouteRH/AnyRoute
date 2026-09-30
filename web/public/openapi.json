@@ -110,7 +110,7 @@
     },
     {
       "name": "Transparency log",
-      "description": "An append-only log (C2SP tlog-tiles, RFC 6962 hashing) of the keys and configurations clients encrypt to or verify against: receipt keys, Oblivious HTTP key configurations, blind-token issuer keys, measurement bundles and sidecar key bindings. Checkpoints are signed notes (C2SP tlog-checkpoint) that witnesses cosign (C2SP tlog-cosignature, cosignature/v1). Present only when the router enables it (TLOG_ENABLED)."
+      "description": "An append-only log (C2SP tlog-tiles, RFC 6962 hashing) of the keys and configurations clients encrypt to or verify against: receipt keys, Oblivious HTTP key configurations, blind-token issuer keys, measurement bundles and sidecar key bindings. Checkpoints are signed notes (C2SP tlog-checkpoint) that witnesses cosign (C2SP tlog-cosignature, cosignature/v1). With TLOG_REKOR_ENABLED, each new checkpoint is also recorded in Sigstore's Rekor log (a hashedrekord entry signed with an ECDSA P-256 anchoring key), an alternative to witnesses. Present only when the router enables it (TLOG_ENABLED)."
     }
   ],
   "paths": {
@@ -4256,7 +4256,7 @@
         ],
         "operationId": "getTlogInfo",
         "summary": "The log: origin, verifier key, witnesses, quorum and newest checkpoint",
-        "description": "Public; 404 unless the router enables the transparency log. What entry kinds exist and which witnesses the router collects cosignatures from. Pin the log's verifier key and the witness keys from a source other than the log itself.",
+        "description": "Public; 404 unless the router enables the transparency log. What entry kinds exist and which witnesses the router collects cosignatures from. Pin the log's verifier key and the witness keys from a source other than the log itself. With Rekor anchoring on (TLOG_REKOR_ENABLED), rekor names the anchoring key and the newest anchored checkpoint's Rekor entry; it is null otherwise.",
         "responses": {
           "200": {
             "description": "The log description.",
@@ -4395,7 +4395,7 @@
         ],
         "operationId": "getTlogProof",
         "summary": "An entry with its inclusion proof and, on request, a consistency proof",
-        "description": "Public. The entry for (kind, sha256), a checkpoint that includes it (by default the newest one the witness quorum cosigned, else the newest one), the RFC 6962 inclusion proof to that checkpoint's root and, with from, the consistency proof between tree size from and the checkpoint's size. Nothing here is trusted by itself: a client checks the log signature and witness cosignatures on the checkpoint, recomputes the leaf from the entry and verifies both proofs. 404 not_logged, 409 not_yet_included when the requested checkpoint predates the entry.",
+        "description": "Public. The entry for (kind, sha256), a checkpoint that includes it (by default the newest one the witness quorum cosigned, else, with Rekor anchoring on, the newest anchored one, else the newest one), the RFC 6962 inclusion proof to that checkpoint's root and, with from, the consistency proof between tree size from and the checkpoint's size. Nothing here is trusted by itself: a client checks the log signature and witness cosignatures (or, with anchoring, the checkpoint's Rekor entry in checkpoint.rekor) on the checkpoint, recomputes the leaf from the entry and verifies both proofs. 404 not_logged, 409 not_yet_included when the requested checkpoint predates the entry.",
         "parameters": [
           {
             "$ref": "#/components/parameters/TlogKind"
@@ -4567,6 +4567,138 @@
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/rekor": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogRekorAnchors",
+        "summary": "Rekor anchoring: the anchoring key, the newest anchored checkpoint and a list of anchors",
+        "description": "Public; 404 (rekor_not_enabled) unless the router anchors its checkpoints in Rekor (TLOG_REKOR_ENABLED). Each checkpoint the log moves to is recorded, at most once per TLOG_REKOR_MIN_INTERVAL_MS, as a hashedrekord entry in the Sigstore Rekor log at rekor_url: the entry holds the SHA-256 of the checkpoint as the log signed it (the checkpoint text, a blank line and the log's own signature line, without cosignatures) and an ECDSA P-256 signature over it by the anchoring key. The router verifies the entry's inclusion proof (and, with REKOR_PUBLIC_KEY, Rekor's signed checkpoint and signed entry timestamp) before it lists it. anchors lists every verified anchor, newest checkpoint first; page with before=next_before. Anyone can compare the entries the anchoring key has in Rekor with this list: an entry the list does not explain, or two anchored checkpoints of one size with different roots, is a split view.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "Only anchors of checkpoints smaller than this tree size.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The anchoring key and the anchors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TlogRekorAnchors"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/rekor/key": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogRekorKey",
+        "summary": "The anchoring key (ECDSA P-256)",
+        "description": "Public; 404 (rekor_not_enabled) unless the router anchors its checkpoints in Rekor (TLOG_REKOR_ENABLED). The public key that signs the log's Rekor entries, and its key_id (SHA-256 of the SubjectPublicKeyInfo, hex). Every entry carries this key, so it can be searched for in Rekor. A client that checks anchors pins this key out of band. Served with Cache-Control: public, max-age=300.",
+        "responses": {
+          "200": {
+            "description": "The anchoring key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TlogRekorKey"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/tlog/rekor/{size}": {
+      "get": {
+        "tags": [
+          "Transparency log"
+        ],
+        "operationId": "getTlogRekorAnchorBySize",
+        "summary": "The Rekor entry that anchors one checkpoint",
+        "description": "Public; 404 (rekor_not_enabled) unless the router anchors its checkpoints in Rekor (TLOG_REKOR_ENABLED). 404 (not_anchored) when no verified Rekor entry anchors a checkpoint of that tree size under the current anchoring key.",
+        "parameters": [
+          {
+            "name": "size",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The anchor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TlogRekorAnchor"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "default": {
             "$ref": "#/components/responses/ApiError"
@@ -10220,6 +10352,17 @@
           "witnessed": {
             "type": "boolean",
             "description": "True when at least the quorum of configured witnesses cosigned."
+          },
+          "rekor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TlogRekorAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only with Rekor anchoring on: this checkpoint's Rekor entry, or null until it is anchored."
           }
         }
       },
@@ -10308,6 +10451,50 @@
               "tiles_url": {
                 "type": "string",
                 "format": "uri"
+              },
+              "rekor": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "Rekor anchoring (TLOG_REKOR_ENABLED): the same fields as GET /api/v1/tlog/rekor without the list; null when anchoring is off.",
+                "properties": {
+                  "rekor_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "entry_type": {
+                    "type": "string"
+                  },
+                  "algorithm": {
+                    "type": "string",
+                    "enum": [
+                      "ecdsa-p256-sha256"
+                    ]
+                  },
+                  "key_id": {
+                    "type": "string",
+                    "description": "SHA-256 of the key's SubjectPublicKeyInfo, hex.",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "public_key_pem": {
+                    "type": "string",
+                    "description": "The anchoring key, an ECDSA P-256 public key (PEM)."
+                  },
+                  "min_interval_ms": {
+                    "type": "integer"
+                  },
+                  "latest": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/TlogRekorAnchor"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
               }
             }
           }
@@ -10520,6 +10707,277 @@
               },
               "witnessed": {
                 "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "TlogRekorKey": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "algorithm",
+              "key_id",
+              "public_key_pem"
+            ],
+            "properties": {
+              "algorithm": {
+                "type": "string",
+                "enum": [
+                  "ecdsa-p256-sha256"
+                ]
+              },
+              "key_id": {
+                "type": "string",
+                "description": "SHA-256 of the key's SubjectPublicKeyInfo, hex.",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "public_key_pem": {
+                "type": "string",
+                "description": "The anchoring key, an ECDSA P-256 public key (PEM)."
+              }
+            }
+          }
+        }
+      },
+      "TlogRekorAnchor": {
+        "type": "object",
+        "description": "A Rekor entry that anchors one checkpoint. Rekor's own hashes (inclusion_proof) are hex, as Rekor writes them.",
+        "required": [
+          "size",
+          "root_hash",
+          "note",
+          "artifact_sha256",
+          "key_id",
+          "rekor_url",
+          "uuid",
+          "log_index",
+          "integrated_time",
+          "entry_url",
+          "body",
+          "inclusion_proof",
+          "verified",
+          "anchored_at"
+        ],
+        "properties": {
+          "size": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "root_hash": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "description": "The checkpoint's root hash, base64 as in checkpoints."
+          },
+          "note": {
+            "type": "string",
+            "description": "The artifact: the checkpoint text, a blank line and the log's own signature line."
+          },
+          "artifact_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 of note; the hash the hashedrekord entry holds (search.sigstore.dev finds the entry by it)."
+          },
+          "key_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The anchoring key that signed the entry."
+          },
+          "rekor_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "uuid": {
+            "type": "string",
+            "description": "The entry's uuid (tree id and leaf hash, hex)."
+          },
+          "log_index": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "integrated_time": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "When Rekor integrated the entry (seconds since the Unix epoch)."
+          },
+          "log_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entry_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "search_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "The entry on search.sigstore.dev, for the public Rekor instance."
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "contentEncoding": "base64",
+            "description": "The entry body as Rekor returned it; its leaf hash is SHA-256(0x00 || body)."
+          },
+          "inclusion_proof": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "log_index",
+              "tree_size",
+              "root_hash",
+              "hashes"
+            ],
+            "properties": {
+              "log_index": {
+                "type": "integer"
+              },
+              "tree_size": {
+                "type": "integer"
+              },
+              "root_hash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "hashes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "checkpoint": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Rekor's signed checkpoint for tree_size and root_hash."
+              }
+            }
+          },
+          "signed_entry_timestamp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "contentEncoding": "base64"
+          },
+          "verified": {
+            "type": "object",
+            "required": [
+              "inclusion",
+              "checkpoint_signature",
+              "signed_entry_timestamp"
+            ],
+            "description": "What the router checked when it stored the entry; checkpoint_signature and signed_entry_timestamp need REKOR_PUBLIC_KEY.",
+            "properties": {
+              "inclusion": {
+                "type": "boolean"
+              },
+              "checkpoint_signature": {
+                "type": "boolean"
+              },
+              "signed_entry_timestamp": {
+                "type": "boolean"
+              }
+            }
+          },
+          "anchored_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TlogRekorAnchors": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "rekor_url",
+              "entry_type",
+              "algorithm",
+              "key_id",
+              "public_key_pem",
+              "min_interval_ms",
+              "latest",
+              "anchors",
+              "next_before"
+            ],
+            "properties": {
+              "rekor_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "entry_type": {
+                "type": "string",
+                "enum": [
+                  "hashedrekord"
+                ]
+              },
+              "algorithm": {
+                "type": "string",
+                "enum": [
+                  "ecdsa-p256-sha256"
+                ]
+              },
+              "key_id": {
+                "type": "string",
+                "description": "SHA-256 of the key's SubjectPublicKeyInfo, hex.",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "public_key_pem": {
+                "type": "string",
+                "description": "The anchoring key, an ECDSA P-256 public key (PEM)."
+              },
+              "min_interval_ms": {
+                "type": "integer",
+                "description": "At most one submission to Rekor per this many milliseconds."
+              },
+              "latest": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/TlogRekorAnchor"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The newest anchored checkpoint under the current key."
+              },
+              "anchors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TlogRekorAnchor"
+                }
+              },
+              "next_before": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Pass as before for the next page; null on the last page."
               }
             }
           }

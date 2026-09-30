@@ -45,3 +45,19 @@ test('the developer docs explain the key log and the opt-in client check',()=>{
  assert.match(docs,/SplitViewDetected/);
  assert.match(docs,/scripts\/tlog-witness\.ts/);
 });
+
+test('Rekor anchoring of checkpoints is documented as an alternative to witnesses',()=>{
+ const ops={list:spec.paths['/api/v1/tlog/rekor'].get,key:spec.paths['/api/v1/tlog/rekor/key'].get,bySize:spec.paths['/api/v1/tlog/rekor/{size}'].get};
+ for(const [name,op] of Object.entries(ops)){
+  assert.deepEqual(op.tags,['Transparency log'],name);
+  assert.equal(op.security,undefined,`${name} is public`);
+  assert.match(op.description,/rekor_not_enabled/);
+ }
+ const anchor=spec.components.schemas.TlogRekorAnchor;
+ for(const f of ['uuid','log_index','integrated_time','inclusion_proof','signed_entry_timestamp','artifact_sha256'])assert.ok(anchor.properties[f],f);
+ assert.ok(spec.components.schemas.TlogInfo.properties.data.properties.rekor);
+ assert.ok(spec.components.schemas.TlogCheckpoint.properties.rekor);
+ assert.match(docs,/TLOG_REKOR_ENABLED/);
+ assert.match(docs,/search\.sigstore\.dev/);
+ assert.match(docs,/\/api\/v1\/tlog\/rekor\/key/);
+});

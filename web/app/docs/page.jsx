@@ -335,6 +335,19 @@ try {
   if (e instanceof SplitViewDetected) console.error("two views of the log", e.evidence);
   throw e; // not_logged, not_witnessed, bad_proof: do not use the key
 }`;
+const sdkRekorAnchor = `import { TransparencyLog } from "@anyroute/client";
+
+// Rekor anchoring: a verified Rekor entry for the checkpoint counts in place of witness cosignatures.
+// Pin both keys out of band: the log's anchoring key (the one published for this log; the router also serves it at
+// GET /api/v1/tlog/rekor/key) and Rekor's own key (https://rekor.sigstore.dev/api/v1/log/publicKey).
+const log = new TransparencyLog({
+  logUrl: "https://<router>",
+  logKey: "<origin>+<key id>+<key>",
+  rekor: { anchorKey: "-----BEGIN PUBLIC KEY-----\\n…", rekorKey: "-----BEGIN PUBLIC KEY-----\\n…" },
+});
+
+const logged = await log.requireLogged("receipt_key", receiptKeyBytes); // not_anchored, anchor_mismatch, bad_anchor: refused
+console.log(logged.rekor.uuid, logged.rekor.logIndex); // the entry, also on search.sigstore.dev`;
 const sdkAttested = `import { AnyRoute, AttestationRefused } from "@anyroute/client";
 import { nodeAttestFetcher } from "@anyroute/client/node"; // Node and Bun: reads the provider's certificate too
 
@@ -526,6 +539,7 @@ const endpoints = [
   ["GET /api/v1/ohttp/key-list · GET /api/v1/relays", "Oblivious HTTP, where enabled: the gateway key history signed with the receipt key, and the relays clients may use, by operator"],
   ["GET /tlog/checkpoint · /tlog/tile/…", "Transparency log, where enabled: the newest checkpoint (a signed note with the witnesses’ cosignatures) and the C2SP tlog-tiles hash tiles and entry bundles"],
   ["GET /api/v1/tlog · /tlog/proof · /tlog/consistency · POST /tlog/cosignatures", "Transparency log, where enabled: origin, log key, witnesses and quorum; an entry with its inclusion and consistency proofs; and where witnesses hand in cosignatures"],
+  ["GET /api/v1/tlog/rekor · /tlog/rekor/key · /tlog/rekor/{size}", "Transparency log with Rekor anchoring, where enabled: the anchoring key (ECDSA P-256), the anchored checkpoints, and one checkpoint’s Rekor entry with its log index, integrated time, inclusion proof and signed entry timestamp"],
   ["GET /api/v1/holder", "$ANYR holders: balance, live tier (higher rate limits, lower fees), the tier ladder and free credits received"],
   ["POST /api/v1/receipts/verify · GET /receipts/keys", "Verify a receipt (v1, or v2 with its chain head and Merkle path); signing keys (JWKS)"],
   ["GET /api/v1/receipts/:id · /receipts/:id/proof", "A receipt by id, v2 beside v1 (?format=cose for the COSE bytes); the Merkle path to its hourly root, with anchored true only once that root is on chain"],
@@ -733,6 +747,20 @@ export default function Docs() {
             SplitViewDetected with both notes as evidence. Mirrors of the checkpoint can be added as a second path. Pin the log key and the witness keys from a source other than the log: the log’s own description of itself proves nothing.
           </p>
           <Code label="TypeScript · witnessed keys">{sdkTransparency}</Code>
+          <p>
+            A log can also be checked through Sigstore’s public Rekor log instead of witnesses (TLOG_REKOR_ENABLED). Each time the checkpoint changes, and at most once every ten minutes, the router records it in Rekor as a hashedrekord entry: the SHA-256
+            of the checkpoint as the log signed it (the checkpoint text, a blank line and the log’s own signature line) with an ECDSA P-256 signature by a dedicated anchoring key. It verifies the entry’s inclusion proof before it serves it. GET
+            /api/v1/tlog/rekor lists the anchored checkpoints with each entry’s uuid, log index, integrated time, inclusion proof and signed entry timestamp, and links each one to search.sigstore.dev; GET /api/v1/tlog/rekor/key serves the anchoring
+            key. Rekor is run independently of Anyroute, so showing some users a second history needs a second entry under the anchoring key, which anyone can see there, and which the router’s own list does not explain. That detects a split view after
+            the fact; unlike a witness quorum, it does not stop the log from signing a bad checkpoint before clients see it, and it helps only when clients or monitors check Rekor. In production the router starts the log only with the witness quorum
+            or with anchoring on.
+          </p>
+          <p>
+            With transparency.rekor set to the anchoring key and Rekor’s key, @anyroute/client accepts a checkpoint on a verified Rekor entry in place of cosignatures: the entry must hold the hash of exactly that checkpoint, carry the pinned anchoring
+            key and a valid signature by it, and be included in Rekor under a checkpoint that Rekor’s pinned key signed. The consistency check against the last checkpoint the client accepted, and the refusal of keys that are not logged, stay the same.
+            With witnesses listed as well, both must hold.
+          </p>
+          <Code label="TypeScript · Rekor-anchored keys">{sdkRekorAnchor}</Code>
           <h2 id="lane">Open-weights variants, and paying their creators.</h2>
           <p>
             Every model has a variant. mainstream keeps the publisher’s own alignment. native_low_refusal (trained to refuse little) and abliterated (refusal behaviour removed from the weights after training) are restricted variants. GET
