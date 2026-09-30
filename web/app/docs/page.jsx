@@ -4,6 +4,7 @@ import { sampleRequest } from "../../components/Extensions";
 import { API_BASE } from "../../lib/api";
 import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
 import OnionAddress from "../../components/OnionAddress";
+import ClaudeUnlinkableDocs from "../../components/ClaudeUnlinkableDocs";
 import PrivateProxyDocs from "../../components/PrivateProxyDocs";
 export const metadata = { title: "Developer documentation — Anyroute" };
 const receipt = {
@@ -771,6 +772,7 @@ export default function Docs() {
             <a href="#what-we-saw">What we saw</a>
             <a href="#council">Council</a>
             <a href="#mcp">MCP</a>
+            <a href="#claude-unlinkable">Claude Code, unlinkable</a>
             <a href="#anthropic">Anthropic</a>
             <a href="#ollama">Ollama</a>
             <a href="#responses">Responses</a>
@@ -1000,6 +1002,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             time; and anything in the body that identifies you reaches the provider. End-to-end encryption through the router to the enclave is planned.
           </p>
           <PrivateProxyDocs />
+          <ClaudeUnlinkableDocs />
           <h2 id="private-tokens">Private tokens from your wallet, kept on your device.</h2>
           <p>
             The <a href="/tokens/" className="inline-link">Private tokens</a> page turns a payment from your own wallet into blind tokens that stay in your browser, with no account and no long-lived key. It adds nothing on the router: it uses only the endpoints

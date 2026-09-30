@@ -1,3 +1,4 @@
+import { selectTokens } from "./selection.ts";
 import { randomBytes, randomInt } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -175,6 +176,33 @@ export class TokenStore {
       return {
         doc: { ...doc, tokens: doc.tokens.filter((t) => t !== picked), unconfirmed: [...doc.unconfirmed, { ...picked, sent_at: now.toISOString() }] },
         result: { token: picked },
+      };
+    });
+  }
+
+  /** Lease a complete budget-covering set under the existing disk lock, before sending any bytes. */
+  leaseBudget(budget: bigint, cap = 16, now = new Date()): Promise<Lease[] | null> {
+    return this.locked((doc) => {
+      const usable = doc.tokens.filter((t) => Date.parse(t.redeem_until) > now.getTime() + EXPIRY_MARGIN_MS);
+      const picked = selectTokens(usable, budget, cap);
+      if (!picked) return { result: null };
+      const ids = new Set(picked.map((t) => t.token));
+      if (ids.size !== picked.length) throw new StoreError("The token store contains duplicate credentials.");
+      return {
+        doc: { ...doc, tokens: doc.tokens.filter((t) => !ids.has(t.token)), unconfirmed: [...doc.unconfirmed, ...picked.map((t) => ({ ...t, sent_at: now.toISOString() }))] },
+        result: picked.map((token) => ({ token })),
+      };
+    });
+  }
+
+  /** Settle a set in one file replacement. An uncertain sent set remains unconfirmed. */
+  settleMany(leases: Lease[], outcome: "consumed" | "returned"): Promise<void> {
+    return this.locked((doc) => {
+      const ids = new Set(leases.map((l) => l.token.token));
+      const held = doc.unconfirmed.filter((t) => ids.has(t.token));
+      return {
+        doc: { ...doc, unconfirmed: doc.unconfirmed.filter((t) => !ids.has(t.token)), tokens: outcome === "returned" ? [...held.map(({ sent_at: _, ...t }) => t), ...doc.tokens] : doc.tokens },
+        result: undefined,
       };
     });
   }

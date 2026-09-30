@@ -332,6 +332,8 @@ const schema = z.object({
   BLIND_UNIT_PRICE_USD: z.string().default("0.000002"), // value of one token-unit; a token is 1000, 10000 or 100000 units
   BLIND_EPOCH_SECONDS: int(604_800), // issuer keys rotate every epoch (one week)
   BLIND_REDEEM_GRACE_SECONDS: int(604_800), // tokens stay redeemable this long after their epoch stops issuing
+  BLIND_MULTI_TOKEN_ENABLED: bool.default(false), // allow token sets; existing single-token calls are unchanged
+  BLIND_MAX_TOKENS_PER_REQUEST: z.coerce.number().int().min(1).max(64).default(16), // bound signature work and header size
   BLIND_MAX_BATCH: int(32), // most tokens one purchase request may ask for
   BLIND_PURCHASE_RPM: int(10), // purchase requests per key per minute
   BLIND_REDEEM_RPM: int(600), // calls per minute per client address that present a token (tokens bring their own quota)
@@ -1012,6 +1014,7 @@ function blindSettings(e: Env) {
     denominations: BLIND_DENOMINATIONS,
     epochSeconds: e.BLIND_EPOCH_SECONDS,
     redeemGraceSeconds: e.BLIND_REDEEM_GRACE_SECONDS,
+    multiTokenEnabled: e.BLIND_MULTI_TOKEN_ENABLED, maxTokensPerRequest: e.BLIND_MAX_TOKENS_PER_REQUEST,
     maxBatch: e.BLIND_MAX_BATCH,
     purchaseRpm: e.BLIND_PURCHASE_RPM,
     redeemRpm: e.BLIND_REDEEM_RPM,

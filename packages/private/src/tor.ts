@@ -88,7 +88,7 @@ export type TorFetch = (url: string, init?: SocksFetchInit) => Promise<Response>
  */
 export function torFetch(proxy: TorProxy, o: TorFetchOptions = {}): TorFetch {
   const inner = (auth?: { username: string; password: string }) => createSocksFetch({ host: proxy.host, port: proxy.port, ...auth }, { maxResponseBytes: o.maxResponseBytes ?? 64 * 1024 * 1024, tls: o.tls });
-  const shared = o.isolate === false ? inner() : null;
+  const shared = o.isolate === false ? inner({ username: "ar-" + randomBytes(9).toString("hex"), password: "x" }) : null;
   return (url, init) => (shared ?? inner({ username: "ar-" + randomBytes(9).toString("hex"), password: "x" }))(url, init);
 }
 

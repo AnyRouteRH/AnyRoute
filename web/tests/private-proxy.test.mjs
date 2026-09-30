@@ -39,7 +39,8 @@ test('it says what is not hidden, in plain words, and claims nothing the code do
  assert.match(component,/refuses to start unless a Tor client\s+answers/);
  for(const claim of [/cannot read your prompt/i,/no logs/i,/zero[- ]knowledge/i,/untraceable/i,/fully anonymous/i,/end-to-end encrypted/i])assert.doesNotMatch(component,claim);
  // What the program does not serve is said, not left for the reader to find out.
- assert.match(component,/Claude Code, the Anthropic SDKs and the Responses API are not supported/);
+ assert.match(component,/Claude Code and the Anthropic SDKs can use POST \/v1\/messages with blind tokens/);
+ assert.match(component,/The Responses API is not supported by this proxy/);
 });
 
 test('the public copy avoids the words the site does not use for its own product',()=>{

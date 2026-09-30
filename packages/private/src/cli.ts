@@ -33,7 +33,7 @@ Usage
 
 Commands
   buy      Buy blind tokens with an API key that has credits, over Tor. Saved to ~/.anyroute/tokens.json (mode 0600).
-           One token pays for one call. Tokens expire at the end of the router's redemption window (one to two weeks).
+           Each call spends its token payment; remainders are forfeited. Tokens expire at the end of the router's redemption window (one to two weeks).
   start    Serve an OpenAI-compatible API on 127.0.0.1. Refuses to start unless Tor is reachable. Never uses the clearnet.
   status   Show whether Tor and the onion service answer, whether the lane is available, and how many tokens are left.
 
@@ -45,7 +45,7 @@ Options
   buy:    --key <API key> (or ANYROUTE_API_KEY), --count <1-1000>, --denomination <1000|10000|100000> (default 10000),
           --clearnet to buy without Tor (the router then sees your network address; the tokens stay unlinkable)
   start:  --port <n> (default 8788), --local-key <secret> (require it as the app's API key), --shared-circuit (reuse one Tor
-          circuit instead of one per call), --max-concurrent <n> (default 8), --timeout <seconds> (default 600), --quiet
+          circuit instead of one per call), --max-concurrent <n> (default 8), --max-tokens-per-request <n> (default 16), --timeout <seconds> (default 600), --quiet
   status: --json
 
 Environment  ANYROUTE_API_KEY, ANYROUTE_HOME (default ~/.anyroute), ANYROUTE_SOCKS, ANYROUTE_ONION, ANYROUTE_ROUTER
@@ -54,7 +54,7 @@ Environment  ANYROUTE_API_KEY, ANYROUTE_HOME (default ~/.anyroute), ANYROUTE_SOC
 const COMMON = { values: ["socks", "onion", "router"], flags: ["allow-remote-socks", "help", "version"] } as const;
 const SPECS: Record<string, OptionSpec> = {
   buy: { values: [...COMMON.values, "key", "count", "denomination"], flags: [...COMMON.flags, "clearnet"] },
-  start: { values: [...COMMON.values, "port", "local-key", "max-concurrent", "timeout"], flags: [...COMMON.flags, "shared-circuit", "quiet"] },
+  start: { values: [...COMMON.values, "port", "local-key", "max-concurrent", "max-tokens-per-request", "timeout"], flags: [...COMMON.flags, "shared-circuit", "quiet"] },
   status: { values: [...COMMON.values], flags: [...COMMON.flags, "json"] },
 };
 
@@ -75,7 +75,12 @@ export function howToUse(port: number, localKey = false): string {
     `  Cursor: Settings > Models > Override OpenAI Base URL: ${base} (API key: any value).`,
     "    Cursor may send requests from its own servers, which cannot reach an address on this machine and would see your",
     "    prompts. Check that your version calls the API from your computer before relying on it.",
-    "  Claude Code and the Anthropic SDKs are not supported: the router takes the Messages API with an API key only.",
+    "  Claude Code and the Anthropic SDKs:",
+    `    export ANTHROPIC_BASE_URL=http://127.0.0.1:${port}`,
+    `    export ANTHROPIC_API_KEY=${localKey ? "<your --local-key>" : "anyroute-private"}`,
+    "    unset ANTHROPIC_AUTH_TOKEN",
+    "    export ANTHROPIC_MODEL='<attested model id from /v1/models>'",
+    "    export ANTHROPIC_DEFAULT_HAIKU_MODEL='<attested model id from /v1/models>'",
     `  Models on this lane: curl ${base}/models`,
   ].join("\n");
 }
@@ -164,7 +169,7 @@ async function buy(r: Run, env: Io["env"]): Promise<number> {
   io.out(`Bought ${bought.count} tokens of ${bought.denomination} units (${usd(bought.valueUsd)} each, ${usd(bought.costUsd)} in total).\n`);
   io.out(`Saved in ${r.store.file} (mode 0600). Usable tokens: ${left.usable}.\n`);
   io.out(`These tokens can be spent until ${bought.redeemUntil.slice(0, 16).replace("T", " ")} UTC; after that they are worth nothing, so buy what you will use soon.\n`);
-  io.out("A call spends one token whatever it costs; the rest of its value is not refunded. Next: anyroute-private start\n");
+  io.out("A call forfeits the rest of its token payment; Messages calls can use several tokens. Next: anyroute-private start\n");
   return 0;
 }
 
@@ -265,6 +270,7 @@ async function start(r: Run): Promise<number> {
     store: r.store,
     localKey,
     maxConcurrent,
+    maxTokensPerRequest: intOption("max-tokens-per-request", args.options.get("max-tokens-per-request"), 16, 1, 64),
     idleTimeoutMs: timeout * 1000,
     log: args.flags.has("quiet") ? undefined : (l) => io.err(l + "\n"),
   });

@@ -41,11 +41,11 @@ Options for all commands: `--socks host:port` (default: a Tor daemon on 127.0.0.
 
 - **Listens on 127.0.0.1 only**, and refuses a request whose `Host` is not 127.0.0.1 or localhost, or that carries a web page's `Origin`, so a page in your browser cannot spend your tokens. `--local-key` makes the app present a secret, for a shared machine.
 - **Builds the request itself.** It sends `Host`, `Accept`, `Content-Type`, `Content-Length`, `Connection`, `Authorization: PrivateToken token=…` and `X-Anyroute-Lane: unlinkable`, and nothing else. Nothing the app sent is copied: not its API key (an OpenAI key in `OPENAI_API_KEY` is discarded), user agent, cookies, referrer, SDK or tracing headers, or forwarded-address headers. The body goes through as it came, except that the OpenAI `user` field, which names an end user, is removed.
-- **Spends one token per call**, taken out of the token file before the call is sent, so it is never sent twice. A token the router refuses as spent or invalid is dropped and the call is tried with the next one. A refusal for another reason (no attested provider for the model, a rate limit, a token too small for the request) keeps the token. A call that was sent and then lost leaves its token marked unconfirmed, and it is not used again.
+- **Spends one token per OpenAI call, or a set for Messages**, taken out of the token file before the call is sent, so it is never sent twice. A token the router refuses as spent or invalid is dropped and the call is tried with the next one. A refusal for another reason (no attested provider for the model, a rate limit, a token too small for the request) keeps the token. A call that was sent and then lost leaves its token marked unconfirmed, and it is not used again.
 - **Puts each call on its own Tor circuit**, with a fresh SOCKS user name. `--shared-circuit` reuses one.
 - **Has no other way out.** The only address it connects to is your Tor client's SOCKS5 port, and it asks for the onion service by name without resolving it. If Tor stops, calls fail with `502`. When the tokens run out they fail with `402` and the command to buy more. Nothing falls back to a direct connection. A SOCKS port on another machine is refused unless you pass `--allow-remote-socks`, because the request reaches the proxy unencrypted. The program also switches the runtime's own `fetch` off before anything else runs; `buy --clearnet` is the one command that is handed it, and only when you ask for it by name.
 
-It serves `POST /v1/chat/completions` (streamed or not), `POST /v1/embeddings` and `GET /v1/models` (the models an attested provider serves on this lane). Claude Code, the Anthropic SDKs and the Responses API are not supported: the router takes those with an API key, which names you. Cursor has an *Override OpenAI Base URL* setting, but it may send requests from its own servers, which cannot reach an address on your computer and would see your prompts; check that your version calls the API from your computer before relying on it.
+It serves `POST /v1/chat/completions` (streamed or not), `POST /v1/embeddings` and `GET /v1/models` (the models an attested provider serves on this lane). Claude Code and the Anthropic SDKs use `POST /v1/messages`; `POST /v1/messages/count_tokens` is estimated on your computer without network or payment. The Responses API is not supported. Cursor has an *Override OpenAI Base URL* setting, but it may send requests from its own servers, which cannot reach an address on your computer and would see your prompts; check that your version calls the API from your computer before relying on it.
 
 ## Tokens
 
@@ -76,3 +76,24 @@ Checks, from the repository root: `bun test test/private-proxy.test.ts test/priv
 ## Licence
 
 Apache-2.0, see `LICENSE`. The SOCKS5 client in `src/socks.ts` is the one in `relay/`, with https support added.
+
+## Claude Code, unlinkable
+
+Buy tokens and start the proxy as above, then choose attested model ids from `GET /v1/models`:
+
+```sh
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8788
+export ANTHROPIC_API_KEY=anyroute-private
+unset ANTHROPIC_AUTH_TOKEN
+export ANTHROPIC_MODEL='<attested model id>'
+export ANTHROPIC_DEFAULT_HAIKU_MODEL='<attested model id>'
+export ANTHROPIC_DEFAULT_SONNET_MODEL="$ANTHROPIC_MODEL"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$ANTHROPIC_MODEL"
+claude
+```
+
+Messages estimates use the router's conversion and counting logic, input plus `max_tokens` at model prices fetched over Tor and cached in memory for one minute. Request fees, reasoning prices and royalties are included. The proxy chooses the lowest total face value covering the estimate, breaking ties by fewer tokens, up to `--max-tokens-per-request` (default 16). A served call forfeits all remainder. Changed prices or more expensive routing candidates can cause an unspent `402 token_value_too_low` refusal.
+
+The wire extension is `Authorization: PrivateToken token=A, token=B`, each value base64url (quoted values also accepted). The router verifies the entire set and reserves all nullifiers atomically. Sets require `BLIND_MULTI_TOKEN_ENABLED=true` (default false), alongside existing `ANYROUTE_FEATURE_BLIND=true` and `UNLINKABLE_VIA_ONION=true` (both default false), configured onion ingress and fresh attested endpoints. `BLIND_MAX_TOKENS_PER_REQUEST` defaults to 16, range 1–64; set the proxy cap no higher than the operator's. Single-token calls remain available when sets are off. The router's free onion count endpoint accepts no payment credential and spends nothing.
+
+The proxy removes Messages metadata and identifying headers. Tools, streaming, refusals and receipt headers pass through. A lost response keeps every sent token unconfirmed; no sent set is retried after an uncertain result. Tor adds latency, particularly on the first connection; `--shared-circuit` reuses one circuit identity within the proxy process and trades network separation for less setup work. The router reads code and prompts in memory, and the attested provider receives them: this hides who, not what. Identifying text and timing can still correlate requests.

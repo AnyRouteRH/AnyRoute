@@ -393,9 +393,9 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   {
     file: "src/api/anthropic.ts",
     carries: "prompt-or-answer",
-    reads: "The JSON body of an Anthropic-format messages call.",
+    reads: "The JSON body of an Anthropic-format messages call and free onion count requests. The router reads code, prompts and tools in memory.",
     then: "Converted to a chat request and sent through the router's own chat route, so it is handled and kept exactly as a chat call is.",
-    kept: "Nothing beyond what src/api/chat.ts keeps.",
+    kept: "Nothing beyond what src/api/chat.ts keeps; token counts alone create no payment or request record.",
     evidence: [ev("src/api/anthropic.ts", "const raw = await readJson(c);")],
   },
   {
@@ -639,6 +639,15 @@ export const EXTERNAL: ExternalDoc = {
     evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify({ t: new Date().toISOString(), level, msg, ...fields }")],
   },
   otherStores: [
+    {
+      id: "messages-proxy-prices",
+      name: "Messages proxy prices on the caller's computer",
+      purpose: "The local proxy estimates a Messages budget using model prices fetched over Tor. The request text, code, tool schemas and results are read in memory to count tokens, then forwarded over Tor; count_tokens is answered locally without any network request.",
+      holds: "The public unlinkable model directory in memory. The existing local tokens.json file atomically moves every selected bearer token to unconfirmed before sending; uncertainty keeps all members there, while a definite unserved refusal returns them. No request or answer text is written to that file or logged.",
+      ttl: "Model prices are refreshed after one minute and lost on process exit. Local token credentials remain until expiry filtering, successful settlement or removal by the caller; uncertain sent sets are never automatically reused.",
+      requestText: "none",
+      evidence: [ev("packages/private/src/messages.ts", "cached = { until: Date.now() + 60_000, rows: json.data }"), ev("packages/private/src/store.ts", "leaseBudget(budget: bigint"), ev("packages/private/src/proxy.ts", "countMessageTokens(JSON.parse")],
+    },
     {
       id: "batch-memory",
       name: "Batch requests and answers in the router's memory, without Redis",

@@ -1,3 +1,4 @@
+import { blindReceipt } from "../blind/set.ts";
 import type { Context, Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -631,7 +632,7 @@ async function finalize(p: FinalizeInput) {
     payer,
     payment_tx: billing.mode === "per_call" ? (billing.paymentTx ?? null) : null,
     // A blind redemption names no account: the receipt carries the hash of the spent token (its nullifier) and the key that signed it.
-    ...(billing.mode === "blind" ? { nullifier: billing.pass.nullifier, token_key_id: billing.pass.keyId } : {}),
+    ...(billing.mode === "blind" ? blindReceipt(billing.pass) : {}),
     request_sha256: p.bodySha,
     response_sha256: sha256(p.responseText),
     ...(ua ? { upstream_attestation: compactUpstream(ua) } : {}),
@@ -662,7 +663,7 @@ async function finalize(p: FinalizeInput) {
     disclosure: served.class,
     mode,
     chargedPico: charged,
-    keyset: billing.mode === "blind" ? billing.pass.keyId : null,
+    keyset: billing.mode === "blind" && !billing.pass.tokens ? billing.pass.keyId : null,
   });
   const signedV2 = ctx.signer.signCose(claimsV2);
 

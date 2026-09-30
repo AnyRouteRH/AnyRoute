@@ -319,14 +319,14 @@ describe("a call through the proxy", () => {
     expect((await store.summary()).usable).toBe(1);
   });
 
-  test("other endpoints say why they are not there; the Anthropic Messages API is one", async () => {
+  test("invalid Messages requests and unsupported endpoints fail before payment", async () => {
     const dir = scratch();
     const store = await seed(dir, 1);
     const { url } = await proxyFor(dir);
     const before = router.seen.length;
     const messages = await fetch(`${url}/v1/messages`, { method: "POST", headers: { "x-api-key": "k" }, body: "{}" });
-    expect(messages.status).toBe(501);
-    expect((await errorOf(messages)).message).toContain("Messages");
+    expect(messages.status).toBe(400);
+    expect((await errorOf(messages)).type).toBe("messages_budget_unavailable");
     expect((await fetch(`${url}/v1/responses`, { method: "POST", body: "{}" })).status).toBe(404);
     expect((await fetch(`${url}/v1/chat/completions`)).status).toBe(405);
     expect(router.seen.length).toBe(before);
@@ -528,7 +528,10 @@ describe("Tor", () => {
     const mark = tor.asked.length;
     await chat(shared.url);
     await chat(shared.url);
-    expect(tor.asked.slice(mark).map((a) => a.username)).toEqual([undefined, undefined]);
+    const sharedUsers = tor.asked.slice(mark).map((a) => a.username);
+    expect(sharedUsers).toHaveLength(2);
+    expect(sharedUsers[0]).toMatch(/^ar-[0-9a-f]{18}$/);
+    expect(sharedUsers[1]).toBe(sharedUsers[0]);
   });
 
   test("the onion address is asked from the router over Tor at its public name, checked and saved; the saved one is used only if the router cannot be asked", async () => {
@@ -673,7 +676,8 @@ describe("status and start", () => {
     expect(out).toContain("OPENAI_API_KEY=");
     expect(out).toContain("Cursor");
     expect(out).toContain("The router reads each prompt");
-    expect(out).not.toMatch(/ANTHROPIC_BASE_URL/);
+    expect(out).toContain(`ANTHROPIC_BASE_URL=http://127.0.0.1:${port}`);
+    expect(out).toContain("ANTHROPIC_DEFAULT_HAIKU_MODEL=");
     const res = await chat(`http://127.0.0.1:${port}`);
     expect(res.status).toBe(200);
     stop.abort();

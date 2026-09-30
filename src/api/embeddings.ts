@@ -1,3 +1,4 @@
+import { blindReceipt } from "../blind/set.ts";
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
 import { generations } from "../db/schema.ts";
@@ -163,7 +164,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           ...(served.simulated ? { attestation_simulated: true } : {}),
           payer: key?.chainKeyHash ?? paid?.payer ?? null,
           payment_tx: paid?.txHash ?? null,
-          ...(pass ? { nullifier: pass.nullifier, token_key_id: pass.keyId } : {}), // no account: the receipt names the spent token by its hash
+          ...(pass ? blindReceipt(pass) : {}), // no account: the receipt names the spent token by its hash
           request_sha256: sha256(JSON.stringify(body)),
           response_sha256: sha256(JSON.stringify(res.json.data)),
           ...(ua ? { upstream_attestation: compactUpstream(ua) } : {}),

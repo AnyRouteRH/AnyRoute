@@ -84,7 +84,7 @@ shasum -a 256 private.mjs        # or: sha256sum private.mjs`}</Code>
           OPENAI_API_KEY is discarded, never forwarded), its user agent, cookies, referrer, SDK and tracing headers, or forwarded-address headers. The body goes through as it came, except that the OpenAI <code>user</code> field, which names an end user, is removed.
         </li>
         <li>
-          <strong>Uses one token per call</strong>, taken out of the file before the call is sent, so it is never sent twice. A token the router refuses as spent or invalid is dropped and the call is tried with the next; a refusal for another reason (no attested
+          <strong>Uses one token per OpenAI call, or a budget-covering set for Messages</strong>, taken out of the file before the call is sent, so it is never sent twice. A token the router refuses as spent or invalid is dropped and the call is tried with the next; a refusal for another reason (no attested
           provider for the model, a rate limit, a token too small for the request) keeps the token. A call sent and then lost is marked unconfirmed and its token is not used again.
         </li>
         <li>
@@ -101,7 +101,7 @@ shasum -a 256 private.mjs        # or: sha256sum private.mjs`}</Code>
       <p>
         It serves POST /v1/chat/completions (streamed or not), POST /v1/embeddings and GET /v1/models, which lists the models an attested provider can serve on this lane. Point any OpenAI-compatible SDK, command-line tool or editor extension that lets you set a base
         URL at http://127.0.0.1:8788/v1 with any non-empty API key. Cursor has an Override OpenAI Base URL setting under Settings, Models; Cursor may send requests from its own servers, which cannot reach an address on your computer and would see your prompts, so check that
-        your version calls the API from your computer before relying on it. Claude Code, the Anthropic SDKs and the Responses API are not supported: the router takes those with an API key, which names you.
+        your version calls the API from your computer before relying on it. Claude Code and the Anthropic SDKs can use POST /v1/messages with blind tokens; see <a href="#claude-unlinkable" className="inline-link">Claude Code, unlinkable</a>. The Responses API is not supported by this proxy.
       </p>
 
       <h3 id="private-tokens">Tokens: cost and expiry.</h3>
@@ -134,7 +134,7 @@ shasum -a 256 private.mjs        # or: sha256sum private.mjs`}</Code>
         </table>
       </div>
       <p>
-        A token pays for one call, whatever the call costs; the rest of its value is not refunded. The router holds the worst case for a call (the prompt, and max_tokens or the model’s maximum, at the model’s price) against the token’s face value. If that is more, it answers
+        A token payment pays for one call, whatever the call costs; the rest of its value is not refunded. Messages calls can combine tokens to cover their estimated budget. The router holds the worst case for a call (the prompt, and max_tokens or the model’s maximum, at the model’s price) against the token’s face value. If that is more, it answers
         402 token_value_too_low and does not spend the token: lower max_tokens or buy a larger size. Face values are those of the router’s current keys; buy prints what you paid and status what you hold. Tokens expire at the end of the router’s redemption window, one to two
         weeks after they are bought; buy prints the time and status shows the next expiry, so buy what you will use soon. A purchase names your API key’s account; a token later shown to the router cannot be connected to it, but it hides only among the tokens of the same size
         bought in the same week, and buying one and spending it at once links the two by time.

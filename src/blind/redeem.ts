@@ -5,6 +5,7 @@ import { ApiError } from "../lib/errors.ts";
 import { picoToUsd, type Pico } from "../lib/money.ts";
 import { ensureAccount } from "../ledger/ledger.ts";
 import { keyValue, type VerifiedToken } from "./issuer.ts";
+import { claimSet, confirmSet, presentSet, releaseSet, setSummary, type TokenSet } from "./set.ts";
 import { parsePrivateToken } from "./privacy-token.ts";
 
 // Redeeming a token on a request. Every blind redemption is charged to one pooled internal account, so the
@@ -18,7 +19,7 @@ import { parsePrivateToken } from "./privacy-token.ts";
 
 export const BLIND_POOL = "blind_pool";
 
-export type BlindPass = VerifiedToken & { value: Pico };
+export type BlindPass = VerifiedToken & { value: Pico; tokens?: TokenSet };
 
 export const ensurePool = (ctx: Ctx) => ensureAccount(ctx.db, BLIND_POOL, "blind_pool");
 
@@ -31,6 +32,8 @@ export const isBlindRequest = (ctx: Ctx, authorization: string | undefined | nul
  */
 export async function presentBlindToken(ctx: Ctx, authorization: string | undefined | null): Promise<BlindPass | null> {
   if (!ctx.blind) return null;
+  const set = await presentSet(ctx, authorization);
+  if (set) return set;
   const bytes = parsePrivateToken(authorization);
   if (bytes === undefined) return null;
   if (bytes === null) throw new ApiError(401, "Malformed PrivateToken credential: expected `PrivateToken token=<base64url>`.", "invalid_token", undefined, ctx.blind.challengeHeader);
@@ -41,6 +44,7 @@ export async function presentBlindToken(ctx: Ctx, authorization: string | undefi
 /** A request may cost at most the token's value: the hold is checked against it before the token is claimed. */
 export function requireValue(ctx: Ctx, pass: BlindPass, hold: Pico) {
   if (hold <= pass.value) return;
+  if (pass.tokens) throw new ApiError(402, `This request may cost up to $${picoToUsd(hold)} but the token set is worth $${picoToUsd(pass.value)}. Add tokens or lower max_tokens.`, "token_value_too_low", { required_usd: picoToUsd(hold), token_value_usd: picoToUsd(pass.value), token_count: pass.tokens.length });
   throw new ApiError(
     402,
     `This request may cost up to $${picoToUsd(hold)} but a ${pass.denomination}-unit token is worth $${picoToUsd(pass.value)}. Use a larger denomination or lower max_tokens.`,
@@ -51,20 +55,23 @@ export function requireValue(ctx: Ctx, pass: BlindPass, hold: Pico) {
 
 /** Reserve the token. Exactly one concurrent caller wins; everyone else gets `token_spent`. */
 export async function claimToken(ctx: Ctx, pass: BlindPass) {
+  if (pass.tokens) return claimSet(ctx, pass.tokens);
   const rows = await ctx.db.insert(blindNullifiers).values({ nullifier: pass.nullifier, keyId: pass.keyId }).onConflictDoNothing().returning({ n: blindNullifiers.nullifier });
   if (!rows.length) throw new ApiError(401, "This token was already spent.", "token_spent", undefined, ctx.blind?.challengeHeader);
 }
 
 export async function unclaimToken(ctx: Ctx, pass: BlindPass) {
+  if (pass.tokens) return releaseSet(ctx, pass.tokens);
   await ctx.db.delete(blindNullifiers).where(and(eq(blindNullifiers.nullifier, pass.nullifier), eq(blindNullifiers.status, "reserved")));
 }
 
 export async function confirmToken(ctx: Ctx, pass: BlindPass, generationId: string) {
+  if (pass.tokens) return confirmSet(ctx, pass.tokens, generationId);
   await ctx.db.update(blindNullifiers).set({ status: "spent", spentAt: new Date(), generationId }).where(eq(blindNullifiers.nullifier, pass.nullifier));
 }
 
 /** What a served response says about the token behind it. */
-export const redemptionSummary = (pass: BlindPass, charged: Pico) => ({
+export const redemptionSummary = (pass: BlindPass, charged: Pico) => pass.tokens ? setSummary(pass, charged) : ({
   nullifier: pass.nullifier,
   token_key_id: pass.keyId,
   epoch: pass.epoch,

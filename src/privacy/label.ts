@@ -274,6 +274,7 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
   let payment: PrivacyLabel["label"]["payment"];
   if (mode === "blind" || (!mode && nullifier)) {
     payment = { kind: "blind_token", identifies: "spent_token", text: "Paid with a blind token. The receipt names no account, key or wallet, only the hash of the spent token. The router signed the token blind, so the token itself cannot be used to match this spend to the purchase; the timing and size of purchases and spends can still hint at a link, most of all when few tokens are in use." };
+    if (Array.isArray(p.nullifiers)) payment.text = "Paid with a set of blind tokens. The receipt records their count, issuer key ids and nullifier hashes, linking them to this request, with no buyer account, API key or wallet. Blind issuance does not link these tokens to their purchases; timing, size and a small anonymity set can still hint at a link.";
   } else if (mode === "paywith") {
     payment = { kind: "pay_with_stock_token", identifies: "api_key", text: "Paid through Stock Token pay-with, charged against an API key. The receipt names the key by its hash and records the token used." };
   } else if (mode === "byok") {

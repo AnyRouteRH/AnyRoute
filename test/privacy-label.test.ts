@@ -247,6 +247,7 @@ describe("the same label on the client", () => {
     [{ lane: "unlinkable", disclosure: "attested", mode: "blind", payer: null, nullifier: NULLIFIER }, { unlinkableTransports: ["ohttp", "onion"], baseUrl: "https://other.example" }],
     [{ lane: "attested", disclosure: "policy", upstream_attestation: UNPROVEN_UA }, {}],
     [{ mode: "per_call", payer: WALLET, payment_tx: "0x" + "77".repeat(32) }, {}],
+    [{ mode: "blind", token_count: 2, nullifiers: [NULLIFIER, NULLIFIER], token_key_ids: ["issuer", "issuer"] }, {}],
     [{ mode: "paywith" }, {}],
     [{ mode: "byok" }, {}],
     [{ mode: "cache", provider: "cache" }, {}],

@@ -3073,7 +3073,7 @@ async function detectTor(o = {}) {
 }
 function torFetch(proxy, o = {}) {
   const inner = (auth) => createSocksFetch({ host: proxy.host, port: proxy.port, ...auth }, { maxResponseBytes: o.maxResponseBytes ?? 64 * 1024 * 1024, tls: o.tls });
-  const shared = o.isolate === false ? inner() : null;
+  const shared = o.isolate === false ? inner({ username: "ar-" + randomBytes(9).toString("hex"), password: "x" }) : null;
   return (url, init) => (shared ?? inner({ username: "ar-" + randomBytes(9).toString("hex"), password: "x" }))(url, init);
 }
 function asClientFetch(f, timeoutMs = 90000) {
@@ -3142,13 +3142,441 @@ async function chooseOnion(o) {
   }
 }
 
+// src/lib/errors.ts
+class ApiError extends Error {
+  status;
+  type;
+  metadata;
+  headers;
+  body;
+  constructor(status, message, type = "invalid_request", metadata, headers, body) {
+    super(message);
+    this.status = status;
+    this.type = type;
+    this.metadata = metadata;
+    this.headers = headers;
+    this.body = body;
+  }
+  toJSON() {
+    return this.body ?? {
+      error: {
+        code: this.status,
+        message: this.message,
+        type: this.type,
+        ...this.metadata ? { metadata: this.metadata } : {}
+      }
+    };
+  }
+}
+function fail(status, message, type = "invalid_request", metadata, headers) {
+  throw new ApiError(status, message, type, metadata, headers);
+}
+
+// src/anthropic/convert.ts
+var isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var bad = (message) => fail(400, message, "invalid_request");
+var isCustomTool = (t) => t.type === undefined || t.type === null || t.type === "custom";
+var safeName = (s) => String(s ?? "").replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 64);
+function textOf(blocks, where) {
+  const parts = [];
+  for (const [i, b] of blocks.entries()) {
+    if (!isObj(b) || b.type !== "text" || typeof b.text !== "string")
+      bad(`${where}.${i}: expected a text block.`);
+    parts.push(b.text);
+  }
+  return parts.join(`
+
+`);
+}
+function systemText(system) {
+  if (system == null)
+    return "";
+  if (typeof system === "string")
+    return system;
+  if (Array.isArray(system))
+    return textOf(system, "system");
+  return bad("system: Input should be a string or a list of text blocks.");
+}
+function imagePart(b, where) {
+  const s = b.source;
+  if (!isObj(s))
+    return bad(`${where}.source: Field required.`);
+  if (s.type === "base64") {
+    if (typeof s.media_type !== "string" || !/^image\/[\w.+-]+$/.test(s.media_type))
+      bad(`${where}.source.media_type: Input should be an image type such as image/png.`);
+    if (typeof s.data !== "string" || !s.data)
+      bad(`${where}.source.data: Field required.`);
+    return { type: "image_url", image_url: { url: `data:${s.media_type};base64,${s.data}` } };
+  }
+  if (s.type === "url") {
+    if (typeof s.url !== "string" || !/^https?:\/\//i.test(s.url))
+      bad(`${where}.source.url: Input should be an http(s) URL.`);
+    return { type: "image_url", image_url: { url: s.url } };
+  }
+  return bad(`${where}.source.type: Input should be 'base64' or 'url'.`);
+}
+function documentPart(b, where) {
+  const s = b.source;
+  if (isObj(s) && s.type === "text" && typeof s.data === "string")
+    return { type: "text", text: s.data };
+  if (isObj(s) && s.type === "content" && Array.isArray(s.content) && s.content.every((x) => isObj(x) && x.type === "text"))
+    return { type: "text", text: textOf(s.content, `${where}.source.content`) };
+  return bad(`${where}: document blocks are supported only with a text source. Extract the text of a PDF before sending it.`);
+}
+var asContent = (parts) => parts.every((p) => p.type === "text") ? parts.map((p) => p.text).join(`
+
+`) : parts;
+function convertMessages(system, messages) {
+  if (!Array.isArray(messages) || messages.length === 0)
+    bad("messages: Field required. Send at least one message.");
+  const out = [];
+  const sys = systemText(system);
+  if (sys)
+    out.push({ role: "system", content: sys });
+  for (const [i, m] of messages.entries()) {
+    const at = `messages.${i}`;
+    if (!isObj(m) || m.role !== "user" && m.role !== "assistant" && m.role !== "system")
+      bad(`${at}.role: Input should be 'user' or 'assistant'.`);
+    const msg = m;
+    const blocks = typeof msg.content === "string" ? [{ type: "text", text: msg.content }] : Array.isArray(msg.content) ? msg.content : bad(`${at}.content: Input should be a string or a list of content blocks.`);
+    if (msg.role === "system") {
+      out.push({ role: "system", content: textOf(blocks, `${at}.content`) });
+    } else if (msg.role === "user") {
+      const parts = [];
+      const tools = [];
+      const fromTools = [];
+      for (const [j, raw] of blocks.entries()) {
+        const where = `${at}.content.${j}`;
+        if (!isObj(raw))
+          bad(`${where}: Input should be an object.`);
+        const b = raw;
+        switch (b.type) {
+          case "text":
+            if (typeof b.text !== "string")
+              bad(`${where}.text: Field required.`);
+            if (b.text.length)
+              parts.push({ type: "text", text: b.text });
+            break;
+          case "image":
+            parts.push(imagePart(b, where));
+            break;
+          case "document":
+            parts.push(documentPart(b, where));
+            break;
+          case "tool_result": {
+            if (typeof b.tool_use_id !== "string" || !b.tool_use_id)
+              bad(`${where}.tool_use_id: Field required.`);
+            const inner = typeof b.content === "string" ? [{ type: "text", text: b.content }] : Array.isArray(b.content) ? b.content : b.content == null ? [] : bad(`${where}.content: Input should be a string or a list of blocks.`);
+            const texts = [];
+            for (const [k, ib] of inner.entries()) {
+              if (isObj(ib) && ib.type === "text" && typeof ib.text === "string")
+                texts.push(ib.text);
+              else if (isObj(ib) && ib.type === "image")
+                fromTools.push(imagePart(ib, `${where}.content.${k}`));
+              else if (isObj(ib) && ib.type === "tool_reference" && typeof ib.tool_name === "string")
+                texts.push(`[tool available: ${ib.tool_name}]`);
+              else
+                bad(`${where}.content.${k}: a tool result may contain text and image blocks.`);
+            }
+            tools.push({ role: "tool", tool_call_id: b.tool_use_id, content: texts.join(`
+`) });
+            break;
+          }
+          case "thinking":
+          case "redacted_thinking":
+            break;
+          default:
+            bad(`${where}.type: '${safeName(b.type)}' blocks are not supported in a user message.`);
+        }
+      }
+      out.push(...tools);
+      const all = [...fromTools, ...parts];
+      if (all.length)
+        out.push({ role: "user", content: asContent(all) });
+      else if (!tools.length)
+        out.push({ role: "user", content: "" });
+    } else {
+      const texts = [];
+      const calls = [];
+      for (const [j, raw] of blocks.entries()) {
+        const where = `${at}.content.${j}`;
+        if (!isObj(raw))
+          bad(`${where}: Input should be an object.`);
+        const b = raw;
+        switch (b.type) {
+          case "text":
+            if (typeof b.text !== "string")
+              bad(`${where}.text: Field required.`);
+            texts.push(b.text);
+            break;
+          case "tool_use":
+            if (typeof b.id !== "string" || !b.id)
+              bad(`${where}.id: Field required.`);
+            if (typeof b.name !== "string" || !b.name)
+              bad(`${where}.name: Field required.`);
+            calls.push({ id: b.id, type: "function", function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) } });
+            break;
+          case "thinking":
+          case "redacted_thinking":
+            break;
+          default:
+            bad(`${where}.type: '${safeName(b.type)}' blocks are not supported in an assistant message.`);
+        }
+      }
+      const text = texts.join("");
+      if (text || calls.length)
+        out.push({ role: "assistant", content: text, ...calls.length ? { tool_calls: calls } : {} });
+    }
+  }
+  return out;
+}
+function convertTools(tools, ignored) {
+  if (tools == null)
+    return [];
+  if (!Array.isArray(tools))
+    return bad("tools: Input should be a list.");
+  const out = [];
+  for (const [i, raw] of tools.entries()) {
+    if (!isObj(raw))
+      bad(`tools.${i}: Input should be an object.`);
+    const t = raw;
+    if (!isCustomTool(t)) {
+      ignored.add(`tool:${safeName(t.name ?? t.type)}`);
+      continue;
+    }
+    if (typeof t.name !== "string" || !t.name)
+      bad(`tools.${i}.name: Field required.`);
+    const schema = isObj(t.input_schema) ? { ...t.input_schema } : { type: "object", properties: {} };
+    delete schema.$schema;
+    out.push({ type: "function", function: { name: t.name, ...typeof t.description === "string" && t.description ? { description: t.description } : {}, parameters: schema } });
+  }
+  return out;
+}
+function convertToolChoice(choice, out) {
+  if (choice == null)
+    return;
+  if (!isObj(choice))
+    return bad("tool_choice: Input should be an object.");
+  switch (choice.type) {
+    case "auto":
+      out.tool_choice = "auto";
+      break;
+    case "any":
+      out.tool_choice = "required";
+      break;
+    case "none":
+      out.tool_choice = "none";
+      break;
+    case "tool":
+      if (typeof choice.name !== "string" || !choice.name)
+        bad("tool_choice.name: Field required when type is 'tool'.");
+      out.tool_choice = { type: "function", function: { name: choice.name } };
+      break;
+    default:
+      bad("tool_choice.type: Input should be 'auto', 'any', 'tool' or 'none'.");
+  }
+  if (choice.disable_parallel_tool_use === true && out.tool_choice !== "none")
+    out.parallel_tool_calls = false;
+}
+var optionalNumber = (body, key, min, max) => {
+  const v = body[key];
+  if (v == null)
+    return;
+  if (typeof v !== "number" || !Number.isFinite(v) || min !== undefined && v < min || max !== undefined && v > max)
+    bad(`${key}: Input should be a number${min !== undefined ? ` from ${min}` : ""}${max !== undefined ? ` to ${max}` : ""}.`);
+  return v;
+};
+function toChatRequest(body, opts = {}) {
+  if (typeof body.model !== "string" || !body.model.trim())
+    bad("model: Field required.");
+  const ignored = new Set;
+  const out = { messages: convertMessages(body.system, body.messages) };
+  if (!opts.countOnly) {
+    const max = body.max_tokens;
+    if (max === undefined || max === null)
+      bad("max_tokens: Field required.");
+    if (typeof max !== "number" || !Number.isInteger(max) || max < 1)
+      bad("max_tokens: Input should be a positive integer.");
+    out.max_tokens = max;
+    const temperature = optionalNumber(body, "temperature", 0, 2);
+    if (temperature !== undefined)
+      out.temperature = temperature;
+    const topP = optionalNumber(body, "top_p", 0, 1);
+    if (topP !== undefined)
+      out.top_p = topP;
+    const topK = optionalNumber(body, "top_k", 0);
+    if (topK !== undefined)
+      out.top_k = topK;
+    if (body.stop_sequences != null) {
+      if (!Array.isArray(body.stop_sequences) || body.stop_sequences.some((s) => typeof s !== "string"))
+        bad("stop_sequences: Input should be a list of strings.");
+      const stops = body.stop_sequences.filter((s) => s.length);
+      if (stops.length)
+        out.stop = stops;
+    }
+    if (body.metadata != null) {
+      if (!isObj(body.metadata))
+        bad("metadata: Input should be an object.");
+      const uid = body.metadata.user_id;
+      if (typeof uid === "string" && uid)
+        out.user = uid.slice(0, 256);
+    }
+    if (body.stream != null && typeof body.stream !== "boolean")
+      bad("stream: Input should be true or false.");
+    if (body.stream === true)
+      out.stream = true;
+  }
+  const tools = convertTools(body.tools, ignored);
+  if (tools.length) {
+    out.tools = tools;
+    convertToolChoice(body.tool_choice, out);
+  } else if (body.tool_choice != null) {
+    convertToolChoice(body.tool_choice, {});
+  }
+  if (body.mcp_servers != null && (!Array.isArray(body.mcp_servers) || body.mcp_servers.length))
+    bad("mcp_servers: connecting a model to MCP servers is not supported here. Connect the client to AnyRoute's MCP server instead, or pass tools.");
+  if (body.container != null)
+    bad("container: the code-execution container is not supported.");
+  const thinking = body.thinking;
+  if (isObj(thinking) && thinking.type && thinking.type !== "disabled")
+    ignored.add("thinking");
+  if (body.provider != null) {
+    if (!isObj(body.provider))
+      bad('provider: Input should be an object such as {"lane":"attested"}.');
+    out.provider = body.provider;
+  }
+  if (typeof body.service_tier === "string" && body.service_tier !== "auto")
+    ignored.add("service_tier");
+  return { body: out, ignored: [...ignored], stops: Array.isArray(out.stop) ? out.stop : [] };
+}
+
+// src/router/estimate.ts
+function estimatePromptTokens(body) {
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  let chars = 0;
+  let images = 0;
+  for (const m of messages) {
+    if (typeof m?.content === "string")
+      chars += m.content.length;
+    else if (Array.isArray(m?.content))
+      for (const p of m.content) {
+        if (p?.type === "text")
+          chars += String(p.text ?? "").length;
+        else if (p?.type === "image_url")
+          images++;
+        else
+          chars += JSON.stringify(p ?? "").length;
+      }
+    chars += 16;
+    if (m?.tool_calls)
+      chars += JSON.stringify(m.tool_calls).length;
+  }
+  if (typeof body.prompt === "string")
+    chars += body.prompt.length;
+  if (body.tools)
+    chars += JSON.stringify(body.tools).length;
+  if (body.response_format)
+    chars += JSON.stringify(body.response_format).length;
+  return Math.ceil(chars / 3) + images * 1600 + 8;
+}
+
+// src/lib/money.ts
+var PICO_PER_USD = 10n ** 12n;
+var PICO_PER_USDG_UNIT = 10n ** 6n;
+var DECIMAL = /^(-)?(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/;
+function usdToPico(value, round = "ceil") {
+  if (typeof value === "bigint")
+    return value * PICO_PER_USD;
+  const text = typeof value === "number" ? numberToPlain(value) : value.trim();
+  const m = DECIMAL.exec(text);
+  if (!m)
+    throw new Error(`Invalid USD amount: ${value}`);
+  const [, neg, whole, frac = "", exp] = m;
+  let digits = whole + frac;
+  let scale = frac.length - Number(exp ?? 0);
+  const shift = 12 - scale;
+  let result;
+  if (shift >= 0) {
+    result = BigInt(digits) * 10n ** BigInt(shift);
+  } else {
+    const div = 10n ** BigInt(-shift);
+    const n = BigInt(digits);
+    const q = n / div;
+    const r = n % div;
+    result = r === 0n ? q : round === "ceil" ? neg ? q : q + 1n : neg ? q + 1n : q;
+  }
+  return neg ? -result : result;
+}
+function numberToPlain(n) {
+  if (!Number.isFinite(n))
+    throw new Error(`Invalid USD amount: ${n}`);
+  const s = n.toString();
+  return s;
+}
+function mulBps(p, bps, round = "ceil") {
+  const n = p * BigInt(bps);
+  const q = n / 10000n;
+  return round === "ceil" && n % 10000n !== 0n && n > 0n ? q + 1n : q;
+}
+
+// packages/private/src/messages.ts
+function countMessageTokens(body) {
+  return estimatePromptTokens(toChatRequest(body, { countOnly: true }).body);
+}
+function messageBudget(fetchOverTor, onion) {
+  let cached = null;
+  let pending = null;
+  const rows = async (signal) => {
+    if (cached && cached.until > Date.now())
+      return cached.rows;
+    if (!pending) {
+      pending = (async () => {
+        const res = await fetchOverTor(`http://${onion}/api/v1/models?lane=unlinkable`, { headers: { accept: "application/json" }, signal });
+        if (!res.ok)
+          throw new Error(`Model prices could not be read (${res.status}). No tokens were leased.`);
+        const json = await res.json();
+        if (!Array.isArray(json.data))
+          throw new Error("The model directory is invalid.");
+        cached = { until: Date.now() + 60000, rows: json.data };
+        return json.data;
+      })().finally(() => {
+        pending = null;
+      });
+    }
+    return pending;
+  };
+  return async (body, signal) => {
+    const conv = toChatRequest(body);
+    const input = estimatePromptTokens(conv.body);
+    const model = (await rows(signal)).find((row) => row.id === body.model);
+    if (!model)
+      throw new Error("Choose an attested model from GET /v1/models. No tokens were leased.");
+    const price = (field) => {
+      const raw = model.pricing?.[field];
+      if (typeof raw !== "string" && typeof raw !== "number")
+        throw new Error(`Model ${field} price is unavailable. No tokens were leased.`);
+      const value = usdToPico(raw);
+      if (value < 0n)
+        throw new Error("Model prices must be nonnegative.");
+      return value;
+    };
+    const outputPrice = price("completion");
+    const reasoningPrice = model.pricing?.internal_reasoning == null ? outputPrice : price("internal_reasoning");
+    const base = BigInt(input) * price("prompt") + BigInt(conv.body.max_tokens) * (reasoningPrice > outputPrice ? reasoningPrice : outputPrice) + price("request");
+    const royalty = Number(model.royalty_bps ?? 0);
+    if (!Number.isInteger(royalty) || royalty < 0 || royalty > 1e4)
+      throw new Error("Invalid model royalty.");
+    return base + mulBps(base, royalty);
+  };
+}
+
 // packages/private/src/proxy.ts
 import { createHash as createHash2, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 var LOOPBACK_HOST = /^(127\.0\.0\.1|localhost|\[::1\]):(\d{1,5})$/i;
 var LOOPBACK_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?$/i;
-var CALLS = { "/chat/completions": "/api/v1/chat/completions", "/embeddings": "/api/v1/embeddings" };
-var PASSED = /^(content-type|cache-control|retry-after|x-generation-id|x-receipt-id|inference-id|x-request-id|x-ratelimit-[a-z-]+|x-anyroute-[a-z-]+)$/;
+var CALLS = { "/chat/completions": "/api/v1/chat/completions", "/embeddings": "/api/v1/embeddings", "/messages": "/v1/messages" };
+var PASSED = /^(content-type|cache-control|retry-after|request-id|x-should-retry|www-authenticate|x-payment-response|x-generation-id|x-receipt-id|inference-id|x-request-id|x-ratelimit-[a-z-]+|x-anyroute-[a-z-]+)$/;
 var DEAD_TOKEN = new Set(["token_spent", "invalid_token", "unknown_token_key", "token_key_revoked", "token_epoch_expired"]);
 var MAX_TOKEN_TRIES = 3;
 var digest = (s) => createHash2("sha256").update(s).digest();
@@ -3218,7 +3646,8 @@ async function readSmall(body, max = 262144) {
 }
 function errorType(body) {
   try {
-    const t = JSON.parse(body.toString("utf8")).error?.type;
+    const parsed = JSON.parse(body.toString("utf8"));
+    const t = parsed.anyroute?.type ?? parsed.error?.type;
     return typeof t === "string" ? t : null;
   } catch {
     return null;
@@ -3250,6 +3679,7 @@ async function startProxy(o) {
   const idleMs = o.idleTimeoutMs ?? 600000;
   const maxBody = o.maxBodyBytes ?? 32 * 1048576;
   const localKey = o.localKey ? digest(o.localKey) : null;
+  const estimateBudget = messageBudget(o.fetch, o.onion);
   let active = 0;
   let port = o.port;
   async function pipe(res, up, guard, extra = {}) {
@@ -3298,10 +3728,24 @@ async function startProxy(o) {
       delete parsed.user;
       raw = Buffer.from(JSON.stringify(parsed));
     }
+    const messages = upstreamPath === "/v1/messages";
+    if (messages && "metadata" in parsed) {
+      delete parsed.metadata;
+      raw = Buffer.from(JSON.stringify(parsed));
+    }
+    let budget = null;
+    if (messages) {
+      try {
+        budget = await estimateBudget(parsed, guard.signal);
+      } catch (e) {
+        throw new HttpFailure(e.status ?? 400, "messages_budget_unavailable", e.message);
+      }
+    }
     for (let attempt = 1;; attempt++) {
-      const lease = await o.store.lease();
-      if (!lease)
-        throw new HttpFailure(402, "no_tokens", attempt > 1 ? "The router refused the tokens that were tried, and there are no more. Buy more with: anyroute-private buy --key <your API key> --count 20. Nothing was sent without a token." : "There are no blind tokens left. Buy more with: anyroute-private buy --key <your API key> --count 20. Nothing was sent, and nothing will be sent without a token.");
+      const single = budget === null ? await o.store.lease() : null;
+      const leases = budget === null ? single ? [single] : null : await o.store.leaseBudget(budget, o.maxTokensPerRequest ?? 16);
+      if (!leases)
+        throw new HttpFailure(402, "no_tokens", attempt > 1 ? "The router refused the tokens that were tried, and there are no more. Buy more with: anyroute-private buy --key <your API key> --count 20. Nothing was sent without a token." : "There are no blind tokens covering this request within the token cap. Buy more with: anyroute-private buy --key <your API key> --count 20. Nothing was sent, and nothing will be sent without a token.");
       let sent = false;
       let up;
       try {
@@ -3310,7 +3754,7 @@ async function startProxy(o) {
           headers: {
             accept: "application/json, text/event-stream",
             "content-type": "application/json",
-            authorization: `PrivateToken token=${lease.token.token}`,
+            authorization: `PrivateToken ${leases.map((l) => `token=${l.token.token}`).join(", ")}`,
             "x-anyroute-lane": "unlinkable"
           },
           body: raw,
@@ -3320,13 +3764,13 @@ async function startProxy(o) {
         });
       } catch (e) {
         if (!sent) {
-          await o.store.settle(lease, "returned");
+          await o.store.settleMany(leases, "returned");
           throw new HttpFailure(502, "onion_unreachable", `The router's onion service could not be reached through Tor: ${e.message}. The token was not used, and nothing was sent anywhere else.`);
         }
         throw new HttpFailure(502, "connection_lost", `The connection through Tor failed after the request was sent: ${e.message}. The token may have been used; it will not be used again.`);
       }
       if (up.ok) {
-        await o.store.settle(lease, "consumed");
+        await o.store.settleMany(leases, "consumed");
         if (up.headers.get("x-anyroute-lane") !== "unlinkable")
           log(`warning: the router did not confirm lane "unlinkable" in its answer to ${upstreamPath}`);
         const left = (await o.store.summary()).usable;
@@ -3335,13 +3779,13 @@ async function startProxy(o) {
       }
       const body = await readSmall(up.body);
       if (up.status === 401 && DEAD_TOKEN.has(errorType(body) ?? "")) {
-        await o.store.settle(lease, "consumed");
+        await o.store.settleMany(leases, "consumed");
         log(`${upstreamPath} -> ${up.status} the router refused a token as ${errorType(body)}; trying another`);
         if (attempt < MAX_TOKEN_TRIES)
           continue;
         throw new HttpFailure(502, "tokens_rejected", `The router refused ${MAX_TOKEN_TRIES} tokens in a row as spent or invalid. Check the tokens with: anyroute-private status`);
       }
-      await o.store.settle(lease, "returned");
+      await o.store.settleMany(leases, "returned");
       log(`${upstreamPath} -> ${up.status} (token kept)`);
       res.writeHead(up.status, passedHeaders(up.headers, { "content-length": String(body.length) }));
       return void res.end(body);
@@ -3367,19 +3811,28 @@ async function startProxy(o) {
         if (origin !== undefined && !LOOPBACK_ORIGIN.test(origin))
           throw new HttpFailure(403, "forbidden_origin", "This proxy does not answer requests from web pages.");
         if (localKey) {
-          const given = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1] ?? "";
+          const given = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1] ?? (typeof req.headers["x-api-key"] === "string" ? req.headers["x-api-key"] : "");
           if (!timingSafeEqual(digest(given), localKey))
             throw new HttpFailure(401, "invalid_local_key", "This proxy was started with --local-key: send it as the API key (Authorization: Bearer).");
         }
         const route = url.pathname.replace(/^\/v1(?=\/|$)/, "").replace(/\/+$/, "") || "/";
         if (route === "/health" || route === "/")
           return send(res, 200, { ok: true, service: "anyroute-private", tokens_left: (await o.store.summary()).usable });
-        if (route === "/messages" || route === "/messages/count_tokens")
-          throw new HttpFailure(501, "unsupported_endpoint", "The Anthropic Messages API is not available here: the router takes it with an API key, which names you, and this proxy pays with blind tokens only. Use an OpenAI-compatible client.");
+        if (route === "/messages/count_tokens") {
+          if (req.method !== "POST")
+            throw new HttpFailure(405, "method_not_allowed", "Use POST.", { allow: "POST" });
+          try {
+            return send(res, 200, { input_tokens: countMessageTokens(JSON.parse((await readBody(req, maxBody)).toString("utf8"))) });
+          } catch (e) {
+            if (e instanceof HttpFailure)
+              throw e;
+            throw new HttpFailure(400, "invalid_request", "Invalid Messages count request.");
+          }
+        }
         const upstream = CALLS[route];
         const isModels = route === "/models";
         if (!upstream && !isModels)
-          throw new HttpFailure(404, "unsupported_endpoint", "This proxy serves POST /v1/chat/completions, POST /v1/embeddings and GET /v1/models.");
+          throw new HttpFailure(404, "unsupported_endpoint", "This proxy serves POST /v1/chat/completions, POST /v1/embeddings, POST /v1/messages, POST /v1/messages/count_tokens and GET /v1/models.");
         if (isModels ? req.method !== "GET" : req.method !== "POST")
           throw new HttpFailure(405, "method_not_allowed", isModels ? "Use GET." : "Use POST.", { allow: isModels ? "GET" : "POST" });
         if (active >= maxConcurrent)
@@ -3649,6 +4102,42 @@ async function purchase(o) {
   return { count: done, costUsd: cost.toFixed(4), denomination: key.denomination, valueUsd: key.value_usd, redeemUntil: key.redeem_until };
 }
 
+// packages/private/src/selection.ts
+function selectTokens(tokens, budget, cap) {
+  const groups = new Map;
+  for (const token of tokens) {
+    const value = usdToPico(token.value_usd, "floor");
+    if (value <= 0n)
+      throw new Error("Token face values must be positive.");
+    const group = groups.get(value) ?? [];
+    group.push(token);
+    groups.set(value, group);
+  }
+  let states = new Map([[0n, []]]);
+  let best = null;
+  for (const [value, group] of [...groups].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
+    const next = new Map(states);
+    for (const [sum, chosen] of states) {
+      for (let n = 1;n <= Math.min(group.length, cap - chosen.length); n++) {
+        const total = sum + value * BigInt(n);
+        const picked = [...chosen, ...group.slice(0, n)];
+        if (total >= budget) {
+          if (!best || total < best.value || total === best.value && picked.length < best.tokens.length)
+            best = { value: total, tokens: picked };
+          break;
+        }
+        const old = next.get(total);
+        if (!old || picked.length < old.length)
+          next.set(total, picked);
+      }
+    }
+    if (next.size > 200000)
+      throw new Error("Too many distinct token values to select a set. Use tokens from fewer issuer epochs.");
+    states = next;
+  }
+  return best?.tokens ?? null;
+}
+
 // packages/private/src/store.ts
 import { randomBytes as randomBytes3, randomInt } from "node:crypto";
 import fs2 from "node:fs/promises";
@@ -3780,6 +4269,31 @@ class TokenStore {
       };
     });
   }
+  leaseBudget(budget, cap = 16, now = new Date) {
+    return this.locked((doc) => {
+      const usable = doc.tokens.filter((t) => Date.parse(t.redeem_until) > now.getTime() + EXPIRY_MARGIN_MS);
+      const picked = selectTokens(usable, budget, cap);
+      if (!picked)
+        return { result: null };
+      const ids = new Set(picked.map((t) => t.token));
+      if (ids.size !== picked.length)
+        throw new StoreError("The token store contains duplicate credentials.");
+      return {
+        doc: { ...doc, tokens: doc.tokens.filter((t) => !ids.has(t.token)), unconfirmed: [...doc.unconfirmed, ...picked.map((t) => ({ ...t, sent_at: now.toISOString() }))] },
+        result: picked.map((token) => ({ token }))
+      };
+    });
+  }
+  settleMany(leases, outcome) {
+    return this.locked((doc) => {
+      const ids = new Set(leases.map((l) => l.token.token));
+      const held = doc.unconfirmed.filter((t) => ids.has(t.token));
+      return {
+        doc: { ...doc, unconfirmed: doc.unconfirmed.filter((t) => !ids.has(t.token)), tokens: outcome === "returned" ? [...held.map(({ sent_at: _, ...t }) => t), ...doc.tokens] : doc.tokens },
+        result: undefined
+      };
+    });
+  }
   settle(lease, outcome) {
     return this.locked((doc) => {
       const held = doc.unconfirmed.find((t) => t.token === lease.token.token);
@@ -3820,7 +4334,7 @@ Usage
 
 Commands
   buy      Buy blind tokens with an API key that has credits, over Tor. Saved to ~/.anyroute/tokens.json (mode 0600).
-           One token pays for one call. Tokens expire at the end of the router's redemption window (one to two weeks).
+           Each call spends its token payment; remainders are forfeited. Tokens expire at the end of the router's redemption window (one to two weeks).
   start    Serve an OpenAI-compatible API on 127.0.0.1. Refuses to start unless Tor is reachable. Never uses the clearnet.
   status   Show whether Tor and the onion service answer, whether the lane is available, and how many tokens are left.
 
@@ -3832,7 +4346,7 @@ Options
   buy:    --key <API key> (or ANYROUTE_API_KEY), --count <1-1000>, --denomination <1000|10000|100000> (default 10000),
           --clearnet to buy without Tor (the router then sees your network address; the tokens stay unlinkable)
   start:  --port <n> (default 8788), --local-key <secret> (require it as the app's API key), --shared-circuit (reuse one Tor
-          circuit instead of one per call), --max-concurrent <n> (default 8), --timeout <seconds> (default 600), --quiet
+          circuit instead of one per call), --max-concurrent <n> (default 8), --max-tokens-per-request <n> (default 16), --timeout <seconds> (default 600), --quiet
   status: --json
 
 Environment  ANYROUTE_API_KEY, ANYROUTE_HOME (default ~/.anyroute), ANYROUTE_SOCKS, ANYROUTE_ONION, ANYROUTE_ROUTER
@@ -3840,7 +4354,7 @@ Environment  ANYROUTE_API_KEY, ANYROUTE_HOME (default ~/.anyroute), ANYROUTE_SOC
 var COMMON = { values: ["socks", "onion", "router"], flags: ["allow-remote-socks", "help", "version"] };
 var SPECS = {
   buy: { values: [...COMMON.values, "key", "count", "denomination"], flags: [...COMMON.flags, "clearnet"] },
-  start: { values: [...COMMON.values, "port", "local-key", "max-concurrent", "timeout"], flags: [...COMMON.flags, "shared-circuit", "quiet"] },
+  start: { values: [...COMMON.values, "port", "local-key", "max-concurrent", "max-tokens-per-request", "timeout"], flags: [...COMMON.flags, "shared-circuit", "quiet"] },
   status: { values: [...COMMON.values], flags: [...COMMON.flags, "json"] }
 };
 function usd(value) {
@@ -3857,7 +4371,12 @@ function howToUse(port, localKey = false) {
     `  Cursor: Settings > Models > Override OpenAI Base URL: ${base} (API key: any value).`,
     "    Cursor may send requests from its own servers, which cannot reach an address on this machine and would see your",
     "    prompts. Check that your version calls the API from your computer before relying on it.",
-    "  Claude Code and the Anthropic SDKs are not supported: the router takes the Messages API with an API key only.",
+    "  Claude Code and the Anthropic SDKs:",
+    `    export ANTHROPIC_BASE_URL=http://127.0.0.1:${port}`,
+    `    export ANTHROPIC_API_KEY=${localKey ? "<your --local-key>" : "anyroute-private"}`,
+    "    unset ANTHROPIC_AUTH_TOKEN",
+    "    export ANTHROPIC_MODEL='<attested model id from /v1/models>'",
+    "    export ANTHROPIC_DEFAULT_HAIKU_MODEL='<attested model id from /v1/models>'",
     `  Models on this lane: curl ${base}/models`
   ].join(`
 `);
@@ -3957,7 +4476,7 @@ async function buy(r, env) {
 `);
   io.out(`These tokens can be spent until ${bought.redeemUntil.slice(0, 16).replace("T", " ")} UTC; after that they are worth nothing, so buy what you will use soon.
 `);
-  io.out(`A call spends one token whatever it costs; the rest of its value is not refunded. Next: anyroute-private start
+  io.out(`A call forfeits the rest of its token payment; Messages calls can use several tokens. Next: anyroute-private start
 `);
   return 0;
 }
@@ -4065,6 +4584,7 @@ Nothing was sent anywhere else. Try again in a minute.
     store: r.store,
     localKey,
     maxConcurrent,
+    maxTokensPerRequest: intOption("max-tokens-per-request", args.options.get("max-tokens-per-request"), 16, 1, 64),
     idleTimeoutMs: timeout * 1000,
     log: args.flags.has("quiet") ? undefined : (l) => io.err(l + `
 `)

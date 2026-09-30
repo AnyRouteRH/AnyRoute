@@ -95,7 +95,7 @@ export const requestTables: Record<string, TableDoc> = {
       receipt_key_id: "Which receipt signing key signed it.",
       receipt: {
         purpose:
-          "The signed v1 receipt payload: model, provider, token counts, cost, timing, mode, lane, disclosure class, payer (a key hash or a wallet address), the two SHA-256 digests and a summary of the provider's attestation. Fixed fields chosen by the router.",
+          "The signed v1 receipt payload: model, provider, token counts, cost, timing, mode, lane, disclosure class, payer (a key hash or a wallet address), the two SHA-256 digests and a summary of the provider's attestation. Blind payment adds a single nullifier and issuer key id, or token_count, nullifiers and token_key_ids for a set; no buyer or credential bytes. Fixed fields chosen by the router.",
         review: JSON_FIELDS("Every field is set by the router's receipt code from numbers, ids and hashes; it never copies request or answer text into the payload."),
       },
       receipt_leaf: "This receipt's leaf hash in the anchoring tree.",

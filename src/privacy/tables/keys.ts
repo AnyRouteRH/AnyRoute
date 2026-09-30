@@ -189,7 +189,7 @@ export const keyTables: Record<string, TableDoc> = {
 
   blind_nullifiers: {
     category: "keys",
-    purpose: "Spent blind tokens. A row holds the SHA-256 of a token so it cannot be spent twice; the issuer cannot connect that hash to the blinded request it signed.",
+    purpose: "Spent blind tokens, one row per token including each member of a request set reserved atomically. A row holds the SHA-256 of a token so it cannot be spent twice; the issuer cannot connect that hash to the blinded request it signed.",
     request: "yes",
     retention: "A reservation is deleted if the request fails before anything is served; spent rows are kept so a token cannot be replayed.",
     columns: {
@@ -198,7 +198,7 @@ export const keyTables: Record<string, TableDoc> = {
       status: "reserved while a request runs, spent once served.",
       reserved_at: "When the token was reserved.",
       spent_at: "When the request it paid for was served.",
-      generation_id: "The generation the token paid for.",
+      generation_id: "The generation the token paid for; all members of a set share it, linking those redeemed tokens to the same request but never to a purchase.",
     },
   },
 
