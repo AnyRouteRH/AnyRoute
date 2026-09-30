@@ -167,9 +167,10 @@ ADMIN_TOKEN=<operator token> REKOR_PUBLIC_KEY="$(curl -s https://rekor.sigstore.
 
 To make the compose hash independent of the router's record, also pass the deployment's own `app-compose.json`
 (`npx -y phala cvms attestation <name> --json > attestation.json`, then `--app-compose attestation.json`). The script then
-requires that it embeds this compose file byte for byte and that its hash is the one the router recorded. This matters
-because the router records a measurement once per provider and image digest and does not overwrite it: after a redeploy
-that changes the compose file but not the image, the record can be out of date.
+requires that it embeds this compose file byte for byte and that its hash is the one the router recorded. The router's
+record is the measurement the provider's latest verified quote committed to: after a redeploy that changes the compose
+file, the router records a new measurement at its next attestation and keeps the earlier one as history
+(`measurement_history` in `GET /api/v1/attestation/<provider>`, with its own log entry). Publish after that attestation.
 
 A log entry is permanent. The script refuses to publish when the router already holds a verified bundle for the same
 compose hash (`--force` overrides), and never overwrites an output file. If the hand-over fails after the entry is
@@ -253,4 +254,4 @@ quote committed to.
   the quote's compose hash, image and model digests and MRTD, and the log entry against the log; it does not rebuild
   anything, and it cannot tell who holds the measurement key.
 * Only the router that holds a log entry for a bundle reports it. A restart that changes the compose file changes the
-  compose hash, and needs a new bundle.
+  compose hash, and needs a new bundle: an entry is only ever reported for the compose hash its bundle names.
