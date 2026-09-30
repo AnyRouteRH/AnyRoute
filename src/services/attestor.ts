@@ -1,5 +1,7 @@
 import { sidecarHostPolicyBindings } from "../network/sidecar-bindings.ts";
-import { and, eq, isNotNull, inArray } from "drizzle-orm";
+import { and, eq, isNotNull, inArray, or } from "drizzle-orm";
+import { probationDiscovery, probationRegistryFilter } from "../network/offers.ts";
+import { renewHostAttestation } from "../network/renew-attestation.ts";
 import { boundedJson, peekProviderCertificate, providerFetch } from "../providers/network.ts";
 import { clearTlsPin, describePeerCertificate, saveTlsPin, type PeerCertificate } from "../providers/tls-pin.ts";
 import { randomBytes } from "node:crypto";
@@ -103,7 +105,7 @@ async function verifyNvidia(ctx: Ctx, payload: string) {
 }
 
 export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect, networkAdmission = false) {
-  if (!["shadow", "live"].includes(p.status)) throw new Error("Provider requires operator approval before attestation.");
+  if (!["shadow", "live"].includes(p.status) && !probationDiscovery(ctx.cfg, p)) throw new Error("Provider requires operator approval before attestation.");
   const nonce = randomBytes(32).toString("hex");
   const url = new URL(p.attestationUrl!);
   url.searchParams.set("nonce", nonce);
@@ -347,12 +349,12 @@ async function provePinnedCertificate(ctx: Ctx, p: typeof providers.$inferSelect
 }
 
 export async function runAttestor(ctx: Ctx) {
-  const rows = await ctx.db.select().from(providers).where(and(inArray(providers.status, ["shadow", "live"]), isNotNull(providers.attestationUrl), isNotNull(providers.teeKind)));
+  const rows = await ctx.db.select().from(providers).where(and(or(inArray(providers.status, ["shadow", "live"]), probationRegistryFilter(ctx.cfg)), isNotNull(providers.attestationUrl), isNotNull(providers.teeKind)));
   const results = [];
   for (const p of rows) {
     try {
       const startedAt = new Date();
-      const result = await attestProvider(ctx, p);
+      const result = await renewHostAttestation(ctx, p, await attestProvider(ctx, p));
       results.push(result);
       await recordAttestorRun(ctx, p, result, startedAt); // the public proof-time record; never throws
     } catch (e) {

@@ -17,7 +17,7 @@ export const providerTables: Record<string, TableDoc> = {
     columns: {
       network_host: { purpose: "Whether this provider was created by wallet-authenticated self-serve network signup; false for existing providers.", review: rv(["name:network"], "config", "A boolean indicating the admission path, despite its network-related name. It cannot contain an address or any text.") },
       network_models: "One to eight distinct requested model IDs supplied by the wallet operator, retained for network admission and re-application; separate from priced catalogue entries.",
-      network_reasons: { purpose: "Current admission refusal reasons, returned publicly by the network status API.", review: JSON_FIELDS("Admission writes policy and screening explanations and attestor failure messages about operator-supplied endpoints and model IDs. No inference body, key or contact is included; endpoint failure messages may name the host server.") },
+      network_reasons: { purpose: "Current admission or scheduled renewal refusal reasons, returned publicly by the network status API.", review: JSON_FIELDS("Admission and scheduled renewal write policy and screening explanations and attestor failure messages about operator-supplied endpoints and model IDs. No inference body, key or contact is included; endpoint failure messages may name the host server.") },
       id: "Provider slug, such as deepinfra.",
       name: "Display name.",
       base_url: {
@@ -274,9 +274,9 @@ export const providerTables: Record<string, TableDoc> = {
 
   provider_disclosure: {
     category: "providers",
-    purpose: "What a provider says, and can prove, about how it handles a prompt: retention, jurisdiction, legal hold and training use, each with a source and a date. Curated by an operator; nothing here comes from traffic.",
+    purpose: "What a provider says, and can prove, about how it handles a prompt: retention, jurisdiction, legal hold and training use, each with a source and a date. Curated by an operator, or retention alone set after network sidecar attestation and signed host policy verification; nothing here comes from traffic.",
     request: "no",
-    retention: "Kept and replaced in place when an operator updates a provider's profile.",
+    retention: "Kept and replaced in place when an operator updates a provider's profile or a network host passes admission or scheduled policy renewal; removed on network rejection.",
     columns: {
       provider_id: "The provider.",
       retention: "attested, policy or logs (the most conservative when there is no row).",
@@ -287,7 +287,7 @@ export const providerTables: Record<string, TableDoc> = {
         review: rv(["name:content"], "config", "Free text written by an operator about a provider's declared legal hold; it is not derived from any request."),
       },
       training_use: "none, opt_in, yes or unknown.",
-      claims: { purpose: "For each stated value, the document it comes from and its date.", review: JSON_FIELDS("A map of claim name to { source, as_of } written by an operator.") },
+      claims: { purpose: "For each stated value, the document it comes from and its date.", review: JSON_FIELDS("A map of claim name to { source, as_of } written by an operator. Network admission and scheduled renewal record only retention with the checked host policy version and current time; jurisdiction, legal hold and training use remain undeclared.") },
       updated_at: UPDATED,
     },
   },
