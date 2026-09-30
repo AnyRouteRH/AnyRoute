@@ -294,7 +294,9 @@ describe("over HTTP", () => {
     expect(span.traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
     expect(span.parentSpanId).toBe("00f067aa0ba902b7");
     const a = attrs(span);
-    expect(a).toMatchObject({ "gen_ai.operation.name": "chat", "gen_ai.request.model": MODELS.llama.slug, "gen_ai.request.temperature": 0.3, "gen_ai.request.max_tokens": "40", "anyroute.receipt_id": id, "anyroute.lane": "public", "anyroute.provider": "alpha" });
+    expect(a).toMatchObject({ "gen_ai.operation.name": "chat", "gen_ai.request.model": MODELS.llama.slug, "gen_ai.request.temperature": 0.3, "gen_ai.request.max_tokens": "40", "anyroute.receipt_id": id, "anyroute.lane": "public" });
+    // On the public lane the router may pick any of the model's providers (attested ones carry a weight bonus).
+    expect(["alpha", "enclave"]).toContain(a["anyroute.provider"]);
     expect(Number(a["gen_ai.usage.input_tokens"])).toBeGreaterThan(0);
     expect(Number(a["gen_ai.usage.output_tokens"])).toBeGreaterThan(0);
     expect(a["anyroute.cost_usd"]).toBeGreaterThan(0);
