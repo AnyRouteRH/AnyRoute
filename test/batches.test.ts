@@ -199,9 +199,11 @@ describe("Batch API over HTTP", () => {
     const b = await (await submit({ requests: [chatLine("r1"), chatLine("r2")] }, kr.auth)).json();
     await h.ctx.jobs.run("batches");
     const rows = await h.ctx.db.select().from(batchLines).where(eq(batchLines.batchId, b.id)).orderBy(batchLines.idx);
-    expect(rows.map((l) => l.status)).toEqual(["succeeded", "queued"]);
-    expect(rows[1].attempts).toBe(0);
-    expect(rows[1].notBefore.getTime()).toBeGreaterThan(Date.now());
+    // Lines run concurrently, so either one may take the single request the key's rate limit allows.
+    expect(rows.map((l) => l.status).sort()).toEqual(["queued", "succeeded"]);
+    const waiting = rows.find((l) => l.status === "queued")!;
+    expect(waiting.attempts).toBe(0);
+    expect(waiting.notBefore.getTime()).toBeGreaterThan(Date.now());
     expect((await get(b.id, kr.auth)).status).toBe("in_progress");
     await h.ctx.db.update(batchLines).set({ notBefore: new Date(0) }).where(eq(batchLines.batchId, b.id));
     await h.ctx.db.update(keys).set({ rpm: 1000 }).where(eq(keys.keyHash, kr.hash));
