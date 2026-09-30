@@ -88,6 +88,43 @@ describe("screening integration", () => {
       expect(await isSanctioned(h.ctx, blocked)).toBe(true);
     }
   });
+  test("OFAC redirect chain to a signed allowlisted URL refreshes the list", async () => {
+    const locations = ["https://www.treasury.gov/ofac/downloads/sdn.xml", "https://wc2h-sls-prod-public-published.s3.us-gov-west-1.amazonaws.com/SDN.XML?signature=fixture"];
+    let calls = 0;
+    const fetcher = (async (_input, init) => {
+      expect(init!.redirect).toBe("manual");
+      const location = locations[calls++];
+      return location ? new Response(null, { status: 302, headers: { location } }) : new Response(currentFixture);
+    }) as typeof fetch;
+    const result = await refreshSanctions(h.ctx, fetcher);
+    expect(result).toMatchObject({ entry_count: 2, source_hash: sha256(currentFixture) });
+    expect(await isSanctioned(h.ctx, blocked)).toBe(true);
+    expect(calls).toBe(3);
+  });
+  test("off-list, HTTP, credential, missing-location and excessive redirects keep the last good list", async () => {
+    await refreshSanctions(h.ctx, fetchXml());
+    const before = await sanctionsStatus(h.ctx, statusNow);
+    for (const location of ["https://example.com/sdn.xml", "http://treasury.gov/sdn.xml", "http://localhost/sdn.xml", "https://user:password@treasury.gov/sdn.xml", "https://user@treasury.gov/sdn.xml", "https://treasury.gov/sdn.xml#fragment", null, "/redirect-loop"]) {
+      let calls = 0;
+      const fetcher = (async () => { calls++; return new Response(null, { status: 302, headers: location ? { location } : {} }); }) as typeof fetch;
+      await expect(refreshSanctions(h.ctx, fetcher)).rejects.toThrow("last good list retained");
+      expect(calls).toBe(location === "/redirect-loop" ? 4 : 1);
+      expect(await sanctionsStatus(h.ctx, statusNow)).toEqual(before);
+      expect(await isSanctioned(h.ctx, blocked)).toBe(true);
+      expect(await isSanctioned(h.ctx, otherBlocked)).toBe(true);
+    }
+  });
+  test("declared and streamed download size limits retain the last good list after redirects", async () => {
+    await refreshSanctions(h.ctx, fetchXml());
+    const before = await sanctionsStatus(h.ctx, statusNow);
+    for (const oversized of [() => new Response(currentFixture, { headers: { "content-length": String(64 * 1024 * 1024 + 1) } }), () => new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(64 * 1024 * 1024 + 1)); controller.close(); } }))]) {
+      let calls = 0;
+      const fetcher = (async () => ++calls === 1 ? new Response(null, { status: 302, headers: { location: "https://treasury.gov/sdn.xml" } }) : oversized()) as typeof fetch;
+      await expect(refreshSanctions(h.ctx, fetcher)).rejects.toThrow("last good list retained");
+      expect(await sanctionsStatus(h.ctx, statusNow)).toEqual(before);
+      expect(await isSanctioned(h.ctx, blocked)).toBe(true);
+    }
+  });
   test("a database failure after deletion rolls back both the entries and metadata", async () => {
     await refreshSanctions(h.ctx, fetchXml());
     const before = await sanctionsStatus(h.ctx, statusNow);
@@ -191,12 +228,13 @@ describe("screening integration", () => {
   });
 });
 
-test("real production config loader starts enabled for API and isolated worker, requires URL", () => {
+test("real production config loader starts enabled for API and isolated worker with the OFAC default", () => {
   const address = "0x" + "1".repeat(40);
   const base = { NODE_ENV: "production", ANYROUTE_ENV: "production", RUNTIME_ROLE: "api", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/test", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: address, CALLPAY_ADDRESS: address, PROVIDER_BOND_ADDRESS: address, RECEIPT_ANCHOR_ADDRESS: address, ROUTER_PRIVATE_KEY: "0x" + "3".repeat(64), SANCTIONS_SCREENING_ENABLED: "true", SANCTIONS_LIST_URL: DEFAULT_SANCTIONS_LIST_URL };
   expect(loadConfig(base).sanctions).toEqual({ enabled: true, listUrl: DEFAULT_SANCTIONS_LIST_URL, maxAgeDays: 7 });
+  expect(loadConfig({ ...base, SANCTIONS_LIST_URL: undefined }).sanctions.listUrl).toBe(DEFAULT_SANCTIONS_LIST_URL);
   expect(loadConfig({ ...base, RUNTIME_ROLE: "worker", WORKER_JOBS: "sanctions-refresh", ROUTER_PRIVATE_KEY: "" }).workerJobs).toEqual(["sanctions-refresh"]);
-  for (const change of [{ SANCTIONS_LIST_URL: "" }, { SANCTIONS_LIST_URL: "http://list.example/sdn.xml" }, { SANCTIONS_MAX_AGE_DAYS: "0" }, { SANCTIONS_MAX_AGE_DAYS: "NaN" }]) expect(() => loadConfig({ ...base, ...change })).toThrow();
+  for (const change of [{ SANCTIONS_LIST_URL: "https://list.example/sdn.xml" }, { SANCTIONS_LIST_URL: "http://list.example/sdn.xml" }, { SANCTIONS_MAX_AGE_DAYS: "0" }, { SANCTIONS_MAX_AGE_DAYS: "NaN" }]) expect(() => loadConfig({ ...base, ...change })).toThrow();
   expect(loadConfig({ ...base, SANCTIONS_SCREENING_ENABLED: "false", SANCTIONS_LIST_URL: "" }).sanctions.enabled).toBe(false);
   expect(loadConfig({ ANYROUTE_ENV: "test" }).sanctions).toEqual({ enabled: false, listUrl: DEFAULT_SANCTIONS_LIST_URL, maxAgeDays: 7 });
 });

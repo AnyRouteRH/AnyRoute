@@ -5,6 +5,7 @@ import { fail } from "../lib/errors.ts";
 import { log, sha256 } from "../lib/util.ts";
 import { sanctionsAddresses, sanctionsMeta } from "./schema.ts";
 import { normalizeEvmAddress, parseSdnXml } from "./sdn.ts";
+import { fetchSanctionsList } from "./sanctions-download.ts";
 export { normalizeEvmAddress, parseSdnXml } from "./sdn.ts";
 
 type ScreeningCtx = Pick<Ctx, "db" | "cfg">;
@@ -72,7 +73,7 @@ export async function skipSanctionedPayout(ctx: ScreeningCtx, p: typeof provider
 export async function refreshSanctions(ctx: ScreeningCtx, fetcher: typeof fetch = fetch, now = new Date()) {
   if (!ctx.cfg.sanctions.enabled) return { skipped: "screening_disabled" };
   try {
-    const response = await fetcher(ctx.cfg.sanctions.listUrl, { signal: AbortSignal.timeout(60_000), redirect: "error" });
+    const response = await fetchSanctionsList(ctx.cfg.sanctions.listUrl, ctx.cfg.production, fetcher);
     if (!response.ok || !response.body || Number(response.headers.get("content-length")) > MAX_BYTES) throw new Error("Download rejected");
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = []; let bytes = 0;
