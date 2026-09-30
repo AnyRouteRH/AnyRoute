@@ -161,6 +161,20 @@ describe("AnyRoute on Telegram", () => {
     expect(Number(m![1])).toBeCloseTo(Number(receipt.data.payload.cost), 5);
   });
 
+  test("a line before the footer says who read the prompt, who saw the address and how it was paid, from the signed receipt", async () => {
+    fresh();
+    const { user } = await connected();
+    await bot.handleUpdate(message(user, "Say hello to Telegram"));
+    const paragraphs = tg.last().split("\n\n");
+    expect(paragraphs.at(-2)).toBe("Read by: Telegram + router + provider · IP: seen by Telegram, not AnyRoute · Paid: API key balance");
+    expect(paragraphs.at(-1)).toMatch(/ · receipt \S+\/api\/v1\/receipts\/gen-/);
+    // The line is the receipt's: the same receipt gives the same label at the public endpoint.
+    const id = /receipts\/(gen-[\w-]+)$/.exec(paragraphs.at(-1)!)![1];
+    const label = ((await (await h.request(`/api/v1/receipts/${id}/privacy`)).json()) as any).data;
+    expect(label.label.payment.kind).toBe("key_balance");
+    expect(label.label.prompt_readers.provider.access).toBe("provider");
+  });
+
   test("/model validates against the live catalog and /models shows prices", async () => {
     fresh();
     const { user } = await connected();

@@ -3,6 +3,8 @@ import { KEY_RE } from "../chain/keys.ts";
 import type { Ctx } from "../context.ts";
 import { kv } from "../db/schema.ts";
 import { decrypt, encrypt, log } from "../lib/util.ts";
+import { shortLine } from "../privacy/label.ts";
+import { labelForReceipt } from "../privacy/resolve.ts";
 
 // AnyRoute on Telegram. Off unless TELEGRAM_BOT_TOKEN is set. The `telegram-bot` job long-polls
 // getUpdates (no webhook), private chats only, and answers through the router's normal chat path
@@ -393,9 +395,12 @@ export class TelegramBot {
         ...(receiptUrl ? [`receipt ${receiptUrl}`] : []),
         ...(badge && typeof provider === "string" && PROVIDER_ID.test(provider) ? [`verify ${this.ctx.cfg.publicUrl}/verify?p=${encodeURIComponent(provider)}`] : []),
       ].join(" · ");
+      // One line from the receipt: who read the prompt, who saw the address (here Telegram, not the router), how it was paid.
+      const seen = out?.receipt?.payload ? await labelForReceipt(this.ctx, { id, payload: out.receipt.payload }).then((l) => shortLine(l, "telegram"), () => null) : null;
+      const tail = seen ? `${seen}\n\n${footer}` : footer;
       const parts = splitMessage(reply);
-      if (parts[parts.length - 1].length + 2 + footer.length <= MAX_TEXT) parts[parts.length - 1] += "\n\n" + footer;
-      else parts.push(footer);
+      if (parts[parts.length - 1].length + 2 + tail.length <= MAX_TEXT) parts[parts.length - 1] += "\n\n" + tail;
+      else parts.push(tail);
       for (const part of parts) await this.send(chat, part);
     } finally {
       clearInterval(timer);

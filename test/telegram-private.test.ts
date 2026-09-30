@@ -227,6 +227,14 @@ describe("chatting in private mode", () => {
     expect(((await (await fx.h.request("/api/v1/attestation/gw")).json()) as any).data.status).toBe("attested");
   });
 
+  test("the line before the footer says a proven enclave read the prompt, from the receipt", async () => {
+    const { user } = await connected();
+    await say(user, `/model ${GW_MODEL}`);
+    await say(user, "/private on");
+    const paragraphs = (await say(user, "tell me something")).split("\n\n");
+    expect(paragraphs.at(-2)).toBe("Read by: Telegram + router + proven enclave · IP: seen by Telegram, not AnyRoute · Paid: API key balance");
+  });
+
   test("says only \"attested\" when the receipt does not assert GPU attestation", async () => {
     const { user } = await connected();
     await say(user, `/model ${GW_MODEL}`);
