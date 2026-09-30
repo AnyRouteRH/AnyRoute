@@ -32,9 +32,20 @@ export function capBars(agent) {
 }
 
 export function intentSummary(intent) {
+  if (Array.isArray(intent?.intents)) return intent.intents.map(intentSummary).join(' / ');
   if (intent?.kind === 'mcp_tool') return `Tool: ${intent.name || 'Not recorded'}`;
   if (intent?.kind !== 'inference') return 'No intent recorded';
   return `Model: ${intent.model || 'Not recorded'} · Lane: ${intent.lane || 'Not recorded'} · Estimated cost: ${formatUsd(picoUsd(intent.est_cost_pico))} · Tools: ${(intent.tools || []).join(', ') || 'None'}`;
+}
+
+export function pendingApprovals(json, now = Date.now()) {
+  if (!Array.isArray(json?.data)) throw new Error('The approvals response could not be read.');
+  return json.data.filter(row => row.status === 'pending' && Date.parse(row.expires_at) > now)
+    .sort((a,b) => Date.parse(a.requested_at) - Date.parse(b.requested_at));
+}
+export async function decideAgentApproval(request, id, action) {
+  if (!['approve','deny'].includes(action)) throw new Error('Choose Approve or Deny.');
+  return request('/api/v1/agents/approvals/'+encodeURIComponent(id)+'/'+action,{ method:'POST' });
 }
 
 export function eventsPage(json) {

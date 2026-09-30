@@ -8,6 +8,7 @@ COPY scripts/migrate.ts ./scripts/migrate.ts
 COPY src/db ./src/db
 COPY src/network/schema.ts ./src/network/schema.ts
 COPY src/agents/schema.ts ./src/agents/schema.ts
+COPY src/agents/approval-schema.ts ./src/agents/approval-schema.ts
 COPY src/lib/util.ts ./src/lib/util.ts
 COPY src/providers/headers.ts ./src/providers/headers.ts
 COPY drizzle ./drizzle

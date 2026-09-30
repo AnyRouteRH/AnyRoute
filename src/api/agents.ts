@@ -14,13 +14,13 @@ import { evaluateAgentPolicy, type AgentDecision } from "../agents/evaluate.ts";
 import { appendEvent, changeKill, eventJson, lockAccount, policiesFor, policyState, setPolicy, type PolicyRow } from "../agents/store.ts";
 const jsonPolicy = (row: PolicyRow) => ({ policy: row.spec, sha256: row.sha256, version: row.version, killed: row.killed, killed_at: row.killedAt?.toISOString() ?? null, killed_reason: row.killedReason });
 const killBody = z.strictObject({ reason: z.string().max(160).optional() });
-async function principal(ctx: Ctx, c: Context) {
+export async function principal(ctx: Ctx, c: Context) {
   const key = await requireKey(ctx, c.req.header("authorization"));
   if ((await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, key.keyHash)).limit(1)).length) fail(403, "Session keys cannot manage rulebooks.", "forbidden");
   await requireRole(ctx, key, ["owner", "admin"]);
   return key;
 }
-async function ownedKey(ctx: Ctx, caller: KeyRow, hash: string) {
+export async function ownedKey(ctx: Ctx, caller: KeyRow, hash: string) {
   const [key] = await ctx.db.select().from(keys).where(and(eq(keys.keyHash, hash), eq(keys.accountId, caller.accountId)));
   if (!key) fail(404, "Key not found.", "not_found");
   if (!caller.management && (!caller.teamId || key.teamId !== caller.teamId)) fail(403, "This key cannot manage that key.", "forbidden");

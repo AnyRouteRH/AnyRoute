@@ -37,6 +37,7 @@ import { presetsRoutes } from "./api/presets.ts";
 import { characterRoutes } from "./api/characters.ts";
 import { memoryRoutes } from "./api/memory.ts";
 import { agentsRoutes } from "./api/agents.ts";
+import { agentApprovalMiddleware, agentApprovalsRoutes } from "./api/agent-approvals.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
 import { spendRoutes } from "./api/spend.ts";
 import { holdersRoutes } from "./api/holders.ts";
@@ -126,7 +127,7 @@ export async function createApp(opts: AppOptions = {}) {
   const csp = webBuilt ? siteCsp(webDir) : "frame-ancestors 'none'; object-src 'none'; base-uri 'none'";
   const app = new Hono();
   // The OpenAI-style /v1/* aliases get the same CORS as /api/*, so a browser can read the receipt, lane and policy headers on either.
-  const apiCors = cors({ origin: "*", allowHeaders: ["authorization", "content-type", "x-e2ee-version", "x-client-pub-key", "x-model-pub-key", "x-e2ee-nonce", "x-e2ee-timestamp", "x-pay-with", "x-payment", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "x-anyroute-lane-downgrade", "http-referer", "x-title", "traceparent", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"], exposeHeaders: [...EXPOSED_RESPONSE_HEADERS, "x-e2ee-applied", "x-e2ee-version", "x-e2ee-algo", "x-e2ee-receipt-id"] });
+  const apiCors = cors({ origin: "*", allowHeaders: ["x-agent-approval", "authorization", "content-type", "x-e2ee-version", "x-client-pub-key", "x-model-pub-key", "x-e2ee-nonce", "x-e2ee-timestamp", "x-pay-with", "x-payment", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "x-anyroute-lane-downgrade", "http-referer", "x-title", "traceparent", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"], exposeHeaders: [...EXPOSED_RESPONSE_HEADERS, "x-e2ee-applied", "x-e2ee-version", "x-e2ee-algo", "x-e2ee-receipt-id"] });
   app.use("/api/*", apiCors);
   app.use("/v1/*", apiCors);
   app.use("/ollama/*", apiCors);
@@ -148,6 +149,7 @@ export async function createApp(opts: AppOptions = {}) {
 
   app.use("*", onionIngress(cfg)); // onion requests: drop every client address header before any route reads one
   app.use("*", statusMiddleware(ctx)); // public-lane outcomes per API surface for /api/v1/status/slo; private lanes are not counted here
+  app.use("*", agentApprovalMiddleware(ctx));
   chatRoutes(app, ctx);
   e2eeRoutes(app, ctx);
   embeddingsRoutes(app, ctx);
@@ -163,6 +165,7 @@ export async function createApp(opts: AppOptions = {}) {
   characterRoutes(app, ctx);
   memoryRoutes(app, ctx);
   agentsRoutes(app, ctx);
+  agentApprovalsRoutes(app, ctx);
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
   holdersRoutes(app, ctx);

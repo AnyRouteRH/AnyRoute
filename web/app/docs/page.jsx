@@ -5,6 +5,7 @@ import PageFrame from "../../components/PageFrame";
 import { Button, Code } from "../../components/UI";
 import { sampleRequest } from "../../components/Extensions";
 import AgentRulebookDocs from "../../components/AgentRulebookDocs";
+import AgentApprovalDocs from "../../components/AgentApprovalDocs";
 import { API_BASE } from "../../lib/api";
 import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
 import OnionAddress from "../../components/OnionAddress";
@@ -801,6 +802,7 @@ export default function Docs() {
             The router serves this site, so your base URL is this site’s address followed by /api/v1. Create a key in the dashboard, deposit USDG to it and call it from any OpenAI- or OpenRouter-compatible client.
           </div>
           <AgentRulebookDocs />
+          <AgentApprovalDocs />
           <h2 id="quickstart">Two changes to get started.</h2>
           <p>
             Anyroute accepts the familiar chat-completions request. Replace the base URL and key; requests, streaming, tools, provider preferences and usage fields work unchanged. Keys are self-custodial: POST /api/v1/keys (no account) returns a key and the hash to deposit USDG to.

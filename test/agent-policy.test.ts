@@ -58,7 +58,7 @@ for (const [code, spec, extra] of [
   expect(await count(holds)).toBe(held); expect(h.mocks.alpha.stats.requests).toBe(calls);
   expect(await balanceOf(h.ctx.db, (await h.ctx.db.select().from(keys).where(eq(keys.keyHash, k.hash)))[0].accountId)).toEqual(before);
   const events = await h.ctx.db.select().from(agentPolicyEvents).where(eq(agentPolicyEvents.keyHash, k.hash));
-  expect(events).toHaveLength(2); expect(events[1].decision).toBe(code === "approval_required" ? "approval_required" : "deny");
+  expect(events).toHaveLength(code === "approval_required" ? 3 : 2); expect(events[1].decision).toBe(code === "approval_required" ? "approval_required" : "deny");
   expect(JSON.stringify(events)).not.toContain("prompt must never"); expect(JSON.stringify(events)).not.toContain("never store this tool description");
 });
 test("charged spend rolling hour/day/week, older charges excluded and open holds counted", async () => {

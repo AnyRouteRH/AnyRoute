@@ -390,6 +390,7 @@ const schema = z.object({
   // ---- Transparency log of keys and configurations (C2SP tlog-tiles with signed-note checkpoints and tlog-cosignature
   // witnesses; src/tlog). Off by default: no route is registered and nothing is appended.
   AGENT_POLICY_ENABLED: bool.default(false),
+  AGENT_APPROVAL_TTL_S: z.coerce.number().int().min(1).max(86400).default(900),
   NETWORK_POLICY_ENABLED: bool.default(false),
   TLOG_ENABLED: bool.default(false),
   TLOG_ORIGIN: opt, // checkpoint origin and the log's key name; default "<host of PUBLIC_BASE_URL>/tlog"
@@ -576,6 +577,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     appSecret: e.APP_SECRET ?? "dev-insecure-secret-change-me-dev-insecure",
     adminToken: e.ADMIN_TOKEN,
     agentPolicyEnabled: e.AGENT_POLICY_ENABLED,
+    agentApprovalTtlS: e.AGENT_APPROVAL_TTL_S,
     networkPolicyEnabled: e.NETWORK_POLICY_ENABLED,
     logLevel: e.LOG_LEVEL,
     trustProxy: e.TRUST_PROXY,

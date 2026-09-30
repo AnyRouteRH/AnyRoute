@@ -225,6 +225,13 @@
       "when": 1790799534111,
       "tag": "0031_v5_agent_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790801348504,
+      "tag": "0032_v5_agent_approvals",
+      "breakpoints": true
     }
   ]
 }

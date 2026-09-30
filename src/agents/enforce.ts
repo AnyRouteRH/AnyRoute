@@ -7,6 +7,7 @@ import { evaluateAgentPolicy, type AgentDecision } from "./evaluate.ts";
 import { intentJson, type AgentIntent } from "./policy.ts";
 import { appendEvent, changeKill, lockAccount, policiesFor, policyState, type PolicyRow } from "./store.ts";
 import { requireKey } from "../api/auth.ts";
+import { approvalRequest, prepareApproval } from "./approvals.ts";
 const enabled = new WeakMap<Db, boolean>();
 const checked = new AsyncLocalStorage<boolean>();
 export const configureAgentPolicies = (ctx: Ctx) => enabled.set(ctx.db, ctx.cfg.agentPolicyEnabled);
@@ -54,25 +55,34 @@ async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentIntent[]
 /** Serialize policy decisions with reserve/settle and principal edits using the existing account lock. */
 export async function enforceAgentReservation(db: Db, r: ReserveInput, reserve: (db: Db) => Promise<bigint>, hasPolicy = false): Promise<bigint> {
   if (checked.getStore() || !enabled.get(db) || !r.keyHash) return reserve(db);
-  if (!hasPolicy && !(await policiesFor(db, r.keyHash)).length) return reserve(db);
+  if (!hasPolicy && approvalRequest.getStore() === undefined && !(await policiesFor(db, r.keyHash)).length) return reserve(db);
   const outcome = await db.transaction(async tx => {
     await lockAccount(tx, r.accountId);
     const rows = await policiesFor(tx, r.keyHash!);
     // Non-inference purchases still honor kill and schedule restrictions; payment rules are reserved for a later version.
     const agent = typeof r.agent === "function" ? r.agent() : r.agent;
     const intents: AgentIntent[] = agent ? [...new Set(agent.models)].map(model => ({ kind: "inference", model, lane: agent.lane, est_cost_pico: r.amount, max_output_tokens: agent.max_output_tokens, tools: declaredTools(agent.body) })) : [{ kind: "mcp_tool", name: r.kind ?? "usage" }];
-    const error = await recordDecisions(tx, rows, intents, r.keyHash!, new Date());
-    if (error) return { error };
-    try { return { value: await reserve(tx as unknown as Db) }; } catch (error) { return { error }; }
+    const now = new Date();
+    const refusal = await recordDecisions(tx, rows, intents, r.keyHash!, now);
+    const approval = await prepareApproval(db, tx, rows, intents, r.keyHash!, refusal, now);
+    if (approval.error) return { error: approval.error };
+    let value: bigint;
+    try { value = await reserve(tx as unknown as Db); } catch (error) { return { error }; }
+    await approval.use?.();
+    return { value };
   });
   if ("error" in outcome) throw outcome.error;
   return outcome.value!;
 }
 export async function enforceAgentCached(ctx: Ctx, key: { keyHash: string; accountId: string } | undefined, model: string, lane: AgentReservation["lane"], body: Record<string, unknown>) {
-  if (!ctx.cfg.agentPolicyEnabled || !key || !(await policiesFor(ctx.db, key.keyHash)).length) return;
+  if (!ctx.cfg.agentPolicyEnabled || !key || (approvalRequest.getStore() === undefined && !(await policiesFor(ctx.db, key.keyHash)).length)) return;
   const error = await ctx.db.transaction(async tx => {
     await lockAccount(tx, key.accountId);
-    return recordDecisions(tx, await policiesFor(tx, key.keyHash), [{ kind: "inference", model, lane, est_cost_pico: 0n, max_output_tokens: Number(body.max_completion_tokens ?? body.max_tokens ?? 10_000_000), tools: declaredTools(body) }], key.keyHash, new Date());
+    const rows = await policiesFor(tx, key.keyHash), now = new Date();
+    const intents: AgentIntent[] = [{ kind: "inference", model, lane, est_cost_pico: 0n, max_output_tokens: Number(body.max_completion_tokens ?? body.max_tokens ?? 10_000_000) * Math.max(1, Number(body.n ?? 1), Number(body.best_of ?? 1)), tools: declaredTools(body) }];
+    const approval = await prepareApproval(ctx.db, tx, rows, intents, key.keyHash, await recordDecisions(tx, rows, intents, key.keyHash, now), now);
+    if (!approval.error) await approval.use?.();
+    return approval.error;
   });
   if (error) throw error;
 }
@@ -90,7 +100,7 @@ export async function enforceAgentTool(ctx: Ctx, authorization: string | undefin
 /** Council/dual calls form one intent with several models: refuse every leg before creating any hold. */
 export async function enforceAgentCouncil(ctx: Ctx, billing: { accountId: string; key?: { keyHash: string } }, buildLegs: () => { models: string[]; max_output_tokens: number; hold: bigint; body: Record<string, unknown> }[], lane: AgentReservation["lane"], run: (ctx: Ctx) => Promise<void>) {
   if (!ctx.cfg.agentPolicyEnabled || !billing.key) return run(ctx);
-  if (!(await policiesFor(ctx.db, billing.key.keyHash)).length) return checked.run(true, () => run(ctx));
+  if (approvalRequest.getStore() === undefined && !(await policiesFor(ctx.db, billing.key.keyHash)).length) return checked.run(true, () => run(ctx));
   const legs = buildLegs();
   const amount = legs.reduce((sum, leg) => sum + leg.hold, 0n);
   await enforceAgentReservation(ctx.db, { id: "council-policy", accountId: billing.accountId, keyHash: billing.key.keyHash, amount, agent: { models: legs.flatMap(l => l.models), lane, max_output_tokens: Math.max(...legs.map(l => l.max_output_tokens)), body: { tools: legs.flatMap(l => Array.isArray(l.body.tools) ? l.body.tools : []), functions: legs.flatMap(l => Array.isArray(l.body.functions) ? l.body.functions : []) } } }, async db => { await checked.run(true, () => run({ ...ctx, db })); return amount; }, true);
