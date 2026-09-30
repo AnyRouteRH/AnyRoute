@@ -1,3 +1,4 @@
+import { sidecarHostPolicyBindings } from "../network/sidecar-bindings.ts";
 import { and, eq, isNotNull, inArray } from "drizzle-orm";
 import { boundedJson, peekProviderCertificate, providerFetch } from "../providers/network.ts";
 import { clearTlsPin, describePeerCertificate, saveTlsPin, type PeerCertificate } from "../providers/tls-pin.ts";
@@ -232,7 +233,7 @@ export async function attestProvider(ctx: Ctx, p: typeof providers.$inferSelect)
   await ctx.db.update(providers).set({ attested: true, attestationHash: reportHash, attestedAt: new Date(), updatedAt: new Date() }).where(eq(providers.id, p.id));
   await ctx.db.update(providers).set({ classifierEnabled }).where(eq(providers.id, p.id));
   await saveAttestedPolicy(ctx.db, p.id, policyHash, reportHash);
-  return { provider: p.id, ok: true, hash: reportHash, ...(peer ? { tls_pin: { spki_sha256: peer.spkiSha256, attestation_ref: peer.attestationRef } } : {}) };
+  return { provider: p.id, ok: true, hash: reportHash, host_policy_bindings: sidecarHostPolicyBindings(report.sidecar_bindings, { ...evidence, teeKind: p.teeKind ?? "tdx" }), ...(peer ? { tls_pin: { spki_sha256: peer.spkiSha256, attestation_ref: peer.attestationRef } } : {}) };
 }
 
 /** Verify an aci/1 gateway report (see the header comment and providers/aci.ts) and record what it established. */

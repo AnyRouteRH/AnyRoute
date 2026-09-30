@@ -1,3 +1,4 @@
+import { validSidecarBindingVersion } from "../network/sidecar-binding-version.ts";
 import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { encodeFunctionData, keccak256, toBytes, type Hex } from "viem";
@@ -52,7 +53,7 @@ export function digestsFromBindings(bindings: unknown): Digests | null {
 
 /** The sidecar puts sha256(canonical_json(bindings)) in the first 32 bytes of the quote's report_data. */
 export function bindingsCommittedIn(reportDataHex: string, bindings: unknown): boolean {
-  if (!bindings || typeof bindings !== "object" || Array.isArray(bindings)) return false;
+  if (!validSidecarBindingVersion(bindings)) return false;
   return reportDataHex.toLowerCase().startsWith(sha256(canonicalJson(bindings)));
 }
 

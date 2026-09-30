@@ -17,6 +17,8 @@ export { HOST_ANCHOR_PROOF_PATH, fetchHostAnchorProof, providerIdHash, readAttes
 export type { AttestedAnchor, AttestedAnchorReader, HostAnchorProof, HostAnchorVerification, VerifyHostAnchorOptions } from "./host-anchor.js";
 export { ATTEST_SAN_SUFFIX, attestSanFor, defaultAttestFetcher, digestHex, evaluateAttestation, fetchRouterAttestation, verifyProvider } from "./attestation.js";
 export type { AttestDocument, AttestFetcher, Bindings, BoundIdentity, EvaluateInput, EvaluateOptions, ExpectedDigests, ProviderVerification, QuoteVerifier, RouterAttestation, VerifyProviderOptions } from "./attestation.js";
+export { validSidecarBindingVersion, sidecarBindingsV2 } from "./sidecar-bindings.js";
+export type { SidecarBindingsV2 } from "./sidecar-bindings.js";
 export { parseTdxQuote } from "./tdx.js";
 export type { TdxFields } from "./tdx.js";
 export { parseCertificate, pemToDer } from "./x509.js";

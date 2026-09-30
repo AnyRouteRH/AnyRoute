@@ -1,3 +1,4 @@
+import { parseSourceBindings, type SourceBindingsConfig } from "./source-bindings.ts";
 import { existsSync, readFileSync } from "node:fs";
 import type { AttestationKind } from "./attestation/types.ts";
 import type { BucketConfig } from "./quota.ts";
@@ -35,6 +36,7 @@ export type SidecarConfig = {
     classifierDigests: string[];
     classifierDigestsFile?: string;
   };
+  bindings?: SourceBindingsConfig;
   image: { digest?: string };
   compose: { file?: string; hash?: string };
   attestation: { provider: AttestationKind; dstackEndpoint?: string; tdxTsmPath?: string; freshQuotesPerMinute: number };
@@ -156,7 +158,7 @@ const PROVIDERS: AttestationKind[] = ["dstack", "tdx", "dev"];
 
 export function parseConfig(raw: unknown, env: Record<string, string | undefined> = {}): SidecarConfig {
   const root = obj(raw, "(root)");
-  known(root, ["server", "upstream", "model", "allowlist", "image_digest", "compose", "attestation", "router", "auth", "quota", "classifier", "hpke", "royalty", "receipts", "anchor", "stats"], "");
+  known(root, ["bindings", "server", "upstream", "model", "allowlist", "image_digest", "compose", "attestation", "router", "auth", "quota", "classifier", "hpke", "royalty", "receipts", "anchor", "stats"], "");
 
   const server = obj(root.server, "server");
   known(server, ["host", "port", "hostnames", "tls", "cert_validity_days"], "server");
@@ -342,6 +344,7 @@ export function parseConfig(raw: unknown, env: Record<string, string | undefined
       dailyEpsilonCap: num(stats, "daily_epsilon_cap", "stats", 0.01, 10_000) ?? null,
     },
   };
+  cfg.bindings = parseSourceBindings(root.bindings, cfg.model.servedName);
   if (!cfg.model.path && !cfg.model.digest) bad("model", "set model.path (the weights directory to hash) or model.digest (a precomputed digest)");
   return cfg;
 }

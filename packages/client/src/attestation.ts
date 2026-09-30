@@ -1,3 +1,4 @@
+import { validSidecarBindingVersion, sidecarBindingsV2, type SidecarBindingsV2 } from "./sidecar-bindings.js";
 import { bytesToHex, equalBytes, hexToBytes, isHex, randomBytes } from "./bytes.js";
 import { canonicalJson } from "./canonical.js";
 import { sha256, sha256Hex } from "./hash.js";
@@ -43,7 +44,7 @@ export type RouterAttestation = {
   not_checked: string[];
 };
 
-export type Bindings = { tls_pubkey?: string; receipt_pubkey?: string; image_digest?: string; compose_hash?: string; model_digest?: string; hpke_pubkey?: string; [k: string]: unknown };
+export type Bindings = Partial<Omit<SidecarBindingsV2, "v">> & { v?: 1 | 2; tls_pubkey?: string; receipt_pubkey?: string; image_digest?: string; compose_hash?: string; model_digest?: string; hpke_pubkey?: string; [k: string]: unknown };
 
 export type AttestDocument = {
   v?: number;
@@ -81,6 +82,10 @@ export type BoundIdentity = {
   imageDigest: string;
   composeHash: string;
   modelDigest: string;
+  bindingsVersion?: 1 | 2;
+  sourceHash?: string | null;
+  engine?: SidecarBindingsV2["engine"] | null;
+  modelId?: string | null;
   measurements: Pick<TdxFields, "mrtd" | "rtmr0" | "rtmr1" | "rtmr2" | "rtmr3"> | null;
   teeKind: string | null;
 };
@@ -197,7 +202,7 @@ export async function evaluateAttestation(input: EvaluateInput, opts: EvaluateOp
 
     const b = boot.bindings ?? {};
     const ref = String(boot.attestation_ref ?? "").toLowerCase();
-    const bindingsOk = isHex(b.tls_pubkey) && isHex(b.receipt_pubkey, 32) && !!digestHex(b.image_digest) && !!digestHex(b.compose_hash) && !!digestHex(b.model_digest) && (b.hpke_pubkey === undefined || isHex(b.hpke_pubkey));
+    const bindingsOk = validSidecarBindingVersion(b) && isHex(b.tls_pubkey) && isHex(b.receipt_pubkey, 32) && !!digestHex(b.image_digest) && !!digestHex(b.compose_hash) && !!digestHex(b.model_digest) && (b.hpke_pubkey === undefined || isHex(b.hpke_pubkey));
     need(bindingsOk ? pass("provider.bindings", "The document names a TLS key, a receipt key and image, compose and model digests.") : fail("provider.bindings", "The bindings are missing a TLS key, a receipt key or a valid image, compose or model digest."));
 
     let fields: TdxFields | null = null;
@@ -245,7 +250,12 @@ export async function evaluateAttestation(input: EvaluateInput, opts: EvaluateOp
     if (bindingsOk) {
       const rk = boot.receipt_key;
       const hpke = typeof b.hpke_pubkey === "string" ? b.hpke_pubkey.replace(/^0x/i, "").toLowerCase() : null;
+      const v2 = sidecarBindingsV2(b);
       bound = {
+        bindingsVersion: v2 ? 2 : 1,
+        sourceHash: v2?.source_hash ?? null,
+        engine: v2 ? { ...v2.engine } : null,
+        modelId: v2?.model.id ?? null,
         attestationRef: ref,
         attestationSan: boot.attestation_san ?? "",
         tlsPubkey: b.tls_pubkey!.toLowerCase(),
@@ -357,6 +367,7 @@ export async function evaluateAttestation(input: EvaluateInput, opts: EvaluateOp
     verifiedAt: new Date(now).toISOString(),
     notChecked: [
       ...(router?.not_checked ?? NOT_CHECKED_GENERIC),
+      ...(bound?.bindingsVersion === 2 ? ["That the quote-bound source archive is the executing program, or that the declared engine image and model ID describe the running server: review the measured deployment and pinned source independently."] : []),
       ...(opts.expected?.modelDigest === undefined ? ["That the model digest is the model you wanted: no expected digest was supplied, so the bound digest is reported but not compared."] : []),
       ...(opts.quoteVerifier ? [] : ["Intel's signature and certificate chain over the quote: this client relies on the router's verification."]),
     ],

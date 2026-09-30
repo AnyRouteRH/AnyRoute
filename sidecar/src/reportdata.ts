@@ -1,3 +1,4 @@
+import type { SidecarBindingsV2 } from "./source-bindings.ts";
 import { canonicalJson, sha256Bytes, hexToBytes, bytesToHex } from "./util.ts";
 
 // What the hardware quote is bound to. The 64-byte report_data field of the quote is
@@ -11,6 +12,7 @@ import { canonicalJson, sha256Bytes, hexToBytes, bytesToHex } from "./util.ts";
 // verifier rebuilds this from /attest and compares it with the report_data inside the quote.
 
 export type Bindings = {
+  v2?: SidecarBindingsV2;
   /** Hex SubjectPublicKeyInfo DER of the TLS key. */
   tlsPubkey: string;
   /** Hex raw 32-byte Ed25519 receipt key. */
@@ -32,6 +34,7 @@ export const bindingsObject = (b: Bindings) => ({
   image_digest: b.imageDigest,
   compose_hash: b.composeHash,
   model_digest: b.modelDigest,
+  ...(b.v2 ? { ...b.v2, engine: { ...b.v2.engine }, model: { id: b.v2.model.id, digest: b.modelDigest } } : {}),
   ...(b.classifier ? { classifier_enabled: true, classifier_digest: b.classifier.digest, classifier_policy: b.classifier.policy } : {}),
   ...(b.hpkePubkey ? { hpke_pubkey: b.hpkePubkey } : {}),
 });

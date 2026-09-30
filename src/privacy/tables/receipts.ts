@@ -87,7 +87,7 @@ export const receiptTables: Record<string, TableDoc> = {
       kind: "receipt_key, ohttp_key_config, blind_issuer_key, measurement_bundle, attestation_binding or data_inventory.",
       sha256: "Hex digest of the key or configuration the entry names.",
       subject: "The key id, epoch, provider or inventory the entry is about.",
-      entry: "The exact canonical JSON that was hashed into the log: public key material or a digest, never request data.",
+      entry: "The exact canonical JSON that was hashed into the log: public keys, digests and configuration, never request data. Sidecar bindings v2 include the source archive hash, engine name and image digest, and model ID and digest.",
       leaf_hash: "The entry's RFC 6962 leaf hash.",
       created_at: CREATED,
     },

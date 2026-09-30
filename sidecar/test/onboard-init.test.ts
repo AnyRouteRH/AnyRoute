@@ -47,11 +47,13 @@ describe("the pins are the ones sidecar/examples/phala runs", () => {
     const yaml = readFileSync(join(root, "examples/phala/sidecar.yaml"), "utf8");
     expect(yaml).toContain(BUN_IMAGE_DIGEST);
   });
-  test("the config keys the generator may use exist in the example's loader at that commit and in the current one", () => {
+  test("legacy generator keys remain supported; the example's v2 extension needs the current loader", () => {
     const current = parseConfig({ model: { digest: "sha256:" + "0".repeat(64) }, auth: { allow_anonymous: true } }, {});
     expect(current).toBeTruthy();
     const exampleKeys = Bun.YAML.parse(readFileSync(join(root, "examples/phala/sidecar.yaml"), "utf8")) as Record<string, unknown>;
-    for (const k of Object.keys(exampleKeys)) expect(DEFAULT_COMMIT_CONFIG_KEYS[""]).toContain(k);
+    for (const k of Object.keys(exampleKeys).filter(k => k !== "bindings")) expect(DEFAULT_COMMIT_CONFIG_KEYS[""]).toContain(k);
+    expect(DEFAULT_COMMIT_CONFIG_KEYS[""]).not.toContain("bindings");
+    expect(parseConfig(exampleKeys, { NODE_ENV: "production" }).bindings?.version).toBe(2);
   });
 });
 

@@ -36,7 +36,7 @@ export function attestationDocument(rt: Runtime, evidence: QuoteEvidence, nonceH
     bindings: bindingsObject(rt.bindings),
     report_data: {
       derivation:
-        "sha256(canonical_json(bindings)) || nonce; the nonce is 32 bytes, all zero for the boot quote. The classifier_* and hpke_pubkey bindings are present only when that feature is on, so a deployment without them derives the same value as before they existed.",
+        "sha256(canonical_json(bindings)) || nonce; the nonce is 32 bytes, all zero for the boot quote. bindings.v=2 additionally commits source_hash, engine and model; absence of bindings.v denotes legacy v1. The classifier_* and hpke_pubkey bindings are present only when that feature is on, so a deployment without them derives the same value as before they existed.",
       bindings_digest: bytesToHex(bindingsDigest(rt.bindings)),
     },
     checks: {

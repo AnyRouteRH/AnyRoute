@@ -1,3 +1,4 @@
+import { measureSourceBindings } from "./source-bindings.ts";
 import { readFile } from "node:fs/promises";
 import type { KeyObject } from "node:crypto";
 import { createAttestationProvider, type AttestationProvider, type QuoteEvidence } from "./attestation/index.ts";
@@ -144,6 +145,8 @@ export async function boot(cfg: SidecarConfig, deps: BootDeps = {}): Promise<Run
   enforceComposePin(composeHash.value || null, allow);
   const imageDigest: Sourced = cfg.image.digest ? { value: normalizeDigest(cfg.image.digest, "image_digest"), source: "declared" } : { value: "", source: "none" };
 
+  const sourceBindings = await measureSourceBindings(cfg.bindings, model.digest);
+
   // 6
   let routerChecked = false;
   if (cfg.router.url && cfg.router.providerId) {
@@ -193,6 +196,7 @@ export async function boot(cfg: SidecarConfig, deps: BootDeps = {}): Promise<Run
     imageDigest: imageDigest.value,
     composeHash: composeHash.value,
     modelDigest: model.digest,
+    ...(sourceBindings ? { v2: sourceBindings } : {}),
     ...(classifier ? { classifier: { digest: classifier.digest, policy: classifier.policy } } : {}),
     ...(hpke ? { hpkePubkey: hpke.publicKeyHex } : {}),
   };

@@ -79,6 +79,19 @@ report_data = SHA-256(canonical_json(bindings)) || nonce          (32 + 32 bytes
 
 `nonce` is 32 bytes: all zero for the boot quote, the verifier's value for a fresh quote. Optional members are absent, not null, when their feature is off, so enabling nothing leaves `report_data` unchanged.
 
+### 3.1.1 SHA-256 sidecar bindings v2 (implemented, opt-in)
+
+With sidecar `bindings.version: 2`, the Section 3.1 object additionally commits `v: 2`,
+`source_hash`, `engine: {name, image_digest}` and `model: {id, digest}`; `model.digest` MUST equal
+`model_digest`. The report-data formula remains SHA-256(canonical_json(bindings)) || nonce.
+Absent `bindings.v` denotes legacy v1; verifiers MUST reject unknown versions or incomplete v2 members.
+`source_hash` is `sha256:<hex>` over the exact pinned compressed source archive bytes, including headers,
+without extraction or normalization; boot hashes `bindings.source_archive` and refuses a configured hash mismatch.
+Engine image and model ID are operator declarations; weights use Section 4.1. A verifier MUST review the
+measured deployment and pinned source to establish how these declarations relate to execution: hashing an
+archive alone does not prove it is running. This extension adds no GPU evidence and is distinct from the
+planned SEAL SHA-512 format in Section 3.4. Omitting the configuration preserves v1 report data.
+
 ### 3.2 Attestation reference and certificate
 
 The enclave issues a self-signed certificate for its TLS key with a DNS SAN `<first 32 hex>.<last 32 hex>.attest.anyroute`, where the 64 hex characters are the attestation reference. A verifier MUST NOT validate this certificate against public CAs. It MUST instead check that the certificate's public key equals `bindings.tls_pubkey`, that SHA-256 of the served quote equals the reference in the SAN, and then pin the certificate for the rest of the session.

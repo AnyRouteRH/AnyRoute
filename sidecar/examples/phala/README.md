@@ -27,6 +27,34 @@ tarball hash in the compose file instead.
 
 It fits a `tdx.medium` instance (2 vCPU, 4 GB) with a 20 GB disk. It needs no secrets and no environment variables: the router's key is not in it, only the key's SHA-256. Replace that hash with your own key's.
 
+## Quote-bound source, engine and model identity
+
+The `bindings` configuration opts into the SHA-256 bindings format with `bindings.v: 2`.
+Omitting it retains the deployed v1 format. Before deploying this configuration, replace the compose
+`rev` with a published commit containing bindings v2: the retained historical pin predates this feature.
+Download that commit's exact archive from `https://codeload.github.com/AnyRouteRH/AnyRoute/tar.gz/<commit>`
+and run `sha256sum src.tar.gz` (or `shasum -a 256 src.tar.gz`). Copy the 64 hex characters to the
+compose `sum` and to `bindings.source_hash` with a `sha256:` prefix, in both configuration copies.
+
+`source_hash` is SHA-256 of the complete compressed archive bytes, including headers, with no extraction,
+normalization or additional prefix bytes. Reproducing it means hashing the same archive, not repacking its
+contents. The sidecar streams the retained archive at `source_archive` at boot and refuses a mismatch.
+The archive hash alone does not prove that those bytes are the executing program; verify the measured
+compose file's download, hash check, extraction and launch commands and review the pinned source.
+
+Get `engine.image_digest` from the immutable digest of the engine image you pin in the compose `llama`
+service; for example, inspect the chosen image's registry manifest with `docker buildx imagetools inspect`.
+Use `engine.name: llama.cpp`. Set `model_id` to the engine's `--alias` and the sidecar's `model.served_name`;
+the loader requires those latter two names to agree. `model.digest` in the quote is the existing boot
+weight digest, also present as `model_digest`, rather than the raw GGUF checksum. Obtain it with
+`bun src/main.ts digest <weights-path>` and place it on the model allow-list.
+
+The quote commits the source hash, engine name/image digest, and model ID/digest together with the existing
+keys and digests. The source archive and weights are hashed at boot; engine image and model ID are operator
+declarations. They need review against the measured deployment, and are not independent engine measurements.
+This CPU deployment supplies no verified GPU confidential-computing evidence. Legacy v1 evidence still verifies,
+but lacks the fields the network host policy requires. Update the signed host policy with approved pins separately.
+
 ## Deploy
 
 ```sh
