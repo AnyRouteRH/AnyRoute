@@ -1088,6 +1088,9 @@ export default function Docs() {
           </p>
           <Code label="Ask a question of two documents, on the attested lane">{ragCurl}</Code>
           <p>
+            There is a page for it too: <a href="/ask/">Ask your files</a> reads .txt, .md, .csv, .json, .html and .docx files in your browser and sends them to this endpoint with your question.
+          </p>
+          <p>
             <b>Request.</b> documents is a list of strings, or of objects with an id and a text; an id defaults to doc-1, doc-2 and so on, and ids must be unique. By default one request may carry 200 documents, 2 MiB of text, 2,000 chunks and 64 embeddings calls; above any of them it is
             refused with 413 before anything is sent (the router’s RAG_MAX_DOCUMENTS, RAG_MAX_BYTES, RAG_MAX_CHUNKS and RAG_MAX_EMBEDDING_CALLS settings). chunk.size (100 to 8,000 characters, default 1,000) and chunk.overlap (default 15% of the size, at most half of it) set the
             chunking, and a chunk ends at a paragraph, line or sentence boundary where it can. top_k (1 to 20, default 4) is how many chunks go into the prompt; a request whose largest possible prompt would not fit the chat model’s context is refused (400 context_too_small) before
