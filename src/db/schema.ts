@@ -532,10 +532,12 @@ export const attestationEvents = pgTable(
 );
 
 // The image, compose and model digests a provider's confidential endpoint has been seen running, each bound
-// into a hardware quote a configured verifier accepted. One row per (provider, image digest); rows are created
-// only from a verified, non-simulated attestation. Status: observed (attested, not yet found in Rekor),
-// ready (attested and found in Rekor with a verified inclusion proof; register() calldata may be built),
-// registered (an operator recorded the transaction that registered it), revoked.
+// into a hardware quote a configured verifier accepted. One row per (provider, image digest, compose hash); rows are
+// created only from a verified, non-simulated attestation. A provider has at most one current row: the one its latest
+// verified quote committed to. Every other row of the provider carries superseded_at (and superseded_by, the row that
+// replaced it, when one was recorded) and is kept as history with its transparency-log entry. Status: observed
+// (attested, not yet found in Rekor), ready (attested and found in Rekor with a verified inclusion proof; register()
+// calldata may be built), registered (an operator recorded the transaction that registered it), revoked.
 export const measurements = pgTable(
   "measurements",
   {
@@ -567,11 +569,13 @@ export const measurements = pgTable(
     txHash: text("tx_hash"),
     registeredAt: ts("registered_at"),
     revokedAt: ts("revoked_at"),
+    supersededAt: ts("superseded_at"), // set once a later verified quote committed to other digests; null while current
+    supersededBy: integer("superseded_by"), // measurements.id of the row that replaced this one, when one was recorded
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("measurements_provider_image_uq").on(t.providerId, t.imageDigest),
+    uniqueIndex("measurements_provider_image_compose_uq").on(t.providerId, t.imageDigest, t.composeHash),
     index("measurements_status_idx").on(t.status, t.updatedAt),
   ],
 );
