@@ -177,6 +177,40 @@ import { buyTokens } from "@anyroute/client/blind";
 
 const { tokens } = await buyTokens({ baseUrl: "https://<router>", apiKey: process.env.ANYROUTE_API_KEY, denomination: 10000, count: 10 });
 console.log(tokens.join("\\n")); // one token pays for one call; keep them private until you spend them`;
+const tokenFileExample = `{
+  "version": 1,
+  "tokens": [
+    {
+      "token": "AAJ…",
+      "key_id": "47aec8f7ed92f6f0c7f516e96db914edb6ceef5faeba45e1c252c38f9b997afe",
+      "denomination": 1000,
+      "epoch": 2900,
+      "value_usd": "0.002",
+      "redeem_until": "2026-10-13T01:53:13.999Z",
+      "bought_at": "2026-09-30T00:00:00.000Z"
+    }
+  ],
+  "unconfirmed": []
+}`;
+const tokenFileSdk = `import { readFile, writeFile } from "node:fs/promises";
+import { AnyRoute, parseTokenFile, serializeTokenFile, withoutTokens } from "@anyroute/client";
+
+const path = \`\${process.env.HOME}/.anyroute/tokens.json\`;
+const file = parseTokenFile(await readFile(path, "utf8")); // throws TokenFileError with a reason if it is not a token file
+const [next] = file.tokens; // one token pays for one call
+
+const client = new AnyRoute({ baseUrl: "http://<onion address>" }).withPrivateToken(next.token);
+// ... send the call, then take the token out of the file so it is not used twice:
+await writeFile(path, serializeTokenFile(withoutTokens(file, [next.token])), { mode: 0o600 });`;
+const tokenFileMerge = `# Add a downloaded file to the one you already have (do not copy it over: that would drop the tokens already there)
+jq -s '.[0] + {tokens: (map(.tokens) | add | unique_by(.token))}' ~/.anyroute/tokens.json anyroute-tokens.json > merged.json \\
+  && chmod 600 merged.json && mv merged.json ~/.anyroute/tokens.json
+
+# One token from the file, spent on one call over Tor
+TOKEN=$(jq -r '.tokens[0].token' ~/.anyroute/tokens.json)
+curl -N --proxy socks5h://127.0.0.1:9050 http://<onion address>/api/v1/chat/completions \\
+  -H "Authorization: PrivateToken token=$TOKEN" -H "X-Anyroute-Lane: unlinkable" -H "Content-Type: application/json" \\
+  -d '{"model":"<model from the list>","messages":[{"role":"user","content":"Hello"}]}'`;
 const torUnlinkable = `# Is the lane served over Tor here? lanes.unlinkable.via lists "onion", and onion.url is the address.
 curl -s --proxy socks5h://127.0.0.1:9050 http://<onion address>/api/v1/status | jq '.data.lanes.unlinkable, .data.onion'
 
@@ -640,6 +674,7 @@ export default function Docs() {
             <a href="#lanes">Lanes</a>
             <a href="#tor">Tor</a>
             <a href="#private">Private proxy</a>
+            <a href="#private-tokens">Private tokens</a>
             <a href="#key-log">Key log</a>
             <a href="#lane">Lane</a>
             <a href="#payments">Payments</a>
@@ -799,6 +834,30 @@ export default function Docs() {
             time; and anything in the body that identifies you reaches the provider. End-to-end encryption through the router to the enclave is planned.
           </p>
           <PrivateProxyDocs />
+          <h2 id="private-tokens">Private tokens from your wallet, kept on your device.</h2>
+          <p>
+            The <a href="/tokens/" className="inline-link">Private tokens</a> page turns a payment from your own wallet into blind tokens that stay in your browser, with no account and no long-lived key. It adds nothing on the router: it uses only the endpoints
+            documented here. Every step runs in the page. It makes a one-time key (POST /api/v1/keys, no credential), keeps it in memory and in that tab&rsquo;s session storage only, and you pay it from your wallet: USDG to the key&rsquo;s hash through the Credits contract, or
+            $ANYR to the escrow address. $ANYR is a payment method here, not a claim on anything: escrow credits the wallet that sent it, at the pool&rsquo;s time-weighted average price (the lower of spot and the average) minus the haircut and up to the per-deposit limit
+            in GET /api/v1/status escrow.anyr, so for $ANYR the page signs you in with one signature to a fresh key on your wallet&rsquo;s account and turns only the newly credited amount into tokens. When the credit is there it blinds the tokens in the browser
+            (RFC 9474, the suite the router signs with), buys them with POST /api/v1/blind/purchase, unblinds the signatures, keeps the tokens in IndexedDB, and offers them as a token file. Last, it switches the one-time key off at the router (PATCH /api/v1/keys/&lt;hash&gt; with
+            disabled), overwrites the copy in memory and removes the stored copy. A purchase that is interrupted is finished by sending the same request again, which the router does not charge twice; a token is not shown as bought until its signature verifies.
+          </p>
+          <p>
+            What stays linkable: the payment is a public transaction that names your wallet, the router records that the one-time key (or, for $ANYR, your wallet&rsquo;s account) spent an amount on tokens, and your network address and the time of purchase are visible unless you
+            use the onion address. What does not: which prompts a token later paid for, because the router signs tokens blind. Tokens hide who pays, not the request: the router reads the text of every request in memory to route it. A token pays for one call up to its value, the unused
+            part is not returned, and it stops working after its <code>redeem_until</code>. The page works at the router&rsquo;s onion address because every request it makes is relative to the address it was opened from; a browser wallet is often missing in Tor Browser, so the USDG route
+            also shows the key hash to pay from any wallet app.
+          </p>
+          <Code label="The token file (anyroute-tokens.json)">{tokenFileExample}</Code>
+          <p>
+            The file is one JSON object, the same one the <a href="#private" className="inline-link">private proxy</a> keeps at ~/.anyroute/tokens.json. <code>version</code> is 1. Each entry in <code>tokens</code> has the finished <code>token</code> (the value after <code>PrivateToken token=</code>: 354 bytes of Privacy
+            Pass token type 0x0002, base64url), the <code>key_id</code> it was signed under, its size and epoch, its value and its <code>redeem_until</code>, and when it was bought (the page writes the day, not the minute). <code>unconfirmed</code> holds tokens a tool sent without ever
+            learning the outcome; they are not used again. The file holds no key, wallet address or account. A reader checks each token&rsquo;s layout and that its <code>key_id</code> is the one inside the token, and refuses a version it does not know. A tool that spends a token removes
+            it from the file. Keep it readable by you only (mode 0600): anyone who has the file can spend its tokens. @anyroute/client reads and writes it with no optional dependency, and <code>mergeTokenFiles</code> adds a download to a file you already have.
+          </p>
+          <Code label="Read the file and spend a token (TypeScript SDK)">{tokenFileSdk}</Code>
+          <Code label="Merge a download and spend one token with curl (SOCKS5 on 127.0.0.1:9050)">{tokenFileMerge}</Code>
           <h2 id="key-log">A witnessed log of every key, where the router enables it.</h2>
           <p>
             Where the router runs its transparency log, every key and configuration a client encrypts to or verifies against is appended to one append-only Merkle log: receipt signing keys, Oblivious HTTP key configurations, blind-token issuer keys,
