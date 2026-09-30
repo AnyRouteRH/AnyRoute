@@ -34,7 +34,8 @@ export type ClientOptions = {
    * Opt-in split-view checks against the router's witnessed transparency log. When set, a receipt verifies only if its
    * signing key is logged under a checkpoint cosigned by `quorum` of `witnesses` and consistent with every checkpoint
    * this client saw before (check `key_logged`). `client.transparency` checks other keys (Oblivious HTTP key
-   * configurations, blind-token issuer keys, sidecar bindings) the same way. Off by default.
+   * configurations, blind-token issuer keys, sidecar bindings) the same way. With `rekor`, a verified Rekor anchor of the
+   * checkpoint counts in place of the cosignatures (or besides them, when witnesses are listed too). Off by default.
    */
   transparency?: Omit<TransparencyOptions, "fetch" | "ed25519">;
 };
