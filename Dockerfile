@@ -1,3 +1,13 @@
+# The data inventory behind the website's "What we keep" page: generated from the schema and the descriptions in src/privacy by the
+# code in this image, so the page, /keep/inventory.json and the hash the router logs cannot disagree with the schema.
+FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS inventory
+WORKDIR /app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production --ignore-scripts
+COPY src ./src
+COPY scripts/gen-inventory.ts ./scripts/gen-inventory.ts
+RUN bun scripts/gen-inventory.ts --out /out/inventory.generated.json
+
 # Website: static Next.js export, served by the router at /.
 FROM node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS web
 WORKDIR /web
@@ -6,6 +16,11 @@ COPY web/package.json web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/next.config.mjs ./
 COPY web/app ./app
+COPY --from=inventory /out/inventory.generated.json ./app/keep/inventory.generated.json
+# The commit shown on /keep. The image build cannot see git: pass --build-arg ANYROUTE_BUILD_COMMIT=<40-hex commit> (or set it as a
+# service variable); without it the page says the build did not record a commit.
+ARG ANYROUTE_BUILD_COMMIT=""
+ENV ANYROUTE_BUILD_COMMIT=$ANYROUTE_BUILD_COMMIT
 COPY web/components ./components
 COPY web/lib ./lib
 COPY web/public ./public
