@@ -66,6 +66,7 @@ import { hostAnchorRoutes } from "./api/host-anchor.ts";
 import { TransparencyLog } from "./tlog/log.ts";
 import { tlogRoutes } from "./tlog/routes.ts";
 import { statusRoutes } from "./api/status.ts";
+import { networkRoutes } from "./network/waitlist.ts";
 import { skillsRoutes } from "./api/skills.ts";
 import { startStatusLoop, statusMiddleware } from "./services/slo.ts";
 
@@ -170,6 +171,7 @@ export async function createApp(opts: AppOptions = {}) {
   if (ctx.tlog) tlogRoutes(app, ctx);
   statusRoutes(app, ctx);
   skillsRoutes(app, ctx);
+  networkRoutes(app, ctx);
   publicRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);

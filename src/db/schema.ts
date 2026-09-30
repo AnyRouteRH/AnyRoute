@@ -1255,3 +1255,5 @@ export const skillInstalls = pgTable(
   },
   (t) => [uniqueIndex("skill_installs_skill_account_uq").on(t.skillId, t.accountId), index("skill_installs_account_idx").on(t.accountId)],
 );
+
+export { networkWaitlist } from "../network/schema.ts";

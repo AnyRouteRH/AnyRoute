@@ -1,0 +1,21 @@
+.body section { scroll-margin-top: 100px; margin-bottom: 72px; }
+.steps { padding-left: 24px; }
+.steps li { padding-left: 12px; margin: 24px 0; }
+.steps h3 { margin-bottom: 8px; }
+.code { overflow-x: auto; padding: 24px; background: var(--ink); color: var(--paper); font-size: 12px; }
+.digest dd, .saved dd { margin: 8px 0 20px; overflow-wrap: anywhere; font-size: 12px; }
+.small { display: block; font-size: 13px; line-height: 1.65; font-weight: 400; opacity: .8; }
+.formArea { max-width: 680px; }
+.form { display: grid; gap: 24px; }
+.form label { display: grid; gap: 9px; font-size: 15px; font-weight: 600; }
+.form input, .form select, .form textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line-strong); border-radius: 0; padding: 14px; color: inherit; background: var(--white); font: inherit; font-weight: 400; }
+.form input:focus-visible, .form select:focus-visible, .form textarea:focus-visible, .button:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+.promise { margin: 0; font-size: 14px; line-height: 1.7; }
+.button:disabled { opacity: .55; cursor: wait; }
+.honey { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.error { color: var(--danger); font-size: 14px; }
+.saved { border: 1px solid var(--line-strong); padding: 24px; }
+.delete { margin-top: 32px; }
+.delete summary, .faq summary { cursor: pointer; padding: 20px 0; font-weight: 600; }
+.delete form { margin-top: 20px; }
+.faq { border-top: 1px solid var(--line-strong); }

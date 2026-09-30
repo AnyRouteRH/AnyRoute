@@ -190,6 +190,13 @@
       "when": 1790778314021,
       "tag": "0026_v4_skills",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790780630452,
+      "tag": "0027_v3_network",
+      "breakpoints": true
     }
   ]
 }

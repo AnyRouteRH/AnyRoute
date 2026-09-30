@@ -1,3 +1,4 @@
+import { exportWaitlist } from "../network/waitlist.ts";
 import type { Hono } from "hono";
 import { trpcServer } from "@hono/trpc-server";
 import { initTRPC, TRPCError } from "@trpc/server";
@@ -45,6 +46,7 @@ const reviewView = (row: typeof providers.$inferSelect) => {
 };
 
 export const adminRouter = t.router({
+  networkWaitlistExport: operator.input(z.strictObject({ after: z.uuid().optional(), limit: z.number().int().min(1).max(1000).default(100) })).query(async ({ ctx, input }) => ser(await exportWaitlist(ctx.app, input))),
   providers: t.router({
     // "apply" is a reserved word in tRPC routers; REST keeps POST /api/v1/providers/apply.
     onboard: t.procedure.input(providerApplication).mutation(async ({ ctx, input }) => {
