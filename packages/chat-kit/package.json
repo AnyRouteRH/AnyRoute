@@ -1,0 +1,59 @@
+{
+  "name": "@anyroute/chat-kit",
+  "version": "0.1.0",
+  "description": "An embeddable, white-label React chat kit for Anyroute: streaming chat, markdown with code copy, stop and regenerate, vision attachments, presets, privacy labels and receipt links, with chat history encrypted in the browser under a key only the viewer holds.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "anyroute",
+    "react",
+    "chat",
+    "chat-ui",
+    "white-label",
+    "streaming",
+    "encrypted-history",
+    "openai-compatible"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnyRouteRH/AnyRoute.git",
+    "directory": "packages/chat-kit"
+  },
+  "scripts": {
+    "build": "NODE_ENV=production bun scripts/build.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test && bun run build",
+    "example": "bun example/serve.ts"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "20.14.5",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.3",
+    "@types/bun": "1.4.2",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "typescript": "7.0.2"
+  }
+}
