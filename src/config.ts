@@ -1,4 +1,4 @@
-import { createHash, createHmac, createPrivateKey, createPublicKey } from "node:crypto";
+import { createHash, createHmac, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -351,6 +351,13 @@ const schema = z.object({
   TLOG_WITNESS_QUORUM: int(2), // cosignatures a checkpoint needs to count as witnessed
   TLOG_INTERVAL_MS: int(60_000), // how often the log job picks up new keys and signs a checkpoint
   TLOG_COSIGN_RPM: int(60), // cosignature submissions per minute per client address
+  // Public-log anchoring (src/tlog/rekor.ts), off by default: each new checkpoint, at most once per
+  // TLOG_REKOR_MIN_INTERVAL_MS, is recorded in the Rekor log at REKOR_URL as a hashedrekord entry over the signed checkpoint
+  // note, signed with TLOG_REKOR_SIGNING_KEY. REKOR_PUBLIC_KEY, when set, is used to check Rekor's checkpoint and signed
+  // entry timestamp. In production this is accepted in place of TLOG_WITNESS_QUORUM witnesses.
+  TLOG_REKOR_ENABLED: bool.default(false),
+  TLOG_REKOR_SIGNING_KEY: opt, // a dedicated ECDSA P-256 private key (PKCS#8 or SEC1 PEM, or base64 PKCS#8); never the measurement key
+  TLOG_REKOR_MIN_INTERVAL_MS: int(600_000), // at most one Rekor submission per this many milliseconds (at least 60000)
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -692,7 +699,8 @@ function hostAnchorSettings(e: Env) {
 
 // ---- Transparency log --------------------------------------------------------------------------------------------
 function tlogSettings(e: Env, production: boolean) {
-  if (!e.TLOG_ENABLED) return { enabled: false as boolean, origin: "", signingKey: Buffer.alloc(0), witnesses: [] as NoteVerifier[], quorum: e.TLOG_WITNESS_QUORUM, intervalMs: e.TLOG_INTERVAL_MS, cosignRpm: e.TLOG_COSIGN_RPM };
+  if (e.TLOG_REKOR_ENABLED && !e.TLOG_ENABLED) throw new Error("TLOG_REKOR_ENABLED needs TLOG_ENABLED: it records the transparency log's checkpoints in Rekor.");
+  if (!e.TLOG_ENABLED) return { enabled: false as boolean, origin: "", signingKey: Buffer.alloc(0), witnesses: [] as NoteVerifier[], quorum: e.TLOG_WITNESS_QUORUM, intervalMs: e.TLOG_INTERVAL_MS, cosignRpm: e.TLOG_COSIGN_RPM, rekor: tlogRekorSettings(e, production) };
   let origin = e.TLOG_ORIGIN?.trim() ?? "";
   let seed: Buffer | null = null;
   let pkcs8: Buffer | null = null;
@@ -744,9 +752,12 @@ function tlogSettings(e: Env, production: boolean) {
   if (e.TLOG_WITNESS_QUORUM < 1 || e.TLOG_WITNESS_QUORUM > 32) throw new Error("TLOG_WITNESS_QUORUM must be between 1 and 32.");
   if (e.TLOG_INTERVAL_MS < 1_000) throw new Error("TLOG_INTERVAL_MS must be at least 1000.");
   if (e.TLOG_COSIGN_RPM < 1) throw new Error("TLOG_COSIGN_RPM must be at least 1.");
+  const rekor = tlogRekorSettings(e, production);
   if (production) {
     if (!e.TLOG_SIGNING_KEY) throw new Error("TLOG_ENABLED requires TLOG_SIGNING_KEY in production: the log's key is its identity and must not change.");
-    if (witnesses.length < e.TLOG_WITNESS_QUORUM) throw new Error("TLOG_ENABLED requires at least TLOG_WITNESS_QUORUM witnesses in TLOG_WITNESSES in production.");
+    // Someone other than the log must be able to see every checkpoint it signs: cosigning witnesses, or Rekor anchoring.
+    if (witnesses.length < e.TLOG_WITNESS_QUORUM && !rekor.enabled)
+      throw new Error("TLOG_ENABLED in production needs an independent check of its checkpoints: at least TLOG_WITNESS_QUORUM witnesses in TLOG_WITNESSES, or public-log anchoring with TLOG_REKOR_ENABLED and TLOG_REKOR_SIGNING_KEY.");
   }
   // Outside production a log with no configured key signs with one derived from APP_SECRET, so it keeps its identity
   // across restarts. Production refuses to start without TLOG_SIGNING_KEY (above).
@@ -760,7 +771,41 @@ function tlogSettings(e: Env, production: boolean) {
     quorum: e.TLOG_WITNESS_QUORUM,
     intervalMs: e.TLOG_INTERVAL_MS,
     cosignRpm: e.TLOG_COSIGN_RPM,
+    rekor,
   };
+}
+
+/** Rekor anchoring of the log's checkpoints (src/tlog/rekor.ts). Checked only when TLOG_REKOR_ENABLED is on. */
+function tlogRekorSettings(e: Env, production: boolean) {
+  const url = e.REKOR_URL.replace(/\/+$/, "");
+  const rekorPublicKey = e.REKOR_PUBLIC_KEY?.replace(/\\n/g, "\n").trim() || null;
+  const off = { enabled: false as boolean, url, rekorPublicKey, minIntervalMs: e.TLOG_REKOR_MIN_INTERVAL_MS, signingKey: null as KeyObject | null };
+  if (!e.TLOG_REKOR_ENABLED) return off;
+  if (!e.TLOG_REKOR_SIGNING_KEY) throw new Error("TLOG_REKOR_ENABLED requires TLOG_REKOR_SIGNING_KEY: a dedicated ECDSA P-256 private key that signs the Rekor entries.");
+  const p256 = (k: KeyObject) => k.asymmetricKeyType === "ec" && k.asymmetricKeyDetails?.namedCurve === "prime256v1";
+  let signingKey: KeyObject;
+  try {
+    const src = e.TLOG_REKOR_SIGNING_KEY.replace(/\\n/g, "\n").trim();
+    signingKey = src.includes("BEGIN") ? createPrivateKey(src) : createPrivateKey({ key: Buffer.from(src, "base64"), format: "der", type: "pkcs8" });
+    if (!p256(signingKey)) throw new Error("not P-256");
+  } catch {
+    throw new Error("TLOG_REKOR_SIGNING_KEY must be an ECDSA P-256 private key: a PKCS#8 or SEC1 PEM, or base64 PKCS#8.");
+  }
+  const publicPem = createPublicKey(signingKey).export({ type: "spki", format: "pem" }).toString();
+  if (e.MEASUREMENT_PUBLIC_KEY && measurementPublicKey(e.MEASUREMENT_PUBLIC_KEY) === publicPem) throw new Error("TLOG_REKOR_SIGNING_KEY must be its own key, not the measurement key.");
+  if (!Number.isInteger(e.TLOG_REKOR_MIN_INTERVAL_MS) || e.TLOG_REKOR_MIN_INTERVAL_MS < 60_000) throw new Error("TLOG_REKOR_MIN_INTERVAL_MS must be at least 60000.");
+  if (!/^https?:\/\/[^\s/]+/.test(url)) throw new Error("REKOR_URL must be an http(s) URL.");
+  if (production && !url.startsWith("https://")) throw new Error("REKOR_URL must be https in production.");
+  if (rekorPublicKey) {
+    let ok = false;
+    try {
+      ok = p256(createPublicKey(rekorPublicKey));
+    } catch {
+      /* refused below */
+    }
+    if (!ok) throw new Error("REKOR_PUBLIC_KEY must be the Rekor log's ECDSA P-256 public key (PEM).");
+  }
+  return { ...off, enabled: true as boolean, signingKey };
 }
 
 // ---- The Lane -------------------------------------------------------------------------------------------

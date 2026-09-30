@@ -6,6 +6,7 @@ import { ENTRY_KINDS, isEntryKind } from "./entries.ts";
 import { CosignError, type CheckpointRow } from "./log.ts";
 import { formatVerifierKey, SIG_COSIGNATURE_V1 } from "./note.ts";
 import { parseTilePath } from "./merkle.ts";
+import { ANCHOR_KEY_ALGORITHM, anchorView } from "./rekor.ts";
 
 // The log in the C2SP tlog-tiles layout, and a small JSON API around it. Registered only when TLOG_ENABLED is on.
 //
@@ -19,6 +20,9 @@ import { parseTilePath } from "./merkle.ts";
 //   GET  /api/v1/tlog/proof                 an entry with its inclusion proof and, on request, a consistency proof
 //   GET  /api/v1/tlog/consistency           a consistency proof between two tree sizes
 //   POST /api/v1/tlog/cosignatures          a witness hands in its cosignature on a checkpoint
+//   GET  /api/v1/tlog/rekor                 Rekor anchoring (TLOG_REKOR_ENABLED): the key, the newest anchor, a list
+//   GET  /api/v1/tlog/rekor/key             the anchoring key (ECDSA P-256 public key)
+//   GET  /api/v1/tlog/rekor/{size}          the Rekor entry that anchors one checkpoint
 //
 // Hashes in the JSON API are standard base64, as in checkpoints.
 
@@ -78,8 +82,18 @@ export function tlogRoutes(app: Hono, ctx: Ctx) {
 
   const checkpointView = async (cp: CheckpointRow) => {
     const cosigs = await tlog.cosignatures(cp.size);
-    return { size: cp.size, root_hash: b64(Buffer.from(cp.rootHash, "hex")), note: await tlog.note(cp), cosigned_by: cosigs.map((x) => x.witness), witnessed: tlog.witnesses.length >= tlog.quorum && cosigs.length >= tlog.quorum };
+    const view = { size: cp.size, root_hash: b64(Buffer.from(cp.rootHash, "hex")), note: await tlog.note(cp), cosigned_by: cosigs.map((x) => x.witness), witnessed: tlog.witnesses.length >= tlog.quorum && cosigs.length >= tlog.quorum };
+    if (!tlog.rekor) return view;
+    // With anchoring on, the checkpoint's Rekor entry (null until it is anchored).
+    const anchor = await tlog.rekor.at(cp.size);
+    return { ...view, rekor: anchor ? anchorView(anchor) : null };
   };
+  const rekorKey = () => ({ algorithm: ANCHOR_KEY_ALGORITHM, key_id: tlog.rekor!.keyId, public_key_pem: tlog.rekor!.publicKeyPem });
+  const rekorSummary = async () => {
+    const latest = await tlog.rekor!.latest();
+    return { rekor_url: tlog.rekor!.url, entry_type: "hashedrekord", ...rekorKey(), min_interval_ms: tlog.rekor!.minIntervalMs, latest: latest ? anchorView(latest) : null };
+  };
+  const rekorOff = (c: Context) => notFound(c, "This log does not anchor its checkpoints in Rekor (TLOG_REKOR_ENABLED is off).", "rekor_not_enabled");
 
   app.get("/api/v1/tlog", async (c) => {
     const cp = await tlog.checkpoint();
@@ -97,8 +111,36 @@ export function tlogRoutes(app: Hono, ctx: Ctx) {
         checkpoint: await checkpointView(cp),
         witnessed_size: w?.size ?? null,
         tiles_url: `${ctx.cfg.publicUrl}/tlog/`,
+        rekor: tlog.rekor ? await rekorSummary() : null,
       },
     });
+  });
+
+  // ---- Rekor anchoring ----------------------------------------------------------------------------------------------
+
+  app.get("/api/v1/tlog/rekor", async (c) => {
+    if (!tlog.rekor) return rekorOff(c);
+    const limit = sizeParam(c.req.query("limit"), "limit") ?? 20;
+    if (limit < 1 || limit > 100) fail(400, "`limit` must be between 1 and 100.", "invalid_request");
+    const before = sizeParam(c.req.query("before"), "before");
+    const rows = await tlog.rekor.list(limit, before);
+    c.header("cache-control", "no-cache");
+    return c.json({ data: { ...(await rekorSummary()), anchors: rows.map(anchorView), next_before: rows.length === limit ? rows[rows.length - 1].size : null } });
+  });
+
+  app.get("/api/v1/tlog/rekor/key", (c) => {
+    if (!tlog.rekor) return rekorOff(c);
+    c.header("cache-control", "public, max-age=300");
+    return c.json({ data: rekorKey() });
+  });
+
+  app.get("/api/v1/tlog/rekor/:size", async (c) => {
+    if (!tlog.rekor) return rekorOff(c);
+    const size = sizeParam(c.req.param("size"), "size")!;
+    const row = await tlog.rekor.at(size);
+    if (!row) return notFound(c, "No Rekor entry anchors a checkpoint of that size.", "not_anchored");
+    c.header("cache-control", "no-cache");
+    return c.json({ data: anchorView(row) });
   });
 
   app.get("/api/v1/tlog/witnessed", async (c) => {
@@ -139,7 +181,7 @@ export function tlogRoutes(app: Hono, ctx: Ctx) {
     if (wanted !== undefined) {
       cp = await tlog.checkpointAt(wanted);
       if (!cp) fail(404, "This log has not signed a checkpoint of that size.", "unknown_checkpoint");
-    } else cp = (await tlog.witnessed(row.idx + 1)) ?? (await tlog.checkpoint());
+    } else cp = (await tlog.witnessed(row.idx + 1)) ?? (await tlog.anchored(row.idx + 1)) ?? (await tlog.checkpoint());
     if (cp!.size <= row.idx) fail(409, "That checkpoint does not include the entry yet.", "not_yet_included");
     const size = await tlog.size();
     let consistency = null;

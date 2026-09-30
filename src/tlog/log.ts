@@ -7,6 +7,7 @@ import { blindKeyEntry, ENTRY_KINDS, entryText, measurementBundleEntry, ohttpKey
 import { onKeyPublished } from "./hooks.ts";
 import { encodeEntryBundle, leafHash, MAX_ENTRY_BYTES, MerkleTree, tileWidth, TILE_WIDTH, type TileRef } from "./merkle.ts";
 import { formatCheckpoint, noteSigner, parseCheckpoint, parseNote, SIG_ED25519, signatureLine, verifyCosignature, type NoteSigner, type NoteVerifier } from "./note.ts";
+import { RekorAnchor, type AnchorResult } from "./rekor.ts";
 
 // The Anyroute transparency log: an append-only Merkle tree over the keys and configurations clients encrypt to or
 // verify against (receipt keys, Oblivious HTTP key configurations, blind-token issuer keys, measurement bundles and
@@ -31,6 +32,8 @@ export class TransparencyLog {
   readonly signer: NoteSigner;
   readonly witnesses: NoteVerifier[];
   readonly quorum: number;
+  /** Public-log anchoring of checkpoints in Rekor (TLOG_REKOR_ENABLED), or null. */
+  readonly rekor: RekorAnchor | null;
   /** Test hook: the clock, in milliseconds. */
   now: () => number = () => Date.now();
   private readonly tree = new MerkleTree();
@@ -47,6 +50,7 @@ export class TransparencyLog {
     this.signer = noteSigner(cfg.origin, SIG_ED25519, cfg.signingKey);
     this.witnesses = cfg.witnesses;
     this.quorum = cfg.quorum;
+    this.rekor = cfg.rekor?.enabled ? new RekorAnchor(db, cfg.rekor) : null;
   }
 
   /** The verifier key clients pin: "<origin>+<key id>+<base64 key>". */
@@ -209,6 +213,12 @@ export class TransparencyLog {
     return hit ? this.checkpointAt(hit.size) : null;
   }
 
+  /** The newest checkpoint of at least `minSize` whose Rekor anchor verified, if anchoring is on. */
+  async anchored(minSize = 0): Promise<CheckpointRow | null> {
+    const a = await this.rekor?.latest(minSize);
+    return a ? this.checkpointAt(a.size) : null;
+  }
+
   // ---- witnesses -----------------------------------------------------------------------------------------------
 
   /**
@@ -289,12 +299,14 @@ export class TransparencyLog {
     return (await this.refresh()).consistencyProof(from, to);
   }
 
-  /** Periodic job: log keys published since the last run and make sure the newest tree size has a checkpoint. */
-  async run(): Promise<{ size: number; added: number; witnessed: number | null }> {
+  /** Periodic job: log keys published since the last run, make sure the newest tree size has a checkpoint and, with
+   *  anchoring on, record that checkpoint in Rekor (throttled; a Rekor failure is reported, never thrown). */
+  async run(): Promise<{ size: number; added: number; witnessed: number | null; rekor?: AnchorResult }> {
     const added = await this.sync();
     const cp = await this.checkpoint();
     const w = await this.witnessed();
-    return { size: cp.size, added, witnessed: w?.size ?? null };
+    if (!this.rekor) return { size: cp.size, added, witnessed: w?.size ?? null };
+    return { size: cp.size, added, witnessed: w?.size ?? null, rekor: await this.rekor.run(cp) };
   }
 }
 
