@@ -1,0 +1,417 @@
+import net from "node:net";
+import tls from "node:tls";
+
+// A minimal HTTP/1.1 client that reaches its target through a SOCKS5 proxy (RFC 1928, with the username/password method
+// of RFC 1929), used to reach an onion service through a local Tor client. It exists because the runtime's fetch does
+// not speak SOCKS. It is the client in relay/src/socks.ts (same licence), with two additions: https:// targets, and a
+// hook that says when the request has been handed to the proxy.
+//
+// Two properties matter for privacy. The target's name is always handed to the proxy as a name (address type 3) and is
+// never resolved here: a .onion name resolves nowhere else, and a lookup on this host would show what it connects to.
+// And the request is built from nothing but the pieces the caller passes; the client adds a Host, a Content-Length and
+// `Connection: close`, one request per tunnel, so nothing from one request can carry over into the next.
+//
+// http:// is what an onion service needs: Tor already authenticates and encrypts the connection end to end. https://
+// exists to ask the router's public name a question through a Tor exit, and verifies the certificate against the
+// system's trust store; the TLS session runs inside the SOCKS tunnel, never from this host.
+
+export type SocksProxy = { host: string; port: number; username?: string; password?: string };
+
+/** A failure to reach the proxy, to authenticate to it, or of the proxy to reach the target. */
+export class SocksError extends Error {
+  override name = "SocksError";
+}
+
+/** What the proxy said when it could not connect: the SOCKS5 reply codes, and the extra ones Tor adds for onion services. */
+const REPLIES: Record<number, string> = {
+  1: "general proxy failure",
+  2: "connection not allowed by the proxy",
+  3: "network unreachable",
+  4: "host unreachable",
+  5: "connection refused",
+  6: "TTL expired",
+  7: "command not supported",
+  8: "address type not supported",
+  0xf0: "onion service descriptor not found",
+  0xf1: "onion service descriptor invalid",
+  0xf2: "onion service introduction failed",
+  0xf3: "onion service rendezvous failed",
+  0xf4: "onion service needs client authorization",
+  0xf5: "onion service client authorization is wrong",
+  0xf6: "onion service address is invalid",
+  0xf7: "onion service introduction timed out",
+};
+
+/** Buffers what a socket receives and hands it out in the sizes the protocol parsers ask for. */
+class Reader {
+  private chunks: Buffer[] = [];
+  private length = 0;
+  private received = 0;
+  private connected = false;
+  private closed = false;
+  private failure: Error | null = null;
+  private waiting: (() => void) | null = null;
+
+  private readonly handlers: [string, (...a: never[]) => void][];
+
+  /** `readyEvent` is the event that says the socket can be written to: "connect" for TCP, "secureConnect" for TLS. */
+  constructor(
+    private readonly socket: net.Socket,
+    private readonly limit: number,
+    readyEvent = "connect",
+  ) {
+    this.handlers = [
+      [readyEvent, () => this.wake(() => (this.connected = true))],
+      [
+        "data",
+        (d: Buffer) =>
+          this.wake(() => {
+            this.chunks.push(d);
+            this.length += d.length;
+            this.received += d.length;
+            if (this.received > this.limit) {
+              this.failure ??= new Error("The response is larger than allowed.");
+              socket.destroy();
+            }
+          }),
+      ],
+      ["end", () => this.wake(() => (this.closed = true))],
+      ["close", () => this.wake(() => (this.closed = true))],
+      ["error", (e: Error) => this.wake(() => (this.failure ??= e))],
+    ];
+    for (const [event, handler] of this.handlers) socket.on(event, handler as (...a: unknown[]) => void);
+  }
+
+  /** Stop listening, so the socket can be handed to TLS. Nothing may have been received that the reader has not consumed. */
+  detach() {
+    for (const [event, handler] of this.handlers) this.socket.off(event, handler as (...a: unknown[]) => void);
+    if (this.length > 0) throw new SocksError("The proxy sent data before the connection was ready.");
+  }
+
+  private wake(update: () => unknown) {
+    update();
+    const w = this.waiting;
+    this.waiting = null;
+    w?.();
+  }
+
+  private changed() {
+    return new Promise<void>((resolve) => (this.waiting = resolve));
+  }
+
+  private flatten(): Buffer {
+    if (this.chunks.length > 1) this.chunks = [Buffer.concat(this.chunks)];
+    return this.chunks[0] ?? Buffer.alloc(0);
+  }
+
+  private consume(n: number): Buffer {
+    const all = this.flatten();
+    const out = all.subarray(0, n);
+    this.chunks = n < all.length ? [all.subarray(n)] : [];
+    this.length -= n;
+    return out;
+  }
+
+  private check(needMore: boolean) {
+    if (this.failure) throw this.failure;
+    if (needMore && this.closed) throw new Error("The connection closed before the message was complete.");
+  }
+
+  async ready(): Promise<void> {
+    while (!this.connected) {
+      this.check(true);
+      await this.changed();
+    }
+  }
+
+  /** Exactly n bytes. */
+  async take(n: number): Promise<Buffer> {
+    while (this.length < n) {
+      this.check(true);
+      await this.changed();
+    }
+    return this.consume(n);
+  }
+
+  /** Everything up to and including `delimiter`. */
+  async takeUntil(delimiter: string, max: number): Promise<Buffer> {
+    const d = Buffer.from(delimiter, "latin1");
+    for (;;) {
+      const at = this.flatten().indexOf(d);
+      if (at >= 0 && at + d.length <= max) return this.consume(at + d.length);
+      if (at >= 0 || this.length > max) throw new Error("A header or line in the response is too long.");
+      this.check(true);
+      await this.changed();
+    }
+  }
+
+  /** Whatever has arrived, at most `max` bytes, waiting until something has; empty once the peer closed. */
+  async takeSome(max: number): Promise<Buffer> {
+    while (this.length === 0) {
+      this.check(false);
+      if (this.closed) return Buffer.alloc(0);
+      await this.changed();
+    }
+    return this.consume(Math.min(max, this.length));
+  }
+
+  /** Everything until the peer closes the connection. */
+  async takeToEnd(): Promise<Buffer> {
+    while (!this.closed) {
+      this.check(false);
+      await this.changed();
+    }
+    this.check(false);
+    return this.consume(this.length);
+  }
+}
+
+const write = (socket: net.Socket, data: Uint8Array) => new Promise<void>((resolve, reject) => socket.write(data, (e) => (e ? reject(e) : resolve())));
+
+/** Open a tunnel to host:port through the proxy. The host is sent as a name, never resolved here. */
+async function tunnel(socket: net.Socket, reader: Reader, proxy: SocksProxy, host: string, port: number) {
+  const name = Buffer.from(host, "latin1");
+  if (!name.length || name.length > 255 || /[^\x21-\x7e]/.test(host)) throw new SocksError("The target name cannot be sent to a SOCKS5 proxy.");
+  await reader.ready();
+
+  const withAuth = proxy.username !== undefined;
+  await write(socket, Uint8Array.from(withAuth ? [5, 2, 0, 2] : [5, 1, 0]));
+  const choice = await reader.take(2);
+  if (choice[0] !== 5) throw new SocksError("The proxy did not answer as a SOCKS5 proxy.");
+  if (choice[1] === 0x02 && withAuth) {
+    const user = Buffer.from(proxy.username!, "utf8");
+    const pass = Buffer.from(proxy.password ?? "", "utf8");
+    await write(socket, Buffer.concat([Uint8Array.from([1, user.length]), user, Uint8Array.from([pass.length]), pass]));
+    const verdict = await reader.take(2);
+    if (verdict[1] !== 0) throw new SocksError("The proxy refused the credentials.");
+  } else if (choice[1] !== 0x00) {
+    throw new SocksError("The proxy accepts none of the offered authentication methods.");
+  }
+
+  await write(socket, Buffer.concat([Uint8Array.from([5, 1, 0, 3, name.length]), name, Uint8Array.from([port >> 8, port & 0xff])]));
+  const reply = await reader.take(4);
+  if (reply[0] !== 5) throw new SocksError("The proxy did not answer as a SOCKS5 proxy.");
+  if (reply[1] !== 0) throw new SocksError(`The proxy could not connect: ${REPLIES[reply[1]] ?? `reply code ${reply[1]}`}.`);
+  const bound = reply[3] === 1 ? 4 : reply[3] === 4 ? 16 : reply[3] === 3 ? (await reader.take(1))[0] : -1;
+  if (bound < 0) throw new SocksError("The proxy sent an address type that was not asked for.");
+  await reader.take(bound + 2);
+}
+
+const HEAD_MAX = 16 * 1024;
+const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/** Reject a request the caller could not have meant: a line break in a name or value would split the message. */
+function headerLine(name: string, value: string): string {
+  if (!TOKEN.test(name) || /[\r\n\0]/.test(value)) throw new SocksError("A request header is not valid.");
+  return `${name}: ${value}\r\n`;
+}
+
+async function readChunked(reader: Reader, max: number): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const chunk = await nextChunk(reader, max - total);
+    if (chunk === null) return Buffer.concat(parts);
+    total += chunk.length;
+    parts.push(chunk);
+  }
+}
+
+/** One chunk of a chunked transfer coding, or null after the last chunk and the trailer section. Refuses a chunk larger than `room`. */
+async function nextChunk(reader: Reader, room: number): Promise<Buffer | null> {
+  const line = (await reader.takeUntil("\r\n", 1024)).toString("latin1");
+  const m = /^([0-9a-fA-F]{1,8})(?:;[^\r\n]*)?\r\n$/.exec(line);
+  if (!m) throw new Error("The response has a malformed chunk.");
+  const size = parseInt(m[1], 16);
+  if (size === 0) {
+    for (;;) if ((await reader.takeUntil("\r\n", 8192)).length === 2) return null;
+  }
+  if (size > room) throw new Error("The response is larger than allowed.");
+  const data = await reader.take(size);
+  if ((await reader.take(2)).toString("latin1") !== "\r\n") throw new Error("The response has a malformed chunk.");
+  return data;
+}
+
+/** The payload as a stream, read from the socket only as the consumer asks for it, cut off past `max` bytes. */
+function payloadStream(reader: Reader, framing: { chunked: true } | { length: number } | { toEnd: true }, max: number, release: () => void): ReadableStream<Uint8Array> {
+  let total = 0;
+  let left = "length" in framing ? framing.length : 0;
+  let finished = false;
+  const finish = () => {
+    if (!finished) {
+      finished = true;
+      release();
+    }
+  };
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(ctl) {
+        try {
+          let piece: Buffer | null;
+          if ("chunked" in framing) piece = await nextChunk(reader, max - total);
+          else if ("length" in framing) {
+            piece = left > 0 ? await reader.takeSome(Math.min(left, 65_536)) : null;
+            if (piece && !piece.length) throw new Error("The connection closed before the message was complete.");
+            if (piece) left -= piece.length;
+          } else {
+            piece = await reader.takeSome(65_536);
+            if (!piece.length) piece = null;
+          }
+          if (piece === null) {
+            finish();
+            ctl.close();
+            return;
+          }
+          total += piece.length;
+          if (total > max) throw new Error("The response is larger than allowed.");
+          ctl.enqueue(new Uint8Array(piece));
+        } catch (e) {
+          finish();
+          ctl.error(e);
+        }
+      },
+      cancel() {
+        finish();
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
+export type SocksFetchInit = {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: Uint8Array;
+  signal?: AbortSignal;
+  /** Return as soon as the response head is read, with a body that is read from the tunnel as it is consumed. */
+  stream?: boolean;
+  /**
+   * Called once, immediately before the request bytes are handed to the tunnel. Until it has been called nothing
+   * of the request (in particular no credential in its headers) has left this process.
+   */
+  onSent?: () => void;
+};
+
+export type SocksFetchOptions = {
+  maxResponseBytes: number;
+  /** Extra options for the TLS session of an https:// target, for example `ca` to trust a private authority. */
+  tls?: Pick<tls.ConnectionOptions, "ca" | "minVersion">;
+};
+
+/**
+ * A `fetch` for http:// and https:// URLs through the proxy. Supports what this tool needs: one request with a body,
+ * one response, no redirects (a 3xx is returned as it came), and every failure to reach the target is an exception.
+ * Aborting the signal closes the tunnel and throws the signal's reason.
+ */
+export function createSocksFetch(proxy: SocksProxy, opts: SocksFetchOptions) {
+  return async (input: string | URL, init: SocksFetchInit = {}): Promise<Response> => {
+    const url = new URL(String(input));
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new SocksError("Only http:// and https:// targets can be reached through the proxy.");
+    const method = init.method ?? "GET";
+    // Built before anything is connected, so a request that cannot be sent never reaches the proxy.
+    const body = init.body ?? new Uint8Array(0);
+    let head = `${method} ${url.pathname}${url.search} HTTP/1.1\r\nHost: ${url.host}\r\n`;
+    for (const [name, value] of Object.entries(init.headers ?? {})) head += headerLine(name, value);
+    head += `Content-Length: ${body.length}\r\nConnection: close\r\n\r\n`;
+    const secure = url.protocol === "https:";
+    const limit = opts.maxResponseBytes + 2 * HEAD_MAX;
+    const raw = net.connect({ host: proxy.host, port: proxy.port });
+    // The connection the request is written to and the response read from: the TCP connection to the proxy, or for
+    // https:// the TLS session that runs inside the tunnel.
+    let socket: net.Socket = raw;
+    let reader = new Reader(raw, limit);
+    const abort = () => {
+      raw.destroy();
+      socket.destroy();
+    };
+    if (init.signal?.aborted) abort();
+    init.signal?.addEventListener("abort", abort, { once: true });
+    // A streamed body owns the tunnel from the moment it is returned, and closes it when it ends.
+    let handedOff = false;
+    const release = () => {
+      init.signal?.removeEventListener("abort", abort);
+      raw.destroy();
+      socket.destroy();
+    };
+    try {
+      try {
+        raw.setNoDelay(true);
+        await tunnel(raw, reader, proxy, url.hostname, Number(url.port || (secure ? 443 : 80)));
+      } catch (e) {
+        // A failure before the tunnel is up is the proxy's (or the target's, as the proxy reports it).
+        throw e instanceof SocksError ? e : new SocksError(`The proxy could not be used: ${(e as Error).message}`);
+      }
+      if (secure) {
+        try {
+          reader.detach();
+          raw.on("error", () => undefined); // the TLS session reports a failed connection; this one must not throw on its own
+          socket = tls.connect({ ...opts.tls, socket: raw, servername: url.hostname, ALPNProtocols: ["http/1.1"], minVersion: opts.tls?.minVersion ?? "TLSv1.2" });
+          reader = new Reader(socket, limit, "secureConnect");
+          await reader.ready();
+        } catch (e) {
+          throw e instanceof SocksError ? e : new SocksError(`A secure connection to ${url.hostname} could not be made: ${(e as Error).message}`);
+        }
+      }
+
+      init.onSent?.();
+      await write(socket, Buffer.concat([Buffer.from(head, "latin1"), body]));
+
+      // The response, skipping interim 1xx answers.
+      let status = 0;
+      let lines: string[] = [];
+      do {
+        const text = (await reader.takeUntil("\r\n\r\n", HEAD_MAX)).toString("latin1");
+        lines = text.slice(0, -4).split("\r\n");
+        const m = /^HTTP\/1\.[01] (\d{3})(?: |$)/.exec(lines[0]);
+        if (!m) throw new Error("The response is not HTTP/1.x.");
+        status = Number(m[1]);
+      } while (status >= 100 && status < 200 && status !== 101);
+      if (status < 200 || status > 599) throw new Error("The response has an unsupported status.");
+
+      const headers = new Headers();
+      const lengths = new Set<string>();
+      for (const line of lines.slice(1)) {
+        const colon = line.indexOf(":");
+        const name = colon > 0 ? line.slice(0, colon) : "";
+        if (!TOKEN.test(name)) throw new Error("The response has a malformed header.");
+        const value = line.slice(colon + 1).trim();
+        if (name.toLowerCase() === "content-length") lengths.add(value);
+        headers.append(name, value);
+      }
+
+      const chunkedCoding = /(^|,)\s*chunked\s*$/i.test(headers.get("transfer-encoding") ?? "");
+      if (init.stream && !(method === "HEAD" || status === 204 || status === 304)) {
+        let framing: { chunked: true } | { length: number } | { toEnd: true } = { toEnd: true };
+        if (chunkedCoding) framing = { chunked: true };
+        else if (lengths.size) {
+          const [only] = [...lengths];
+          if (lengths.size !== 1 || !/^\d{1,10}$/.test(only) || Number(only) > opts.maxResponseBytes) throw new Error("The response has an invalid Content-Length.");
+          framing = { length: Number(only) };
+        }
+        headers.delete("transfer-encoding");
+        headers.delete("content-length");
+        handedOff = true;
+        return new Response(payloadStream(reader, framing, opts.maxResponseBytes, release), { status, headers });
+      }
+
+      let payload: Buffer;
+      if (method === "HEAD" || status === 204 || status === 304) payload = Buffer.alloc(0);
+      else if (chunkedCoding) payload = await readChunked(reader, opts.maxResponseBytes);
+      else if (lengths.size) {
+        const [only] = [...lengths];
+        if (lengths.size !== 1 || !/^\d{1,10}$/.test(only) || Number(only) > opts.maxResponseBytes) throw new Error("The response has an invalid Content-Length.");
+        payload = await reader.take(Number(only));
+      } else payload = await reader.takeToEnd();
+
+      // What the Response object needs to be a plain, complete message.
+      headers.delete("transfer-encoding");
+      headers.delete("content-length");
+      return new Response(payload.length ? Uint8Array.from(payload) : null, { status, headers });
+    } catch (e) {
+      if (init.signal?.aborted) throw init.signal.reason;
+      throw e;
+    } finally {
+      if (!handedOff) release();
+    }
+  };
+}
