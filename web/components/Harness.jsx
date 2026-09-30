@@ -216,7 +216,7 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
 
 // ---------------------------------------------------------------- command palette
 
-function Palette({ models, onPick, onClose, title }) {
+function Palette({ models, onPick, onClose, title, onBrowse }) {
   const ref = useRef(null);
   const listRef = useRef(null);
   const [query, setQuery] = useState("");
@@ -263,9 +263,14 @@ function Palette({ models, onPick, onClose, title }) {
           {!list.length && <li className={s.palEmpty}>No model matches “{query}”.</li>}
         </ul>
         <p className={s.paletteFoot}>
-          <span>↑↓ to move</span>
-          <span>Enter to choose</span>
-          <span>{models.length} models</span>
+          <span>↑↓ and Enter to choose</span>
+          {onBrowse ? (
+            <button type="button" className={s.palBrowse} onClick={onBrowse}>
+              Filter all {models.length} models →
+            </button>
+          ) : (
+            <span>{models.length} models</span>
+          )}
         </p>
       </div>
     </dialog>
@@ -547,7 +552,7 @@ function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy }) {
 
 // ---------------------------------------------------------------- tools panel
 
-function ToolsPanel({ model, settings, set, open, onClose, compare }) {
+function ToolsPanel({ model, settings, set, open, onClose, compare, system, setSystem }) {
   const sup = supportFor(model);
   const toolsCheck = settings.tools ? parseTools(settings.toolsText) : {};
   const schemaCheck = settings.format === "schema" ? parseSchema(settings.schema) : {};
@@ -585,6 +590,12 @@ function ToolsPanel({ model, settings, set, open, onClose, compare }) {
         </button>
       </div>
       <div className={s.toolsBody}>
+        <section className={s.sect}>
+          <h3>
+            <label htmlFor="system-prompt">System prompt</label>
+          </h3>
+          <textarea id="system-prompt" className={s.systemInput} rows={3} value={system} placeholder={compare ? "How every model should behave in this chat" : "How the model should behave in this chat"} onChange={(e) => setSystem(e.target.value)} />
+        </section>
         {!any && <p className={s.quiet}>This model takes text and sampling settings only.</p>}
         {sup.reasoning && (
           <section className={s.sect}>
@@ -725,7 +736,6 @@ export default function Harness() {
   const [lanes, setLanes] = useState([{ id: "l0", modelId: null, messages: [] }]);
   const [focus, setFocus] = useState(0);
   const [system, setSystem] = useState("");
-  const [showSystem, setShowSystem] = useState(false);
   const [settings, setSettings] = useState(defaultSettings);
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState([]);
@@ -1117,7 +1127,7 @@ export default function Harness() {
       >
         <div className={s.bar}>
           {!compare && (
-            <button type="button" className={s.modelBtn} onClick={() => (matchMedia("(max-width: 880px)").matches ? setSheet("models") : setPalette({ lane: 0, add: false }))} aria-label={`Model: ${focusModel?.name || "none"}. Change model`} aria-keyshortcuts="Meta+K Control+K">
+            <button type="button" className={s.modelBtn} onClick={() => setPalette({ lane: 0, add: false })} aria-label={`Model: ${focusModel?.name || "none"}. Change model`} aria-keyshortcuts="Meta+K Control+K">
               <b>{focusModel?.name || "Loading models"}</b>
               <span>{focusModel ? `${focusModel.makerLabel} · ${formatContext(focusModel.context)} · ${formatPrice(focusModel.inPrice)} / ${formatPrice(focusModel.outPrice)}` : ""}</span>
             </button>
@@ -1132,9 +1142,11 @@ export default function Harness() {
               <i className={s.switch} aria-hidden="true" />
               Compare
             </button>
-            <button type="button" className={s.barLink} onClick={newChat} disabled={empty}>
-              New chat
-            </button>
+            {!empty && (
+              <button type="button" className={s.barLink} onClick={newChat}>
+                New chat
+              </button>
+            )}
             <button type="button" className={s.toolsBtn} onClick={() => setSheet("tools")}>
               Tools
             </button>
@@ -1189,19 +1201,6 @@ export default function Harness() {
         )}
 
         <div className={s.scroll} ref={scroller} onScroll={onScroll}>
-          <div className={s.systemRow}>
-            {showSystem || system ? (
-              <div className={s.system}>
-                <label htmlFor="system-prompt">System prompt</label>
-                <textarea id="system-prompt" rows={2} value={system} placeholder="How every model should behave in this chat" onChange={(e) => setSystem(e.target.value)} />
-              </div>
-            ) : (
-              <button type="button" className={s.addSystem} onClick={() => setShowSystem(true)}>
-                + System prompt
-              </button>
-            )}
-          </div>
-
           {empty ? (
             <div className={s.empty}>
               <h1 className={s.display}>
@@ -1214,27 +1213,15 @@ export default function Harness() {
                   </span>
                 </span>
               </h1>
-              <p className={s.lede}>Pick a model, switch on the tools it supports and talk to it. Every reply shows its tokens, cost and time, with a signed receipt.</p>
-              <dl className={s.counts} aria-label="Live catalogue">
-                {[
-                  [counts.models, "models"],
-                  [counts.makers, "makers"],
-                  [counts.tools, "with tools"],
-                  [counts.vision, "with vision"],
-                ].map(([n, label]) => (
-                  <div key={label}>
-                    <dt>{label}</dt>
-                    <dd>{raw ? n.toLocaleString("en-US") : "·"}</dd>
-                  </div>
-                ))}
-              </dl>
+              <p className={s.lede}>Choose a model at the top, then type below. Every reply shows what it cost, with a signed receipt.</p>
+              <p className={s.counts} aria-label="Live catalogue">
+                {raw ? `${counts.models.toLocaleString("en-US")} models from ${counts.makers} makers, live` : "Loading the live catalogue"}
+              </p>
               <ul className={s.examples} aria-label="Example prompts">
                 {EXAMPLES.map((ex) => (
                   <li key={ex.text}>
                     <button type="button" onClick={() => tryExample(ex)}>
                       <span>{ex.text}</span>
-                      {ex.tools && <small>uses a function tool</small>}
-                      {ex.format && <small>JSON mode</small>}
                       <b aria-hidden="true">→</b>
                     </button>
                   </li>
@@ -1325,15 +1312,8 @@ export default function Harness() {
           </div>
           <p className={s.hints}>
             <span>
-              <kbd>Enter</kbd> send
+              <kbd>{mod} K</kbd> switch model
             </span>
-            <span>
-              <kbd>Shift Enter</kbd> new line
-            </span>
-            <span>
-              <kbd>{mod} K</kbd> models
-            </span>
-            {(acceptsImages || acceptsFiles) && <span>Drop or paste {acceptsFiles ? "images and files" : "images"}</span>}
             {focusModel && draft.trim() && <span className={s.est}>Prompt ≈ {formatUsd(promptCost)}</span>}
           </p>
         </form>
@@ -1344,7 +1324,7 @@ export default function Harness() {
         )}
       </main>
 
-      <ToolsPanel model={focusModel} settings={settings} set={set} open={sheet === "tools"} onClose={() => setSheet(null)} compare={compare} />
+      <ToolsPanel model={focusModel} settings={settings} set={set} open={sheet === "tools"} onClose={() => setSheet(null)} compare={compare} system={system} setSystem={setSystem} />
       {sheet && <button type="button" className={s.scrim} aria-label="Close panel" onClick={() => setSheet(null)} />}
 
       {palette && (
@@ -1353,6 +1333,7 @@ export default function Harness() {
           title={palette.add ? "Add a model to compare" : "Switch model"}
           onClose={() => setPalette(null)}
           onPick={(id) => pickModel(id, palette.lane, palette.add)}
+          onBrowse={palette.add ? undefined : () => (setPalette(null), setSheet("models"))}
         />
       )}
       {signin && <SignIn reason={signin} onKey={onKey} onClose={() => (setSignin(null), (pendingSend.current = false))} />}
