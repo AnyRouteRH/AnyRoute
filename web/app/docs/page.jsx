@@ -4,6 +4,7 @@ import { sampleRequest } from "../../components/Extensions";
 import { API_BASE } from "../../lib/api";
 import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
 import OnionAddress from "../../components/OnionAddress";
+import PrivateProxyDocs from "../../components/PrivateProxyDocs";
 export const metadata = { title: "Developer documentation — Anyroute" };
 const receipt = {
   id: "gen-1790461071-M1D5SJxd7YpD5A",
@@ -638,6 +639,7 @@ export default function Docs() {
             <a href="#disclosure">Disclosure</a>
             <a href="#lanes">Lanes</a>
             <a href="#tor">Tor</a>
+            <a href="#private">Private proxy</a>
             <a href="#key-log">Key log</a>
             <a href="#lane">Lane</a>
             <a href="#payments">Payments</a>
@@ -796,6 +798,7 @@ export default function Docs() {
             sent on one circuit can be linked to each other, so give calls you want kept apart their own circuit (a different SOCKS user name, as above, or Tor Browser’s New Identity); buying tokens right before spending them links the two by
             time; and anything in the body that identifies you reaches the provider. End-to-end encryption through the router to the enclave is planned.
           </p>
+          <PrivateProxyDocs />
           <h2 id="key-log">A witnessed log of every key, where the router enables it.</h2>
           <p>
             Where the router runs its transparency log, every key and configuration a client encrypts to or verifies against is appended to one append-only Merkle log: receipt signing keys, Oblivious HTTP key configurations, blind-token issuer keys,

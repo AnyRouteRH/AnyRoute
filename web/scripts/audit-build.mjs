@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 const root=path.resolve(process.argv[2]||'out');
 const routes=['/','/models/','/harness/','/ask/','/arena/','/docs/','/case-study/','/dashboard/','/verify/','/status/','/providers/','/registry/','/registry/_/','/legal/privacy/','/legal/terms/','/seal/','/spec/',...(fs.existsSync(path.join(root,'spec'))?fs.readdirSync(path.join(root,'spec'),{withFileTypes:true}).filter(d=>d.isDirectory()).map(d=>`/spec/${d.name}/`):[])];
 let count=0;
@@ -20,4 +21,8 @@ for(const route of routes){
  for(const match of html.matchAll(/href="#([^"\s]+)"/g))assert(html.includes(`id="${match[1]}"`),`Missing local anchor ${route}#${match[1]}`);
 }
 for(const name of fs.readdirSync(root))assert(!/\.(md|py|pdf|zip|map)$/i.test(name),`Unexpected file in the build: ${name}`);
+// The single-file program at /private.mjs: present, a script, and its SHA-256 is the one the documentation page shows.
+{const file=path.join(root,'private.mjs');assert(fs.existsSync(file),'Missing /private.mjs');const bytes=fs.readFileSync(file);
+ assert(bytes.subarray(0,2).toString()==='#!'&&bytes.length>50_000,'/private.mjs is not the program');
+ assert(fs.readFileSync(path.join(root,'docs','index.html'),'utf8').includes(crypto.createHash('sha256').update(bytes).digest('hex')),'The documentation page does not show the SHA-256 of /private.mjs');}
 console.log(`PASS: ${routes.length} routes; ${count} local asset/link references; no stray files.`);

@@ -6,7 +6,7 @@ import { siteCsp } from "../src/lib/csp.ts";
 export function previewHandler(directory: string) {
   const root = realpathSync(directory);
   const csp = siteCsp(root).replace("connect-src 'self' https: wss:", "connect-src 'self'");
-  const mime: Record<string, string> = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon", ".woff2": "font/woff2", ".txt": "text/plain" };
+  const mime: Record<string, string> = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon", ".woff2": "font/woff2", ".txt": "text/plain" };
   const banner = '<aside aria-label="Preview notice" style="position:relative;z-index:1000;padding:10px 18px;background:#1fe15a;color:#0b0c0b;text-align:center;font:600 14px system-ui">Anyroute preview · Sample data only · No live inference or payments</aside>';
   return (req: Request): Response => {
     const url = new URL(req.url);
