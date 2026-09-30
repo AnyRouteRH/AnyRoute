@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import {CopyButton,Button,Code} from './UI';
 import {API_BASE} from '../lib/api';
 import {KEYS_PATH,attestationPath,describeAttestation,isEnclaveReceipt,parseReceiptInput,providerIdFromSearch,shortDigest,verifyReceipt} from '../lib/verify';
+import {describePrivacy,privacyPath,receiptIdFromSearch} from '../lib/privacy';
 import styles from './Verify.module.css';
 
 const WORDS={yes:'Yes',no:'No',partial:'Partly',bad:'Problem',simulated:'Simulated',known:'Reported',unknown:'Unknown',pass:'Passed',fail:'Failed',not_checked:'Not checked'};
@@ -28,6 +29,27 @@ function Lookup({providerId,note}){return <div className={styles.section}>
   </form>
   {note&&<p className={styles.help} role="status">{note}</p>}
 </div>}
+
+/** "What we saw": the router's plain-English label for one answer, looked up by receipt id. */
+function Saw({receiptId,asked,load,view}){return <section className={styles.section} aria-labelledby="v-saw"><h2 id="v-saw">What we saw</h2>
+  <p className={styles.lead}>A plain-English reading of one answer’s receipt: who could read the prompt, who saw your address, how it was paid, what was kept and what hardware answered. The router works it out from the signed receipt, and on every lane it reads the prompt in memory to route it. Enter the id from the <span className="mono">X-Receipt-Id</span> header.</p>
+  <form className={styles.lookup} action="/verify/" method="get">
+    <div className="field"><label htmlFor="receipt-id">Receipt id</label><input id="receipt-id" name="r" defaultValue={receiptId} placeholder="gen-…" autoComplete="off" spellCheck="false" maxLength={128}/></div>
+    <Button type="submit">Show what we saw</Button>
+  </form>
+  {asked&&!receiptId&&<p className={styles.help} role="status">That is not a valid receipt id. Ids use letters, digits and . _ : -</p>}
+  {load==='loading'&&<p className={styles.lead} role="status">Reading the receipt <span className="mono">{receiptId}</span>…</p>}
+  {load==='missing'&&<div className={styles.verdict} data-tone="bad" role="status"><div className={styles.verdictHead}><h2>Unknown receipt</h2><span className={styles.who}>{receiptId}</span></div><p>The router has no receipt with this id.</p></div>}
+  {load==='error'&&<div className="error" role="alert">The router could not be reached, or did not send a label, so nothing is shown for this receipt. Try again.</div>}
+  {view&&<div className={styles.result} role="status">
+    <div className={styles.verdict}>
+      <div className={styles.verdictHead}><h2>{view.lane}</h2>{view.id&&<span className={styles.who}>{view.id}</span>}</div>
+      <ul className={styles.gaps}>{view.summary.map((line,i)=><li key={i}>{line}</li>)}</ul>
+    </div>
+    {view.rows.length>0&&<div className={styles.panel}><dl className={styles.facts}>{view.rows.map(r=><div className={styles.fact} key={r.key}><dt>{r.title}</dt><dd>{r.text}</dd></div>)}</dl></div>}
+    <p className={styles.help}>This is the router’s reading of the receipt. It does not check the receipt’s signature; the checker below does. <span className="mono">privacyLabel(receipt)</span> in <span className="mono">@anyroute/client</span> computes the same label from a receipt you hold.</p>
+  </div>}
+</section>}
 
 function Attestation({view}){
   const r=view.rows;const m=view.measurement;const log=view.transparencyLog;const reg=view.registry;
@@ -110,6 +132,20 @@ function ReceiptBox({providerId}){
 /** The public verify page: what the router has and has not verified about one provider, and a receipt checker. */
 export default function Verify(){
   const [providerId,setProviderId]=useState('');const [ready,setReady]=useState(false);const [load,setLoad]=useState('idle');const [data,setData]=useState(null);const [now,setNow]=useState(0);const [asked,setAsked]=useState(false);
+  const [receiptId,setReceiptId]=useState('');const [sawAsked,setSawAsked]=useState(false);const [sawLoad,setSawLoad]=useState('idle');const [saw,setSaw]=useState(null);
+  useEffect(()=>{
+    const raw=new URLSearchParams(location.search);const rid=receiptIdFromSearch(location.search);
+    setReceiptId(rid);setSawAsked(raw.has('r')||raw.has('receipt'));
+    if(!rid)return;
+    const ac=new AbortController();setSawLoad('loading');
+    fetch(API_BASE+privacyPath(rid),{signal:ac.signal,headers:{accept:'application/json'}}).then(async res=>{
+      if(res.status===404){setSawLoad('missing');return}
+      if(!res.ok)throw new Error(String(res.status));
+      const v=describePrivacy(await res.json());if(!v)throw new Error('shape');
+      setSaw(v);setSawLoad('ok');
+    }).catch(e=>{if(e?.name!=='AbortError')setSawLoad('error')});
+    return()=>ac.abort();
+  },[]);
   useEffect(()=>{
     const raw=new URLSearchParams(location.search);const id=providerIdFromSearch(location.search);
     setProviderId(id);setAsked(raw.has('p')||raw.has('provider'));setReady(true);
@@ -129,6 +165,7 @@ export default function Verify(){
     {load==='missing'&&<div className={styles.verdict} data-tone="bad" role="status"><div className={styles.verdictHead}><h2>Unknown provider</h2><span className={styles.who}>{providerId}</span></div><p>The router has no live provider with this id. Nothing about it is verified.</p></div>}
     {load==='error'&&<div className="error" role="alert">The router could not be reached, so nothing is known about this provider from here. That is not the same as “not attested”; try again.</div>}
     {view&&<Attestation view={view}/>}
+    <Saw receiptId={receiptId} asked={sawAsked} load={sawLoad} view={sawLoad==='ok'?saw:null}/>
     <ReceiptBox providerId={providerId}/>
     <section className={styles.section} aria-labelledby="v-sdk"><h2 id="v-sdk">Check the provider itself</h2>
       <p className={styles.lead}>The record above is the router’s account. The SDKs go further before they send anything: they read the provider’s own <span className="mono">/attest</span>, check that the quote commits to its TLS key and digests, that its certificate name is derived from the quote, and refuse if any of it fails. They do not repeat Intel’s signature check on the quote; the router does that, and the SDK says so in its report.</p>
