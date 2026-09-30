@@ -1,3 +1,4 @@
+import { runNetworkFeeBurn } from "../network/fee-burn.ts";
 import { refreshSanctions } from "../network/sanctions.ts";
 import type { Ctx } from "../context.ts";
 import { pruneAgentPolicyEvents } from "../agents/store.ts";
@@ -50,6 +51,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   jobs.register("settlement", cfg.workers.settlementIntervalMs, () => runSettlement(ctx), { atStart: true });
   jobs.register("slasher", 3_600_000, () => runSlasher(ctx));
   jobs.register("buyback", 3_600_000, () => runBuyback(ctx));
+  if (cfg.networkPayouts.burnEnabled) jobs.register("network-fee-burn", 3_600_000, () => runNetworkFeeBurn(ctx));
   jobs.register("chain-indexer", 5_000, async () => (chainOn() ? pollChain(ctx) : { skipped: "no contracts" }), { atStart: true });
   jobs.register("spend-watch", 60_000, () => runSpendWatch(ctx));
   jobs.register("escrow-indexer", 5_000, () => pollEscrow(ctx), { atStart: true });

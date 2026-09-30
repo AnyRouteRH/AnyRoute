@@ -1,3 +1,5 @@
+import { accrueNetworkHours } from "../network/accrual.ts";
+import { addPendingNetworkPayouts, networkPayout } from "../network/payout.ts";
 import { skipSanctionedPayout } from "../network/sanctions.ts";
 import { and, asc, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { keccak256, toBytes, type Hex } from "viem";
@@ -29,6 +31,7 @@ async function setKv(ctx: Ctx, k: string, v: unknown) {
 
 /** 1 + 3: close every complete hour that has unsettled generations. */
 export async function settleHours(ctx: Ctx, now = new Date()) {
+  const networkHosts = await accrueNetworkHours(ctx, now);
   const currentHour = hourKey(now);
   const rows = await ctx.db
     .select({ id: generations.id, ts: generations.ts, providerId: generations.providerId, modelId: generations.modelId, tokensIn: generations.tokensIn, tokensOut: generations.tokensOut, upstream: generations.upstreamCost, royalty: generations.royalty, margin: generations.margin, mode: generations.mode })
@@ -42,7 +45,7 @@ export async function settleHours(ctx: Ctx, now = new Date()) {
   let margin = 0n;
   for (const g of rows) {
     const period = hourKey(g.ts);
-    if (g.mode !== "cache" && g.mode !== "byok" && g.providerId !== "cache") {
+    if (g.mode !== "cache" && g.mode !== "byok" && g.providerId !== "cache" && !networkHosts.has(g.providerId)) {
       const k = `${g.providerId}|${period}`;
       const e = inv.get(k) ?? { providerId: g.providerId, period, tokens: 0n, requests: 0, upstream: 0n };
       e.tokens += BigInt(g.tokensIn + g.tokensOut);
@@ -258,11 +261,13 @@ export async function runPayouts(ctx: Ctx, minAgeMs = 7 * 86_400_000) {
     .from(settlements)
     .where(and(isNull(settlements.payoutId), sql`${settlements.period} <= ${cutoff}`))
     .groupBy(settlements.providerId);
+  await addPendingNetworkPayouts(ctx, due);
   const out: unknown[] = [];
   for (const d of due) {
     const [p] = await ctx.db.select().from(providers).where(eq(providers.id, d.providerId));
     if (!p) continue;
     if (await skipSanctionedPayout(ctx, p, out)) continue;
+    if (await networkPayout(ctx, p, cutoff, out)) continue;
     const id = uid("pay_");
     const amount = BigInt(d.owed);
     const onchain = p.payoutMode === "usdg" && !!p.payoutAddress && ctx.chain.roleAddress("settlement");

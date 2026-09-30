@@ -1,3 +1,4 @@
+import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import NetworkHostsDocs from "../../components/NetworkHostsDocs";
 import SanctionsSection from "./SanctionsSection";
 import E2eeDocs from "../../components/E2eeDocs";
@@ -1748,6 +1749,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           </div>
         </article>
         </div>
+      <NetworkPayoutDocs />
       </main>
     </PageFrame>
   );

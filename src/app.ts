@@ -1,3 +1,4 @@
+import { networkBurnRoutes } from "./network/burn-routes.ts";
 import { networkHostRoutes } from "./api/network-hosts.ts";
 import { networkSanctionsRoutes } from "./api/network-sanctions.ts";
 import { e2eeRoutes } from "./api/e2ee.ts";
@@ -189,6 +190,7 @@ export async function createApp(opts: AppOptions = {}) {
   networkRoutes(app, ctx);
   publicRoutes(app, ctx);
   networkSanctionsRoutes(app, ctx);
+  networkBurnRoutes(app, ctx);
   networkHostRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);

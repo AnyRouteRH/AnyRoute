@@ -87,14 +87,14 @@ export const billingTables: Record<string, TableDoc> = {
 
   settlements: {
     category: "billing",
-    purpose: "What one provider is owed for one UTC hour: token totals, request count, upstream cost, the router's fee and the USDG owed.",
+    purpose: "What one provider is owed for one UTC hour: token totals, request count, upstream cost, the router's fee and the USDG owed. Network hosts use only confirmed per-host receipts and the configured network fee; their period is the accrual hour.",
     request: "aggregate",
     retention: KEPT,
     columns: {
       provider_id: "The provider owed.",
       period: "The UTC hour, such as 2026-09-26T13.",
-      tokens: "Total tokens served in the hour.",
-      requests: "Number of calls served in the hour.",
+      tokens: "Total tokens invoiced in the hour; network hosts include only newly eligible anchored work.",
+      requests: "Number of calls invoiced in the hour; network hosts include only newly eligible anchored work.",
       upstream: "Upstream cost for the hour, in pico-USD.",
       fee: "The router's fee for the hour, in pico-USD.",
       usdg_owed: "USDG base units owed to the provider for the hour.",

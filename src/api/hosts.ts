@@ -1,3 +1,4 @@
+import { networkPayoutDashboard } from "../network/payout-dashboard.ts";
 import type { Hono } from "hono";
 import { and, desc, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -91,7 +92,7 @@ export function hostRoutes(app: Hono, ctx: Ctx) {
     const summary = proofTime?.data;
     const total = BigInt(invoice[0].total);
     return c.json({ data: {
-      ...host,
+      ...host, ...(await networkPayoutDashboard(ctx, id, p.networkHost, !!operator, earningsBand)),
       attestation: { ...host.attestation, checks: e.checks, not_checked: e.not_checked },
       attestation_history: history ? { data: history.data, next: history.next, history_days: history.history_days, url: `/api/v1/attestation/${encodeURIComponent(id)}/history` } : null,
       measurement: e.measurement, measurement_history: e.measurement_history,

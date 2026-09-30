@@ -40,7 +40,7 @@ function revertReason(e: unknown): string | null {
   return reverted.data?.errorName ?? reverted.reason ?? "reverted";
 }
 
-export async function runBuyback(ctx: Ctx, deps: { twap?: typeof v4Twap } = {}) {
+export async function runBuyback(ctx: Ctx, deps: { twap?: typeof v4Twap; quoteOnly?: bigint } = {}) {
   const b = ctx.cfg.buyback;
   const staking = ctx.chain.address("staking");
   if (!staking || !ctx.chain.roleAddress("keeper")) return { skipped: "buyback not configured" };
@@ -55,8 +55,8 @@ export async function runBuyback(ctx: Ctx, deps: { twap?: typeof v4Twap } = {}) 
 
   const { balance, remaining } = await ctx.chain.buybackState();
   const cap = BigInt(Math.floor(b.maxPerRunUsd * 1e6));
-  const usdgIn = [balance, remaining, cap].reduce((a, x) => (x < a ? x : a));
-  if (usdgIn < 1_000_000n) return { skipped: "less than $1 to buy back", balance: balance.toString() };
+  const usdgIn = deps.quoteOnly ?? [balance, remaining, cap].reduce((a, x) => (x < a ? x : a));
+  if (usdgIn <= 0n || (deps.quoteOnly === undefined && usdgIn < 1_000_000n)) return { skipped: "less than $1 to buy back", balance: balance.toString() };
 
   // Quote at a pinned block so its time can be checked the way AnyrStaking checks it.
   const block = await client.getBlock({ blockTag: "latest" });
@@ -92,6 +92,7 @@ export async function runBuyback(ctx: Ctx, deps: { twap?: typeof v4Twap } = {}) 
     const offChain = BigInt(Math.floor((Number(usdgIn) / 1e6 / twap) * (1 - b.slippageBps / 10_000) * 1e6)) * 10n ** 12n;
     if (offChain > minOut) minOut = offChain;
   }
+  if (deps.quoteOnly !== undefined) return { quoted: true, minOut, oracle, anyr };
   const { hash } = await ctx.chain.executeBuyback(usdgIn, minOut);
   return { usdg_in: usdgIn.toString(), min_anyr_out: minOut.toString(), oracle_floor: floor.toString(), oracle, twap_usd_per_anyr: twap, tx: hash };
 }

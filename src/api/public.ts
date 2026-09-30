@@ -313,7 +313,7 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         launch: await launchMetrics(),
         private_lanes: { lanes: PRIVATE_LANES, stats: "/api/v1/stats", epsilon_spent_today: privateLaneStats(ctx).budget().epsilon_spent_today },
         router: ctx.cfg.publicUrl,
-        network: { hosts_open: ctx.cfg.networkHosts.enabled === true },
+        network: { hosts_open: ctx.cfg.networkHosts.enabled === true, payouts_open: ctx.cfg.networkPayouts.enabled === true, fee_bps: ctx.cfg.networkPayouts.feeBps },
         env: ctx.cfg.env,
         // The running build (RELEASE_COMMIT; null when unset) and whether its contracts were verified.
         release: {

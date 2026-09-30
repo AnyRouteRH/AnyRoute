@@ -1,3 +1,4 @@
+import { linkNetworkReceipt } from "../network/receipt-link.ts";
 import { agentReservation, enforceAgentCached } from "../agents/enforce.ts";
 import { blindReceipt } from "../blind/set.ts";
 import type { Context, Hono } from "hono";
@@ -733,6 +734,7 @@ async function finalize(p: FinalizeInput) {
     requestSha256: p.bodySha,
     responseSha256: payload.response_sha256,
   });
+  await linkNetworkReceipt(ctx, id, r.candidate.providerId, r);
   if (billing.mode === "blind") await confirmToken(ctx, billing.pass, id);
   // Creator attribution for a public character: a count and a cost per day, never on the unlinkable lane.
   if (p.meta.character?.attribute && p.disc.lane !== "unlinkable") await recordCharacterUse(ctx, p.meta.character.id, charged);
