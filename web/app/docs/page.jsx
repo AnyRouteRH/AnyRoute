@@ -1267,7 +1267,7 @@ export default function Docs() {
           </p>
           <Code label="Ask a question of two documents, on the attested lane">{ragCurl}</Code>
           <p>
-            There is a page for it too: <a href="/ask/">Ask your files</a> reads .txt, .md, .csv, .json, .html and .docx files in your browser and sends them to this endpoint with your question.
+            There is a page for it too: <a href="/ask/">Ask your files</a> reads .txt, .md, .csv, .json, .html, .docx and .pdf files in your browser (a PDF for its text layer, page by page; scanned pages are not read) and sends the text to this endpoint with your question.
           </p>
           <p>
             <b>Request.</b> documents is a list of strings, or of objects with an id and a text; an id defaults to doc-1, doc-2 and so on, and ids must be unique. By default one request may carry 200 documents, 2 MiB of text, 2,000 chunks and 64 embeddings calls; above any of them it is

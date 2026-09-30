@@ -49,7 +49,7 @@ const body = (inner) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const docx = (inner, opts) => zip([["[Content_Types].xml", "<Types/>"], ["word/document.xml", body(inner)]], opts);
 
 // ---- formats -----------------------------------------------------------------------------------------------------
-test("the format is read from the extension, whatever its case, and PDF is named but not read", async () => {
+test("the format is read from the extension, whatever its case, and a PDF needs the PDF reader to be given", async () => {
   assert.equal(extOf("Report.FINAL.Md"), "md");
   assert.equal(kindOf("a.txt"), "text");
   assert.equal(kindOf("a.MD"), "markdown");
@@ -61,13 +61,15 @@ test("the format is read from the extension, whatever its case, and PDF is named
   assert.equal(kindOf("a.pdf"), "pdf");
   assert.equal(kindOf("a.exe"), null);
   assert.equal(kindOf("README"), null);
-  assert.deepEqual([...SUPPORTED], [".txt", ".md", ".csv", ".json", ".html", ".docx"]);
+  assert.deepEqual([...SUPPORTED], [".txt", ".md", ".csv", ".json", ".html", ".docx", ".pdf"]);
   assert.ok(ACCEPT.includes(".pdf") && ACCEPT.includes(".docx"));
+  // Without a reader (this file never loads one itself) a PDF is refused, and says why; ask-pdf.test.mjs reads real ones.
   const pdf = await parseFile("scan.pdf", bytes("%PDF-1.7"));
-  assert.deepEqual(pdf, { ok: false, soon: true, error: "PDF coming soon." });
+  assert.deepEqual(pdf, { ok: false, error: "The PDF reader could not be loaded in this browser, so this file was not read." });
+  assert.equal((await parseFile("scan.pdf", bytes("%PDF-1.7"), { loadPdfjs: async () => { throw new Error("offline"); } })).ok, false);
   const other = await parseFile("sheet.xlsx", bytes("x"));
   assert.equal(other.ok, false);
-  assert.match(other.error, /\.xlsx is not a supported format\. Supported: \.txt, \.md, \.csv, \.json, \.html, \.docx\./);
+  assert.match(other.error, /\.xlsx is not a supported format\. Supported: \.txt, \.md, \.csv, \.json, \.html, \.docx, \.pdf\./);
   assert.match((await parseFile("old.doc", bytes("x"))).error, /\.docx/);
 });
 

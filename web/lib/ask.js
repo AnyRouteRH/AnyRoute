@@ -5,6 +5,11 @@
 // The router's own limits and chunker are mirrored so the page can say, before anything is sent, what a request will
 // hold. test/web-ask.test.ts (in the repository's test suite) checks the chunker against src/rag/text.ts and the request
 // against the running endpoint, so the copy here cannot drift from the router without a failing test.
+//
+// A PDF is read for its text layer by pdf.js, which this file never imports: lib/ask-pdf.js takes the reader as an argument and
+// lib/ask-pdfjs.js is the only file that loads it, on demand, on the Ask page alone. A caller outside the browser passes the reader in.
+
+import { PDF_MESSAGES, PdfError, joinPages, pageSpan, readPdfPages } from "./ask-pdf.js";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Limits (the router's defaults: RAG_MAX_DOCUMENTS, RAG_MAX_BYTES, RAG_MAX_CHUNKS, RAG_MAX_EMBEDDING_CALLS)
@@ -32,7 +37,7 @@ export const MAX_HELD_BYTES = 16 * 1024 * 1024;
 
 const KINDS = Object.freeze({ txt: "text", text: "text", md: "markdown", markdown: "markdown", csv: "csv", tsv: "csv", json: "json", html: "html", htm: "html", docx: "docx", pdf: "pdf" });
 export const ACCEPT = ".txt,.text,.md,.markdown,.csv,.tsv,.json,.html,.htm,.docx,.pdf";
-export const SUPPORTED = Object.freeze([".txt", ".md", ".csv", ".json", ".html", ".docx"]);
+export const SUPPORTED = Object.freeze([".txt", ".md", ".csv", ".json", ".html", ".docx", ".pdf"]);
 
 export const extOf = (name) => {
   const m = /\.([A-Za-z0-9]{1,12})$/.exec(String(name).trim());
@@ -428,14 +433,44 @@ export async function docxToText(bytes) {
 
 // ---- one file ---------------------------------------------------------------------------------------------------
 
+/** Why a file this large is not opened at all. */
+export const fileTooLarge = (size) => `This file is ${formatBytes(size)}. A request can carry at most ${formatBytes(LIMITS.bytes)} of text in all.`;
+
 /**
- * A file's bytes as text, or the reason it cannot be used. PDF is recognised and declined ("coming soon"); nothing
- * is guessed for a format that is not listed.
- * @returns {Promise<{ok: true, kind: string, text: string, bytes: number} | {ok: false, error: string, soon?: true}>}
+ * A PDF's text: every page that has text, each opened by a "[page N]" line so a passage can be placed on its page.
+ * The size is checked before anything is loaded or parsed.
  */
-export async function parseFile(name, bytes) {
+async function pdfToText(bytes, loadPdfjs) {
+  if (bytes.length > READ_LIMIT_BYTES) throw new ParseError(fileTooLarge(bytes.length));
+  let pdfjs;
+  try {
+    if (typeof loadPdfjs !== "function") throw new Error("no reader");
+    pdfjs = await loadPdfjs();
+  } catch {
+    throw new ParseError(PDF_MESSAGES.unavailable);
+  }
+  try {
+    const read = await readPdfPages(pdfjs, bytes, { maxTextBytes: LIMITS.bytes });
+    const notes = [];
+    if (read.blank) notes.push(`${read.blank} of ${read.pageCount} pages have no text and were skipped; scanned pages aren't read.`);
+    if (read.unreadable) notes.push(`${read.unreadable} of ${read.pageCount} pages could not be read.`);
+    return { text: joinPages(read.pages), pages: read.pageCount, note: notes.join(" ") };
+  } catch (e) {
+    if (e instanceof PdfError) {
+      if (e.kind === "text-limit") throw new ParseError(`This file has more than ${formatBytes(LIMITS.bytes)} of text, and one request may carry at most ${formatBytes(LIMITS.bytes)} in all.`);
+      throw new ParseError(e.message);
+    }
+    throw e;
+  }
+}
+
+/**
+ * A file's bytes as text, or the reason it cannot be used. A format that is not listed is not guessed at. A PDF needs
+ * `options.loadPdfjs`, a function that resolves to the PDF reader module (the Ask page passes lib/ask-pdfjs.js's).
+ * @returns {Promise<{ok: true, kind: string, text: string, bytes: number, pages?: number, note?: string} | {ok: false, error: string}>}
+ */
+export async function parseFile(name, bytes, options = {}) {
   const kind = kindOf(name);
-  if (kind === "pdf") return { ok: false, soon: true, error: "PDF coming soon." };
   if (!kind) {
     const ext = extOf(name);
     if (ext === "doc") return { ok: false, error: "Old .doc files are not supported. Save it as .docx and add that." };
@@ -443,7 +478,12 @@ export async function parseFile(name, bytes) {
   }
   try {
     let text;
-    if (kind === "docx") text = await docxToText(bytes);
+    let extra = {};
+    if (kind === "pdf") {
+      const pdf = await pdfToText(bytes, options.loadPdfjs);
+      text = pdf.text;
+      extra = { pages: pdf.pages, ...(pdf.note ? { note: pdf.note } : {}) };
+    } else if (kind === "docx") text = await docxToText(bytes);
     else {
       const raw = decodeText(bytes);
       text = kind === "csv" ? csvToText(raw.replace(/\r\n?/g, "\n")) : kind === "json" ? jsonToText(raw) : kind === "html" ? htmlToText(raw) : raw;
@@ -452,7 +492,7 @@ export async function parseFile(name, bytes) {
     if (!text) throw new ParseError("No text was found in this file.");
     const size = utf8Bytes(text);
     if (size > LIMITS.bytes) throw new ParseError(`This file has ${formatBytes(size)} of text, and one request may carry at most ${formatBytes(LIMITS.bytes)} in all.`);
-    return { ok: true, kind, text, bytes: size };
+    return { ok: true, kind, text, bytes: size, ...extra };
   } catch (e) {
     if (e instanceof ParseError) return { ok: false, error: e.message };
     return { ok: false, error: "This file could not be read." };
@@ -752,8 +792,9 @@ function safeSlice(text, from, to) {
 }
 
 /**
- * The sources of a response placed in the documents that were sent. `docs` are { name, text } in the order sent; a
- * source names its document as doc-N. The passage is cut from the text held here by the offsets the router returned.
+ * The sources of a response placed in the documents that were sent. `docs` are { name, text } in the order sent (and
+ * `kind: "pdf"` for a PDF, whose passages are also placed on their pages); a source names its document as doc-N. The
+ * passage is cut from the text held here by the offsets the router returned.
  */
 export function readSources(sources, docs) {
   if (!Array.isArray(sources)) return [];
@@ -767,6 +808,7 @@ export function readSources(sources, docs) {
         ref: s.ref,
         name: doc ? doc.name : str(s.document_id) ?? "unknown document",
         part: Number.isInteger(s.chunk_index) ? s.chunk_index + 1 : null,
+        pages: ok && doc.kind === "pdf" ? pageSpan(doc.text, s.start, s.end) : null,
         score: num(s.score),
         excerpt: ok
           ? {

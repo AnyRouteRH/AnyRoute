@@ -3,9 +3,10 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { API_BASE, ApiError, api, validKey } from "../lib/api";
 import {
   ACCEPT, CHUNK_SIZE, LANES, LIMITS, MAX_HELD_BYTES, MAX_LISTED_FILES, QUESTION_MAX, READ_LIMIT_BYTES, SUPPORTED, TOP_K,
-  buildRagRequest, chunkText, formatBytes, formatContext, kindOf, laneAdvice, modelsFor, overlapFor, parseFile, perMillion, pickModel, planRequest, problems,
+  buildRagRequest, chunkText, fileTooLarge, formatBytes, formatContext, kindOf, laneAdvice, modelsFor, overlapFor, parseFile, perMillion, pickModel, planRequest, problems,
   readAnswer, readCatalog, readError, readPrivacyLabel, receiptLinks,
 } from "../lib/ask";
+import { loadPdfjs } from "../lib/ask-pdfjs";
 import { Button, CopyButton } from "./UI";
 import styles from "./Ask.module.css";
 
@@ -15,7 +16,7 @@ const LANE_TEXT = {
   auto: ["Router's choice", "The attested lane when the chat model and the embedding model both have an attested endpoint right now, otherwise the public lane. The answer says which lane it used and why."],
 };
 const STEP_LABEL = { embeddings: "Embeddings", chat: "Answer" };
-const KIND_LABEL = { text: "text", markdown: "markdown", csv: "csv", json: "json", html: "html", docx: "word" };
+const KIND_LABEL = { text: "text", markdown: "markdown", csv: "csv", json: "json", html: "html", docx: "word", pdf: "pdf" };
 const yes = (v) => (v ? "yes" : "no");
 const Word = ({ state, children }) => (
   <span className={styles.state} data-state={state}>
@@ -110,8 +111,8 @@ function Meter({ row }) {
 }
 
 function FileRow({ file, chunks, onRemove }) {
-  const state = file.status === "ready" ? "yes" : file.status === "reading" ? "unknown" : file.soon ? "partial" : "bad";
-  const word = file.status === "ready" ? "Ready" : file.status === "reading" ? "Reading" : file.soon ? "Coming soon" : "Not used";
+  const state = file.status === "ready" ? "yes" : file.status === "reading" ? "unknown" : "bad";
+  const word = file.status === "ready" ? "Ready" : file.status === "reading" ? "Reading" : "Not used";
   return (
     <li className={styles.file}>
       <div className={styles.fileHead}>
@@ -124,8 +125,10 @@ function FileRow({ file, chunks, onRemove }) {
       {file.status === "ready" && (
         <>
           <p className={styles.sub}>
-            {KIND_LABEL[file.kind]} · {formatBytes(file.bytes)} of text · {chunks ?? 0} chunk{chunks === 1 ? "" : "s"}
+            {KIND_LABEL[file.kind]}
+            {file.pages ? ` · ${file.pages} page${file.pages === 1 ? "" : "s"}` : ""} · {formatBytes(file.bytes)} of text · {chunks ?? 0} chunk{chunks === 1 ? "" : "s"}
           </p>
+          {file.note && <p className={styles.sub}>{file.note}</p>}
           <details className={styles.more}>
             <summary>Preview the text that will be sent</summary>
             <pre className={styles.preview}>
@@ -164,6 +167,7 @@ function SourceCard({ source, cited, active, open, onToggle, cardRef }) {
         <span className={styles.refBadge}>{source.ref}</span>
         <span className={styles.fileName}>{source.name}</span>
         {source.part !== null && <span className={styles.sub}>passage {source.part}</span>}
+        {source.pages && <span className={styles.sub}>{source.pages.first === source.pages.last ? `page ${source.pages.first}` : `pages ${source.pages.first} to ${source.pages.last}`}</span>}
         {source.score !== null && <span className={styles.sub}>match {source.score.toFixed(3)}</span>}
         <Word state={cited ? "yes" : "unknown"}>{cited ? "Cited in the answer" : "Not cited"}</Word>
       </div>
@@ -386,9 +390,9 @@ export default function Ask() {
       let result;
       try {
         const kind = kindOf(file.name);
-        if (file.size > READ_LIMIT_BYTES) result = { ok: false, error: `This file is ${formatBytes(file.size)}. A request can carry at most ${formatBytes(LIMITS.bytes)} of text in all.` };
-        else if (!kind || kind === "pdf") result = await parseFile(file.name, new Uint8Array(0));
-        else result = await parseFile(file.name, new Uint8Array(await file.arrayBuffer()));
+        if (file.size > READ_LIMIT_BYTES) result = { ok: false, error: fileTooLarge(file.size) };
+        else if (!kind) result = await parseFile(file.name, new Uint8Array(0));
+        else result = await parseFile(file.name, new Uint8Array(await file.arrayBuffer()), { loadPdfjs });
       } catch {
         result = { ok: false, error: "This file could not be read." };
       }
@@ -396,8 +400,8 @@ export default function Ask() {
         const held = filesRef.current.filter((f) => f.status === "ready").reduce((n, f) => n + f.bytes, 0);
         if (held + result.bytes > MAX_HELD_BYTES) result = { ok: false, error: "Too much text is loaded at once. Remove some files first." };
       }
-      if (result.ok) patchFile(id, { status: "ready", kind: result.kind, text: result.text, bytes: result.bytes });
-      else patchFile(id, { status: "error", error: result.error, soon: result.soon === true });
+      if (result.ok) patchFile(id, { status: "ready", kind: result.kind, text: result.text, bytes: result.bytes, pages: result.pages, note: result.note });
+      else patchFile(id, { status: "error", error: result.error });
     },
     [patchFile, setFiles],
   );
@@ -436,7 +440,7 @@ export default function Ask() {
   async function ask(e) {
     e?.preventDefault();
     if (stop.length || run.state === "running") return;
-    const sent = ready.map((f) => ({ name: f.name, text: f.text }));
+    const sent = ready.map((f) => ({ name: f.name, text: f.text, kind: f.kind }));
     let body;
     try {
       body = buildRagRequest({ docs: sent, question, model, lane, topK, chunkSize });
@@ -524,7 +528,7 @@ export default function Ask() {
         <h2 id="ask-handling">How your files are handled</h2>
         <ol>
           <li>
-            <b>Read here.</b> Files are opened in this browser and turned into plain text ({SUPPORTED.join(", ")}). File names stay here: the router receives documents called doc-1, doc-2 and so on.
+            <b>Read here.</b> Files are opened in this browser and turned into plain text ({SUPPORTED.join(", ")}). A PDF is read by a reader that this site serves, in a background worker in your browser, and only when you add one; it asks no other site for anything. File names stay here: the router receives documents called doc-1, doc-2 and so on.
           </li>
           <li>
             <b>Sent over TLS.</b> The text and your question go to AnyRoute. The router reads them in memory to cut them into chunks, embed them and rank them against your question, and asks a chat model to answer from the best few. It writes none of it to a database, cache or log.
@@ -588,7 +592,7 @@ export default function Ask() {
           </label>
         </div>
         <p className={styles.help}>
-          Reads {SUPPORTED.join(", ")} in this browser. PDF coming soon. Word files: the body text only, not headers, footers, footnotes or comments.
+          Reads {SUPPORTED.join(", ")} in this browser. Word files: the body text only, not headers, footers, footnotes or comments. PDF files: the text layer only, page by page; scanned pages are pictures and aren't read.
         </p>
         {notice && (
           <div className={styles.hint} role="status">
