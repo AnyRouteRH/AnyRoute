@@ -1,0 +1,18 @@
+{
+  "id": "phala-qwen05b-tdx",
+  "name": "Phala Qwen 0.5B",
+  "tee_kind": "tdx",
+  "attested": true,
+  "status": "live",
+  "probation": false,
+  "shadow_until": null,
+  "models": ["qwen/qwen2.5-0.5b-instruct"],
+  "attestation": {"status": "attested", "last_verified_at": "2026-09-30T12:00:00Z"},
+  "measurement": {"image_digest": "image-digest", "compose_hash": "compose-digest", "model_digest": "model-digest", "status": "observed", "last_seen_at": "2026-09-30T12:00:00Z", "transparency_log": {"entry_url": "https://rekor.sigstore.dev/api/v1/log/entries/current"}},
+  "measurement_history": [{"image_digest": "older-image", "compose_hash": "older-compose", "model_digest": "older-model", "status": "observed", "superseded_at": "2026-09-29T12:00:00Z", "transparency_log": {"entry_url": "https://rekor.sigstore.dev/api/v1/log/entries/older"}}],
+  "anchoring": {"roots": 2, "anchored_roots": 1, "latest": {"root": "root-hash", "status": "local", "anchored": false, "tx_hash": null, "receipts": 4}},
+  "uptime": {"success_pct_30d": 99.2, "observations_30d": 100},
+  "proof_time": {"history_days": 30, "host": {"fresh": {"24h": {"share": 0.9996, "observed_ms": 7200000, "history_complete": false, "buckets": [null, 100, 100]}, "7d": {"share": 1, "observed_ms": 1200, "history_complete": false, "buckets": [null, 100]}}}},
+  "attestation_history": {"data": [{"id": 1, "kind": "attestation", "at": "2026-09-30T12:00:00Z", "ok": true}], "next": null, "url": "/api/v1/attestation/phala-qwen05b-tdx/history"},
+  "earnings": {"band": "<$1", "basis": "Lifetime settlement invoices after provider fees."}
+}

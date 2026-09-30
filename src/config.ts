@@ -71,6 +71,7 @@ const schema = z.object({
   // receipt key its router-verified attestation binds, and roots them per host and interval; with a configured chain and
   // anchorer key it posts each root with ReceiptAnchor.anchorAttested, otherwise keeps it off chain (status "local").
   HOST_ANCHOR_ENABLED: bool.default(false),
+  HOST_DASHBOARD_ENABLED: bool.default(false),
   HOST_ANCHOR_INTERVAL_MS: int(3_600_000),
   HOST_ANCHOR_TOKENS: opt, // JSON {"<provider id>": "<that sidecar's SIDECAR_ANCHOR_TOKEN>"}
 
@@ -540,6 +541,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   return {
     env: e.ANYROUTE_ENV,
     production,
+    hostDashboard: { enabled: e.HOST_DASHBOARD_ENABLED },
     runtimeRole: e.RUNTIME_ROLE,
     autoMigrate: e.AUTO_MIGRATE,
     workerJobs: e.WORKER_JOBS.split(",").map((n) => n.trim()).filter(Boolean),

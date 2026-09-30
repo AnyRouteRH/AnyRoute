@@ -63,6 +63,7 @@ import { blindRoutes } from "./blind/routes.ts";
 import { OhttpKeys } from "./ohttp/keys.ts";
 import { ohttpRoutes } from "./ohttp/gateway.ts";
 import { hostAnchorRoutes } from "./api/host-anchor.ts";
+import { hostRoutes } from "./api/hosts.ts";
 import { TransparencyLog } from "./tlog/log.ts";
 import { tlogRoutes } from "./tlog/routes.ts";
 import { statusRoutes } from "./api/status.ts";
@@ -160,6 +161,7 @@ export async function createApp(opts: AppOptions = {}) {
   ipxRoutes(app, ctx);
   attestationHistoryRoutes(app, ctx); // before attestationRoutes: /attestation/summary must not be read as a provider id
   attestationRoutes(app, ctx);
+  if (ctx.cfg.hostDashboard.enabled) hostRoutes(app, ctx);
   measurementRoutes(app, ctx);
   badgeRoutes(app, ctx);
   laneRoutes(app, ctx);
