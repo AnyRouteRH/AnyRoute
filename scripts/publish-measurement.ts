@@ -46,6 +46,7 @@ import {
   type MeasurementBundle,
 } from "../src/services/measurement-bundle.ts";
 import { parseRekorEntry, type RawRekorEntry } from "../src/services/measurements.ts";
+import { fetchRekorEntry, submitToRekor, withInclusionProof } from "../src/services/rekor-client.ts";
 import { checkPins, parsePins, readAppCompose } from "./lib/compose-pins.ts";
 
 type Deps = { env: Record<string, string | undefined>; fetch: typeof fetch; out: (s: string) => void; err: (s: string) => void; now: () => Date; wait?: (ms: number) => Promise<void> };
@@ -62,7 +63,6 @@ const stop = (msg: string): never => {
 };
 
 const trim = (u: string) => u.replace(/\/+$/, "");
-const HEX_UUID = /^(?:[0-9a-f]{16})?[0-9a-f]{64}$/;
 
 async function readJson(res: Response, cap = 4 * 1024 * 1024): Promise<any> {
   const text = await res.text();
@@ -74,40 +74,8 @@ async function readJson(res: Response, cap = 4 * 1024 * 1024): Promise<any> {
   }
 }
 
-// ---- Rekor v1 ------------------------------------------------------------------------------------------------
-
-export async function submitToRekor(f: typeof fetch, base: string, entry: object): Promise<{ uuid: string; raw: RawRekorEntry; existed: boolean }> {
-  const res = await f(`${base}/api/v1/log/entries`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(entry), redirect: "error", signal: AbortSignal.timeout(60_000) });
-  const body = await readJson(res);
-  if (res.status === 409) {
-    const uuid = /([0-9a-f]{64,80})/.exec(res.headers.get("location") ?? "")?.[1] ?? /([0-9a-f]{64,80})/.exec(String(body?.message ?? ""))?.[1];
-    if (!uuid) throw new Error("Rekor says the entry exists but did not say where");
-    return { ...(await fetchEntry(f, base, uuid)), existed: true };
-  }
-  if (res.status !== 201 && res.status !== 200) throw new Error(`Rekor answered HTTP ${res.status}: ${String(body?.message ?? body?._text ?? "").slice(0, 200)}`);
-  const [uuid, raw] = Object.entries(body ?? {})[0] ?? [];
-  if (!uuid || !HEX_UUID.test(uuid) || !raw || typeof (raw as RawRekorEntry).body !== "string") throw new Error("Rekor's answer has no entry");
-  return { uuid, raw: raw as RawRekorEntry, existed: false };
-}
-
-async function fetchEntry(f: typeof fetch, base: string, uuid: string): Promise<{ uuid: string; raw: RawRekorEntry }> {
-  const res = await f(`${base}/api/v1/log/entries/${uuid}`, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`Rekor answered HTTP ${res.status} for entry ${uuid}`);
-  const raw = Object.values((await readJson(res)) ?? {})[0] as RawRekorEntry | undefined;
-  if (!raw || typeof raw.body !== "string") throw new Error("Rekor's answer has no entry");
-  return { uuid, raw };
-}
-
-/** The entry with its inclusion proof: the answer to the POST carries one from current Rekor; an older server needs a
- *  short wait and a GET. */
-async function withProof(f: typeof fetch, base: string, e: { uuid: string; raw: RawRekorEntry }, wait: (ms: number) => Promise<void>) {
-  let cur = e;
-  for (let i = 0; i < 10 && !cur.raw.verification?.inclusionProof; i++) {
-    await wait(1000);
-    cur = await fetchEntry(f, base, e.uuid);
-  }
-  return cur;
-}
+// Rekor v1 submission and reads live in src/services/rekor-client.ts; tests and callers import submitToRekor from here.
+export { submitToRekor };
 
 // ---- Inputs --------------------------------------------------------------------------------------------------
 
@@ -302,7 +270,7 @@ async function publish(o: PublishOptions, deps: Deps): Promise<number> {
 
   // 5. Submit, verify what came back, and keep the record before anything else can fail.
   const posted = await submitToRekor(deps.fetch, o.rekor, entry);
-  const done = await withProof(deps.fetch, o.rekor, posted, deps.wait ?? ((ms) => new Promise((r) => setTimeout(r, ms))));
+  const done = await withInclusionProof(deps.fetch, o.rekor, posted, deps.wait ?? ((ms) => new Promise((r) => setTimeout(r, ms))));
   const parsed = parseRekorEntry(done.uuid, done.raw);
   const check = verifyBundleEntry(parsed, { bytes, publicKey, rekorPublicKey: deps.env.REKOR_PUBLIC_KEY });
   if (!check.ok) return stop(`the log's entry ${done.uuid} does not verify: ${check.reason}. Nothing was handed to the router.`);
@@ -391,7 +359,7 @@ async function verifyRecord(file: string, o: { router: string | null; rekor: str
   if (o.offline) {
     const r = record.rekor;
     raw = { body: r?.body, integratedTime: r?.integrated_time, logID: r?.log_id, logIndex: r?.log_index, verification: { signedEntryTimestamp: r?.signed_entry_timestamp, inclusionProof: r?.inclusion_proof ? { logIndex: r.inclusion_proof.log_index, treeSize: r.inclusion_proof.tree_size, rootHash: r.inclusion_proof.root_hash, hashes: r.inclusion_proof.hashes, checkpoint: r.inclusion_proof.checkpoint ?? undefined } : undefined } };
-  } else raw = (await fetchEntry(deps.fetch, o.rekor, uuid)).raw;
+  } else raw = (await fetchRekorEntry(deps.fetch, o.rekor, uuid)).raw;
   const check = verifyBundleEntry(parseRekorEntry(uuid, raw), { bytes, publicKey: trusted, rekorPublicKey: deps.env.REKOR_PUBLIC_KEY });
   line(check.ok, check.ok ? `log entry ${uuid} holds this bundle, is signed by that key and is included in the log${o.offline ? " (the record's copy)" : ""}` : `log entry ${uuid}: ${check.reason}`);
   if (check.ok) {
