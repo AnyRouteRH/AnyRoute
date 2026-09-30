@@ -126,7 +126,7 @@ describe("provider answers", () => {
 
 describe("POST /api/v1/rerank", () => {
   test("Cohere/Jina shape: results best first with scores, usage, cost and a signed receipt", async () => {
-    const r = await rerank({ model: SMALL, query: QUERY, documents: DOCS });
+    const r = await rerank({ model: SMALL, query: QUERY, documents: DOCS, provider: { order: ["alpha"] } });
     expect(r.status).toBe(200);
     const j = await r.json();
     expect(j.object).toBe("rerank");
@@ -161,7 +161,7 @@ describe("POST /api/v1/rerank", () => {
 
   test("per-token pricing: the provider's reported tokens at its prompt price, charged exactly", async () => {
     const before = await balance(auth);
-    const j = await (await rerank({ model: SMALL, query: QUERY, documents: DOCS })).json();
+    const j = await (await rerank({ model: SMALL, query: QUERY, documents: DOCS, provider: { order: ["alpha"] } })).json();
     const expected = (mockTokens(QUERY, TEXTS) * 20_000) / 1e12; // $0.00000002 a token = 20,000 pico-USD
     expect(j.usage.cost).toBeCloseTo(expected, 15);
     expect(j.usage.cost_details.upstream_inference_cost).toBeCloseTo(expected, 15);
