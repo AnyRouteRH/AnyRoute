@@ -8,6 +8,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { walletAuth } from "../src/api/auth.ts";
 import type { Ctx } from "../src/context.ts";
 import { runJoin, walletHeader } from "../scripts/network-join.ts";
+import { canonicalJson } from "../src/lib/util.ts";
 import { loadConfig } from "../src/config.ts";
 
 const address = "0x" + "1".repeat(40);
@@ -24,8 +25,15 @@ function standIn() {
   app.post("/api/v1/network/hosts", async (c) => {
     const body = await c.req.text(); bodies.push(body);
     const header = c.req.header("X-Wallet-Auth")!; headers.push(header);
-    const auth = await walletAuth(ctx, header, createHash("sha256").update(body).digest("hex")); wallets.push(auth.wallet);
+    const auth = await walletAuth(ctx, header, createHash("sha256").update(canonicalJson(JSON.parse(body))).digest("hex")); wallets.push(auth.wallet);
     return c.json({ provider_id: "host-1", status: "probation", reasons: ["Admission checks passed."], dashboard: "/hosts/?id=host-1" }, 201);
+  });
+  app.put("/api/v1/network/hosts/:providerId/credential", async (c) => {
+    const body = await c.req.text(); bodies.push(body);
+    const header = c.req.header("X-Wallet-Auth")!; headers.push(header);
+    const auth = await walletAuth(ctx, header, createHash("sha256").update(canonicalJson(JSON.parse(body))).digest("hex")); wallets.push(auth.wallet);
+    expect(JSON.parse(body).provider_id).toBe(c.req.param("providerId"));
+    return c.json({ provider_id: c.req.param("providerId"), credential_configured: true });
   });
   let polls = 0;
   app.get("/api/v1/network/hosts/host-1/status", (c) => { polls++; return c.json({ provider_id: "host-1", status: polls === 1 ? "pending" : "probation", reasons: [], attested: polls > 1, probation_until: null, weight: 0 }); });
@@ -35,16 +43,17 @@ function standIn() {
 test("exact payload and header pass the existing walletAuth verifier against a stand-in router", async () => {
   const server = standIn(), key = generatePrivateKey(), io = output();
   expect(await runJoin(signup, { ...io, env: { ANYROUTE_OPERATOR_PRIVATE_KEY: key }, fetcher: server.fetcher })).toBe(0);
-  expect(server.bodies).toEqual([JSON.stringify(payload)]);
+  expect(server.bodies).toEqual([canonicalJson(payload)]);
   expect(server.wallets).toEqual([privateKeyToAccount(key).address.toLowerCase()]);
   expect(server.headers[0]).toMatch(/^0x[0-9a-f]{40}:\d+:0x[0-9a-f]{130}$/);
   expect(io.lines.join("\n")).toContain("Status: probation");
   expect(io.lines.join("\n")).toContain("Admission checks passed.");
   expect(io.lines.join("\n")).toContain("https://anyroute.tech/hosts/?id=host-1");
+  expect(io.lines.join("\n")).toContain("--credential-only host-1");
   expect(io.lines.join("\n")).not.toContain(key);
 });
 test("wallet header binds the exact bytes, and the verifier rejects a changed body and replay", async () => {
-  const body = JSON.stringify(payload), header = await walletHeader(generatePrivateKey(), body);
+  const body = canonicalJson(payload), header = await walletHeader(generatePrivateKey(), body);
   await expect(walletAuth(ctx, header, createHash("sha256").update(body + " ").digest("hex"))).rejects.toThrow("signature does not match");
   await walletAuth(ctx, header, createHash("sha256").update(body).digest("hex"));
   await expect(walletAuth(ctx, header, createHash("sha256").update(body).digest("hex"))).rejects.toThrow("already used");
@@ -52,7 +61,7 @@ test("wallet header binds the exact bytes, and the verifier rejects a changed bo
 test("dry run emits the exact payload and does not read a key or call the network", async () => {
   const io = output(); let called = false;
   expect(await runJoin([...signup, "--dry-run", "--key-file", "/does/not/exist"], { ...io, env: {}, fetcher: (async () => { called = true; throw new Error(); }) as typeof fetch })).toBe(0);
-  expect(io.lines.at(-1)).toBe(JSON.stringify(payload)); expect(called).toBe(false);
+  expect(io.lines.at(-1)).toBe(canonicalJson(payload)); expect(called).toBe(false);
 });
 test("file key source signs the same contract without printing the key", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "join-key-")), key = generatePrivateKey();
@@ -120,18 +129,132 @@ test("bundle is deterministic, matches served bytes and runs independently in No
   expect(first).not.toContain(path.resolve("."));
   const command = Bun.spawn(["node", path.resolve("web/public/network/join.mjs"), ...signup, "--dry-run"], { cwd: tmpdir(), stdout: "pipe", stderr: "pipe", env: { PATH: process.env.PATH } });
   const [stdout, stderr, code] = await Promise.all([new Response(command.stdout).text(), new Response(command.stderr).text(), command.exited]);
-  expect(code).toBe(0); expect(stdout.trim()).toBe(JSON.stringify(payload)); expect(stderr).toContain("dedicated operator wallet");
+  expect(code).toBe(0); expect(stdout.trim()).toBe(canonicalJson(payload)); expect(stderr).toContain("dedicated operator wallet");
 });
 test("Node bundle signs and joins over HTTP against the stand-in router", async () => {
-  const standin = standIn(), key = generatePrivateKey();
+  const standin = standIn(), key = generatePrivateKey(), apiKey = "node-sidecar-credential";
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: standin.app.fetch });
   try {
-    const command = Bun.spawn(["node", path.resolve("web/public/network/join.mjs"), ...signup, "--router", `http://127.0.0.1:${server.port}`], { stdout: "pipe", stderr: "pipe", env: { PATH: process.env.PATH, ANYROUTE_OPERATOR_PRIVATE_KEY: key } });
+    const command = Bun.spawn(["node", path.resolve("web/public/network/join.mjs"), ...signup, "--api-key-env", "SIDECAR_KEY", "--router", `http://127.0.0.1:${server.port}`], { stdout: "pipe", stderr: "pipe", env: { PATH: process.env.PATH, ANYROUTE_OPERATOR_PRIVATE_KEY: key, SIDECAR_KEY: apiKey } });
     const [stdout, stderr, code] = await Promise.all([new Response(command.stdout).text(), new Response(command.stderr).text(), command.exited]);
-    expect(code).toBe(0); expect(standin.bodies).toEqual([JSON.stringify(payload)]); expect(standin.wallets).toEqual([privateKeyToAccount(key).address.toLowerCase()]); expect(stdout + stderr).not.toContain(key);
+    expect(code).toBe(0); expect(standin.bodies).toEqual([canonicalJson(payload), canonicalJson({ provider_id: "host-1", api_key: apiKey })]); expect(standin.wallets).toEqual(Array(2).fill(privateKeyToAccount(key).address.toLowerCase())); expect(stdout).toContain("credential configured"); expect(stdout + stderr).not.toContain(key); expect(stdout + stderr).not.toContain(apiKey);
   } finally { server.stop(true); }
 });
 test("production signup can't be switched on alone: it needs the host policy and the key log", () => {
   expect(() => loadConfig({ NODE_ENV: "production", ANYROUTE_ENV: "production", NETWORK_HOSTS_ENABLED: "true", RUNTIME_ROLE: "api", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/test", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: address, CALLPAY_ADDRESS: address, PROVIDER_BOND_ADDRESS: address, RECEIPT_ANCHOR_ADDRESS: address, ROUTER_PRIVATE_KEY: "0x" + "3".repeat(64) })).toThrow("NETWORK_POLICY_ENABLED");
   expect(loadConfig({}).networkHosts.enabled).toBe(false);
+});
+
+test("signup supplies a trimmed sidecar credential with a distinct signed canonical body", async () => {
+  for (const status of [200, 201]) {
+    const server = standIn(), key = generatePrivateKey(), apiKey = 'sidecar-secret:"\\with-newline\nvalue', io = output();
+    const fetcher = (async (url, init) => {
+      const response = await server.fetcher(url, init);
+      return init?.method === "POST" ? Response.json(await response.json(), { status }) : response;
+    }) as typeof fetch;
+    expect(await runJoin([...signup, "--api-key-env", "SIDECAR_KEY"], { ...io, env: { ANYROUTE_OPERATOR_PRIVATE_KEY: key, SIDECAR_KEY: `  ${apiKey}\n` }, fetcher })).toBe(0);
+    expect(server.bodies).toEqual([canonicalJson(payload), canonicalJson({ provider_id: "host-1", api_key: apiKey })]);
+    expect(server.wallets).toEqual(Array(2).fill(privateKeyToAccount(key).address.toLowerCase()));
+    expect(server.headers[0]).not.toBe(server.headers[1]);
+    expect(io.lines).toContain("credential configured");
+    expect(io.lines.join("\n")).not.toContain(apiKey);
+    expect(io.lines.join("\n")).not.toContain(key);
+  }
+});
+test("credential-only signs just the PUT for the selected provider", async () => {
+  const server = standIn(), key = generatePrivateKey(), apiKey = "a-sidecar-credential", io = output();
+  expect(await runJoin(["--credential-only", "host/with space", "--api-key-env", "SIDECAR_KEY", "--key-env", "OPERATOR_KEY"], { ...io, env: { OPERATOR_KEY: key, SIDECAR_KEY: apiKey }, fetcher: server.fetcher })).toBe(0);
+  expect(server.bodies).toEqual([canonicalJson({ provider_id: "host/with space", api_key: apiKey })]);
+  expect(io.lines).toContain("credential configured");
+  expect(io.lines.join("\n")).not.toContain(apiKey);
+});
+test("dry runs redact credentials, avoid reading both key sources, and print both canonical bodies", async () => {
+  for (const args of [
+    [...signup, "--dry-run", "--key-file", "/does/not/exist", "--api-key-file", "/does/not/exist"],
+    ["--credential-only", "host-1", "--dry-run", "--api-key-env", "SIDECAR_KEY", "--key-env", "OPERATOR_KEY"],
+  ]) {
+    const io = output();
+    expect(await runJoin(args, { ...io, env: {}, fetcher: (async () => { throw new Error("must not send"); }) as typeof fetch })).toBe(0);
+    expect(io.lines.slice(1)).toEqual(args.includes("--name") ? [canonicalJson(payload), canonicalJson({ provider_id: "<provider_id>", api_key: "<redacted>" })] : [canonicalJson({ provider_id: "host-1", api_key: "<redacted>" })]);
+  }
+});
+test("API key files enforce POSIX readability, UTF-8 and trimmed length before signup", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "join-api-key-"));
+  try {
+    for (const [name, value, mode, expected] of [
+      ["short", "a".repeat(15), 0o600, 1], ["long", "b".repeat(501), 0o600, 1],
+      ["minimum", ` \n${"c".repeat(16)}\n`, 0o600, 0], ["maximum", "d".repeat(500), 0o600, 0],
+      ["group", "readable-sidecar-key", 0o640, process.platform === "win32" ? 0 : 1],
+      ["world", "readable-sidecar-key", 0o604, process.platform === "win32" ? 0 : 1],
+      ["invalid-utf8", Buffer.from([0xff]), 0o600, 1],
+    ] as const) {
+      const file = path.join(dir, name); await writeFile(file, value, { mode });
+      const server = standIn(), io = output(), key = generatePrivateKey();
+      expect(await runJoin([...signup, "--api-key-file", file], { ...io, env: { ANYROUTE_OPERATOR_PRIVATE_KEY: key }, fetcher: server.fetcher })).toBe(expected);
+      expect(server.bodies.length).toBe(expected === 0 ? 2 : 0);
+      if (typeof value === "string") expect(io.lines.join("\n")).not.toContain(value.trim());
+      expect(io.lines.join("\n")).not.toContain(key);
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test("invalid credential modes and environment keys fail without any request", async () => {
+  const cases = [
+    ["--credential-only", "host-1"], [...signup, "--credential-only", "host-1", "--api-key-env", "API"],
+    [...signup, "--api-key-env", "API", "--api-key-file", "unused"], ["--status", "host-1", "--api-key-env", "API"],
+    ["--credential-only", "x".repeat(101), "--api-key-env", "API"],
+  ];
+  for (const args of cases) {
+    const server = standIn(), io = output();
+    expect(await runJoin(args, { ...io, env: { API: "valid-sidecar-key" }, fetcher: server.fetcher })).toBe(1);
+    expect(server.bodies).toEqual([]);
+  }
+  for (const apiKey of ["", "x".repeat(15), "y".repeat(501)]) {
+    const server = standIn(), io = output();
+    expect(await runJoin([...signup, "--api-key-env", "API"], { ...io, env: { API: apiKey }, fetcher: server.fetcher })).toBe(1);
+    expect(server.bodies).toEqual([]);
+    if (apiKey) expect(io.lines.join("\n")).not.toContain(apiKey);
+  }
+});
+test("credential errors and reflected keys never reach either output stream", async () => {
+  for (const failureAt of ["POST", "PUT"]) {
+    for (const escaped of [false, true]) {
+      const server = standIn(), key = generatePrivateKey(), apiKey = 'sidecar:"\\credential\nvalue', io = output();
+      const fetcher = (async (url, init) => init?.method === failureAt
+        ? Response.json({ error: { message: `Credential refused: ${escaped ? JSON.stringify(apiKey) : apiKey}` } }, { status: 403 })
+        : server.fetcher(url, init)) as typeof fetch;
+      expect(await runJoin([...signup, "--api-key-env", "API"], { ...io, env: { ANYROUTE_OPERATOR_PRIVATE_KEY: key, API: apiKey }, fetcher })).toBe(1);
+      const printed = io.lines.join("\n");
+      expect(printed).toContain("HTTP 403: Credential refused:"); expect(printed).toContain("<redacted>");
+      expect(printed).not.toContain(apiKey); expect(printed).not.toContain(JSON.stringify(apiKey).slice(1, -1)); expect(printed).not.toContain(key);
+      expect(printed).not.toContain("credential configured");
+    }
+  }
+});
+test("failed or refused signup never sends a credential, and invalid credential success is refused", async () => {
+  const key = generatePrivateKey(), apiKey = "valid-sidecar-key";
+  for (const [status, doc, exit] of [
+    [503, { error: { message: "Registration closed." } }, 1],
+    [202, { provider_id: "host-1", status: "pending", reasons: [], dashboard: "/hosts/?id=host-1" }, 1],
+    [201, { status: "pending", reasons: [], dashboard: "/hosts/?id=host-1" }, 1],
+  ] as const) {
+    const methods: string[] = [];
+    expect(await runJoin([...signup, "--api-key-env", "API"], { ...output(), env: { ANYROUTE_OPERATOR_PRIVATE_KEY: key, API: apiKey }, fetcher: (async (_url, init) => { methods.push(init!.method!); return Response.json(doc, { status }); }) as typeof fetch })).toBe(exit);
+    expect(methods).toEqual(["POST"]);
+  }
+  for (const doc of [{ provider_id: "different", credential_configured: true }, { provider_id: "host-1", credential_configured: false }]) {
+    const io = output();
+    expect(await runJoin(["--credential-only", "host-1", "--api-key-env", "API"], { ...io, env: { ANYROUTE_OPERATOR_PRIVATE_KEY: key, API: apiKey }, fetcher: (async () => Response.json(doc)) as typeof fetch })).toBe(1);
+    expect(io.lines).not.toContain("credential configured");
+  }
+});
+
+test("an HTTP-successful signup with refused admission still stores the credential and preserves exit 2", async () => {
+  const server = standIn(), key = generatePrivateKey(), io = output();
+  const fetcher = (async (url, init) => {
+    const response = await server.fetcher(url, init);
+    return init?.method === "POST" ? Response.json({ ...await response.json(), status: "rejected" }, { status: 201 }) : response;
+  }) as typeof fetch;
+  expect(await runJoin([...signup, "--api-key-env", "API"], { ...io, env: { ANYROUTE_OPERATOR_PRIVATE_KEY: key, API: "sidecar-credential" }, fetcher })).toBe(2);
+  expect(server.bodies).toHaveLength(2);
+  expect(io.lines).toContain("credential configured");
 });

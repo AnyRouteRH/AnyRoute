@@ -5,19 +5,22 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Hex } from "viem";
+import { canonicalJson, credentialBody, hasCredentialSource, JoinError, providerId, readApiKey, redactCredentials, reject } from "./network-join-credential.ts";
 
 const WARNING = "Use a dedicated operator wallet, not a wallet holding funds. This command signs authentication messages; it sends no transactions.";
 const HELP = `node join.mjs --name NAME --endpoint https://SIDECAR --payout-address 0xADDRESS --models MODEL[,MODEL] [--contact CONTACT]
   --router URL          Router origin (default https://anyroute.tech)
   --key-file PATH       Read the operator private key from a UTF-8 file
   --key-env NAME        Read it from an environment variable (default ANYROUTE_OPERATOR_PRIVATE_KEY)
-  --dry-run             Print the exact JSON body without reading a key or sending a request
+  --api-key-file PATH   Read the sidecar API key from a UTF-8 file (16–500 chars; chmod 600)
+  --api-key-env NAME    Read the sidecar API key from an environment variable
+  --credential-only ID Configure an existing host credential without signup
+  --dry-run             Print canonical bodies without reading keys or sending requests; API key redacted
+                        Signup credential body uses <provider_id> until the router assigns it
   --status PROVIDER_ID  Poll host status without reading a key or signing up
   --poll-count N        Status requests (default 5, maximum 100)
   --poll-interval MS    Time between status requests (default 5000, minimum 100)
 Never put a private key in command-line arguments. Requires Node 22 or later.`;
-class JoinError extends Error {}
-const reject = (message: string): never => { throw new JoinError(message); };
 // Also protects output from a response that reflects sensitive input. No raw exceptions are printed.
 export const safeOutput = (text: string) => text.replace(/(?:0x)?[a-f0-9]{64,}/gi, "[redacted]").replace(/[\u0000-\u0008\u000b-\u001f\u007f\u001b]/g, "");
 type Options = Record<string, string | boolean>;
@@ -26,7 +29,7 @@ export type HostPayload = { name: string; endpoint: string; payout_address: stri
 function options(args: string[]): Options {
   if (args.some((arg) => /(?:0x)?[a-f0-9]{64,}/i.test(arg))) reject("Private keys must come from a file or environment variable, never arguments.");
   const flags = new Set(["--help", "--dry-run"]);
-  const values = new Set(["--name", "--endpoint", "--payout-address", "--models", "--contact", "--router", "--key-file", "--key-env", "--status", "--poll-count", "--poll-interval"]);
+  const values = new Set(["--name", "--endpoint", "--payout-address", "--models", "--contact", "--router", "--key-file", "--key-env", "--status", "--poll-count", "--poll-interval", "--api-key-file", "--api-key-env", "--credential-only"]);
   const out: Options = {};
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
@@ -36,7 +39,10 @@ function options(args: string[]): Options {
     else reject("Unknown option or missing value. Run with --help.");
   }
   if (out["--key-file"] && out["--key-env"]) reject("Choose one key source: --key-file or --key-env.");
-  if (out["--status"] && (out["--dry-run"] || ["--name", "--endpoint", "--payout-address", "--models", "--contact", "--key-file", "--key-env"].some((key) => out[key] !== undefined))) reject("--status cannot be combined with signup or key options.");
+  if (out["--api-key-file"] && out["--api-key-env"]) reject("Choose one sidecar API key source: --api-key-file or --api-key-env.");
+  if (out["--credential-only"] && !hasCredentialSource(out)) reject("--credential-only requires --api-key-file or --api-key-env.");
+  if (out["--credential-only"] && ["--name", "--endpoint", "--payout-address", "--models", "--contact"].some((key) => out[key] !== undefined)) reject("--credential-only cannot be combined with signup options.");
+  if (out["--status"] && (out["--dry-run"] || ["--name", "--endpoint", "--payout-address", "--models", "--contact", "--key-file", "--key-env", "--api-key-file", "--api-key-env", "--credential-only"].some((key) => out[key] !== undefined))) reject("--status cannot be combined with signup or key options.");
   if (!out["--status"] && (out["--poll-count"] || out["--poll-interval"])) reject("Polling options require --status.");
   return out;
 }
@@ -87,8 +93,9 @@ function integer(value: string | boolean | undefined, fallback: number, min: num
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 
 export async function runJoin(args: string[], deps: Dependencies = {}): Promise<number> {
-  const out = (line: string) => (deps.out || console.log)(safeOutput(line));
-  const err = (line: string) => (deps.err || console.error)(safeOutput(line));
+  const secrets: string[] = [];
+  const out = (line: string) => (deps.out || console.log)(safeOutput(redactCredentials(line, secrets)));
+  const err = (line: string) => (deps.err || console.error)(safeOutput(redactCredentials(line, secrets)));
   err(WARNING);
   try {
     const o = options(args);
@@ -106,6 +113,7 @@ export async function runJoin(args: string[], deps: Dependencies = {}): Promise<
         const message = record(doc) && record(doc.error) && typeof doc.error.message === "string" ? doc.error.message : "Request refused.";
         reject(`HTTP ${response.status}: ${message}`);
       }
+      if (init.method === "POST" && ![200, 201].includes(response.status)) reject(`Router returned unexpected signup HTTP ${response.status}.`);
       if (!record(doc)) return reject("Router returned an invalid host response.");
       return doc;
     }
@@ -129,13 +137,30 @@ export async function runJoin(args: string[], deps: Dependencies = {}): Promise<
       }
       return 0;
     }
-    const body = JSON.stringify(hostPayload(o));
-    if (o["--dry-run"]) { out(body); return 0; }
-    const key = await readKey(o, deps.env || process.env);
-    const header = await walletHeader(key, body);
+    const id = o["--credential-only"] ? providerId(String(o["--credential-only"])) : undefined;
+    const body = id === undefined ? canonicalJson(hostPayload(o)) : undefined;
+    if (o["--dry-run"]) {
+      if (body !== undefined) out(body);
+      if (hasCredentialSource(o)) out(credentialBody(id ?? "<provider_id>"));
+      return 0;
+    }
+    const env = deps.env || process.env;
+    const apiKey = hasCredentialSource(o) ? await readApiKey(o, env, (secret) => secrets.push(secret)) : undefined;
+    const key = await readKey(o, env);
+    async function configureCredential(id: string) {
+      const body = credentialBody(providerId(id), apiKey!);
+      const header = await walletHeader(key, body);
+      const doc = await request(`/api/v1/network/hosts/${encodeURIComponent(id)}/credential`, { method: "PUT", headers: { "content-type": "application/json", "X-Wallet-Auth": header }, body });
+      if (doc.provider_id !== id || doc.credential_configured !== true) reject("Router returned an invalid credential response.");
+      out("credential configured");
+    }
+    if (id !== undefined) { await configureCredential(id); return 0; }
+    const header = await walletHeader(key, body!);
     const doc = await request("/api/v1/network/hosts", { method: "POST", headers: { "content-type": "application/json", "X-Wallet-Auth": header }, body });
     if (!["probation", "rejected", "pending"].includes(String(doc.status))) reject("Router returned an invalid signup status.");
     report(doc);
+    if (apiKey !== undefined) await configureCredential(String(doc.provider_id));
+    else out(`Configure the sidecar credential later: node join.mjs --router ${router.origin} --credential-only ${doc.provider_id} --key-file /path/to/operator.key --api-key-file /path/to/sidecar.key`);
     return doc.status === "rejected" ? 2 : 0;
   } catch (error) {
     err(error instanceof JoinError ? error.message : "Host registration failed.");

@@ -14,7 +14,7 @@ export async function buildJoinBundle(): Promise<string> {
   }));
   const code = (await build.outputs[0].text()).replace(/^#!.*\n/, "").replace(/^\/\/ (\S+\.(?:[cm]?[jt]s|json))$/gm, (_, label: string) => {
     const modules = label.lastIndexOf("node_modules/");
-    const own = label.lastIndexOf("scripts/");
+    const own = Math.max(label.lastIndexOf("scripts/"), label.lastIndexOf("src/"));
     return "// " + (modules >= 0 ? label.slice(modules) : own >= 0 ? label.slice(own) : label.replace(/^(\.\.\/)+/, ""));
   });
   return `#!/usr/bin/env node\n// AnyRoute host registration. Source: scripts/network-join.ts. Requires Node 22 or later.\n/* Bundled third-party licence notices\n${licences.join("\n")}\n*/\n${code}`;
