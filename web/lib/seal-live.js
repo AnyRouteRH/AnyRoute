@@ -4,6 +4,7 @@
 const OFF = "Not switched on here";
 const ONION = /^[a-z2-7]{56}\.onion$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const VIA = { ohttp: "Oblivious HTTP relay", onion: "Tor onion service" };
 
 const every = (ms) => {
   if (!Number.isFinite(ms) || ms <= 0) return null;
@@ -17,7 +18,9 @@ function laneRow(name, lane) {
   if (!lane || typeof lane !== "object" || typeof lane.available !== "boolean") return { name, value: "Not reported", state: "unknown" };
   if (!lane.available) return { name, value: OFF, state: "off" };
   const models = Number.isFinite(lane.models) ? `${lane.models.toLocaleString("en-US")} model${lane.models === 1 ? "" : "s"}` : "";
-  return { name, value: `Available${models ? ` · ${models}` : ""}`, state: "on" };
+  // The transports that carry the lane, where the router says (lanes.unlinkable.via); names it does not send are not shown.
+  const via = Array.isArray(lane.via) ? lane.via.map((t) => VIA[t]).filter(Boolean) : [];
+  return { name, value: `Available${models ? ` · ${models}` : ""}${via.length ? ` · via ${via.join(" or ")}` : ""}`, state: "on" };
 }
 
 /** Rows for the /seal page's live panel from the data object of GET /api/v1/status. */
