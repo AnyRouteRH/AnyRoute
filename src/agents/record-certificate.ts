@@ -6,7 +6,7 @@ import type { KeyRow } from "../api/auth.ts";
 import { fail } from "../lib/errors.ts";
 import { agentPolicyEvents } from "./schema.ts";
 import { lockAccount, policiesFor } from "./store.ts";
-import { RECORD_CERTIFICATE_NOTICE, RECORD_CERTIFICATE_TTL_MS, type RecordClaim, type RecordCertificate } from "../../packages/client/src/record-certificate.ts";
+import { RECORD_CERTIFICATE_NOTICE, RECORD_CERTIFICATE_TTL_MS, type RecordClaim, type RecordCertificate } from "./record-certificate-shared.ts";
 
 /** Only the calling key's retained, completed, non-cancelled generation records count. No parent or sibling activity is added. */
 export async function checkRecordClaims(tx: Db | Tx, key: KeyRow, claims: RecordClaim[], now: Date) {

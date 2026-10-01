@@ -6,7 +6,7 @@ import { requireKey } from "./auth.ts";
 import { readJson } from "./common.ts";
 import { recordCertificatePayload } from "../agents/record-certificate.ts";
 import { receiptKeyEntry } from "../tlog/entries.ts";
-import { isRecordCertificate, validRecordClaim, verifyRecordCertificate, RECORD_CERTIFICATE_NOTICE, type RecordClaim } from "../../packages/client/src/record-certificate.ts";
+import { isRecordCertificate, validRecordClaim, verifyRecordCertificate, RECORD_CERTIFICATE_NOTICE, type RecordClaim } from "../agents/record-certificate-shared.ts";
 const bodySchema = z.strictObject({ claims: z.array(z.custom<RecordClaim>(validRecordClaim)).min(1).max(16).refine(v => new Set(v).size === v.length, "Claims must be distinct.") });
 export function agentCertificatesRoutes(app: Hono, ctx: Ctx) {
   app.post("/api/v1/agents/me/record-certificate", async c => {
