@@ -17,6 +17,7 @@ import GeneratedImages from "./harness/GeneratedImages";
 import { ImageAttach, ImageNotice, useImageAttachments } from "./harness/ImageAttachments";
 import { imageOutput, imageSettings, imageSendBlock, imageSendError, readsImages } from "../lib/harness-images";
 import { ReadAloud, VoiceControls, VoiceMic, useHarnessVoice } from "./harness/VoiceMode";
+import AppShell from "./harness/AppShell";
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
 
@@ -1071,7 +1072,7 @@ export default function Harness() {
   const mod = isMac() ? "⌘" : "Ctrl";
 
   return (
-    <div className={s.harness} data-compare={compare || undefined}>
+    <div className={s.harness} data-harness-app data-compare={compare || undefined}>
       <Rail
         models={models}
         routes={routes}
@@ -1144,6 +1145,7 @@ export default function Harness() {
             )}
           </div>
         </div>
+        <AppShell />
         <PrivateMode priv={priv} lanes={lanes} setLanes={setLanes} setFocus={setFocus} busy={busy} find={find} />
 
         {compare && (

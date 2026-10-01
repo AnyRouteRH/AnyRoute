@@ -798,6 +798,7 @@ export const EXTERNAL: ExternalDoc = {
   browser: {
     summary: "What this website keeps in your own browser. None of it is sent to us except the requests you make.",
     items: [
+      { store: "Cache Storage", holds: "The installable Harness keeps only the static app shell, offline page, scripts, styles, fonts and icons in a browser cache named anyroute-shell- followed by a build digest. Each cached file must match its exported SHA-256. Requests, replies, API responses and URLs with query strings are never cached. A new active app version removes older app caches; browser settings can clear them at any time. No additional data is stored by the router.", evidence: [ev("web/lib/harness-sw.js", "Runtime requests never populate Cache Storage."), ev("web/lib/harness-sw.js", "if (actual !== expected) throw new Error('Shell content changed');")] },
       { store: "sessionStorage", holds: "The API key you pasted into the dashboard, for the length of the tab. It is removed when the tab closes and is never written to localStorage.", evidence: [ev("web/lib/api.js", "sessionStorage.setItem(keyStore, secret);")] },
       { store: "localStorage", holds: "The Harness favourite models and view preferences, and the Eval Lab evaluation sets you write. Eval Lab results are kept in IndexedDB. The router never receives them; only the requests you run do.", evidence: [ev("web/components/Harness.jsx", "localStorage.setItem(k, JSON.stringify(v));"), ev("web/components/features/EvalLab.jsx", "Eval sets live in localStorage")] },
     ],

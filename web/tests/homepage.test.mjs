@@ -20,6 +20,7 @@ const hook=registerHooks({
     return next(specifier,context);
   },
   load(url,context,next){
+    if(url.endsWith('.css'))return {format:'module',shortCircuit:true,source:'export default new Proxy({}, {get:(_,name)=>String(name)});'};
     if(url.endsWith('.jsx'))return {format:'module',shortCircuit:true,source:'import React from "react";\n'+execFileSync('bun',['-e',transpile],{input:fs.readFileSync(fileURLToPath(url),'utf8'),encoding:'utf8'})};
     return next(url,context);
   },

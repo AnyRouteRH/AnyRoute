@@ -1,0 +1,18 @@
+/* Preserve the single black navigation bar, with room for device cutouts. */
+.harness-connectivity { flex: none; padding: 8px 16px; background: var(--paper-2); color: var(--muted); font-size: 13px; text-align: center; }
+.harness-connectivity a { color: var(--ink); text-decoration-color: var(--signal-deep); text-underline-offset: 3px; }
+html[data-harness-standalone] { --header: calc(52px + env(safe-area-inset-top, 0px)); }
+html[data-harness-standalone] .site-header { padding-top: env(safe-area-inset-top, 0px); }
+html[data-harness-standalone] .site-header nav { width: calc(100% - 2 * var(--gutter) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); }
+html[data-harness-standalone] .site-header .desktop-links,
+html[data-harness-standalone] .site-header .nav-buttons { display: none; }
+html[data-harness-standalone] .site-header .menu-toggle { display: block; }
+html[data-harness-standalone] [data-harness-app] { height: 100dvh; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+@media (display-mode: standalone) {
+  html:has([data-harness-app]) { --header: calc(52px + env(safe-area-inset-top, 0px)); }
+  html:has([data-harness-app]) .site-header { padding-top: env(safe-area-inset-top, 0px); }
+  html:has([data-harness-app]) .site-header .desktop-links,
+  html:has([data-harness-app]) .site-header .nav-buttons { display: none; }
+  html:has([data-harness-app]) .site-header .menu-toggle { display: block; }
+  [data-harness-app] { height: 100dvh; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+}
