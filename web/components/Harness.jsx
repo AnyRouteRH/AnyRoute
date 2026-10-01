@@ -16,7 +16,9 @@ import ImageMode from "./harness/ImageMode";
 import GeneratedImages from "./harness/GeneratedImages";
 import { ImageAttach, ImageNotice, useImageAttachments } from "./harness/ImageAttachments";
 import { imageOutput, imageSettings, imageSendBlock, imageSendError, readsImages } from "../lib/harness-images";
-import { ReadAloud, VoiceControls, VoiceMic, useHarnessVoice } from "./harness/VoiceMode";
+import { ReadAloud, useHarnessVoice } from "./harness/VoiceMode";
+// Composer polish: contextual notices and voice menu.
+import ComposerVoice, { VoiceFeedback } from "./harness/ComposerVoice";
 import AppShell from "./harness/AppShell";
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
@@ -851,7 +853,7 @@ export default function Harness() {
   const acceptsImages = lanes.every((l) => readsImages(find(l.modelId)));
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
   // H1: on-device preparation and capability guards, shared by paste, drop and the picker.
-  const { addFiles, preparing, isPreparing } = useImageAttachments({ files, setFiles, setNote: setFileNote, acceptsImages, acceptsFiles });
+  const { addFiles, preparing, preparingImages, isPreparing } = useImageAttachments({ files, setFiles, setNote: setFileNote, acceptsImages, acceptsFiles });
   const imageBlock = imageSendBlock(lanes, find, files);
   const switchVision = () => setPalette({ lane: Math.max(0, lanes.findIndex((l) => !readsImages(find(l.modelId)))), add: false, vision: true });
 
@@ -1257,7 +1259,7 @@ export default function Harness() {
           )}
           {fileNote && <p className={s.fileNote} role="status">{fileNote}</p>}
           <div className={s.box}>
-            <ImageAttach enabled={acceptsImages} preparing={preparing} onFiles={addFiles} />
+            <ImageAttach enabled={acceptsImages} attached={files.some((file) => file.kind === "image")} preparing={preparing} onFiles={addFiles} />
             {acceptsFiles && (
               <label className={s.attach} title="Attach files">
                 <span className="sr-only">Attach files</span>
@@ -1288,14 +1290,14 @@ export default function Harness() {
                 }
               }}
             />
-            <VoiceMic voice={voice} />
+            <ComposerVoice voice={voice} />
             <button type="submit" className={s.send} data-busy={busy || undefined} title={imageBlock || (preparing ? "Preparing images on your device" : undefined)} disabled={!busy && (preparing || !!imageBlock || (!draft.trim() && !files.length) || !focusModel)}>
               {busy ? "Stop" : "Send"}
               <b aria-hidden="true">{busy ? "■" : "↵"}</b>
             </button>
           </div>
-          <ImageNotice enabled={acceptsImages} preparing={preparing} error={imageBlock} onSwitch={switchVision} available={all.some(readsImages)} />
-          <VoiceControls voice={voice} />
+          <ImageNotice files={files} enabled={acceptsImages} preparing={preparingImages} error={imageBlock} onSwitch={switchVision} available={all.some(readsImages)} />
+          <VoiceFeedback voice={voice} />
           <p className={s.hints}>
             <span>
               <kbd>{mod} K</kbd> switch model

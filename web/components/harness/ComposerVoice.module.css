@@ -1,0 +1,12 @@
+.tools { display: flex; flex: none; height: 44px; }
+.chevron { display: grid; place-items: center; width: 28px; height: 44px; flex: none; padding: 0; border: 0; background: none; color: var(--muted-dark); }
+.chevron:hover, .chevron[aria-expanded="true"] { color: var(--signal); }
+.chevron:focus-visible { outline: 2px solid var(--signal); outline-offset: -4px; }
+.chevron:disabled { opacity: .4; }
+/* The composer clips its corner. Portalling keeps this panel outside that clip. */
+.menu { position: fixed; z-index: 80; overflow-y: auto; overscroll-behavior: contain; background: var(--paper-2); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(11, 12, 11, .18); padding: 12px 16px; font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; font: 500 11px var(--mono); }
+.heading button { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 20px; }
+.heading button:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: -2px; }
+.menu > div:last-child { padding: 0; background: none; }
+@media (max-width: 680px) { .heading button { min-height: 44px; } }
