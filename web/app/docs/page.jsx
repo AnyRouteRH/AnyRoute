@@ -772,6 +772,7 @@ export default function Docs() {
         <div className="side-layout">
           <nav className="side-nav" aria-label="Documentation sections" data-reveal="fade">
             <span className="side-nav-label">On this page</span>
+            <a href="/whitepaper/">AnyRoute Whitepaper</a>
             <a href="#whats-new">What’s new</a><DocsFeatureLinks />
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>

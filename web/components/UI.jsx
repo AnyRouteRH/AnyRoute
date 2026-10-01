@@ -6,7 +6,7 @@ export function Button({children,href,secondary=false,light=false,className='',.
 
 export function Brand(){return <a href="/" className="brand" aria-label="Anyroute home"><Wordmark aria-hidden="true" title=""/></a>}
 
-const LINKS=[['Models','/models/'],['Harness','/harness/'],['Ask files','/ask/'],['Arena','/arena/'],['Agents','/agents/'],['Network','/network/'],['Hosts','/hosts/'],['Docs','/docs/'],['SEAL','/seal/'],['Private tokens','/tokens/'],['Case study','/case-study/'],['Roadmap','/#roadmap'],['About','/#about']];
+const LINKS=[['Models','/models/'],['Harness','/harness/'],['Ask files','/ask/'],['Arena','/arena/'],['Agents','/agents/'],['Network','/network/'],['Hosts','/hosts/'],['Docs','/docs/'],['Whitepaper','/whitepaper/'],['SEAL','/seal/'],['Private tokens','/tokens/'],['Case study','/case-study/'],['Roadmap','/#roadmap'],['About','/#about']];
 
 /** Fixed header: dark over dark heroes, hides on scroll down, returns on scroll up. */
 export function Header({app=false}){
