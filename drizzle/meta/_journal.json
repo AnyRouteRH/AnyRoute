@@ -253,6 +253,13 @@
       "when": 1790812645858,
       "tag": "0035_v5_agent_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790827597069,
+      "tag": "0036_v6_agent_profiles",
+      "breakpoints": true
     }
   ]
 }

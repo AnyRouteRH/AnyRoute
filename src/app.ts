@@ -1,4 +1,5 @@
 import { networkStatsRoutes } from "./network/stats.ts";
+import { agentProfilesRoutes } from "./api/agent-profiles.ts";
 import { networkBurnRoutes } from "./network/burn-routes.ts";
 import { agentLedgerMiddleware } from "./agents/ledger-context.ts";
 import { agentLedgerRoutes } from "./api/agent-ledger.ts";
@@ -173,6 +174,7 @@ export async function createApp(opts: AppOptions = {}) {
   presetsRoutes(app, ctx);
   characterRoutes(app, ctx);
   memoryRoutes(app, ctx);
+  agentProfilesRoutes(app, ctx);
   agentsRoutes(app, ctx);
   agentCertificatesRoutes(app, ctx);
   agentLedgerRoutes(app, ctx);

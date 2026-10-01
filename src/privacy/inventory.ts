@@ -1,3 +1,4 @@
+import { profileTables } from "./tables/agent-profiles.ts";
 import { networkPayoutTables } from "./tables/network-payouts.ts";
 import { hostBondTables } from "./tables/host-bonds.ts";
 import { describeAutonomy } from "./autonomy.ts";
@@ -29,7 +30,7 @@ import { CATEGORIES, CATEGORY_INFO, type AboutRequest, type ColumnDoc, type Exte
 
 export const INVENTORY_FORMAT = "anyroute.data-inventory/1";
 
-export const TABLE_DOCS: Record<string, TableDoc> = { ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables };
+export const TABLE_DOCS: Record<string, TableDoc> = { ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables };
 describeAutonomy(TABLE_DOCS);
 export { EXTERNAL };
 

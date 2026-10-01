@@ -158,7 +158,56 @@
     }
   ],
   "paths": {
-    "/api/v1/network/stats": {"get":{"operationId":"networkStats","summary":"Read network statistics","description":"Present only with NETWORK_STATS_ENABLED (default false). Public read-only snapshots cached at most 30 seconds; HTTP freshness is limited to remaining snapshot lifetime. Host counts include only network hosts. Attested capacity requires fresh successful hardware attestation and admission evidence. Public-lane token ranges use 100,000-token buckets, not differential privacy, from retained generation records only. Private-lane host totals are unavailable: existing DP counters have no host dimension or 7/30-day history. Null means absent records or a disabled optional source. Bond amounts retain index freshness. Waitlist counts express interest only.","security":[],"responses":{"200":{"description":"Network snapshot","headers":{"Cache-Control":{"schema":{"type":"string"},"description":"public, max-age=<remaining snapshot seconds>, must-revalidate"}},"content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"$ref":"#/components/schemas/NetworkStats"}}}}}},"404":{"$ref":"#/components/responses/NotFound","description":"Network statistics are disabled"},"503":{"description":"Aggregate source unavailable; no stale response is served","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}}}}},
+    "/api/v1/network/stats": {
+      "get": {
+        "operationId": "networkStats",
+        "summary": "Read network statistics",
+        "description": "Present only with NETWORK_STATS_ENABLED (default false). Public read-only snapshots cached at most 30 seconds; HTTP freshness is limited to remaining snapshot lifetime. Host counts include only network hosts. Attested capacity requires fresh successful hardware attestation and admission evidence. Public-lane token ranges use 100,000-token buckets, not differential privacy, from retained generation records only. Private-lane host totals are unavailable: existing DP counters have no host dimension or 7/30-day history. Null means absent records or a disabled optional source. Bond amounts retain index freshness. Waitlist counts express interest only.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Network snapshot",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "public, max-age=<remaining snapshot seconds>, must-revalidate"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/NetworkStats"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound",
+            "description": "Network statistics are disabled"
+          },
+          "503": {
+            "description": "Aggregate source unavailable; no stale response is served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/network/burns": {
       "get": {
         "summary": "Network fee swaps and burns",
@@ -1261,9 +1310,314 @@
         ]
       }
     },
-    "/api/v1/agents/{key_hash}/ledger": {"get":{"operationId":"agentLedger","tags":["Agent rulebook"],"summary":"Read activity and receipt ledger","description":"Principal only; same account/team permissions as editing this key. AGENT_POLICY_ENABLED defaults false; off returns 404. from inclusive, to exclusive ISO timestamps. Newest first, at most 100 rows; opaque next_cursor. JSON data.rows and data.totals_per_day (full range, UTC); CSV streams this page with X-Next-Cursor. Correlated rows group policy events and exact generation charges/tokens, receipt_id, verify_url, receipts array, approval_id only if used, policy_sha256 and policy_sha256s. Denials charge zero. Unlinked historical events/generations remain separate; associations are not inferred. Policy events/links have 90-day retention while cleanup runs. Errors before evaluation or generation creation are absent. No prompt or answer text. Router enforcement through AnyRoute only, no on-chain enforcement. Verify links require using the existing checker.","security":[{"BearerAuth":[]}],"parameters":[{"name":"key_hash","in":"path","required":true,"schema":{"type":"string"}},{"name":"from","in":"query","schema":{"type":"string","format":"date-time"}},{"name":"to","in":"query","schema":{"type":"string","format":"date-time"}},{"name":"cursor","in":"query","schema":{"type":"string"}},{"name":"format","in":"query","schema":{"type":"string","enum":["json","csv"],"default":"json"}}],"responses":{"200":{"description":"Bounded request page and full-range daily totals, or a CSV page","headers":{"X-Next-Cursor":{"description":"CSV continuation cursor","schema":{"type":"string"}}},"content":{"application/json":{"schema":{"type":"object","required":["data","next_cursor"],"properties":{"data":{"type":"object","required":["rows","totals_per_day"],"properties":{"rows":{"type":"array","maxItems":100,"items":{"type":"object"}},"totals_per_day":{"type":"array","items":{"type":"object"}}}},"next_cursor":{"type":["string","null"]}}}},"text/csv":{"schema":{"type":"string"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}}}},
-    "/api/v1/agents/me/ledger": {"get":{"operationId":"agentSelfLedger","tags":["Agent rulebook"],"summary":"Read activity and receipt ledger","description":"Calling key only, including session keys. AGENT_POLICY_ENABLED defaults false; off returns 404. from inclusive, to exclusive ISO timestamps. Newest first, at most 100 rows; opaque next_cursor. JSON data.rows and data.totals_per_day (full range, UTC); CSV streams this page with X-Next-Cursor. Correlated rows group policy events and exact generation charges/tokens, receipt_id, verify_url, receipts array, approval_id only if used, policy_sha256 and policy_sha256s. Denials charge zero. Unlinked historical events/generations remain separate; associations are not inferred. Policy events/links have 90-day retention while cleanup runs. Errors before evaluation or generation creation are absent. No prompt or answer text. Router enforcement through AnyRoute only, no on-chain enforcement. Verify links require using the existing checker.","security":[{"BearerAuth":[]}],"parameters":[{"name":"from","in":"query","schema":{"type":"string","format":"date-time"}},{"name":"to","in":"query","schema":{"type":"string","format":"date-time"}},{"name":"cursor","in":"query","schema":{"type":"string"}},{"name":"format","in":"query","schema":{"type":"string","enum":["json","csv"],"default":"json"}}],"responses":{"200":{"description":"Bounded request page and full-range daily totals, or a CSV page","headers":{"X-Next-Cursor":{"description":"CSV continuation cursor","schema":{"type":"string"}}},"content":{"application/json":{"schema":{"type":"object","required":["data","next_cursor"],"properties":{"data":{"type":"object","required":["rows","totals_per_day"],"properties":{"rows":{"type":"array","maxItems":100,"items":{"type":"object"}},"totals_per_day":{"type":"array","items":{"type":"object"}}}},"next_cursor":{"type":["string","null"]}}}},"text/csv":{"schema":{"type":"string"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}}}},
-    "/api/v1/agents/{key_hash}/alerts": {"get":{"operationId":"agentAlerts","tags":["Agent rulebook"],"summary":"Read owner alerts","description":"AGENT_POLICY_ENABLED defaults false; off returns 404. Same principal permissions as editing the key. Newest 100 entries per account, filtered to this key, retained up to 90 days. Opt in with alerts: {}. Rolling cap percentages count charged spend plus reservations, with one notice per threshold per window-duration cooldown. Repeated denials, kills and new approvals add entries. Reuses enabled Spend Watch webhooks (currently unsigned) and authorized Telegram links; email has no account destination. Without a selected linked channel delivery becomes feed_only. Worker delivery every minute, 10 notices/account/minute, up to 20 destinations/channel and three attempts five minutes apart. At-least-once delivery; a crash may repeat a notice. No prompt or answer text. Router enforcement for AnyRoute requests only, no on-chain enforcement.","security":[{"BearerAuth":[]}],"parameters":[{"name":"key_hash","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"Alert feed","content":{"application/json":{"schema":{"type":"object","properties":{"data":{"type":"array","items":{"type":"object"}}}}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}}}},
+    "/api/v1/agents/{key_hash}/ledger": {
+      "get": {
+        "operationId": "agentLedger",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Read activity and receipt ledger",
+        "description": "Principal only; same account/team permissions as editing this key. AGENT_POLICY_ENABLED defaults false; off returns 404. from inclusive, to exclusive ISO timestamps. Newest first, at most 100 rows; opaque next_cursor. JSON data.rows and data.totals_per_day (full range, UTC); CSV streams this page with X-Next-Cursor. Correlated rows group policy events and exact generation charges/tokens, receipt_id, verify_url, receipts array, approval_id only if used, policy_sha256 and policy_sha256s. Denials charge zero. Unlinked historical events/generations remain separate; associations are not inferred. Policy events/links have 90-day retention while cleanup runs. Errors before evaluation or generation creation are absent. No prompt or answer text. Router enforcement through AnyRoute only, no on-chain enforcement. Verify links require using the existing checker.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded request page and full-range daily totals, or a CSV page",
+            "headers": {
+              "X-Next-Cursor": {
+                "description": "CSV continuation cursor",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "rows",
+                        "totals_per_day"
+                      ],
+                      "properties": {
+                        "rows": {
+                          "type": "array",
+                          "maxItems": 100,
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "totals_per_day": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/me/ledger": {
+      "get": {
+        "operationId": "agentSelfLedger",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Read activity and receipt ledger",
+        "description": "Calling key only, including session keys. AGENT_POLICY_ENABLED defaults false; off returns 404. from inclusive, to exclusive ISO timestamps. Newest first, at most 100 rows; opaque next_cursor. JSON data.rows and data.totals_per_day (full range, UTC); CSV streams this page with X-Next-Cursor. Correlated rows group policy events and exact generation charges/tokens, receipt_id, verify_url, receipts array, approval_id only if used, policy_sha256 and policy_sha256s. Denials charge zero. Unlinked historical events/generations remain separate; associations are not inferred. Policy events/links have 90-day retention while cleanup runs. Errors before evaluation or generation creation are absent. No prompt or answer text. Router enforcement through AnyRoute only, no on-chain enforcement. Verify links require using the existing checker.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded request page and full-range daily totals, or a CSV page",
+            "headers": {
+              "X-Next-Cursor": {
+                "description": "CSV continuation cursor",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "rows",
+                        "totals_per_day"
+                      ],
+                      "properties": {
+                        "rows": {
+                          "type": "array",
+                          "maxItems": 100,
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "totals_per_day": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/alerts": {
+      "get": {
+        "operationId": "agentAlerts",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Read owner alerts",
+        "description": "AGENT_POLICY_ENABLED defaults false; off returns 404. Same principal permissions as editing the key. Newest 100 entries per account, filtered to this key, retained up to 90 days. Opt in with alerts: {}. Rolling cap percentages count charged spend plus reservations, with one notice per threshold per window-duration cooldown. Repeated denials, kills and new approvals add entries. Reuses enabled Spend Watch webhooks (currently unsigned) and authorized Telegram links; email has no account destination. Without a selected linked channel delivery becomes feed_only. Worker delivery every minute, 10 notices/account/minute, up to 20 destinations/channel and three attempts five minutes apart. At-least-once delivery; a crash may repeat a notice. No prompt or answer text. Router enforcement for AnyRoute requests only, no on-chain enforcement.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Alert feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/api/v1/hosts": {
       "get": {
         "tags": [
@@ -12105,6 +12459,796 @@
         ],
         "operationId": "verifyAgentRecordCertificateQuery"
       }
+    },
+    "/api/v1/agents/profiles": {
+      "get": {
+        "operationId": "agentDirectory",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Discover opt-in public agents",
+        "description": "AGENT_PROFILES_ENABLED defaults false; off returns 404. Public owner-supplied tags are not verified abilities. Only selected boolean rulebook categories are shown, never exact caps, thresholds, private identifiers or reasons. Rulebook categories require AGENT_POLICY_ENABLED. Certificates are selected-key router-signed snapshots, require agent policies and TLOG_ENABLED, and are shown only after signature, signing-key window and expiry checks. Agent-host sealing and attestation are unavailable. Random slugs do not stop correlation through owner-supplied text or publication timing. Disabled or expired keys are hidden. MCP anyroute_agent_directory accepts the same arguments without authentication. Exact tag match; ascending slug cursor pagination.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "description",
+                          "url",
+                          "capabilities",
+                          "provider",
+                          "anyroute"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "description": {
+                            "type": "string",
+                            "maxLength": 280
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "Public profile page, not invocation endpoint."
+                          },
+                          "homepage": {
+                            "type": "string",
+                            "format": "uri",
+                            "maxLength": 500,
+                            "description": "HTTP(S) only, without embedded credentials."
+                          },
+                          "capabilities": {
+                            "type": "array",
+                            "maxItems": 16,
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            }
+                          },
+                          "provider": {
+                            "type": "object",
+                            "properties": {
+                              "organization": {
+                                "const": "AnyRoute"
+                              }
+                            },
+                            "required": [
+                              "organization"
+                            ]
+                          },
+                          "anyroute": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "rulebook_summary",
+                              "certificates",
+                              "status",
+                              "notice"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{24}$"
+                              },
+                              "rulebook_summary": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "has_spending_caps": {
+                                    "type": "boolean"
+                                  },
+                                  "asks_before_spending": {
+                                    "type": "boolean"
+                                  },
+                                  "kill_switch_armed": {
+                                    "type": "boolean"
+                                  },
+                                  "killed": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              },
+                              "certificates": {
+                                "type": "array",
+                                "maxItems": 1,
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": [
+                                    "payload",
+                                    "key_id",
+                                    "signature",
+                                    "valid"
+                                  ],
+                                  "properties": {
+                                    "key_id": {
+                                      "type": "string",
+                                      "pattern": "^[0-9a-f]{16}$"
+                                    },
+                                    "signature": {
+                                      "type": "string",
+                                      "pattern": "^[A-Za-z0-9+/]{86}==$"
+                                    },
+                                    "payload": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "version",
+                                        "type",
+                                        "pseudonym",
+                                        "claims",
+                                        "issued_at",
+                                        "expires_at",
+                                        "notice"
+                                      ],
+                                      "properties": {
+                                        "version": {
+                                          "const": 1
+                                        },
+                                        "type": {
+                                          "const": "anyroute.agent.record-certificate"
+                                        },
+                                        "pseudonym": {
+                                          "type": "string",
+                                          "pattern": "^[0-9a-f]{64}$"
+                                        },
+                                        "claims": {
+                                          "$ref": "#/components/schemas/AgentRecordClaims"
+                                        },
+                                        "issued_at": {
+                                          "type": "string",
+                                          "format": "date-time"
+                                        },
+                                        "expires_at": {
+                                          "type": "string",
+                                          "format": "date-time",
+                                          "description": "Exactly seven days after issuance."
+                                        },
+                                        "notice": {
+                                          "const": "Signed by AnyRoute's router, which sees the agent's activity; not a zero-knowledge proof."
+                                        }
+                                      }
+                                    },
+                                    "valid": {
+                                      "const": true,
+                                      "description": "Router read-time validity metadata; remove this field before submitting the certificate to strict certificate verifiers."
+                                    }
+                                  }
+                                }
+                              },
+                              "status": {
+                                "type": "object",
+                                "properties": {
+                                  "sealed": {
+                                    "const": "unavailable"
+                                  },
+                                  "attested": {
+                                    "const": "unavailable"
+                                  }
+                                }
+                              },
+                              "notice": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{24}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{24}$"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/profiles/{slug}": {
+      "get": {
+        "operationId": "publicAgentCard",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Read an A2A-style public agent card",
+        "description": "AGENT_PROFILES_ENABLED defaults false; off returns 404. Public owner-supplied tags are not verified abilities. Only selected boolean rulebook categories are shown, never exact caps, thresholds, private identifiers or reasons. Rulebook categories require AGENT_POLICY_ENABLED. Certificates are selected-key router-signed snapshots, require agent policies and TLOG_ENABLED, and are shown only after signature, signing-key window and expiry checks. Agent-host sealing and attestation are unavailable. Random slugs do not stop correlation through owner-supplied text or publication timing.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "description",
+                    "url",
+                    "capabilities",
+                    "provider",
+                    "anyroute"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "description": {
+                      "type": "string",
+                      "maxLength": 280
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Public profile page, not invocation endpoint."
+                    },
+                    "homepage": {
+                      "type": "string",
+                      "format": "uri",
+                      "maxLength": 500,
+                      "description": "HTTP(S) only, without embedded credentials."
+                    },
+                    "capabilities": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      }
+                    },
+                    "provider": {
+                      "type": "object",
+                      "properties": {
+                        "organization": {
+                          "const": "AnyRoute"
+                        }
+                      },
+                      "required": [
+                        "organization"
+                      ]
+                    },
+                    "anyroute": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "rulebook_summary",
+                        "certificates",
+                        "status",
+                        "notice"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{24}$"
+                        },
+                        "rulebook_summary": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "has_spending_caps": {
+                              "type": "boolean"
+                            },
+                            "asks_before_spending": {
+                              "type": "boolean"
+                            },
+                            "kill_switch_armed": {
+                              "type": "boolean"
+                            },
+                            "killed": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "certificates": {
+                          "type": "array",
+                          "maxItems": 1,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "payload",
+                              "key_id",
+                              "signature",
+                              "valid"
+                            ],
+                            "properties": {
+                              "key_id": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{16}$"
+                              },
+                              "signature": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9+/]{86}==$"
+                              },
+                              "payload": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "version",
+                                  "type",
+                                  "pseudonym",
+                                  "claims",
+                                  "issued_at",
+                                  "expires_at",
+                                  "notice"
+                                ],
+                                "properties": {
+                                  "version": {
+                                    "const": 1
+                                  },
+                                  "type": {
+                                    "const": "anyroute.agent.record-certificate"
+                                  },
+                                  "pseudonym": {
+                                    "type": "string",
+                                    "pattern": "^[0-9a-f]{64}$"
+                                  },
+                                  "claims": {
+                                    "$ref": "#/components/schemas/AgentRecordClaims"
+                                  },
+                                  "issued_at": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "expires_at": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "Exactly seven days after issuance."
+                                  },
+                                  "notice": {
+                                    "const": "Signed by AnyRoute's router, which sees the agent's activity; not a zero-knowledge proof."
+                                  }
+                                }
+                              },
+                              "valid": {
+                                "const": true,
+                                "description": "Router read-time validity metadata; remove this field before submitting the certificate to strict certificate verifiers."
+                              }
+                            }
+                          }
+                        },
+                        "status": {
+                          "type": "object",
+                          "properties": {
+                            "sealed": {
+                              "const": "unavailable"
+                            },
+                            "attested": {
+                              "const": "unavailable"
+                            }
+                          }
+                        },
+                        "notice": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{24}$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agents/{key_hash}/profile": {
+      "get": {
+        "operationId": "agentProfileSettings",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Read owned profile publication settings",
+        "description": "AGENT_PROFILES_ENABLED defaults false; off returns 404. Public owner-supplied tags are not verified abilities. Only selected boolean rulebook categories are shown, never exact caps, thresholds, private identifiers or reasons. Rulebook categories require AGENT_POLICY_ENABLED. Certificates are selected-key router-signed snapshots, require agent policies and TLOG_ENABLED, and are shown only after signature, signing-key window and expiry checks. Agent-host sealing and attestation are unavailable. Random slugs do not stop correlation through owner-supplied text or publication timing.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 80
+                            },
+                            "description": {
+                              "type": "string",
+                              "maxLength": 280
+                            },
+                            "homepage": {
+                              "type": "string",
+                              "format": "uri",
+                              "maxLength": 500,
+                              "description": "HTTP(S) only, without embedded credentials."
+                            },
+                            "capabilities": {
+                              "type": "array",
+                              "maxItems": 16,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 40
+                              },
+                              "default": []
+                            },
+                            "show": {
+                              "type": "array",
+                              "maxItems": 3,
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "spending_caps",
+                                  "ask_first",
+                                  "kill_switch"
+                                ]
+                              },
+                              "default": []
+                            },
+                            "certificate_claims": {
+                              "type": "array",
+                              "maxItems": 16,
+                              "uniqueItems": true,
+                              "items": {
+                                "type": "string",
+                                "pattern": "^(requests_at_least|no_denials_days|no_kills_days|active_days_at_least):[1-9][0-9]{0,14}$"
+                              },
+                              "default": [],
+                              "description": "Absence claims limited to 90 days. Verified against this key, never accepted from another certificate."
+                            },
+                            "id": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9_-]{24}$"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "publishAgentProfile",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Publish selected public agent fields",
+        "description": "AGENT_PROFILES_ENABLED defaults false; off returns 404. Public owner-supplied tags are not verified abilities. Only selected boolean rulebook categories are shown, never exact caps, thresholds, private identifiers or reasons. Rulebook categories require AGENT_POLICY_ENABLED. Certificates are selected-key router-signed snapshots, require agent policies and TLOG_ENABLED, and are shown only after signature, signing-key window and expiry checks. Agent-host sealing and attestation are unavailable. Random slugs do not stop correlation through owner-supplied text or publication timing. Updates preserve the slug and replace all public fields and certificate selection. Empty claims remove the certificate. Issuance shares the account five-per-minute certificate limit.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{24}$"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "description"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 280
+                  },
+                  "homepage": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 500,
+                    "description": "HTTP(S) only, without embedded credentials."
+                  },
+                  "capabilities": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    },
+                    "default": []
+                  },
+                  "show": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "spending_caps",
+                        "ask_first",
+                        "kill_switch"
+                      ]
+                    },
+                    "default": []
+                  },
+                  "certificate_claims": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(requests_at_least|no_denials_days|no_kills_days|active_days_at_least):[1-9][0-9]{0,14}$"
+                    },
+                    "default": [],
+                    "description": "Absence claims limited to 90 days. Verified against this key, never accepted from another certificate."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "unpublishAgentProfile",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Delete owned public profile",
+        "description": "AGENT_PROFILES_ENABLED defaults false; off returns 404. Public owner-supplied tags are not verified abilities. Only selected boolean rulebook categories are shown, never exact caps, thresholds, private identifiers or reasons. Rulebook categories require AGENT_POLICY_ENABLED. Certificates are selected-key router-signed snapshots, require agent policies and TLOG_ENABLED, and are shown only after signature, signing-key window and expiry checks. Agent-host sealing and attestation are unavailable. Random slugs do not stop correlation through owner-supplied text or publication timing. Deletes the row immediately. Public reader copies and database backups may remain. Republish allocates a new slug.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "const": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -12459,7 +13603,240 @@
       }
     },
     "schemas": {
-      "NetworkStats": {"type":"object","required":["as_of","cache_seconds","hosts","attested_hosts","capacity","tokens","bonds","interest","policy_version"],"properties":{"as_of":{"type":"string","format":"date-time"},"cache_seconds":{"type":"integer","const":30},"hosts":{"type":"object","properties":{"total":{"type":"integer","minimum":0},"probation":{"type":"integer","minimum":0},"live":{"type":"integer","minimum":0},"rejected":{"type":"integer","minimum":0}},"required":["total","probation","live","rejected"]},"attested_hosts":{"type":"integer","minimum":0},"capacity":{"type":"object","properties":{"model_count":{"type":"integer","minimum":0},"models":{"type":"array","items":{"type":"string"}},"definition":{"type":"string"}},"required":["model_count","models","definition"]},"tokens":{"type":"object","properties":{"public_lane":{"type":"object","properties":{"days_7":{"type":["object","null"],"properties":{"lower":{"type":"string","pattern":"^[0-9]+$"},"upper_exclusive":{"type":"string","pattern":"^[0-9]+$"}},"required":["lower","upper_exclusive"]},"days_30":{"type":["object","null"],"properties":{"lower":{"type":"string","pattern":"^[0-9]+$"},"upper_exclusive":{"type":"string","pattern":"^[0-9]+$"}},"required":["lower","upper_exclusive"]},"bucket_size":{"type":"string","const":"100000"}},"required":["days_7","days_30","bucket_size"]},"private_lanes":{"type":"null"},"dp_stats_url":{"type":"string","const":"/api/v1/stats"},"definition":{"type":"string"}},"required":["public_lane","private_lanes","dp_stats_url","definition"]},"bonds":{"type":["object","null"],"properties":{"total_units":{"type":"string","pattern":"^[0-9]+$"},"active_units":{"type":"string","pattern":"^[0-9]+$"},"asset":{"type":"string","const":"USDG"},"decimals":{"type":"integer","const":6},"fresh":{"type":"boolean"},"indexed_block":{"type":["string","null"]}},"required":["total_units","active_units","asset","decimals","fresh","indexed_block"]},"interest":{"type":"object","properties":{"total":{"type":"integer","minimum":0},"by_role":{"type":"object","additionalProperties":{"type":"integer","minimum":0}},"by_region":{"type":"object","additionalProperties":{"type":"integer","minimum":0}},"readiness_mentions":{"type":"integer","minimum":0}},"required":["total","by_role","by_region","readiness_mentions"]},"policy_version":{"type":["integer","null"],"minimum":1}}},
+      "NetworkStats": {
+        "type": "object",
+        "required": [
+          "as_of",
+          "cache_seconds",
+          "hosts",
+          "attested_hosts",
+          "capacity",
+          "tokens",
+          "bonds",
+          "interest",
+          "policy_version"
+        ],
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cache_seconds": {
+            "type": "integer",
+            "const": 30
+          },
+          "hosts": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "probation": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "live": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rejected": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "total",
+              "probation",
+              "live",
+              "rejected"
+            ]
+          },
+          "attested_hosts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "capacity": {
+            "type": "object",
+            "properties": {
+              "model_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "definition": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "model_count",
+              "models",
+              "definition"
+            ]
+          },
+          "tokens": {
+            "type": "object",
+            "properties": {
+              "public_lane": {
+                "type": "object",
+                "properties": {
+                  "days_7": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "lower": {
+                        "type": "string",
+                        "pattern": "^[0-9]+$"
+                      },
+                      "upper_exclusive": {
+                        "type": "string",
+                        "pattern": "^[0-9]+$"
+                      }
+                    },
+                    "required": [
+                      "lower",
+                      "upper_exclusive"
+                    ]
+                  },
+                  "days_30": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "lower": {
+                        "type": "string",
+                        "pattern": "^[0-9]+$"
+                      },
+                      "upper_exclusive": {
+                        "type": "string",
+                        "pattern": "^[0-9]+$"
+                      }
+                    },
+                    "required": [
+                      "lower",
+                      "upper_exclusive"
+                    ]
+                  },
+                  "bucket_size": {
+                    "type": "string",
+                    "const": "100000"
+                  }
+                },
+                "required": [
+                  "days_7",
+                  "days_30",
+                  "bucket_size"
+                ]
+              },
+              "private_lanes": {
+                "type": "null"
+              },
+              "dp_stats_url": {
+                "type": "string",
+                "const": "/api/v1/stats"
+              },
+              "definition": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "public_lane",
+              "private_lanes",
+              "dp_stats_url",
+              "definition"
+            ]
+          },
+          "bonds": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "total_units": {
+                "type": "string",
+                "pattern": "^[0-9]+$"
+              },
+              "active_units": {
+                "type": "string",
+                "pattern": "^[0-9]+$"
+              },
+              "asset": {
+                "type": "string",
+                "const": "USDG"
+              },
+              "decimals": {
+                "type": "integer",
+                "const": 6
+              },
+              "fresh": {
+                "type": "boolean"
+              },
+              "indexed_block": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "total_units",
+              "active_units",
+              "asset",
+              "decimals",
+              "fresh",
+              "indexed_block"
+            ]
+          },
+          "interest": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "by_role": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "by_region": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "readiness_mentions": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "total",
+              "by_role",
+              "by_region",
+              "readiness_mentions"
+            ]
+          },
+          "policy_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
+        }
+      },
       "AgentApproval": {
         "type": "object",
         "properties": {
@@ -12563,7 +13940,47 @@
       "AgentPolicy": {
         "type": "object",
         "properties": {
-          "alerts": {"type":"object","additionalProperties":false,"properties":{"at_percent":{"type":"array","maxItems":64,"items":{"type":"integer","minimum":1,"maximum":100},"default":[80,100]},"denials_in_10min":{"type":"integer","minimum":1,"maximum":10000,"default":5},"channels":{"type":"array","maxItems":3,"items":{"enum":["webhook","email","telegram"]},"default":["webhook","telegram"]}},"description":"Optional opt-in. Omission preserves behavior and hashes; empty object uses defaults. Reuses linked channels; email has no destination."},
+          "alerts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "at_percent": {
+                "type": "array",
+                "maxItems": 64,
+                "items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "default": [
+                  80,
+                  100
+                ]
+              },
+              "denials_in_10min": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "default": 5
+              },
+              "channels": {
+                "type": "array",
+                "maxItems": 3,
+                "items": {
+                  "enum": [
+                    "webhook",
+                    "email",
+                    "telegram"
+                  ]
+                },
+                "default": [
+                  "webhook",
+                  "telegram"
+                ]
+              }
+            },
+            "description": "Optional opt-in. Omission preserves behavior and hashes; empty object uses defaults. Reuses linked channels; email has no destination."
+          },
           "version": {
             "type": "number",
             "const": 1

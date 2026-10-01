@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 const root=path.resolve(process.argv[2]||'out');
 const routes=['/','/models/','/harness/','/ask/','/arena/','/docs/','/case-study/','/dashboard/','/agents/','/verify/','/status/','/providers/','/registry/','/registry/_/','/legal/privacy/','/legal/terms/','/seal/','/tokens/','/keep/','/network/','/spec/','/hosts/',...(fs.existsSync(path.join(root,'spec'))?fs.readdirSync(path.join(root,'spec'),{withFileTypes:true}).filter(d=>d.isDirectory()).map(d=>`/spec/${d.name}/`):[])];
 import {auditWhitepaper} from './audit-whitepaper.mjs'; routes.push('/whitepaper/'); auditWhitepaper(root);
+routes.push('/agents/profile/', '/agents/directory/');
 auditNetwork(root);
 let count=0;
 for(const route of routes){

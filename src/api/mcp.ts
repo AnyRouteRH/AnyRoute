@@ -1,3 +1,4 @@
+import { directoryMcpArgs, directoryMcpTools, directoryMcpPath } from "./mcp-agent-directory.ts";
 import { agentMcpTools, agentMcpArgs, callAgentMcp } from "./mcp-agent.ts";
 import { enforceAgentTool } from "../agents/enforce.ts";
 import type { Context, Hono } from "hono";
@@ -84,6 +85,7 @@ const verifyProviderArgs = z.object({ provider_id: z.string().regex(PROVIDER_ID,
 
 const TOOLS = [
   ...agentMcpTools,
+  ...directoryMcpTools,
   {
     name: "list_models",
     title: "List live models",
@@ -165,6 +167,7 @@ const TOOLS = [
 
 const ARGS: Record<string, z.ZodType> = {
   ...agentMcpArgs,
+  ...directoryMcpArgs,
   list_models: listModelsArgs,
   chat: chatArgs,
   get_receipt: receiptArgs,
@@ -386,6 +389,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
     try {
       if (NEEDS_KEY.has(p.name) && !bearer(c.req.header("authorization")))
         throw new ApiError(401, `The ${p.name} tool needs an AnyRoute API key. Send it as \`Authorization: Bearer sk-ar-v1-...\` in this MCP server's HTTP headers. list_models, get_receipt and verify_receipt work without one.`, "missing_key");
+      if (p.name === "anyroute_agent_directory") return ok(await internal(directoryMcpPath(parsed.data as Json), { signal: c.req.raw.signal }, c));
       switch (p.name) {
         case "anyroute_agent_rules":
         case "anyroute_agent_check":
@@ -469,7 +473,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
         case "ping":
           return c.json(rpcResult(id, {}));
         case "tools/list":
-          return c.json(rpcResult(id, { tools: TOOLS }));
+          return c.json(rpcResult(id, { tools: TOOLS.filter(t => ctx.cfg.agentProfilesEnabled || t.name !== "anyroute_agent_directory") }));
         case "tools/call":
           return c.json(rpcResult(id, await callTool(c, m.params)));
         default:

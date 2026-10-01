@@ -9,6 +9,7 @@ COPY src/db ./src/db
 COPY src/network/schema.ts ./src/network/schema.ts
 COPY src/network/payout-schema.ts ./src/network/payout-schema.ts
 COPY src/network/bond-schema.ts ./src/network/bond-schema.ts
+COPY src/agents/profile-schema.ts ./src/agents/profile-schema.ts
 COPY src/agents/schema.ts ./src/agents/schema.ts
 COPY src/agents/approval-schema.ts ./src/agents/approval-schema.ts
 COPY src/agents/ledger-schema.ts ./src/agents/ledger-schema.ts

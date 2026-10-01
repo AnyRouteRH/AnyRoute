@@ -1266,3 +1266,5 @@ export { hostPolicies } from "../network/schema.ts";
 
 export { networkFeeLedger, networkReceiptLinks, networkPayoutDispatch } from "../network/payout-schema.ts";
 export { agentLedgerLinks } from "../agents/ledger-schema.ts";
+
+export { agentProfiles } from "../agents/profile-schema.ts";

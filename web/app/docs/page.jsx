@@ -1,3 +1,4 @@
+import AgentProfileDocs from "../../components/AgentProfileDocs";
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import NetworkStatsDocs from "../../components/NetworkStatsDocs";
@@ -817,7 +818,7 @@ export default function Docs() {
           <AgentLedgerDocs />
           <AgentAlertDocs />
           <AgentApprovalDocs />
-          <AgentCertificateDocs />
+          <AgentCertificateDocs /><AgentProfileDocs />
           <h2 id="quickstart">Two changes to get started.</h2>
           <p>
             Anyroute accepts the familiar chat-completions request. Replace the base URL and key; requests, streaming, tools, provider preferences and usage fields work unchanged. Keys are self-custodial: POST /api/v1/keys (no account) returns a key and the hash to deposit USDG to.
