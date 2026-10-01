@@ -12,6 +12,9 @@ import {
 } from "../lib/harness";
 import Markdown from "./Markdown";
 import PrivateMode, { ReplyPrivacy, usePrivateMode } from "./harness/PrivateMode";
+import ImageMode from "./harness/ImageMode";
+import GeneratedImages from "./harness/GeneratedImages";
+import { imageOutput, imageSettings } from "../lib/harness-images";
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
 
@@ -405,7 +408,7 @@ function ToolCalls({ msg, awaiting, onSubmit }) {
   );
 }
 
-function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn }) {
+function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage }) {
   const facts = replyFacts(msg);
   const waiting = msg.status === "waiting";
   const streaming = msg.status === "streaming" || waiting;
@@ -428,15 +431,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn }
       )}
       {msg.text && <Markdown text={msg.text} />}
       {streaming && !msg.text && !msg.reasoning && !(msg.toolCalls || []).length && <div className={s.wait} role="progressbar" aria-label="Waiting for the first token"><i /></div>}
-      {(msg.images || []).length > 0 && (
-        <div className={s.images}>
-          {msg.images.map((u, i) => (
-            <a key={i} href={u} download={`anyroute-image-${i + 1}.png`} title="Download image">
-              <img src={u} alt={`Generated image ${i + 1}`} />
-            </a>
-          ))}
-        </div>
-      )}
+      {(msg.images || []).length > 0 && <GeneratedImages images={msg.images} busy={busy} onUse={onUseImage} />}
       {msg.audio && <AudioOut audio={msg.audio} />}
       {(msg.toolCalls || []).length > 0 && <ToolCalls msg={msg} awaiting={awaitingTools} onSubmit={onToolResults} />}
       {msg.notes?.map((n) => (
@@ -851,6 +846,7 @@ export default function Harness() {
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
 
   const pickModel = (id, laneIndex = focus, add = false) => {
+    if (palette?.images) set({ imageOut: true, audioOut: false });
     setPalette(null);
     setSheet(null);
     if (add) {
@@ -890,11 +886,11 @@ export default function Harness() {
   // ---- sending ----
   const patchMsg = (laneId, msgId, patch) => setLanes((ls) => ls.map((l) => (l.id === laneId ? { ...l, messages: l.messages.map((m) => (m.id === msgId ? { ...m, ...(typeof patch === "function" ? patch(m) : patch) } : m)) } : l)));
 
-  async function runLane(laneId, modelId, history, msgId) {
+  async function runLane(laneId, modelId, history, msgId, imageMode = null) {
     const model = find(modelId);
     const key = authRef.current.key;
     if (!model) return patchMsg(laneId, msgId, { status: "error", error: "Choose a model first." });
-    const { body, notes, error } = buildRequest({ model, settings: settingsRef.current, system: systemRef.current, messages: history });
+    const { body, notes, error } = buildRequest({ model, settings: imageSettings(model, settingsRef.current, imageMode), system: systemRef.current, messages: history });
     if (error) return patchMsg(laneId, msgId, { status: "error", error, errorKind: "settings" });
     const ctl = new AbortController();
     controllers.current.set(msgId, ctl);
@@ -907,7 +903,7 @@ export default function Harness() {
       raf = 0;
       patchMsg(laneId, msgId, { ...reply, status: "streaming", ttft });
     };
-    patchMsg(laneId, msgId, { notes });
+    patchMsg(laneId, msgId, { notes, imageMode: !!body.modalities?.includes("image") });
     try {
       await streamChat({
         key,
@@ -993,7 +989,7 @@ export default function Harness() {
     const history = lane.messages.slice(0, cut);
     const reply = { id: uid(), role: "assistant", model: lane.modelId, status: "waiting", text: "" };
     setLanes((ls) => ls.map((l) => (l.id === laneId ? { ...l, messages: [...history, reply] } : l)));
-    runLane(laneId, lane.modelId, history, reply.id);
+    runLane(laneId, lane.modelId, history, reply.id, lane.messages.findLast((m) => m.role === "assistant")?.imageMode ?? null);
   }
 
   function toolResults(laneId, results) {
@@ -1248,7 +1244,7 @@ export default function Harness() {
                           <code>{m.text}</code>
                         </div>
                       ) : (
-                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} />
+                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} />
                       ),
                     )}
                   </div>
@@ -1265,6 +1261,7 @@ export default function Harness() {
             busy ? stop() : send(draft);
           }}
         >
+          <ImageMode model={focusModel} lanes={lanes} find={find} catalogue={shown} enabled={settings.imageOut} busy={busy} onChange={(imageOut) => set({ imageOut, audioOut: false })} onChoose={() => setPalette({ lane: focus, add: false, images: true })} />
           {files.length > 0 && (
             <ul className={s.tray} aria-label="Attachments">
               {files.map((f) => (
@@ -1334,11 +1331,11 @@ export default function Harness() {
 
       {palette && (
         <Palette
-          models={palette.add ? all.filter((m) => !lanes.some((l) => l.modelId === m.id)) : all}
-          title={palette.add ? "Add a model to compare" : "Switch model"}
+          models={palette.images ? models.filter(imageOutput) : palette.add ? all.filter((m) => !lanes.some((l) => l.modelId === m.id)) : all}
+          title={palette.images ? "Choose an image model" : palette.add ? "Add a model to compare" : "Switch model"}
           onClose={() => setPalette(null)}
           onPick={(id) => pickModel(id, palette.lane, palette.add)}
-          onBrowse={palette.add ? undefined : () => (setPalette(null), setSheet("models"))}
+          onBrowse={palette.add || palette.images ? undefined : () => (setPalette(null), setSheet("models"))}
         />
       )}
       {signin && <SignIn reason={signin} onKey={onKey} onClose={() => (setSignin(null), (pendingSend.current = false))} />}

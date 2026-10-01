@@ -6,7 +6,8 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { api } from "../../lib/api";
 import { receiptHref } from "../../lib/arena";
 import { PROXY_HREF, TOKENS_HREF, createPrivateStore, fetchPrivacyLabel, laneIsProven, receiptLane } from "../../lib/private-mode";
-import { HistoryError, MIN_PASSPHRASE, browserStorage, createHistory, memoryStorage, restoreLanes, snapshotLanes, titleOf } from "../../lib/private-history";
+import { HistoryError, MIN_PASSPHRASE, browserStorage, createHistory, memoryStorage, titleOf } from "../../lib/private-history";
+import { restoreLanes, snapshotLanes } from "../../lib/harness-image-history";
 import { Button, Modal } from "../UI";
 import s from "./PrivateMode.module.css";
 

@@ -1,0 +1,15 @@
+.mode { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; padding-bottom: 8px; }
+.toggle { display: inline-flex; align-items: center; gap: 10px; border: 0; background: var(--paper-2); color: var(--ink); padding: 7px 10px; font: 500 12px var(--mono); }
+.toggle[aria-pressed="true"] { background: var(--ink); color: var(--signal); }
+.toggle:disabled, .gallery button:disabled { opacity: .5; cursor: default; }
+.toggle:focus-visible, .gallery button:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+.price, .hint { font: 400 10.5px/1.5 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.price { flex: 1 1 260px; }
+.hint { flex-basis: 100%; }
+.gallery { display: grid; gap: 14px; margin: 12px 0; min-width: 0; }
+.image { margin: 0; min-width: 0; }
+.image img { display: block; width: auto; max-width: 100%; max-height: 560px; height: auto; object-fit: contain; background: var(--paper-2); }
+.image figcaption { display: flex; flex-wrap: wrap; gap: 8px 20px; padding-top: 8px; }
+.image button { min-height: 32px; }
+.error { font-size: 13px; color: #96161b; }
+@media (max-width: 600px) { .image img { max-height: 420px; } }
