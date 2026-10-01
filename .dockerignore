@@ -18,4 +18,5 @@ web/*
 !web/package.json
 !web/pnpm-lock.yaml
 !web/pnpm-workspace.yaml
+!web/scripts/build-pwa.mjs
 !web/next.config.mjs
