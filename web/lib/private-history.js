@@ -10,6 +10,7 @@
 //     reported as unreadable so the person can forget it and start again. There is no recovery: forget() deletes.
 
 import { receiptLane } from "./private-mode.js";
+import { historyEdits, savedEntry } from "./harness-history-vault.js";
 
 export const VERSION = 1;
 export const KDF = "PBKDF2-SHA256";
@@ -144,6 +145,7 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
   const turns = (chat) => Math.max(0, ...((chat.lanes || []).map((l) => (l.messages || []).filter((m) => m.role === "user").length)));
 
   return {
+    ...historyEdits({ serial, need, seal, maxBytes: MAX_BYTES, maxChats: MAX_CHATS }),
     /** Whether a vault is stored in this browser (locked or not). */
     exists: async () => !!(await storage.get()),
     /** False where the vault only lives in memory, so it is gone when the tab closes. */
@@ -194,7 +196,7 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
       }),
 
     /** Chats, newest first: id, title, when, and how many turns. Nothing else leaves the vault through this. */
-    list: () => (session ? session.chats.map((c) => ({ id: c.id, title: c.title, at: c.at, turns: turns(c) })) : []),
+    list: () => (session ? session.chats.map((c) => ({ id: c.id, title: c.title, at: c.at, turns: turns(c), ...(c.pinned ? { pinned: true } : {}) })) : []),
     get: (id) => {
       const chat = need().chats.find((c) => c.id === id);
       return chat ? structuredClone(chat) : null;
@@ -204,7 +206,7 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
     put: (chat) =>
       serial(async () => {
         const s = need();
-        const entry = { id: String(chat.id), title: String(chat.title || "Untitled").slice(0, 80), at: now(), lanes: chat.lanes };
+        const entry = savedEntry(chat, s.chats.find((c) => c.id === String(chat.id)), now());
         let chats = [entry, ...s.chats.filter((c) => c.id !== entry.id)].sort((a, b) => b.at - a.at).slice(0, MAX_CHATS);
         const size = (list) => enc.encode(JSON.stringify({ chats: list })).length;
         if (size([entry]) > MAX_BYTES) throw fail("too_large");

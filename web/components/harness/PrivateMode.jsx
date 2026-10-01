@@ -9,6 +9,8 @@ import { PROXY_HREF, TOKENS_HREF, createPrivateStore, fetchPrivacyLabel, laneIsP
 import { HistoryError, MIN_PASSPHRASE, browserStorage, createHistory, memoryStorage, titleOf } from "../../lib/private-history";
 import { restoreLanes, snapshotLanes } from "../../lib/harness-image-history";
 import { Button, Modal } from "../UI";
+import HistoryTools, { ExportCurrent, HistoryAccess, useHistoryKeys } from "./HistoryTools";
+import { currentChat } from "../../lib/harness-history";
 import s from "./PrivateMode.module.css";
 
 // ---------------------------------------------------------------- the switch, shared by the whole page
@@ -199,48 +201,6 @@ function PassphraseDialog({ mode, persistent, onSubmit, onClose }) {
   );
 }
 
-const when = (at) => {
-  try {
-    return new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-};
-
-function ChatList({ chats, onOpen, onDelete, onLock, onClose }) {
-  return (
-    <Modal title="History on this device" onClose={onClose}>
-      <div className={s.dialog}>
-        <p>Encrypted in this browser. Never sent anywhere.</p>
-        {chats.length ? (
-          <ul className={s.chats}>
-            {chats.map((c) => (
-              <li key={c.id}>
-                <button type="button" className={s.chatOpen} onClick={() => onOpen(c.id)}>
-                  <b>{c.title}</b>
-                  <span>
-                    {when(c.at)} · {c.turns} {c.turns === 1 ? "turn" : "turns"}
-                  </span>
-                </button>
-                <button type="button" className="text-button" onClick={() => onDelete(c.id)} aria-label={`Delete ${c.title}`}>
-                  Delete
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className={s.quiet}>Nothing kept yet. A conversation is saved here once its reply has finished.</p>
-        )}
-        <div className="button-row">
-          <Button type="button" secondary onClick={onLock}>
-            Lock history
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 function ForgetDialog({ onForget, onClose }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -285,6 +245,10 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
   useEffect(() => setShown(!started), [started]);
   const chatId = useRef(null);
   const lastSaved = useRef("");
+  // H5: the index and downloads use only the unlocked vault or the conversation already on screen.
+  const current = currentChat(lanes, historyRef.current?.unlocked ? historyRef.current.get(chatId.current) : null);
+  useHistoryKeys(() => { setShown(true); setDialog(!on ? "access" : vault === "open" ? "list" : vault === "locked" ? "unlock" : "create"); }, () => { if (!busy) setDialog("export"); });
+  useEffect(() => { if (!started) { chatId.current = null; lastSaved.current = ""; } }, [started]);
 
   const restart = () => {
     setLanes(fresh());
@@ -341,7 +305,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
     lastSaved.current = sig;
     const h = history();
     h.put({ id: chatId.current, title: titleOf(lanes), lanes: snap })
-      .then(() => setChats(h.list()))
+      .then(() => { if (h.unlocked) setChats(h.list()); })
       .catch((e) => {
         lastSaved.current = "";
         setNote(e?.message || "The history could not be saved.");
@@ -351,7 +315,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
   const opened = () => {
     setChats(history().list());
     setVault("open");
-    setDialog(null);
+    setDialog("list");
     setNote("");
   };
 
@@ -394,6 +358,8 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
         {on ? <span className={s.tag}>Proven hardware only</span> : <span className={s.hint}>Proven hardware only, a label on every reply</span>}
         {on && vault === "open" && <span className={s.state}>History kept here</span>}
         {on && vault === "locked" && <span className={s.state}>History locked</span>}
+        <button type="button" className="text-button" disabled={busy || vault === "checking"} aria-keyshortcuts="Meta+K Control+K" onClick={() => { setShown(true); setDialog(!on ? "access" : vault === "open" ? "list" : vault === "locked" ? "unlock" : "create"); }}>Search history</button>
+        {started && <button type="button" className="text-button" disabled={busy} aria-keyshortcuts="Meta+Shift+E Control+Shift+E" onClick={() => setDialog("export")}>Export chat</button>}
         {on && (
           <button type="button" className={`text-button ${s.fold}`} aria-expanded={shown} aria-controls="private-panel" onClick={() => setShown((v) => !v)}>
             {shown ? "Hide" : "Details"}
@@ -514,8 +480,12 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
         />
       )}
       {dialog === "list" && (
-        <ChatList
+        <HistoryTools
+          history={history()}
           chats={chats}
+          current={current}
+          busy={busy}
+          onChange={() => setChats(history().list())}
           onClose={() => setDialog(null)}
           onOpen={openChat}
           onDelete={async (id) => {
@@ -524,7 +494,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
               if (chatId.current === id) chatId.current = null;
               setChats(history().list());
             } catch (e) {
-              setNote(e?.message || "That conversation could not be deleted.");
+              throw e;
             }
           }}
           onLock={() => {
@@ -535,6 +505,8 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
           }}
         />
       )}
+      {dialog === "access" && <HistoryAccess onClose={() => setDialog(null)} onEnable={() => { if (!busy) { flip(); setDialog(null); } }} />}
+      {dialog === "export" && <ExportCurrent chat={current} onClose={() => setDialog(null)} />}
       {dialog === "forget" && <ForgetDialog onForget={forgetAll} onClose={() => setDialog(null)} />}
       <p className="sr-only" aria-live="polite">
         {announce}

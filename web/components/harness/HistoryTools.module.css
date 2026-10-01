@@ -1,0 +1,35 @@
+.body { display: grid; gap: 14px; }
+.body > p { color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.search { position: relative; }
+.search input, .rename input { width: 100%; min-width: 0; border: 0; background: var(--paper-2); color: var(--ink); font: inherit; font-size: 14px; padding: 12px; }
+.search input { padding-right: 112px; }
+.search kbd { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 400 10px var(--mono); color: var(--muted); pointer-events: none; }
+.body input:focus-visible, .body button:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 2px; }
+.toolbar, .actions, .exportButtons, .exports > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 14px; }
+.toolbar { justify-content: space-between; }
+.toolbar > span, .note, .exportLabel, .exports { font: 400 11px/1.5 var(--mono); color: var(--muted); }
+.results { max-height: min(42vh, 360px); overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
+.results h3 { font: 500 11px var(--mono); color: var(--muted); padding: 8px 0; }
+.results ul { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.results li { background: var(--paper-2); }
+.open { width: 100%; display: grid; gap: 5px; padding: 12px 14px; border: 0; background: none; text-align: left; }
+.open:hover { background: var(--paper-3); }
+.open b { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.open span { font: 400 10.5px var(--mono); color: var(--muted); }
+.open p { font-size: 12.5px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap; }
+.open mark { background: var(--signal-tint); color: var(--ink); }
+.actions { padding: 0 14px 12px; }
+.actions button { font-size: 12px; }
+.actions button[aria-pressed="true"] { color: var(--signal-deep); }
+.delete { margin-left: auto; color: #96161b; }
+.rename { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+.exports { display: grid; gap: 8px; padding: 14px; background: var(--paper-2); }
+.exports > div { justify-content: space-between; }
+@media (max-width: 540px) {
+  .search input { padding-right: 12px; }
+  .search kbd { display: none; }
+  .actions { gap: 10px 14px; }
+  .delete { margin-left: 0; }
+  .rename { flex-wrap: wrap; }
+  .body button { min-height: 32px; }
+}

@@ -148,7 +148,7 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
         <label className={s.search}>
           <span className="sr-only">Search models</span>
           <input ref={searchRef} type="search" placeholder="Search models or makers" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && list[0] && onPick(list[0].id)} spellCheck={false} autoComplete="off" />
-          <kbd aria-hidden="true">{isMac() ? "⌘K" : "Ctrl K"}</kbd>
+          <kbd aria-hidden="true">{isMac() ? "⌘⇧K" : "Ctrl Shift K"}</kbd>
         </label>
         <div className={s.chips} role="group" aria-label="Filter by capability">
           {CAPS.map((c) => (
@@ -869,7 +869,7 @@ export default function Harness() {
   // ---- keyboard ----
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") { // H5: unmodified K searches chat history.
         e.preventDefault();
         setPalette((p) => (p ? null : { lane: focus, add: false }));
       } else if (e.key === "Escape" && sheet && !document.querySelector("dialog[open]")) setSheet(null);
@@ -1099,7 +1099,7 @@ export default function Harness() {
       >
         <div className={s.bar}>
           {!compare && (
-            <button type="button" className={s.modelBtn} onClick={() => setPalette({ lane: 0, add: false })} aria-label={`Model: ${focusModel?.name || "none"}. Change model`} aria-keyshortcuts="Meta+K Control+K">
+            <button type="button" className={s.modelBtn} onClick={() => setPalette({ lane: 0, add: false })} aria-label={`Model: ${focusModel?.name || "none"}. Change model`} aria-keyshortcuts="Meta+Shift+K Control+Shift+K">
               <b>{focusModel?.name || "Loading models"}</b>
               <span>{focusModel ? `${focusModel.makerLabel} · ${formatContext(focusModel.context)} · ${formatPrice(focusModel.inPrice)} / ${formatPrice(focusModel.outPrice)}` : ""}</span>
             </button>
