@@ -42,11 +42,11 @@ test('hosted enablement keeps self-host defaults and accurately separates unavai
     assert.match(docs, /Switched on at anyroute.tech\./);
   }
   assert.match(read('components/AgreementsDocs.jsx'), /deployed on Robinhood Chain/);
-  assert.match(read('components/AgreementsDocs.jsx'), /Automatic jury rulings are not switched on yet/);
+  assert.match(read('components/AgreementsDocs.jsx'), /Automatic jury rulings are switched on/);
   assert.match(read('components/SealedAgentDocs.jsx'), /AGENT_SEALED_ENABLED defaults to false/);
   assert.match(read('components/SealedAgentDocs.jsx'), /hosting is available at anyroute.tech, but no sealed agent is registered there yet/);
   const featureHtml = renderToStaticMarkup(createElement(DocsFeatureIndex));
-  for (const phrase of ['Telegram linking and approvals', 'opt-in public profiles', 'no sealed agent is registered', 'escrow and dispute contracts deployed on Robinhood Chain', 'Live network statistics', 'Agent agreements · live; jury rulings not switched on yet']) assert.ok(featureHtml.includes(phrase), phrase);
+  for (const phrase of ['Telegram linking and approvals', 'opt-in public profiles', 'no sealed agent is registered', 'escrow and dispute contracts deployed on Robinhood Chain', 'Live network statistics', 'Agent agreements · live, with jury rulings']) assert.ok(featureHtml.includes(phrase), phrase);
   const bonds = read('components/NetworkBondsNote.jsx');
   assert.match(bonds, /https:\/\/robinhoodchain.blockscout.com\/address\/0x2921d34fd86d3323a5369a270a82814a74250518/);
   assert.match(bonds, /minimum is 5,000 USDG/);

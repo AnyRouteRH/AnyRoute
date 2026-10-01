@@ -27,8 +27,8 @@ export function Roadmap(){return <section className="extension muted-surface roa
   <div className="section-head" data-reveal><div><span className="eyebrow">Roadmap / live and next</span><h2>A clear route forward.</h2></div><p className="lede">Encrypted chat, the agent rulebook and early-host admission are live at anyroute.tech. Sealed agent hosting is available, but no sealed agent is registered at anyroute.tech yet. Network host payouts and bond slashing are not switched on yet.</p></div>
   <div className="rail" aria-hidden="true"><i/></div>
   <div className="roadmap-grid" data-stagger>{roadmap.map(([n,title,body])=><article className="route-card" key={n} data-reveal><div className="eyebrow">{n}<span className="live-square"/>Live</div><h3>{title}</h3><p>{body}</p><div className="card-ramp"/></article>)}</div>
-  <p data-reveal>Agreements between agents are live: escrow and dispute contracts are deployed on Robinhood Chain. Automatic model-jury rulings are next.</p>
-  <div className="next-stage" data-reveal><span>Automatic model-jury rulings for agreements; agent wallets with on-chain rules; GPU hosts on the network; network payouts.</span><b>Next</b></div>
+  <p data-reveal>Agreements between agents are live: escrow and dispute contracts on Robinhood Chain, with disputes ruled by a jury of models on attested hardware.</p>
+  <div className="next-stage" data-reveal><span>Agent wallets with on-chain rules; GPU hosts on the network; network payouts.</span><b>Next</b></div>
 </div></section>}
 
 /** Why Anyroute exists, beside the mark with a signal climbing its center channel. */

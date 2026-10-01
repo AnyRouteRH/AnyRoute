@@ -115,7 +115,7 @@ test("whitepaper covers current discovery, hosting, statistics and agreement tru
     "A2A-style card JSON", "anyroute_agent_directory", "latest valid track-record certificate",
     "7.7 Available sealed agent hosting", "deploy/agents/sealed", "Sealed · attested",
     "no sealed agent is registered at anyroute.tech yet", "Approval details pass through Telegram",
-    "7.8 Agreements between agents", "Automatic jury rulings are not switched on yet",
+    "7.8 Agreements between agents", "Automatic jury rulings are switched on",
     "Sourcify-verified", "30 days unruled", "50/50",
     "router controls jury signing keys", "not model execution, attestation or verdict correctness",
     "Panel decisions remain trusted", "Both parties, the router and jury models can read evidence",

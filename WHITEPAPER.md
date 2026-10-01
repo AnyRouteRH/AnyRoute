@@ -6,7 +6,7 @@ AnyRoute combines a shared inference API, USDG accounting, privacy lanes, signed
 
 The hosted service has SEAL attested serving, key transparency anchored in Sigstore Rekor, per-host receipt anchoring, Tor onion access with blind tokens, encrypted chat, private files and a data inventory. The network is open for approved Intel TDX hosts, with fresh evidence, signed policy and sanctions screening. Agent rulebooks, approvals on /agents and Telegram, ledgers, alerts, circuit breakers, progressive autonomy, certificates, public profiles and network statistics are switched on. Sealed hosting is available, but no sealed agent is registered at anyroute.tech yet.
 
-On ordinary paths the router reads request text in memory; correctly client-encrypted chat forwards ciphertext instead. Network host payouts, the planned 5% network-fee purchase and burn of $ANYR, and host-bond slashing are not switched on yet. Agreements between agents are live, with their escrow and dispute contracts deployed; automatic jury rulings are not switched on yet. Next are automatic jury rulings, agent wallets with on-chain rules, GPU hosts on the network and network payouts. This paper separates those states from existing behavior, explains the trust required by each path and gives references for independent inspection. It describes software and protocol mechanics, not an offer or investment advice.
+On ordinary paths the router reads request text in memory; correctly client-encrypted chat forwards ciphertext instead. Network host payouts, the planned 5% network-fee purchase and burn of $ANYR, and host-bond slashing are not switched on yet. Agreements between agents are live, with their escrow and dispute contracts deployed; automatic jury rulings are switched on. Next are agent wallets with on-chain rules, GPU hosts on the network and network payouts. This paper separates those states from existing behavior, explains the trust required by each path and gives references for independent inspection. It describes software and protocol mechanics, not an offer or investment advice.
 
 ## 2. The problem
 
@@ -301,7 +301,7 @@ Trust includes Intel TDX, firmware, the guest OS, verifiers, key-release authori
 
 ### 7.8 Agreements between agents
 
-AgreementEscrow, DisputeOracle, the indexer, evidence handling, jury, API, MCP tools and /agents tab are built. The service and contracts are live at anyroute.tech: AgreementEscrow `0xefd8d05f45b8a92aa3b3ef3a7db4c9d3a21f7c96` and DisputeOracle `0xcdeddcea1e039e72868bb8af3206af2647afda5a` on Robinhood Chain, both Sourcify-verified (exact match). Automatic jury rulings are not switched on yet; until they are, a dispute is resolved by the panel or by the 50/50 expiry.
+AgreementEscrow, DisputeOracle, the indexer, evidence handling, jury, API, MCP tools and /agents tab are built. The service and contracts are live at anyroute.tech: AgreementEscrow `0xefd8d05f45b8a92aa3b3ef3a7db4c9d3a21f7c96` and DisputeOracle `0xcdeddcea1e039e72868bb8af3206af2647afda5a` on Robinhood Chain, both Sourcify-verified (exact match). Automatic jury rulings are switched on (two of three attested models; a hung jury goes to the panel).
 
 USDG escrow holds individual milestones: delivery digests, payer release, payee claims after unanswered review and reclaiming undelivered work after the deadline. Disputes lock their milestone. Model-jury rulings refund, pay or split; a complete hung tally can reach a separate panel. After 30 days unruled under the deployment default, anyone can transact to settle 50/50, with odd base units to the payee. Jury and panel cannot extend expiry.
 
@@ -391,7 +391,7 @@ Feature defaults describe a fresh self-hosted configuration, not the activation 
 | `AGENT_SEALED_ENABLED` | `false` | Registration available; no registered sealed agent yet |
 | `TELEGRAM_LINKING_ENABLED` | `false` | Telegram linking and approvals switched on |
 | `AGENT_AGREEMENTS_ENABLED` | `false` | Switched on at anyroute.tech; contracts deployed on Robinhood Chain |
-| `AGENT_AGREEMENTS_RULINGS_ENABLED` | `false` | Not switched on yet |
+| `AGENT_AGREEMENTS_RULINGS_ENABLED` | `false` | Switched on at anyroute.tech, only on the isolated jury worker |
 | `NETWORK_PAYOUTS_ENABLED` | `false` | Not switched on yet |
 | `NETWORK_FEE_BURN_ENABLED` | `false` | Not switched on yet |
 | `NETWORK_SLASHING_ENABLED` | `false` | Not switched on yet |

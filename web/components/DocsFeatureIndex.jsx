@@ -7,7 +7,7 @@ const sections = [
   ["agent-alerts", "Agent alerts"],
   ["agent-certificates", "Track-record certificates"],
   ["agent-profiles", "Public profiles & directory"],
-  ["agreements", "Agent agreements · live; jury rulings not switched on yet"],
+  ["agreements", "Agent agreements · live, with jury rulings"],
   ["sealed-agents", "Sealed agent hosting"],
   ["e2ee-phala", "Encrypted chat"],
   ["network-host-signup", "Host signup"],
@@ -24,7 +24,7 @@ export function DocsFeatureLinks() {
 export default function DocsFeatureIndex() {
   return <section id="whats-new">
     <h2>What’s new</h2>
-    <p>Agent rules, Telegram linking and approvals, opt-in public profiles and encrypted chat are switched on at anyroute.tech. Sealed agent hosting is available, but no sealed agent is registered at anyroute.tech yet. Agreements are switched on, with the escrow and dispute contracts deployed on Robinhood Chain; automatic jury rulings are not switched on yet. The network is open for early hosts running the approved build, with automatic admission and probation. Live network statistics and host bond indexing are switched on; payouts, fee buy-and-burn and slashing are not switched on at anyroute.tech yet.</p>
+    <p>Agent rules, Telegram linking and approvals, opt-in public profiles and encrypted chat are switched on at anyroute.tech. Sealed agent hosting is available, but no sealed agent is registered at anyroute.tech yet. Agreements are switched on, with the escrow and dispute contracts deployed on Robinhood Chain; automatic jury rulings are switched on: three models on attested hardware rule by two of three, and the signed ruling is posted on-chain; a hung jury goes to the panel, and anything unruled after 30 days settles 50/50. The network is open for early hosts running the approved build, with automatic admission and probation. Live network statistics and host bond indexing are switched on; payouts, fee buy-and-burn and slashing are not switched on at anyroute.tech yet.</p>
     <ul>{sections.map(([id, label]) => <li key={id}><a href={`#${id}`}>{label}</a></li>)}</ul>
   </section>;
 }
