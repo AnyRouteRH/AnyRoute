@@ -1,0 +1,37 @@
+services:
+  agent:
+    image: ${AGENT_IMAGE:?Set the agent image with an immutable sha256 digest}
+    environment:
+      OPENAI_BASE_URL: http://sidecar:8788/v1
+    depends_on:
+      - sidecar
+    networks: [agent_private]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  sidecar:
+    image: ${AGENT_SIDECAR_IMAGE:?Set the built agent sidecar image with an immutable sha256 digest}
+    command: [serve]
+    environment:
+      AGENT_IMAGE_DIGEST: ${AGENT_IMAGE_DIGEST:?Set the digest suffix of AGENT_IMAGE}
+      AGENT_KEY_HASH: ${AGENT_KEY_HASH:?Set the SHA-256 fingerprint of the dedicated AnyRoute agent key}
+      AGENT_ATTEST_HOSTNAME: ${AGENT_ATTEST_HOSTNAME:?Set the public attestation hostname}
+      AGENT_ROUTER_ORIGIN: ${AGENT_ROUTER_ORIGIN:-https://anyroute.tech}
+    volumes:
+      - /var/run/dstack.sock:/var/run/dstack.sock
+      - agent_sealed:/sealed
+    ports: ["8443:8443"]
+    networks: [agent_private, router_egress]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+networks:
+  agent_private:
+    internal: true
+  router_egress: {}
+volumes:
+  agent_sealed: {}

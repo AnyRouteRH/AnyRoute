@@ -1,4 +1,5 @@
 import { networkStatsEnv } from "./network/stats-config.ts";
+import { sealedEnv, guardSealed } from "./agents/sealed/config.ts";
 import { networkPayoutEnv, networkPayoutSettings } from "./network/payout-config.ts";
 import { hostBondEnv, hostBondSettings } from "./network/bond-config.ts";
 import { networkHostsEnv, networkHostsSettings } from "./network/host-config.ts";
@@ -52,6 +53,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...sealedEnv,
   ...hostBondEnv,
   ...networkWeightEnv,
   ...sanctionsEnv,
@@ -427,6 +429,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     throw new Error(`Invalid configuration: ${issues}`);
   }
   const e = parsed.data;
+  guardSealed(e);
   if (e.NETWORK_POLICY_ENABLED && !e.TLOG_ENABLED) throw new Error("NETWORK_POLICY_ENABLED needs TLOG_ENABLED.");
   const production = e.ANYROUTE_ENV === "production";
   const escrowMode = e.PAYMENTS_MODE === "escrow";
@@ -588,6 +591,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     adminToken: e.ADMIN_TOKEN,
     agentProfilesEnabled: e.AGENT_PROFILES_ENABLED,
     agentPolicyEnabled: e.AGENT_POLICY_ENABLED,
+    agentSealedEnabled: e.AGENT_SEALED_ENABLED,
     agentApprovalTtlS: e.AGENT_APPROVAL_TTL_S,
     networkPolicyEnabled: e.NETWORK_POLICY_ENABLED,
     logLevel: e.LOG_LEVEL,

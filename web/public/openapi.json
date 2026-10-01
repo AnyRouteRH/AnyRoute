@@ -13249,6 +13249,231 @@
           }
         ]
       }
+    },
+    "/api/v1/agents/{key_hash}/sealed": {
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "operationId": "postAgentSealed",
+        "summary": "Register and verify sealed agent hosting",
+        "description": "Requires principal ownership. AGENT_SEALED_ENABLED defaults to false and requires AGENT_POLICY_ENABLED plus a configured dstack or phala verifier. Measured code is not audited code; the router reads ordinary requests in memory. An owner may retain a credential copy; the badge does not prove each subsequent request originated in this VM. GET agent list and /api/v1/agents/me gain an optional sealed status when enabled; success expires after 30 minutes and clears on a failed check.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current registration status. Success requires fresh hardware quote, pinned TLS key, matching key fingerprint and verifier-recovered approved compose hash.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "attested",
+                        "agent_image_digest",
+                        "compose_hash",
+                        "checked_at",
+                        "expires_at"
+                      ],
+                      "properties": {
+                        "attested": {
+                          "type": "boolean"
+                        },
+                        "agent_image_digest": {
+                          "type": "string"
+                        },
+                        "compose_hash": {
+                          "type": "string"
+                        },
+                        "checked_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "expires_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "verified_by": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "Attestation failed or a concurrent registration replaced this one; data contains an unattested status or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "attested",
+                        "agent_image_digest",
+                        "compose_hash",
+                        "checked_at",
+                        "expires_at"
+                      ],
+                      "properties": {
+                        "attested": {
+                          "type": "boolean"
+                        },
+                        "agent_image_digest": {
+                          "type": "string"
+                        },
+                        "compose_hash": {
+                          "type": "string"
+                        },
+                        "checked_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "expires_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "verified_by": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "attestation_url",
+                  "agent_image_digest",
+                  "compose_hash"
+                ],
+                "properties": {
+                  "attestation_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 2048,
+                    "description": "HTTPS /attest URL with no credentials, query or fragment."
+                  },
+                  "agent_image_digest": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  },
+                  "compose_hash": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Agents"
+        ],
+        "operationId": "deleteAgentSealed",
+        "summary": "Remove sealed agent registration",
+        "description": "Requires principal ownership. AGENT_SEALED_ENABLED defaults to false and requires AGENT_POLICY_ENABLED plus a configured dstack or phala verifier. Measured code is not audited code; the router reads ordinary requests in memory. An owner may retain a credential copy; the badge does not prove each subsequent request originated in this VM. GET agent list and /api/v1/agents/me gain an optional sealed status when enabled; success expires after 30 minutes and clears on a failed check.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registration deleted."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {

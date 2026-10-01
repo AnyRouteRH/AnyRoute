@@ -12,7 +12,7 @@ import { runPaywithAggregator } from "../pay/paywith.ts";
 import { pollEscrow } from "../pay/escrow.ts";
 import { runSpendWatch } from "./spend-watch.ts";
 import { retryAnchors, runAnchor, runKeyRotation } from "./anchor.ts";
-import { runAttestor } from "./attestor.ts";
+import { runAttestorWithSealed as runAttestor } from "../agents/sealed/attestor.ts";
 import { runMeasurementJob } from "./measurement-bundles.ts";
 import { runIpxOracle } from "./ipx-oracle.ts";
 import { runDayzero } from "./dayzero.ts";

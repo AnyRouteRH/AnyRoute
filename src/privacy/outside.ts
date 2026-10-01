@@ -1,4 +1,5 @@
 import { profileBodyReader } from "./profiles.ts";
+import { sealedBodyReaders, sealedOtherStores } from "./sealed.ts";
 import type { Evidence, ExternalDoc, RedisFamily, Touchpoint } from "./types.ts";
 import { networkJoinStores } from "./network-join.ts";
 import { networkStatsStores } from "./network-stats.ts";
@@ -377,6 +378,7 @@ const addressReaders: Touchpoint[] = [
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
   profileBodyReader,
+  ...sealedBodyReaders,
   { file: "src/api/agent-certificates.ts", carries: "settings", reads: "Bounded record claim identifiers for issuance; a signed certificate supplied by body or query for public verification.", then: "Checks retained generation counts and rulebook events, signs true claims with a fresh random pseudonym, or checks certificate signature and expiry. The router knows the authenticated issuing key.", kept: "No certificate, pseudonym, claims, query or body is persisted. Only an account issuance limiter counter and the reused public receipt signing key log entry are kept; no prompt fields are accepted.", evidence: [ev("src/api/agent-certificates.ts", "bodySchema.parse(await readJson(c))")] },
   { file: "src/api/agents.ts", carries: "settings", reads: "A strict bounded rulebook, a kill reason or a metadata-only Intent for a dry run.", then: "Requires the same owner/admin permissions as editing the target key. Evaluates dry runs deterministically without event writes or kill changes.", kept: "Current rulebooks and optional principal-written kill reasons in agent_policies; decision metadata and changes in agent_policy_events. Dry runs keep nothing. No prompt or answer fields are accepted.", evidence: [ev("src/api/agents.ts", "agentPolicySchema.parse(await readJson(c))")] },
   { file: "src/agents/enforce.ts", carries: "settings", reads: "Declared tool and function names from the inference body already parsed by the router.", then: "Projects only identifiers into the rulebook Intent, alongside the resolved model, lane, token bound and cost reservation.", kept: "Only Intent metadata and fixed decision reasons in agent_policy_events. Never arguments, descriptions, prompt or answer text; no new Redis key family or log field.", evidence: [ev("src/agents/enforce.ts", "export function declaredTools")] },
@@ -702,6 +704,7 @@ export const EXTERNAL: ExternalDoc = {
     { id: "network-routing-evidence", name: "Network host routing evidence in memory", purpose: "When NETWORK_HOSTS_ENABLED is on, routing uses existing signed generation records, health probes and attestation outcomes to limit admitted hosts during probation and exclude unavailable hosts.", holds: "Provider ids, probation deadlines, aggregate attested success and recent outcome counts, fresh canonical active bond base units matched to the host id and operator wallet, probe availability and median latency, the latest attestation failure flag and refresh time. No request text or caller address. Successful network probes also record latency in the existing health table.", ttl: "Rebuilt by health refreshes, including idle flushes; evidence older than 120 seconds is refused. Failed refreshes clear the evidence. Lost when the router instance is released or exits.", requestText: "none", evidence: [ev("src/network/routing.ts", "const states = new WeakMap<HealthView, State>();"), ev("src/network/routing.ts", "state.evidence = new Map();"), ev("src/network/weight-config.ts", "evidenceMaxAgeMs: 120_000")] },
     ...networkJoinStores,
     ...networkStatsStores,
+    ...networkJoinStores, ...sealedOtherStores,
     {
       id: "messages-proxy-prices",
       name: "Messages proxy prices on the caller's computer",
