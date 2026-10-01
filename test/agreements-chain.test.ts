@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { createPublicClient, createWalletClient, decodeFunctionData, defineChain, hashTypedData, getAddress, http, type Hex } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
@@ -30,6 +31,9 @@ async function deploy(name: string, args: any[]) {
   const a = artifact(name), tx = await wallet(0).deployContract({ abi: a.abi, bytecode: a.bytecode.object, args });
   return (await pub.waitForTransactionReceipt({ hash: tx })).contractAddress!;
 }
+// Needs anvil and the forge artifacts (contracts/out), like test/e2e-anvil.test.ts: CI's root suite has neither.
+const RUN = Bun.env.E2E_ANVIL === "1" || (existsSync("contracts/out/MockUSDG.sol/MockUSDG.json") && !!Bun.which("anvil"));
+describe.skipIf(!RUN)("agreements on a local chain with the real contracts", () => {
 beforeAll(async () => {
   process = Bun.spawn(["anvil", "--port", "8559", "--silent"], { stdout: "ignore", stderr: "ignore" });
   let ready = false;
@@ -152,3 +156,4 @@ test("funding event order preserves multiple milestones and each release or dead
   expect(state.get(`agreement:${id}.1`)).toMatchObject({ state: "released", amount: "20003", payeeAmount: "20003", payerAmount: "0" });
   expect(state.get(`agreement:${id}.2`)).toMatchObject({ state: "resolved", amount: "30005", payeeAmount: "0", payerAmount: "30005", ruling: { path: "deadline" } });
 }, 30000);
+});
