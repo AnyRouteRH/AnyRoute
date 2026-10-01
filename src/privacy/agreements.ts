@@ -17,3 +17,11 @@ export const agreementContractStores: ExternalDoc["otherStores"] = [{
     { file: "contracts/script/DeployAgreements.s.sol", contains: "console2.log" },
   ],
 }];
+
+export const juryBodyReaders: ExternalDoc["bodyReaders"] = [{
+  file: "src/agreements/internal-transport.ts", carries: "prompt-or-answer",
+  reads: "Decrypted party evidence bundle and structured provider verdict text in router memory.",
+  then: "Fixed rubric sent through attested-lane selection with fresh non-development attestation, stored provider credentials and quote-pinned TLS where configured. Gateway receipts must verify upstream attestation and exchange digests. No customer account or billing rows.",
+  kept: "Existing agreement_jury.statement stores model reasons (which may quote evidence), signed operational receipt with request/response hashes, provider attestation and checked gateway receipt references, usage and provider-list-price operator cost estimates. Canaries have no separate operational-cost ledger. Failed calls may incur unmeasured cost. No evidence text in logs; no new Redis keys or caller-address readers. Same resolution-based jury retention applies.",
+  evidence: [{ file: "src/agreements/internal-transport.ts", contains: "const upstream = upstreamBody(candidate, body, false).body;" }],
+}];

@@ -1,3 +1,4 @@
+import { publishJuryStatementKey } from "./key-publication.ts";
 import { and, eq } from "drizzle-orm";
 import { createWalletClient, encodeFunctionData, http, keccak256, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -47,6 +48,7 @@ export async function postAgreementRuling(ctx: Ctx, transport = rulingTransport(
   const cfg = ctx.cfg.agreements;
   if (!cfg.enabled) return { skipped: "disabled" };
   if (!cfg.rulings || !cfg.signerKeys?.[0]) return { skipped: "dry run" };
+  if (!ctx.tlog) return { skipped: "jury key log required" };
   await transport.guard();
   const scope = agreementScope(ctx.cfg);
   const intent = await ctx.db.transaction(async tx => {
@@ -68,6 +70,7 @@ export async function postAgreementRuling(ctx: Ctx, transport = rulingTransport(
       const statement = row.statement as { verdict: Verdict | null; votes: Vote[]; tally_bitmap: string; evidence_root: string; scope: string; dispute: string };
       if (statement.votes.length !== cfg.size || statement.votes.some(v => !v.verdict || v.verdict.verdict === "abstain" || !v.receipt_id || v.failure)) continue;
       if (statement.scope !== scope || statement.dispute !== row.dispute || statement.evidence_root !== row.root || !await ctx.signer.verify(row.statement, row.signature, row.keyId)) throw new Error("Invalid signed jury statement.");
+      await publishJuryStatementKey(ctx, row.keyId);
       const prepared = row.postingRaw ? { raw: decrypt(ctx.cfg.appSecret, row.postingRaw) as Hex, hash: row.postingTx as Hex } : await transport.prepare(row.agreementId, row.root as Hex, statement.votes);
       if (!row.postingRaw) await tx.update(agreementJury).set({ status: "submitted", postingRaw: encrypt(ctx.cfg.appSecret, prepared.raw), postingTx: prepared.hash }).where(and(eq(agreementJury.scope, scope), eq(agreementJury.agreementId, row.agreementId), eq(agreementJury.dispute, row.dispute)));
       return { ...prepared, id: row.agreementId, dispute: row.dispute };

@@ -25,6 +25,10 @@ test("production loader starts with isolated jury posting on and rejects incompl
   const witness = noteSigner("witness.example/w", SIG_COSIGNATURE_V1, randomBytes(32));
   const env = { ...production, ROUTER_PRIVATE_KEY: undefined, RUNTIME_ROLE: "worker", WORKER_JOBS: "agreement-jury", AGENT_AGREEMENTS_ENABLED: true, AGREEMENT_ESCROW_ADDRESS: address, DISPUTE_ORACLE_ADDRESS: "0x" + "2".repeat(40), AGENT_AGREEMENTS_RULINGS_ENABLED: true, AGREEMENT_JURY_SIGNER_KEYS: [key(3), key(4), key(5)].join(","), AGREEMENT_JURY_API_KEY: "fixture-funded-key", TLOG_ENABLED: true, TLOG_SIGNING_KEY: formatSignerKey("router.example/tlog", randomBytes(32)), TLOG_WITNESS_QUORUM: 1, TLOG_WITNESSES: witness.verifierKey };
   expect(loadConfig(env).agreements.rulings).toBe(true);
+  expect(loadConfig({ ...env, AGREEMENT_JURY_API_KEY: undefined, AGREEMENT_JURY_INTERNAL_ENABLED: true }).agreements.rulings).toBe(true);
+  expect(() => loadConfig({ ...env, AGREEMENT_JURY_API_KEY: undefined, AGREEMENT_JURY_INTERNAL_ENABLED: false })).toThrow("jury transport");
+  expect(() => loadConfig({ ...env, TLOG_ENABLED: false })).toThrow("TLOG_ENABLED");
+  expect(() => loadConfig({ ...env, RUNTIME_ROLE: "api" })).toThrow();
   expect(loadConfig(env).agreements.signerKeys).toHaveLength(3);
   expect(() => loadConfig({ ...env, ROUTER_PRIVATE_KEY: key(6) })).toThrow("isolated");
   expect(() => loadConfig({ ...env, WORKER_JOBS: "agreement-jury,agreement-indexer" })).toThrow("isolated");
@@ -39,6 +43,18 @@ test("jury abstentions, missing receipts and exact-bps disagreements never manuf
   expect(juryConsensus([vote("a", 4000, "split"), vote("b", 5000, "split"), vote("c", 0, "abstain")], 2).status).toBe("panel");
   expect(juryConsensus([vote("a", 0, "abstain"), vote("b", 0, "abstain"), vote("c", 10000, "pay")], 2).status).toBe("panel");
   expect(juryConsensus([{ ...vote("a", 10000, "pay"), receipt_id: null }, vote("b", 10000, "pay"), vote("c", 0, "refund")], 2).status).toBe("panel");
+  expect(juryConsensus([vote("a", 10000, "pay"), vote("b", 10000, "pay"), { ...vote("c", 0, "refund"), verdict: null, failure: "unavailable" }], 2).status).toBe("panel");
   expect(() => juryConsensus([vote("a", 10000, "pay"), vote("a", 10000, "pay"), vote("b", 0, "refund")], 2)).toThrow("distinct");
   expect(evidenceRoot([{ a: 1, b: 2 }])).toBe(evidenceRoot([{ b: 2, a: 1 }]));
+});
+
+test("production internal dry-run starts on an ordinary worker without chain signer keys or key log", () => {
+  const env = { ...production, ROUTER_PRIVATE_KEY: undefined, RUNTIME_ROLE: "worker", WORKER_JOBS: "agreement-indexer,agreement-jury,agreement-retention", AGENT_AGREEMENTS_ENABLED: true, AGREEMENT_ESCROW_ADDRESS: address, DISPUTE_ORACLE_ADDRESS: "0x" + "2".repeat(40), AGREEMENT_JURY_INTERNAL_ENABLED: true };
+  const cfg = loadConfig(env);
+  expect(cfg.agreements).toMatchObject({ enabled: true, internal: true, rulings: false, size: 3 });
+  expect(cfg.agreements.apiKey).toBeUndefined(); expect(cfg.agreements.signerKeys).toBeUndefined();
+  expect(cfg.tlog.enabled).toBe(false);
+  expect(loadConfig({ ...production }).agreements.internal).toBe(false);
+  expect(() => loadConfig({ ...env, AGENT_AGREEMENTS_RULINGS_ENABLED: true })).toThrow();
+  expect(() => loadConfig({ ...env, AGREEMENT_JURY_SIGNER_KEYS: [3,4,5].map(n => "0x" + n.toString(16).padStart(64,"0")).join(",") })).toThrow("isolated");
 });

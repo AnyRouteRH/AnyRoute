@@ -9,6 +9,7 @@ export const agreementEnv = {
   AGREEMENT_START_BLOCK: z.coerce.bigint().nonnegative().default(0n),
   AGREEMENT_FINALITY: z.enum(["finalized", "safe"]).default("finalized"),
   AGREEMENT_JURY_MODELS: z.string().default("auto"), AGREEMENT_JURY_THRESHOLD: z.coerce.number().int().min(1).max(16).default(2),
+  AGREEMENT_JURY_INTERNAL_ENABLED: flag.default(false),
   AGREEMENT_JURY_API_KEY: optional, AGREEMENT_JURY_SIGNER_KEYS: optional,
   AGREEMENT_EVIDENCE_BYTES: z.coerce.number().int().min(1024).max(65536).default(16384),
   AGREEMENT_EVIDENCE_WINDOW_SECONDS: z.coerce.number().int().min(60).max(604800).default(86400),
@@ -24,13 +25,13 @@ export function agreementSettings(e: Env, production: boolean) {
   const signerKeys = e.AGREEMENT_JURY_SIGNER_KEYS?.split(",").map(s => s.trim()) as Hex[] | undefined;
   if (signerKeys && (signerKeys.length !== size || signerKeys.some(s => !/^0x[0-9a-fA-F]{64}$/.test(s)) || new Set(signerKeys).size !== size)) throw new Error("AGREEMENT_JURY_SIGNER_KEYS must contain one distinct key per model.");
   if (e.AGREEMENT_JURY_THRESHOLD <= size / 2 || e.AGREEMENT_JURY_THRESHOLD > size) throw new Error("AGREEMENT_JURY_THRESHOLD must be a strict majority of the jury.");
-  if (e.AGENT_AGREEMENTS_RULINGS_ENABLED && (!enabled || !e.AGREEMENT_JURY_SIGNER_KEYS || !e.AGREEMENT_JURY_API_KEY || !e.TLOG_ENABLED)) throw new Error("Agreement rulings require enabled agreements, jury API and signer keys, and TLOG_ENABLED.");
+  if (e.AGENT_AGREEMENTS_RULINGS_ENABLED && (!enabled || !e.AGREEMENT_JURY_SIGNER_KEYS || (!e.AGREEMENT_JURY_API_KEY && !e.AGREEMENT_JURY_INTERNAL_ENABLED) || !e.TLOG_ENABLED)) throw new Error("Agreement rulings require enabled agreements, jury transport, signer keys, and TLOG_ENABLED.");
   if (production && e.AGREEMENT_JURY_SIGNER_KEYS) {
     if (!e.AGENT_AGREEMENTS_RULINGS_ENABLED || e.RUNTIME_ROLE !== "worker" || e.WORKER_JOBS !== "agreement-jury") throw new Error("Agreement signer requires an isolated agreement-jury worker with rulings enabled.");
     if ([e.ROUTER_PRIVATE_KEY, e.SETTLEMENT_PRIVATE_KEY, e.ANCHORER_PRIVATE_KEY, e.SLASHER_PRIVATE_KEY, e.KEEPER_PRIVATE_KEY, e.IPX_KEEPER_PRIVATE_KEY, e.PAYMASTER_SIGNER_KEY].some(Boolean)) throw new Error("Agreement signer must be isolated from other signing roles.");
   }
   if (enabled && e.AGREEMENT_ESCROW_ADDRESS!.toLowerCase() === e.DISPUTE_ORACLE_ADDRESS!.toLowerCase()) throw new Error("Agreement escrow and dispute oracle must be distinct contracts.");
-  return { enabled, rulings: e.AGENT_AGREEMENTS_RULINGS_ENABLED, escrow: e.AGREEMENT_ESCROW_ADDRESS?.toLowerCase() as Hex | undefined, oracle: e.DISPUTE_ORACLE_ADDRESS?.toLowerCase() as Hex | undefined,
+  return { enabled, internal: e.AGREEMENT_JURY_INTERNAL_ENABLED, rulings: e.AGENT_AGREEMENTS_RULINGS_ENABLED, escrow: e.AGREEMENT_ESCROW_ADDRESS?.toLowerCase() as Hex | undefined, oracle: e.DISPUTE_ORACLE_ADDRESS?.toLowerCase() as Hex | undefined,
     startBlock: e.AGREEMENT_START_BLOCK, finality: e.AGREEMENT_FINALITY, models, size, threshold: e.AGREEMENT_JURY_THRESHOLD, apiKey: e.AGREEMENT_JURY_API_KEY, signerKeys,
     evidenceBytes: e.AGREEMENT_EVIDENCE_BYTES, evidenceWindowSeconds: e.AGREEMENT_EVIDENCE_WINDOW_SECONDS, retentionDays: e.AGREEMENT_RETENTION_DAYS };
 }
