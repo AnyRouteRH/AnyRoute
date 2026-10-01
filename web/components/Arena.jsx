@@ -410,7 +410,7 @@ export default function Arena() {
   const noKey = keyState === "none" || keyState === "rejected";
 
   return (
-    <section className={cx("dark", styles.arena)} data-dark-hero aria-labelledby="arena-title">
+    <section className={styles.arena} aria-labelledby="arena-title">
       <div className={styles.grid} aria-hidden="true" />
       <div className={styles.glow} aria-hidden="true" />
       <div className={styles.inner}>

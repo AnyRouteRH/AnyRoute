@@ -1098,7 +1098,7 @@ export default function Harness() {
   const mod = isMac() ? "⌘" : "Ctrl";
 
   return (
-    <div className={s.harness} data-dark-hero data-compare={compare || undefined}>
+    <div className={s.harness} data-compare={compare || undefined}>
       <Rail
         models={models}
         routes={routes}

@@ -4,7 +4,7 @@
 .harness {
   --col: 760px;
   display: grid; grid-template-columns: minmax(0, 1fr);
-  height: 100svh; padding-top: var(--header); background: var(--ink); overflow: hidden;
+  height: 100svh; padding-top: var(--header); background: var(--paper); overflow: hidden;
 }
 .harness[data-compare] { --col: 1480px; }
 .harness kbd { font: 500 10px/1 var(--mono); padding: 3px 5px; background: var(--paper-3); color: var(--muted); letter-spacing: .02em; }
