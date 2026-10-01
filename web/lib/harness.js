@@ -2,6 +2,7 @@
 // Catalogue normalisation, capability filters, search and sort, request building with parameter
 // gating (a setting the model does not declare is never sent), and the stream accumulator.
 // No DOM, no storage: the page (components/Harness.jsx) owns those, and tests drive this file directly.
+import { modelInputs } from "./harness-images.js";
 
 // ---------------------------------------------------------------- capabilities
 
@@ -77,7 +78,7 @@ export function normalizeModel(raw, order = 0) {
     inPrice: perMillion(raw.pricing?.prompt),
     outPrice: perMillion(raw.pricing?.completion),
     requestPrice: Number(raw.pricing?.request || 0) || 0,
-    inputs: arch.input_modalities || ["text"],
+    inputs: modelInputs(raw),
     outputs: arch.output_modalities || ["text"],
     params,
     attested: raw.disclosure?.best === "attested" || (!raw.disclosure && !!raw.attested_available),

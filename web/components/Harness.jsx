@@ -5,8 +5,8 @@ import { hasWallet, walletApiKey } from "../lib/wallet";
 import { formatMs, formatUsd, receiptHref, estimateTokens } from "../lib/arena";
 import { retryAfterMs } from "../lib/batch";
 import {
-  CAPS, DISCLOSURE_LABEL, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, SORTS, TOOL_PRESETS,
-  applyChunk, attachmentKind, blankReply, buildRequest, capCounts, catalogueCounts, defaultSettings, filterCatalog,
+  CAPS, DISCLOSURE_LABEL, SORTS, TOOL_PRESETS,
+  applyChunk, blankReply, buildRequest, capCounts, catalogueCounts, defaultSettings, filterCatalog,
   formatContext, formatPrice, groupByMaker, ignoredSettings, normalizeModel, parseTools, parseSchema, pcm16ToWav, replyFacts,
   routeAsModel, sampleToolResult, supportFor,
 } from "../lib/harness";
@@ -14,7 +14,8 @@ import Markdown from "./Markdown";
 import PrivateMode, { ReplyPrivacy, usePrivateMode } from "./harness/PrivateMode";
 import ImageMode from "./harness/ImageMode";
 import GeneratedImages from "./harness/GeneratedImages";
-import { imageOutput, imageSettings } from "../lib/harness-images";
+import { ImageAttach, ImageNotice, useImageAttachments } from "./harness/ImageAttachments";
+import { imageOutput, imageSettings, imageSendBlock, imageSendError, readsImages } from "../lib/harness-images";
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
 
@@ -502,7 +503,7 @@ function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy }) {
           className={s.editForm}
           onSubmit={(e) => {
             e.preventDefault();
-            if (text.trim()) onSave(text.trim());
+            if (text.trim() || msg.attachments?.length) onSave(text.trim());
           }}
         >
           <label className="sr-only" htmlFor={"edit-" + msg.id}>
@@ -515,7 +516,7 @@ function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy }) {
             rows={Math.min(10, text.split("\n").length + 1)}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) (e.preventDefault(), text.trim() && onSave(text.trim()));
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) (e.preventDefault(), (text.trim() || msg.attachments?.length) && onSave(text.trim()));
               if (e.key === "Escape") (e.stopPropagation(), onCancel());
             }}
           />
@@ -842,8 +843,12 @@ export default function Harness() {
   const focusModel = find(focusLane?.modelId);
   const busy = inflight > 0;
   const empty = lanes.every((l) => !l.messages.length);
-  const acceptsImages = lanes.some((l) => supportFor(find(l.modelId)).images);
+  const acceptsImages = lanes.every((l) => readsImages(find(l.modelId)));
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
+  // H1: on-device preparation and capability guards, shared by paste, drop and the picker.
+  const { addFiles, preparing, isPreparing } = useImageAttachments({ files, setFiles, setNote: setFileNote, acceptsImages, acceptsFiles });
+  const imageBlock = imageSendBlock(lanes, find, files);
+  const switchVision = () => setPalette({ lane: Math.max(0, lanes.findIndex((l) => !readsImages(find(l.modelId)))), add: false, vision: true });
 
   const pickModel = (id, laneIndex = focus, add = false) => {
     if (palette?.images) set({ imageOut: true, audioOut: false });
@@ -890,6 +895,7 @@ export default function Harness() {
     const model = find(modelId);
     const key = authRef.current.key;
     if (!model) return patchMsg(laneId, msgId, { status: "error", error: "Choose a model first." });
+    if (imageSendError(model, history)) return patchMsg(laneId, msgId, { status: "error", error: imageSendError(model, history), errorKind: "settings" });
     const { body, notes, error } = buildRequest({ model, settings: imageSettings(model, settingsRef.current, imageMode), system: systemRef.current, messages: history });
     if (error) return patchMsg(laneId, msgId, { status: "error", error, errorKind: "settings" });
     const ctl = new AbortController();
@@ -953,7 +959,8 @@ export default function Harness() {
   /** Append a user turn to every lane and run them all. `truncate` (user turn index) drops that turn and what follows first. */
   function send(text, attachments = files, truncate = null) {
     const body = text.trim();
-    if (!body || busy) return;
+    if ((!body && !attachments.length) || busy || isPreparing()) return;
+    const imageError = imageSendBlock(lanesRef.current, find, attachments, truncate); if (imageError) return setFileNote(imageError);
     if (needKey("send")) return;
     if (lanes.some((l) => !find(l.modelId))) return;
     stick.current = true;
@@ -1019,41 +1026,6 @@ export default function Harness() {
     setLanes((ls) => ls.filter((_, k) => k !== i));
     setFocus(0);
   };
-
-  // ---- attachments ----
-  async function addFiles(list) {
-    const incoming = [...list];
-    const notes = [];
-    const out = [];
-    for (const f of incoming) {
-      const kind = attachmentKind(f.type, f.name);
-      if (!kind) {
-        notes.push(`${f.name}: this file type is not sent.`);
-        continue;
-      }
-      if ((kind === "image" && !acceptsImages) || (kind === "file" && !acceptsFiles)) {
-        notes.push(`${f.name}: the selected model does not read ${kind === "image" ? "images" : "files"}.`);
-        continue;
-      }
-      if (f.size > MAX_ATTACHMENT_BYTES) {
-        notes.push(`${f.name}: larger than 8 MB.`);
-        continue;
-      }
-      const url = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result);
-        r.onerror = () => reject(r.error);
-        r.readAsDataURL(f);
-      }).catch(() => null);
-      if (url) out.push({ id: uid(), kind, name: f.name || (kind === "image" ? "pasted image" : "file"), size: f.size, url });
-    }
-    setFiles((x) => {
-      const merged = [...x, ...out];
-      if (merged.length > MAX_ATTACHMENTS) notes.push(`Up to ${MAX_ATTACHMENTS} attachments per message.`);
-      return merged.slice(0, MAX_ATTACHMENTS);
-    });
-    setFileNote(notes.join(" "));
-  }
 
   // Auto-size the composer.
   useEffect(() => {
@@ -1277,10 +1249,11 @@ export default function Harness() {
           )}
           {fileNote && <p className={s.fileNote} role="status">{fileNote}</p>}
           <div className={s.box}>
-            {(acceptsImages || acceptsFiles) && (
-              <label className={s.attach} title={acceptsFiles ? "Attach images or files" : "Attach images"}>
-                <span className="sr-only">{acceptsFiles ? "Attach images or files" : "Attach images"}</span>
-                <input type="file" multiple accept={[acceptsImages && "image/png,image/jpeg,image/webp,image/gif", acceptsFiles && "application/pdf,text/plain,text/markdown,text/csv,application/json"].filter(Boolean).join(",")} onChange={(e) => (addFiles(e.target.files), (e.target.value = ""))} />
+            <ImageAttach enabled={acceptsImages} preparing={preparing} onFiles={addFiles} />
+            {acceptsFiles && (
+              <label className={s.attach} title="Attach files">
+                <span className="sr-only">Attach files</span>
+                <input type="file" multiple disabled={preparing} accept="application/pdf,text/plain,text/markdown,text/csv,application/json" onChange={(e) => (addFiles(e.target.files), (e.target.value = ""))} />
                 <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
                   <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" />
                 </svg>
@@ -1298,7 +1271,7 @@ export default function Harness() {
               onChange={(e) => setDraft(e.target.value)}
               onPaste={(e) => {
                 const pasted = [...(e.clipboardData?.files || [])];
-                if (pasted.length) (e.preventDefault(), addFiles(pasted));
+                if (pasted.length) { if (!e.clipboardData.getData("text/plain")) e.preventDefault(); addFiles(pasted); }
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1307,11 +1280,12 @@ export default function Harness() {
                 }
               }}
             />
-            <button type="submit" className={s.send} data-busy={busy || undefined} disabled={!busy && (!draft.trim() || !focusModel)}>
+            <button type="submit" className={s.send} data-busy={busy || undefined} title={imageBlock || (preparing ? "Preparing images on your device" : undefined)} disabled={!busy && (preparing || !!imageBlock || (!draft.trim() && !files.length) || !focusModel)}>
               {busy ? "Stop" : "Send"}
               <b aria-hidden="true">{busy ? "■" : "↵"}</b>
             </button>
           </div>
+          <ImageNotice enabled={acceptsImages} preparing={preparing} error={imageBlock} onSwitch={switchVision} available={all.some(readsImages)} />
           <p className={s.hints}>
             <span>
               <kbd>{mod} K</kbd> switch model
@@ -1331,11 +1305,11 @@ export default function Harness() {
 
       {palette && (
         <Palette
-          models={palette.images ? models.filter(imageOutput) : palette.add ? all.filter((m) => !lanes.some((l) => l.modelId === m.id)) : all}
-          title={palette.images ? "Choose an image model" : palette.add ? "Add a model to compare" : "Switch model"}
+          models={palette.images ? models.filter(imageOutput) : palette.vision ? all.filter(readsImages) : palette.add ? all.filter((m) => !lanes.some((l) => l.modelId === m.id)) : all}
+          title={palette.images ? "Choose an image model" : palette.vision ? "Switch to a vision model" : palette.add ? "Add a model to compare" : "Switch model"}
           onClose={() => setPalette(null)}
           onPick={(id) => pickModel(id, palette.lane, palette.add)}
-          onBrowse={palette.add || palette.images ? undefined : () => (setPalette(null), setSheet("models"))}
+          onBrowse={palette.add || palette.images || palette.vision ? undefined : () => (setPalette(null), setSheet("models"))}
         />
       )}
       {signin && <SignIn reason={signin} onKey={onKey} onClose={() => (setSignin(null), (pendingSend.current = false))} />}
