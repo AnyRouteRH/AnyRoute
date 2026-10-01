@@ -2,7 +2,9 @@
 
 `server.json` lists Anyroute's existing remote MCP server (`POST /mcp`, Streamable HTTP) in the official [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.AnyRouteRH/anyroute`. Clients that read the registry (and the directories that mirror it) can then find and add it.
 
-The server has six tools: `list_models`, `list_attested_models`, `chat` (optionally on the attested lane), `verify_provider`, `get_receipt`, `verify_receipt`. Only `chat` needs an API key.
+The server has eight tools: `list_models`, `list_attested_models`, `chat` (optionally on the attested lane), `verify_provider`, `get_receipt`, `verify_receipt`, `anyroute_agent_rules` and `anyroute_agent_check`. `chat` and both agent tools need an API key.
+
+`anyroute_agent_rules` reads the calling key’s own and inherited rulebooks, remaining caps and kill state. `anyroute_agent_check` evaluates an intent without sending a prompt, reserving budget or recording a policy event. Check before expensive calls; never retry a denial unchanged. A later call is evaluated again. These rules are enforced by the router for requests through AnyRoute only. `AGENT_POLICY_ENABLED` defaults to false for self-hosters; switched on at anyroute.tech. Ordinary chat exposes text to router memory; the separate encrypted-chat adapter forwards ciphertext.
 
 `server.json` validates against the registry schema it names (`2025-12-11`). Nothing is published yet.
 
@@ -22,11 +24,11 @@ For each later change, bump `version` (the registry rejects a republish of the s
 
 ## Before publishing, check
 
-- The remote URL is the router's Railway address. When a custom domain is live, change `remotes[0].url` and `websiteUrl`, and bump `version`.
+- Before publication, set `remotes[0].url` to `https://anyroute.tech/mcp` and `websiteUrl` to `https://anyroute.tech`, and bump `version`.
 - To publish under a domain name instead of the GitHub org, use `mcp-publisher login dns --domain <domain> --private-key <ed25519 key>` after adding the TXT record it asks for, and change `name` to the reversed domain (`<tld>.<name>/anyroute`).
 
 ## Add it by hand today
 
 ```sh
-claude mcp add --transport http anyroute https://api-production-70da.up.railway.app/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY"
+claude mcp add --transport http anyroute https://anyroute.tech/mcp --header "Authorization: Bearer $ANYROUTE_API_KEY"
 ```

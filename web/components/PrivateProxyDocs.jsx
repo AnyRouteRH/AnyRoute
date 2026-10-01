@@ -49,7 +49,7 @@ export default function PrivateProxyDocs() {
       </p>
       <div className="note">
         What this hides, and what it does not. The router still reads every prompt: on this lane it terminates the connection and sees the request text in memory to route it, and an attested provider receives it. What is hidden is who sent the call and who paid for
-        it. Tor keeps your network address from the router, and a blind token cannot be tied to the purchase it came from. Anything in your prompt that identifies you still identifies you. Encryption through the router to the enclave is planned, not built.
+        it. Tor keeps your network address from the router, and a blind token cannot be tied to the purchase it came from. Anything in your prompt that identifies you still identifies you. This proxy uses ordinary chat, whose text the router reads. The separate <a href="#e2ee-phala">encrypted-chat SDK path</a> forwards ciphertext to the attested gateway enclave.
       </div>
 
       <h3 id="private-get">Get it, and check it.</h3>

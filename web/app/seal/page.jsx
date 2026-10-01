@@ -1,3 +1,5 @@
+import SealNetworkDocs from "../../components/SealNetworkDocs";
+import SealEncryptedChatDocs from "../../components/SealEncryptedChatDocs";
 import PageFrame from "../../components/PageFrame";
 import { Button } from "../../components/UI";
 import { loadSeal, SPEC_LICENSE_URL, SPEC_SOURCE_URL } from "../../lib/seal-spec";
@@ -11,9 +13,7 @@ export const metadata = {
     "SEAL is Anyroute's public privacy protocol: attested serving, encrypted transport, anonymous credits and a ledger of signed receipts, with measured policy. What each part does, who learns what, the honest limits, and the status of every part as the spec states it.",
 };
 
-// Everything that says what exists, what is planned, which lanes there are, who learns what and what the limits
-// are is read from spec/README.md and spec/CHANGELOG.md when the site is built. The prose around it describes the
-// design only.
+// Protocol status rows are read from spec/ at build time; the hosted deployment notes describe the enabled paths separately.
 
 const STATE_LABEL = { implemented: "Implemented", planned: "Planned", partial: "Partly built" };
 const WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
@@ -83,7 +83,7 @@ export default function SealPage() {
           </p>
           <div className="button-row">
             <Button href="/spec/">Read the spec</Button>
-            <Button href="/network/" secondary>AnyRoute Network · waitlist</Button>
+            <Button href="/network/" secondary>AnyRoute Network · open for early hosts</Button>
             <Button href="/hosts/" secondary>Hosts</Button>
             <Button href="/seal/status.json" secondary>
               status.json
@@ -98,6 +98,7 @@ export default function SealPage() {
             <a href="#design">One request</a>
             <a href="#sidecar">S · Sidecar</a>
             <a href="#transport">E · Transport</a>
+            <a href="#encrypted-chat">Encrypted chat</a><a href="#open-network">Open host network</a>
             <a href="#credits">A · Credits</a>
             <a href="#receipts">L · Receipts</a>
             <a href="#policy">Policy</a>
@@ -253,7 +254,7 @@ export default function SealPage() {
             </p>
             <p>
               Separately, the system has an Oblivious HTTP gateway and relay design. The relay drops ordinary client headers, cookies, addresses and query strings before it forwards the encapsulated request. The <code>unlinkable</code>{" "}
-              lane requires an independent relay and a blind token; a relay run by the gateway’s own operator is explicitly not enough for that lane.
+              lane requires a blind token and either an independent relay or Tor onion access; a relay run by the gateway’s own operator is explicitly not enough for that lane.
             </p>
             <p>
               The distinction matters because encrypted content alone does not hide every signal: network participants can still observe timing and size. And the path through the router matters as much as the cipher. Whether the router
@@ -264,6 +265,7 @@ export default function SealPage() {
               That disclosure is not a weakness in the specification. It is exactly why a public specification needs a status table: builders should be able to choose a privacy lane knowing what it guarantees now, not what a roadmap may
               guarantee later.
             </p>
+            <SealEncryptedChatDocs />
             <PartStatus number="0002" rows={rows} docs={docs} />
 
             <h2 id="credits">
@@ -326,6 +328,7 @@ export default function SealPage() {
             </p>
             <PartStatus number="0005" rows={rows} docs={docs} />
 
+            <SealNetworkDocs />
             <h2 id="parties">Who learns what.</h2>
             <p>
               The parties to a request on the full design, and what each can and cannot learn. This is the design’s intent; the <a href="#status">status table</a> says which parts of it exist, and the honest limits below say where it
@@ -385,7 +388,7 @@ export default function SealPage() {
             <h2 id="status">What exists today, and what remains planned.</h2>
             <p>SEAL is most useful when its present state is described accurately, so this table is not written for this page. It is read from the spec’s own status table when the site is built, row for row.</p>
             <div className="note">
-              <strong>Implemented</strong> means code and tests in the repository. That is not the same as deployed or switched on. <strong>Planned</strong> means a public design target, not a live guarantee.
+              <strong>Implemented</strong> means code and validation in the repository. That is not the same as deployed or switched on. <strong>Planned</strong> means a public design target, not a live guarantee.
               {readme.statusNote.length > 0 && (
                 <>
                   {" "}
@@ -442,6 +445,7 @@ export default function SealPage() {
             <p>
               The table above is about the repository. This panel is about the router serving this page: what it reports about itself right now in its public status document. Anything it reports as off says so.
             </p>
+            <p>Encrypted chat and automatic host admission are switched on at anyroute.tech. Bonds are indexed from HostBond; payouts, fee buy-and-burn and slashing are not switched on yet. The live panel below reports the router’s current status.</p>
             <SealLive />
 
             <h2 id="public-spec">Why a public specification changes the ecosystem.</h2>

@@ -39,7 +39,7 @@ DIRECT:      U --HPKE ciphertext over TLS pinned to E-------> E
 
 The two layers are independent. The outer layer hides the client from G; the inner layer hides the content from G and from the host. Neither layer hides the size and timing of a request from the parties that carry it (Section 7).
 
-Today (implemented): the inner layer runs between a client and a sidecar directly (the `DIRECT` row). On the `attested` and `unlinkable` lanes G connects to the enclave over TLS, pinned to the attested key when the evidence binds one, so the host outside the enclave cannot read the request but **G sees it in plaintext**. Carrying inner ciphertext through G, so that G sees only ciphertext, is planned.
+Today (implemented): `anyroute-hpke/v1` runs between a client and a sidecar directly (the `DIRECT` row). The separate gateway adapter in Section 3.3 forwards encrypted chat content through G. On ordinary chat routes on the `attested` and `unlinkable` lanes G connects to the enclave over TLS, pinned to the attested key when the evidence binds one, so the host outside the enclave cannot read the request but **G sees it in plaintext**. Carrying sidecar `anyroute-hpke/v1` through G remains planned; the gateway adapter is a distinct path, not a change to that wire format.
 
 ## 3. Inner layer: HPKE to the enclave
 
@@ -94,6 +94,14 @@ Version 1 encrypts the whole request in one message. The planned version streams
 * Request: `SetupBaseS(pk_E, info = "anyroute-seal-req")`; the encapsulated key travels in the `Ehbp-Encapsulated-Key` header; the body is a sequence of length-prefixed AES-GCM chunks.
 * Response: `key = Export("anyroute-seal-resp", Nk)`; the response nonce travels in `Ehbp-Response-Nonce`; chunk nonces are the base nonce XOR a counter; `aad` is the empty string for every chunk except the last, whose `aad` is `"final"`.
 * E pads every event-stream chunk to 512 bytes and sends on a fixed tick of 50 to 100 ms.
+
+### 3.3 Encrypted chat through the attested gateway (implemented, off by default)
+
+The distinct `POST /api/v1/e2ee/chat/completions` adapter forwards encrypted content to the Phala confidential AI gateway. `E2EE_PASSTHROUGH_ENABLED` defaults to false; it is switched on at anyroute.tech. Client encryption ends in the attested gateway enclave, which restores content and forwards it to the serving workload over a separate confidential channel. This is not client encryption directly to a GPU and does not alter `anyroute-hpke/v1`.
+
+The JavaScript SDK's `e2eeChat` helper obtains fresh nonce-bound gateway evidence from `GET /api/v1/e2ee/attestation`, checks keyset/report-data binding and expiry, and requires a caller-supplied verifier to validate quote signatures, collateral, measured events and accepted measurements. It encrypts text content using X25519, HKDF-SHA256 and AES-256-GCM with canonical associated data. It verifies response authentication tags and the gateway's Ed25519 receipt; streamed plaintext is provisional until the complete signed receipt verifies. There is no plaintext fallback.
+
+Only exact gateway-offered models are accepted, on the attested lane or on the unlinkable lane over Tor with blind tokens. Tools, files, structured content, aliases, caching and content policies are refused. The router still sees clear routing, role, count, size, timing, usage and authorization metadata and cannot establish that an arbitrary caller encrypted its content correctly. Ordinary chat routes continue to expose text to router memory. The adapter's router receipts mark encrypted content and hash forwarded ciphertext, not restored plaintext; the client performs the restored-request hash check. Browser client delivery, gateway key custody, unpadded sizes and later compromise of reused recipient keys remain trust and confidentiality limits.
 
 ## 4. Outer layer: Oblivious HTTP
 

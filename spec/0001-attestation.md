@@ -84,7 +84,7 @@ report_data = SHA-256(canonical_json(bindings)) || nonce          (32 + 32 bytes
 With sidecar `bindings.version: 2`, the Section 3.1 object additionally commits `v: 2`,
 `source_hash`, `engine: {name, image_digest}` and `model: {id, digest}`; `model.digest` MUST equal
 `model_digest`. The report-data formula remains SHA-256(canonical_json(bindings)) || nonce.
-Absent `bindings.v` denotes legacy v1; verifiers MUST reject unknown versions or incomplete v2 members.
+Absent `bindings.v`, or an explicit `v: 1`, denotes legacy v1; verifiers MUST reject `source_hash`, `engine` or `model` extension members on v1, unknown versions and incomplete v2 members. V2 digests MUST use `sha256:` followed by 64 lowercase hex characters. Engine names and model IDs MUST be 1–160 characters matching `[A-Za-z0-9][A-Za-z0-9._:/@+-]*`; configured `bindings.model_id` MUST equal `model.served_name`.
 `source_hash` is `sha256:<hex>` over the exact pinned compressed source archive bytes, including headers,
 without extraction or normalization; boot hashes `bindings.source_archive` and refuses a configured hash mismatch.
 Engine image and model ID are operator declarations; weights use Section 4.1. A verifier MUST review the
@@ -159,6 +159,33 @@ An operator publishes a signed bundle (canonical JSON, ECDSA P-256) describing a
 
 A manifest is an in-toto Statement v1 in a DSSE envelope, logged both in Rekor and in the Anyroute log (Section 6.2). Its predicate lists `os_image_hash`, `mrtd`, `rtmr0` to `rtmr2`, `compose_hash`, the expected RTMR3 events, the GPU policy (confidential mode on, devtools off, allowed driver and VBIOS versions), the allowed policy hashes and execution profiles, the KMS root key and an `attestation_policy_version`. A `PolicyRegistry` contract versions the accepted TCB statuses, advisory grace windows, GPU reference-measurement allow-lists and minimum drivers; clients pin a minimum version.
 
+### 5.4 Signed host admission policy (implemented, off by default)
+
+`NETWORK_POLICY_ENABLED` defaults to false. With the transparency log enabled, the operator publishes a complete policy through `POST /trpc/network.publishPolicy`. `GET /api/v1/network/policy` returns the latest version; `GET /api/v1/network/policy/{version}` returns an immutable version. Publication and reads are unavailable while disabled. The policy is switched on at anyroute.tech; deployment enablement does not change self-hosting defaults.
+
+The policy MUST conform to the strict schema below. Unknown members at each policy object level MUST be rejected. Digests MUST be `sha256:` followed by 64 lowercase hex characters; names MUST match `[A-Za-z0-9][A-Za-z0-9._:/@+-]*` and be 1–160 characters.
+
+| Member | Constraint |
+| :--- | :--- |
+| `version` | Positive integer, at most 2147483647 |
+| `issued_at` | ISO 8601 UTC datetime |
+| `tee_kinds` | 1–3 distinct members of `tdx`, `snp`, `nvidia-cc` |
+| `sidecar.image_digests`, `sidecar.source_hashes` | Each 1–128 distinct digests |
+| `engines` | 1–128 objects `{name, image_digest}`, with distinct names |
+| `models` | 1–128 objects `{id, model_digest, min_gpu_cc, offer?}`, with distinct IDs; `min_gpu_cc` is boolean |
+| `rules.require_gpu_cc_for` | At most 128 distinct model IDs, each present in `models` |
+| `rules.allow_dev` | Exactly `false` |
+
+An optional strict `offer` supplies `slug`, `name`, `context_length`, `max_completion_tokens`, `pricing: {prompt, completion}` and optional `hugging_face_id` and `quantization`. The slug MUST be a lowercase namespace/model identifier matching `[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*`, at most 160 characters. The name is 1–160 characters; `hugging_face_id` uses the name grammar above. Token limits are positive integers at most 2147483647. Quantization is 1–32 characters matching `[A-Za-z0-9._+-]+`. Prices are positive USD-per-token decimal strings matching `[0-9]+(\.[0-9]+)?`, at most 32 characters and at most 1000000 USD per token. Omitting `offer` MUST leave existing policy canonical bytes unchanged; it creates no model offer. Admission copies terms only for requested models whose IDs and digests are quote-bound and policy-approved.
+
+Canonical policy JSON recursively sorts object keys, retains array order, and encodes UTF-8 without whitespace or a trailing newline. `sha256` is the 64-character lowercase hex SHA-256 of those bytes, without a prefix. The publication response contains `policy`, `canonical`, `sha256`, `signature: {alg: "Ed25519", value, verifier_key}` and `transparency_log: {kind: "host_policy", proof_url}`. `value` is base64 of the log signer's Ed25519 signature over the canonical UTF-8 bytes; `verifier_key` is the signed-note verifier key. A verifier MUST pin that key independently, recompute canonical JSON and its hash, and verify the signature. A key received beside its signature does not establish identity.
+
+Versions MUST start at 1 and advance consecutively. Issue time MUST NOT be in the future or precede the previous version. Publishing the same version and hash is idempotent; a different hash for an existing version MUST be refused. Policy persistence, log entry and signed checkpoint commit atomically. The `host_policy` record stores `subject = "host-policy:<version>"` and `key = {version, policy_sha256: sha256, path: "/api/v1/network/policy/<version>"}`; `subject` is record metadata, outside the canonical leaf; the leaf format is Section 6.2. Clients MUST check inclusion and checkpoint consistency under their pinned witness or public-log anchoring policy, rather than trusting publication alone.
+
+Admission and scheduled renewal MUST check the current publication's canonical bytes, hash, signature and configured log verifier. The policy comparison MUST fail closed unless hardware verification and quote-binding verification succeeded, the TEE kind is allowed, the image and source pins are approved, a valid quote-bound compose hash exists, at least one quote-bound engine and model are available, every bound engine name/image pair is approved, and every bound model ID/digest pair is approved. A compose hash is required, but this policy does not approve a compose manifest. A model with `min_gpu_cc: true`, or named in `rules.require_gpu_cc_for`, MUST have separately verified fresh GPU CC evidence; a self-reported CC claim is insufficient. Development evidence MUST always be refused. Requested model IDs not bound by the quote MUST also be refused. SHA-256 sidecar bindings v2 (Section 3.1.1) supply the additional source, engine and model-ID members; legacy v1 verification remains valid but cannot meet this policy without those members.
+
+`NETWORK_HOSTS_ENABLED` defaults to false and gates automatic network admission, requiring the signed policy and transparency log. At anyroute.tech it is switched on for the approved Intel TDX Qwen2.5 0.5B recipe. Fresh evidence, policy checks and sanctions screening of operator and payout addresses precede probation; public host records expose admission state and reasons. Declared image/engine/model identifiers remain software statements committed into a verified quote: they do not prove archive-to-image reproducibility, actual engine execution or compliance with a data policy. This admission policy is separate from the in-enclave content classifier in [0005](0005-policy.md).
+
 ## 6. Transparency of keys and configurations
 
 ### 6.1 Today (implemented)
@@ -179,6 +206,7 @@ Entries. Each entry is the canonical JSON `{"v": 1, "type": "anyroute.tlog.entry
 | `ohttp_key_config` | one encoded Oblivious HTTP key configuration ([0002](0002-transport.md) Section 4) |
 | `blind_issuer_key` | the issuer's SubjectPublicKeyInfo, which is its `token_key_id` ([0003](0003-credits.md)) |
 | `measurement_bundle` | the canonical bundle bytes (Section 5.2), once its Rekor entry verifies |
+| `host_policy` | canonical host policy bytes (Section 5.4); key names version, policy hash and immutable API path |
 | `attestation_binding` | `canonical_json(bindings)` of a sidecar whose hardware quote a configured verifier accepted (Section 3.1); this covers the enclave HPKE key when `hpke_pubkey` is bound |
 
 Manifests (Section 5.3) and e-cash keysets ([0003](0003-credits.md)) are logged the same way once they exist.

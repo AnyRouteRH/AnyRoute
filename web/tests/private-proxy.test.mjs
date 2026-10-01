@@ -33,7 +33,8 @@ test('the docs page lists the section, links it from the contents and renders it
 test('it says what is not hidden, in plain words, and claims nothing the code does not do',()=>{
  assert.match(component,/The router still reads every prompt/);
  assert.match(component,/who sent the call and who paid for\s+it/);
- assert.match(component,/Encryption through the router to the enclave is planned, not built/);
+ assert.match(component,/This proxy uses ordinary chat, whose text the router reads/);
+ assert.match(component,/href="#e2ee-phala"/);
  assert.match(component,/private\.mjs/);
  assert.match(component,/id="private-sha256"/);
  assert.match(component,/refuses to start unless a Tor client\s+answers/);

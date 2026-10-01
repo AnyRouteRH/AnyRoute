@@ -6,6 +6,9 @@ All notable changes to the SEAL specification. The format follows [Keep a Change
 
 ### Added
 
+- `0001-attestation.md` Section 5.4: signed host admission policy schema, canonical bytes, immutable consecutive publication, Ed25519 signatures, `host_policy` key-log entries, fail-closed quote-bound comparisons and probation. Section 3.1.1 clarifies v1 compatibility and v2 field constraints.
+- `0002-transport.md` Section 3.3: the distinct encrypted-chat gateway adapter, client checks, metadata visibility and honest limits; ordinary chat and direct sidecar HPKE retain their existing formats. `README.md` adds corresponding repository and hosted status rows.
+
 - `0001-attestation.md` Section 3.1.1: opt-in SHA-256 sidecar bindings v2 commits the pinned source archive hash, engine name/image digest and model ID/digest, with legacy v1 verification preserved and declaration limits stated.
 
 - `0002-transport.md` Section 5.6: lane `unlinkable` over the onion service is implemented, off by default (`UNLINKABLE_VIA_ONION`). Tor takes the place of the independent relay; onion requests are recognised only by the secret the onion proxy sets (compared in constant time), address headers are removed and never used on them, payment and endpoint rules are those of Section 5.5, streaming works, and the router refuses to start with the switch on unless the onion address, the proxy secret and blind tokens are configured. Sections 5.1, 5.4 and 5.5 name the second path, and `GET /api/v1/status` reports `lanes.unlinkable.via`. `README.md`: the `unlinkable` lane row, G5, party R, an honest limit for the Tor path, and status rows.

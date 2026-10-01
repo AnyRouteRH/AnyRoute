@@ -1,3 +1,4 @@
+import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import HostBondsDocs from "../../components/HostBondsDocs";
 import AgentLedgerDocs from "../../components/AgentLedgerDocs";
@@ -771,6 +772,7 @@ export default function Docs() {
         <div className="side-layout">
           <nav className="side-nav" aria-label="Documentation sections" data-reveal="fade">
             <span className="side-nav-label">On this page</span>
+            <a href="#whats-new">What’s new</a><DocsFeatureLinks />
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
             <a href="#presets">Presets</a>
@@ -808,6 +810,7 @@ export default function Docs() {
           <div className="note" data-reveal>
             The router serves this site, so your base URL is this site’s address followed by /api/v1. Create a key in the dashboard, deposit USDG to it and call it from any OpenAI- or OpenRouter-compatible client.
           </div>
+          <DocsFeatureIndex />
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <AgentLedgerDocs />
           <AgentAlertDocs />
@@ -978,8 +981,8 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             models that can be served on that lane now, and GET /api/v1/status reports a lanes section with how many models and endpoints each lane has.
           </p>
           <p>
-            What the lanes do not do yet: on attested and unlinkable the router still terminates TLS and sees the prompt in plaintext before sending it to the enclave over a connection pinned to its attested key. The host outside the enclave cannot
-            read it; the router can. End-to-end encryption from your client to the enclave through the router is planned. Until then, a client that needs the router blind to the prompt can encrypt to the enclave directly (see the SDKs).
+            Ordinary chat on attested and unlinkable terminates TLS at the router, which reads the prompt in memory before sending it to the enclave over a connection pinned to its attested key. The host outside the enclave cannot
+            read it; the router can. The separate <a href="#e2ee-phala">encrypted-chat adapter</a> forwards client-encrypted content through the router to the attested gateway enclave. Direct sidecar HPKE is also available in the SDK; the ordinary chat route does not carry that format.
           </p>
           <Code label="503 · no attested endpoint">{laneRefusal}</Code>
           <p>
@@ -1055,7 +1058,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             calls the router reads no address header and keeps no per-address limit (a blind-token call counts against one bucket shared by everyone using the onion address). The token cannot be tied to its purchase. What is not: the router runs the
             onion service, sees the request in plaintext and sees its size and timing directly, as it sees the request on the relay path; an observer who can watch both your connection into Tor and the router’s side can match them by timing; calls
             sent on one circuit can be linked to each other, so give calls you want kept apart their own circuit (a different SOCKS user name, as above, or Tor Browser’s New Identity); buying tokens right before spending them links the two by
-            time; and anything in the body that identifies you reaches the provider. End-to-end encryption through the router to the enclave is planned.
+            time; and anything in the body that identifies you reaches the provider. The separate <a href="#e2ee-phala">encrypted-chat adapter</a> supports Tor with blind tokens; ordinary chat still exposes text to the router.
           </p>
           <NetworkPolicyDocs />
           <E2eeDocs />
@@ -1072,7 +1075,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           </p>
           <p>
             What stays linkable: the payment is a public transaction that names your wallet, the router records that the one-time key (or, for $ANYR, your wallet&rsquo;s account) spent an amount on tokens, and your network address and the time of purchase are visible unless you
-            use the onion address. What does not: which prompts a token later paid for, because the router signs tokens blind. Tokens hide who pays, not the request: the router reads the text of every request in memory to route it. A token pays for one call up to its value, the unused
+            use the onion address. What does not: which prompts a token later paid for, because the router signs tokens blind. Tokens hide who pays, not the request: ordinary chat reads request text in router memory; the encrypted-chat adapter forwards ciphertext. A token pays for one call up to its value, the unused
             part is not returned, and it stops working after its <code>redeem_until</code>. The page works at the router&rsquo;s onion address because every request it makes is relative to the address it was opened from; a browser wallet is often missing in Tor Browser, so the USDG route
             also shows the key hash to pay from any wallet app.
           </p>
@@ -1122,7 +1125,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           <p>
             GET /keep/inventory.json is the exact file the page is built from, as canonical JSON. Its SHA-256 is shown on the page with the commit the site was built from, and, where an operator sets TLOG_DATA_INVENTORY next to TLOG_ENABLED, the router
             appends it to the key log as a data_inventory entry the first time a router with that inventory starts. The page shows the log entry, and the Rekor entry of a checkpoint that includes it, when they exist. The inventory says what is kept, not who
-            can read a request in flight: on every lane the router reads the text of a request in memory to route it.
+            can read a request in flight: on every lane ordinary chat reads request text in router memory; encrypted chat forwards ciphertext to the attested gateway.
           </p>
           <Code label="Shell · check the inventory">{keepCurl}</Code>
           <h2 id="lane">Open-weights variants, and paying their creators.</h2>
@@ -1237,7 +1240,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           </p>
           <Code label="GET /api/v1/models (new fields)">{modelAttestation}</Code>
           <h2 id="what-we-saw">What we saw: a privacy label for every receipt.</h2>
-          <p>The output facet reads usage.unit_type and usage.units: token (the default for older receipts) covers text and embeddings, image_mp images, video_sec video, audio_sec voice and audio, call tools or search, and gpu_sec computation or fine-tuning. Units describe metering, not every input modality or which operation ran. A token call can include image references. The router reads request text in memory on every lane. For media, generation records keep request and output hashes, not the media itself; metering does not establish retention outside that record or by a provider. A call unit alone does not prove a search query was sent, and GPU time does not prove training data or weights were deleted. Unfamiliar units report content and address handling as unrecorded. Council labels include members and the judge; RAG has separate embedding and chat receipts. The response cache keeps the encrypted reply, never the prompt itself; semantic caching keeps a hashed word vector. Batch content is kept sealed outside the database; requests are deleted when the batch finishes and answers when results expire. Failed-provider errors can retain a short sanitized fragment of a rejected request, and unexpected library errors can quote fragments in logs. See <a href="/keep/" className="inline-link">What we keep</a> for these limits.</p>
+          <p>The output facet reads usage.unit_type and usage.units: token (the default for older receipts) covers text and embeddings, image_mp images, video_sec video, audio_sec voice and audio, call tools or search, and gpu_sec computation or fine-tuning. Units describe metering, not every input modality or which operation ran. A token call can include image references. Ordinary chat reads request text in router memory on every lane; the encrypted-chat adapter forwards ciphertext. For media, generation records keep request and output hashes, not the media itself; metering does not establish retention outside that record or by a provider. A call unit alone does not prove a search query was sent, and GPU time does not prove training data or weights were deleted. Unfamiliar units report content and address handling as unrecorded. Council labels include members and the judge; RAG has separate embedding and chat receipts. The response cache keeps the encrypted reply, never the prompt itself; semantic caching keeps a hashed word vector. Batch content is kept sealed outside the database; requests are deleted when the batch finishes and answers when results expire. Failed-provider errors can retain a short sanitized fragment of a rejected request, and unexpected library errors can quote fragments in logs. See <a href="/keep/" className="inline-link">What we keep</a> for these limits.</p>
           <p>
             GET /api/v1/receipts/&#123;id&#125;/privacy reads a receipt back in plain English: who could read the prompt, who saw your network address, how the call was paid, what the router kept and what hardware answered. It is public by id, like the receipt.
             The router works it out from the receipt’s signed fields (lane, disclosure, mode, payer, nullifier, attestation and, for an attested gateway, upstream_attestation) and from what its code does for that combination. A field a receipt does not carry is
@@ -1246,7 +1249,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           </p>
           <ul>
             <li>
-              <b>Who could read the prompt.</b> The router reads every prompt in memory to route it, on every lane. It then reaches the provider. The label calls that an attested enclave only when the receipt shows the router had verified the provider’s hardware
+              <b>Who could read the prompt.</b> The router reads ordinary chat prompts in memory on every lane. With the encrypted-chat adapter, correctly encrypted content is decrypted in the gateway enclave; the router sees ciphertext and clear metadata. The gateway forwards restored content to the serving workload over a separate confidential channel. The label calls that an attested enclave only when the receipt shows the router had verified the provider’s hardware
               attestation and, for an attested gateway, that the gateway’s signed receipt for the exchange checked out. Otherwise it is a provider that documents a no-retention policy no hardware backs, or one that may keep the prompt under its own terms. When the router
               withheld a reply because that check failed, the label says the provider had already read the prompt.
             </li>

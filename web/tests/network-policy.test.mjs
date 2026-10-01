@@ -13,7 +13,8 @@ test('network policy API documents signed versions and operator-only explicit pu
  assert.equal(publish.requestBody.content['application/json'].schema.$ref,'#/components/schemas/HostPolicy');
  assert.equal(spec.components.schemas.HostPolicy.properties.rules.properties.allow_dev.const,false);
  assert.ok(spec.components.schemas.HostPolicyPublication.properties.signature);
- assert.match(docs,/default false/); assert.match(docs,/router reads request text in memory on every lane/);
- assert.match(docs,/does not change existing provider admission/);
+ assert.match(docs,/default false/); assert.match(docs,/router reads ordinary chat text in memory on every lane/);
+ assert.match(docs,/does not replace other provider admission paths/);
+ assert.match(docs,/Switched on at anyroute.tech/); assert.match(docs,/sidecar bindings v2/);
  assert.doesNotMatch(docs,/\b(demo|test|mock|simulated|placeholder)\b|local.build/i);
 });
