@@ -2,7 +2,7 @@
 import {useState} from 'react';
 import {highlight} from './UI';
 
-const POINTS=[['Bring your own workflow','Keep your SDK, choose providers and configure fallbacks. Cache and guardrails are opt-in.'],['Built for your agents','Virtual keys, budget caps and rate limits put boundaries around every workload.']];
+const POINTS=[['Bring your own workflow','Keep your SDK, choose providers and configure fallbacks. Cache and guardrails are opt-in.'],['Budget, rules and a kill switch','Set request/hour/day/week caps, models, lanes, tools and working hours. The kill switch stops the next request; the owner resumes.'],['Ask first, then inspect','Approve once on /agents within 15 minutes. Read signed receipts in the per-agent ledger and export CSV or JSON.'],['Alerts, breakers and autonomy','Follow the /agents alert feed, spend-alert webhook or Telegram via AnyRoute’s bot. Circuit breakers and progressive autonomy support spending caps up to 10x.']];
 
 const TOGGLES=[
   ['fallbacks','Fallbacks','routing.provider',true],
@@ -44,8 +44,9 @@ export default function Gateway(){
   const count=TOGGLES.filter(([k])=>on[k]).length;
   return <section className="section" id="gateway"><div className="container split reverse">
     <div className="split-copy">
-      <div data-reveal><span className="eyebrow tick">Gateway / controls per key</span><h2 className="h2">Batteries included. All removable.</h2><p className="lede">Policy lives on the key, not in your code. Import a LiteLLM config, share keys across teams with roles, and switch off anything you don’t need.</p></div>
+      <div data-reveal><span className="eyebrow tick">Gateway / controls per key</span><h2 className="h2">Batteries included. All removable.</h2><p className="lede">Set boundaries on the key and attach an agent rulebook. AnyRoute’s router enforces it for requests through AnyRoute only.</p></div>
       <div className="points" data-stagger>{POINTS.map(([t,b])=><div className="point" key={t} data-reveal><i aria-hidden="true"/><h3>{t}</h3><p>{b}</p></div>)}</div>
+      <p data-reveal style={{marginTop:24}}><a className="inline-link" href="/agents/">Open the agent rulebook</a> · <a className="inline-link" href="/docs/#agent-rulebook">Read the API and MCP tools</a></p>
     </div>
     <div className="panel gateway-panel" data-reveal>
       <div className="panel-bar"><span>POST /api/v1/keys · example</span><span><b>{count}</b> / {TOGGLES.length} on</span></div>

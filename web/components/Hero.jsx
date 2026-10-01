@@ -7,8 +7,8 @@ import {Button,Scramble} from './UI';
 const hex=n=>Array.from({length:n},()=>'0123456789abcdef'[(Math.random()*16)|0]).join('');
 const first={id:1041,model:'llama-3.3-70b',provider:'North Compute',private:false,latency:312,tokens:184,cost:'0.000032',sig:'9f1c…e07a'};
 
-function LiveCard({route}){return <aside className="route-card-live" aria-label="Simulated route preview">
-  <div className="rcl-head"><span className="rcl-dot">Route #{route.id}</span><b>Simulated</b></div>
+function LiveCard({route}){return <aside className="route-card-live" aria-label="Illustrative route preview">
+  <div className="rcl-head"><span className="rcl-dot">Route #{route.id}</span><b>Illustrative</b></div>
   <dl>
     <div><dt>model</dt><dd><Scramble text={route.model}/></dd></div>
     <div><dt>provider</dt><dd><Scramble text={route.provider}/></dd></div>
@@ -34,7 +34,7 @@ export default function Hero(){
       <div className="hero-copy">
         <div className="hero-kicker"><b>▲</b> OpenRouter-compatible · Robinhood Chain</div>
         <h1 className="hero-title"><span className="brackets" aria-hidden="true"/>{words.map((line,l)=><span className="line" key={l}>{line.map((w,k)=><span key={k}><span className={'w'+(l===2?' accent':'')} style={{'--i':i++}}>{w}</span>{k<line.length-1?' ':''}</span>)}</span>)}</h1>
-        <div className="hero-sub"><p>Route AI calls through <strong>one API, one USDG balance</strong> and a signed receipt for every generation. Choose your model. Keep control of the route.</p><p>Built on Robinhood Chain. Deposit USDG and start routing.</p></div>
+        <div className="hero-sub"><p>Route AI calls through <strong>one API, one USDG balance</strong> and a signed receipt for every generation. Choose your model. Keep control of the route.</p><p>Encrypted chat, an agent rulebook and a network open for early hosts. Built on Robinhood Chain.</p></div>
         <div className="button-row"><Button href="/dashboard/">Open dashboard</Button><Button href="/docs/" secondary>Read the docs</Button></div>
         <a className="hero-harness" href="/harness/">Or try every model and its tools on one page<b aria-hidden="true">→</b></a>
         <a className="hero-harness" href="/seal/">Read SEAL, the privacy protocol, and its public spec<b aria-hidden="true">→</b></a>

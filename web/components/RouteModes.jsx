@@ -35,17 +35,15 @@ res.provider;                      // the attested host`,
 });
 // receipt.paid_with -> { token, raw_units, fair_price }`,
     flow:[['Accrue','small calls add up'],['Swap','bounded, at fair value'],['Allocate','units per generation']]},
-  {tag:'Royalties',title:'Creator models',attrs:['Open weights','Disclosed royalty','Clear costs'],label:'cost breakdown',
-    code:`const { usage } = await client.chat.completions.create({
-  model: "creator/open-weights-model",
-  messages,
-});
+  {tag:'Encryption',title:'End-to-end encrypted chat',attrs:['On-device encryption','Attested gateway','Ciphertext relay'],label:'encrypted chat path',
+    code:`// The client encrypts on your device.
+// AnyRoute's router forwards ciphertext to the attested gateway.
+// The gateway handles inference and encrypts the response.
+// Follow /docs/#e2ee-phala for the client flow.
 
-usage.cost_details;
-// { upstream_inference_cost: 0.0000312,
-//   royalty: 0.0000016,
-//   margin: 0 }`,
-    flow:[['Serve','any bonded provider'],['Split','inference vs royalty'],['Pay','creators, on-chain']]},
+// Other request paths are read in memory by the router.
+// Attestation alone does not hide prompts from the router.`,
+    flow:[['Encrypt','client on your device'],['Forward','ciphertext through the router'],['Infer','attested gateway']]},
 ];
 
 /** Four kinds of route behind one API. Tabs auto-advance; the panel types out each request. */
@@ -57,10 +55,10 @@ export default function RouteModes(){
   const mode=MODES[active];const done=typed>=mode.code.length;
   const onKey=e=>{if(e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;e.preventDefault();const next=(active+(e.key==='ArrowDown'?1:MODES.length-1))%MODES.length;setActive(next);root.current.querySelectorAll('[role=tab]')[next].focus()};
   return <section className="section muted-surface" id="routes" ref={root}><div className="container">
-    <div className="section-head" data-reveal><div><span className="eyebrow">Route types</span><h2>One API.<br/>Every kind of route.</h2></div><p className="lede">The same request shape reaches a standard model, an attested private host, a Stock Token payment or a creator’s open weights. Pick the route with a suffix, a header or a preference.</p></div>
+    <div className="section-head" data-reveal><div><span className="eyebrow">Route types</span><h2>One API.<br/>Every kind of route.</h2></div><p className="lede">The same request shape reaches a standard model, an attested host or a Stock Token payment. Encrypted chat uses on-device encryption through the attested gateway; ordinary requests are read in memory by the router.</p></div>
     <div className="modes" data-paused={paused} onMouseEnter={()=>setPaused(true)} onMouseLeave={()=>setPaused(false)} onFocus={()=>setPaused(true)} onBlur={()=>setPaused(false)} data-reveal>
       <div className="mode-tabs" role="tablist" aria-label="Route types" aria-orientation="vertical" onKeyDown={onKey}>{MODES.map((m,i)=><button key={m.title} className="mode-tab" role="tab" id={`mode-tab-${i}`} aria-controls="mode-panel" aria-selected={i===active} tabIndex={i===active?0:-1} onClick={()=>setActive(i)}><span className="num">0{i+1}</span><h3>{m.title}</h3><span className="tag">{m.tag}</span><span className="attrs">{m.attrs.map(a=><span key={a}>{a}</span>)}</span>{i===active&&<span className="progress" key={active} aria-hidden="true"/>}</button>)}
-        <div style={{paddingTop:28}}><Button href="/models/" secondary>Explore models</Button></div></div>
+        <div style={{paddingTop:28}}><Button href="/models/" secondary>Explore models</Button><p><a className="inline-link" href="/docs/#e2ee-phala">Encrypted chat documentation</a></p></div></div>
       <div className="mode-panel" role="tabpanel" id="mode-panel" aria-labelledby={`mode-tab-${active}`}>
         <div className="code-bar"><span>{mode.label}</span><CopyButton text={mode.code}/></div>
         <pre><code>{highlight(mode.code.slice(0,typed))}{!done&&<span className="caret" aria-hidden="true"/>}</code></pre>

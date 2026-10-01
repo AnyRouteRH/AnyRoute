@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Scramble} from './UI';
 
-const POINTS=[['Attested private route','Private requests select only freshly attested TEE providers. The attestation hash is in the receipt.'],['Data policy per provider','Read the provider’s data policy before routing. Privacy claims should be backed by verifiable evidence.']];
+const POINTS=[['End-to-end encrypted chat','The client encrypts on your device; the attested gateway handles inference while the router forwards ciphertext.'],['Other request paths','AnyRoute’s router reads request text in memory to route it. Attested serving alone does not hide prompts from the router.'],['Evidence and stored records','Inspect signed receipts, the key transparency log and the data inventory. Receipts store hashes, token counts and cost, not prompt or answer text.']];
 const STEPS=['Request :private','Quote verified','Route selected','Receipt signed'];
 const hex=n=>Array.from({length:n},()=>'0123456789abcdef'[(Math.random()*16)|0]).join('');
 const FIRST={quote:'sha256:9c41e0b2…a1f307e2',nonce:'0x5e2a…c91d'};
@@ -25,7 +25,7 @@ export default function Privacy(){
     ['nonce',`${ev.nonce} · bound`,2],
     ['quote',<Scramble text={ev.quote}/>,2],
     ['freshness','attested 4 min ago',2],
-    ['data policy',<>training{'\u00a0'}<b>no</b> · retains{'\u00a0'}prompts{'\u00a0'}<b>no</b> · zdr{'\u00a0'}<b>yes</b></>,3],
+    ['router', 'reads ordinary requests in memory',3],
     ['receipt',<>attestation <Scramble text={ev.quote}/></>,4],
   ];
   const done=step>=DONE;
@@ -33,7 +33,7 @@ export default function Privacy(){
     <div className="split-copy">
       <div data-reveal><span className="eyebrow tick">Privacy / attested routes</span><h2 className="h2">Privacy with a receipt.</h2><p className="lede">A private request goes only to a provider whose TEE evidence was verified minutes ago. If the evidence is missing or stale, the request fails closed.</p></div>
       <div className="points" data-stagger>{POINTS.map(([t,b])=><div className="point" key={t} data-reveal><i aria-hidden="true"/><h3>{t}</h3><p>{b}</p></div>)}</div>
-      <p data-reveal style={{marginTop:24}}><a className="inline-link" href="/verify/">Check what the router has verified about any provider</a></p>
+      <p data-reveal style={{marginTop:24}}><a className="inline-link" href="/verify/">Check what the router has verified about any provider</a> · <a className="inline-link" href="/docs/#e2ee-phala">Encrypted chat</a> · <a className="inline-link" href="/keep/">What we keep</a></p>
     </div>
     <div data-reveal><div ref={ref} className={'attest'+(done?' done':'')} role="figure" aria-label="Example private route: attestation checks from request to signed receipt">
       <div className="panel-bar"><span>Private route · example</span><span>fail-closed</span></div>

@@ -43,3 +43,6 @@ html:not(.js) .meter i{transform:scaleX(var(--v,1))}
 .hero-harness:hover b{transform:translateX(4px)}
 .harness-link{margin:-6px 0 20px!important}
 .hero-harness+.hero-harness{display:flex;width:fit-content;margin-top:10px}
+
+/* Keep the expanded navigation within the existing header width. */
+.desktop-links{gap:14px}@media(max-width:1499px){.desktop-links,.nav-buttons{display:none}.menu-toggle{display:block}}
