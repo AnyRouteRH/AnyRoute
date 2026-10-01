@@ -1,6 +1,7 @@
 import { networkStatsRoutes } from "./network/stats.ts";
 import { agentProfilesRoutes } from "./api/agent-profiles.ts";
 import { agentSealedRoutes } from "./api/agent-sealed.ts";
+import { telegramLinkingRoutes } from "./api/telegram-linking.ts";
 import { networkBurnRoutes } from "./network/burn-routes.ts";
 import { agentLedgerMiddleware } from "./agents/ledger-context.ts";
 import { agentLedgerRoutes } from "./api/agent-ledger.ts";
@@ -181,6 +182,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentCertificatesRoutes(app, ctx);
   agentLedgerRoutes(app, ctx);
   agentApprovalsRoutes(app, ctx);
+  telegramLinkingRoutes(app, ctx);
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
   holdersRoutes(app, ctx);

@@ -13474,6 +13474,86 @@
           }
         }
       }
+    },
+    "/api/v1/telegram/link": {
+      "get": {
+        "summary": "Read Telegram link status",
+        "description": "TELEGRAM_LINKING_ENABLED defaults false. Requires AGENT_POLICY_ENABLED and TELEGRAM_BOT_TOKEN. Management or owner/admin principal only, excluding session keys. Returns this key’s link status, Telegram user id and linked timestamp. No-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Telegram link status or single-use code."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "post": {
+        "summary": "Issue a Telegram account link code",
+        "description": "Same principal permissions as status. Returns code and expires_at. Valid five minutes, single-use, five issuance attempts per account per minute. Replaces the previous account code. Send /link <code> privately to the bot; no API key needed in Telegram. Treat the code as an approval credential. No-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Telegram link status or single-use code."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Unlink Telegram or cancel a pending code",
+        "description": "Removes this principal’s Telegram link, its approval delivery markers and the account’s pending code. /unlink works from the bot. Stops account-link delivery; chat keys connected through /key remain separate until /forget. No-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Telegram link status or single-use code."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
     }
   },
   "components": {

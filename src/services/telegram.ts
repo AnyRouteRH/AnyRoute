@@ -1,3 +1,4 @@
+import { deliverTelegramApprovals, handleLinkedUpdate } from "../telegram/delivery.ts";
 import { eq } from "drizzle-orm";
 import { KEY_RE } from "../chain/keys.ts";
 import type { Ctx } from "../context.ts";
@@ -31,7 +32,7 @@ const CATALOG_TTL_MS = 60_000;
 const KEY_IN_TEXT = /sk-ar-v1-[0-9a-f]{64}/;
 
 export type TgMessage = { message_id: number; from?: { id: number; is_bot?: boolean }; chat: { id: number; type: string }; text?: string };
-export type TgUpdate = { update_id: number; message?: TgMessage };
+export type TgUpdate = { update_id: number; message?: TgMessage; callback_query?: { id: string; from: { id: number; is_bot?: boolean }; data?: string; message?: TgMessage } };
 /** How the bot reaches the router: in production the app's own `request`, so no network hop. */
 export type RouterCall = (path: string, init?: RequestInit) => Response | Promise<Response>;
 type Row = { v: 1; key?: string; model?: string; private?: boolean };
@@ -130,12 +131,13 @@ export class TelegramBot {
     try {
       if (!this.registered) {
         this.registered = true;
-        await this.api.call("setMyCommands", { commands: COMMANDS }).catch(() => undefined);
+        await this.api.call("setMyCommands", { commands: this.ctx.cfg.telegram.linkingEnabled ? [...COMMANDS, { command: "link", description: "Link agent approvals and alerts" }, { command: "unlink", description: "Remove the account link" }] : COMMANDS }).catch(() => undefined);
       }
+      if (this.ctx.cfg.telegram.linkingEnabled) await deliverTelegramApprovals(this.ctx, this.api);
       const [row] = await this.ctx.db.select().from(kv).where(eq(kv.key, OFFSET_KEY));
       const timeout = this.opts.pollTimeoutS ?? POLL_TIMEOUT_S;
       const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout((timeout + 15) * 1000)]);
-      const updates = await this.api.call<TgUpdate[]>("getUpdates", { ...(typeof row?.value === "number" ? { offset: row.value } : {}), timeout, allowed_updates: ["message"] }, signal);
+      const updates = await this.api.call<TgUpdate[]>("getUpdates", { ...(typeof row?.value === "number" ? { offset: row.value } : {}), timeout, allowed_updates: this.ctx.cfg.telegram.linkingEnabled ? ["message", "callback_query"] : ["message"] }, signal);
       this.failures = 0;
       if (updates.length) {
         const next = Math.max(...updates.map((u) => u.update_id)) + 1;
@@ -176,6 +178,7 @@ export class TelegramBot {
   // ---- One update ------------------------------------------------------------------------------
 
   async handleUpdate(u: TgUpdate) {
+    if (await handleLinkedUpdate(this.ctx, this.api, u)) return;
     const m = u.message;
     // Private chats with a human only: groups, channels and bots are ignored without a reply.
     if (!m?.from || m.from.is_bot || m.chat?.type !== "private") return;
@@ -222,6 +225,7 @@ export class TelegramBot {
       "/private on|off  only talk to providers with a router-verified enclave",
       "/forget  delete your stored key",
       "/help  show this",
+      ...(this.ctx.cfg.telegram.linkingEnabled ? ["/link <code>  link agent approvals and alerts from /agents", "/unlink  remove the account link"] : []),
       "",
       `Each message is answered on its own (no chat history), by ${DEFAULT_MODEL} unless you pick another model.`,
     ].join("\n");

@@ -325,6 +325,7 @@ const schema = z.object({
 
   // Optional Telegram bot (BotFather token, a secret). Without it the bot never starts.
   TELEGRAM_BOT_TOKEN: opt,
+  TELEGRAM_LINKING_ENABLED: bool.default(false),
 
   // ---- $ANYR holder perks: free inference credits (scripts/holder-credits.ts) and live holder tiers.
   // The token is ANYR_TOKEN_ADDRESS / ANYR_TOKEN_SYMBOL above (the $ANYR escrow settings).
@@ -519,6 +520,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (!e.DEV_FAUCET_PRIVATE_KEY) throw new Error("DEV_FAUCET needs DEV_FAUCET_PRIVATE_KEY (a funded local development account).");
   }
   // The bot token is optional and secret (it is part of every Telegram API URL): never echo it.
+  if (e.TELEGRAM_LINKING_ENABLED && (!e.TELEGRAM_BOT_TOKEN || !e.AGENT_POLICY_ENABLED)) throw new Error("TELEGRAM_LINKING_ENABLED requires TELEGRAM_BOT_TOKEN and AGENT_POLICY_ENABLED.");
   if (e.TELEGRAM_BOT_TOKEN && !/^\d{3,20}:[A-Za-z0-9_-]{20,}$/.test(e.TELEGRAM_BOT_TOKEN)) throw new Error("TELEGRAM_BOT_TOKEN must be the token BotFather issued (<id>:<secret>).");
   // The webhook is optional: without it the alert-notifier job only records state. Never echo the URL.
   if (e.ALERT_WEBHOOK_URL) {
@@ -740,7 +742,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     skills: skillsSettings(e, production),
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
-    telegram: { botToken: e.TELEGRAM_BOT_TOKEN },
+    telegram: { botToken: e.TELEGRAM_BOT_TOKEN, linkingEnabled: e.TELEGRAM_LINKING_ENABLED },
     backup: { required: e.BACKUP_REQUIRED, maxAgeHours: e.BACKUP_MAX_AGE_HOURS },
     holders,
     ipx: ipxSettings(e),

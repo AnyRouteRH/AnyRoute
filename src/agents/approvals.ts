@@ -66,8 +66,8 @@ export async function prepareApproval(db: Db, tx: Tx, rows: PolicyRow[], intents
   }
   return { error: new ApiError(403, refusal.message, refusal.type, { ...refusal.metadata, approval_id: row.id, expires_at: row.expiresAt.toISOString(), poll: `/api/v1/agents/approvals/${row.id}` }) };
 }
-export async function decideApproval(db: Db, accountId: string, id: string, actor: string, action: "approve" | "deny") {
-  return db.transaction(async tx => {
+export async function decideApproval(db: Db, accountId: string, id: string, actor: string, action: "approve" | "deny", transaction?: Tx) {
+  const decide = async (tx: Tx) => {
     await lockAccount(tx, accountId);
     const [row] = await tx.select().from(agentApprovals).where(eq(agentApprovals.id, id)).for("update");
     if (!row) fail(404, "Approval not found.", "not_found");
@@ -76,5 +76,6 @@ export async function decideApproval(db: Db, accountId: string, id: string, acto
     const [updated] = await tx.update(agentApprovals).set({ status: action === "approve" ? "approved" : "denied", decidedAt: now, decidedBy: actor }).where(eq(agentApprovals.id, id)).returning();
     await event(tx, updated, action === "approve" ? "approval_approved" : "approval_denied", undefined, now);
     return updated;
-  });
+  };
+  return transaction ? decide(transaction) : db.transaction(decide);
 }

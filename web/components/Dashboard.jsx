@@ -1,4 +1,5 @@
 "use client";
+import TelegramLink from "../app/agents/TelegramLink";
 import { useEffect, useRef, useState } from "react";
 import { models as sampleModels, providers as sampleProviders, initialWorkspace, storageKey, routeCall, validWorkspace, money } from "../lib/demo";
 import { API_BASE, ApiError, api, clearKey, downloadJSON, getMode, loadKey, loadWorkspace, saveKey, setMode, streamChat, toCatalogModel, toProvider, toReceiptRow, validKey } from "../lib/api";
@@ -1954,6 +1955,7 @@ export default function Dashboard() {
               <div className="panel-heading">
                 <h2>{live ? "Your workspace." : "Your sample workspace."}</h2>
               </div>
+              {live && apiKey && <TelegramLink key={apiKey} principalKey={apiKey}/>}
               <div className="settings-grid">
                 <div className="settings-panel">
                   <h3>{live ? "This browser" : "Browser-local data"}</h3>

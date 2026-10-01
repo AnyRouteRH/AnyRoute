@@ -1,3 +1,4 @@
+import { linkedAlertTargets } from "../telegram/delivery.ts";
 import { and, eq, isNotNull, like, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { agentSessions, keys, kv, spendAlerts } from "../db/schema.ts";
@@ -29,11 +30,13 @@ async function targets(ctx: Ctx, account: string, alert: AgentAlert, opts: Alert
     }
   }
   if (alert.channels.includes("telegram") && ctx.cfg.telegram.botToken) {
+    out.push(...await linkedAlertTargets(ctx, account, alert.key_hash, `AnyRoute agent alert: ${alert.kind}${alert.window ? ` (${alert.window}, ${alert.percent}%)` : ""}. Key ${alert.key_hash}. Open /agents for details.`, opts.telegramFetch));
     const [agent] = await ctx.db.select().from(keys).where(eq(keys.keyHash, alert.key_hash));
     const links = await ctx.db.select().from(kv).where(like(kv.key, "telegram:user:%"));
     for (const link of links) {
+      if (out.filter(t => t.id.startsWith("telegram:")).length >= 20) break;
       const id = link.key.slice("telegram:user:".length);
-      if (!/^\d+$/.test(id)) continue;
+      if (!/^\d+$/.test(id) || out.some(t => t.id === `telegram:${id}`)) continue;
       try {
         const sealed = (link.value as { key?: string })?.key;
         if (!sealed) continue;
