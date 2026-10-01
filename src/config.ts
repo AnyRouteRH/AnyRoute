@@ -523,7 +523,10 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (!e.DEV_FAUCET_PRIVATE_KEY) throw new Error("DEV_FAUCET needs DEV_FAUCET_PRIVATE_KEY (a funded local development account).");
   }
   // The bot token is optional and secret (it is part of every Telegram API URL): never echo it.
-  if (e.TELEGRAM_LINKING_ENABLED && (!e.TELEGRAM_BOT_TOKEN || !e.AGENT_POLICY_ENABLED)) throw new Error("TELEGRAM_LINKING_ENABLED requires TELEGRAM_BOT_TOKEN and AGENT_POLICY_ENABLED.");
+  // The API only issues and checks link codes; every Telegram message is sent by the process that runs the bot and
+  // alert jobs, so only roles that run jobs need the bot token.
+  if (e.TELEGRAM_LINKING_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("TELEGRAM_LINKING_ENABLED requires AGENT_POLICY_ENABLED.");
+  if (e.TELEGRAM_LINKING_ENABLED && e.RUNTIME_ROLE !== "api" && !e.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_LINKING_ENABLED requires TELEGRAM_BOT_TOKEN on the worker (or a combined role).");
   if (e.TELEGRAM_BOT_TOKEN && !/^\d{3,20}:[A-Za-z0-9_-]{20,}$/.test(e.TELEGRAM_BOT_TOKEN)) throw new Error("TELEGRAM_BOT_TOKEN must be the token BotFather issued (<id>:<secret>).");
   // The webhook is optional: without it the alert-notifier job only records state. Never echo the URL.
   if (e.ALERT_WEBHOOK_URL) {

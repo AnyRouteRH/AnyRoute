@@ -11,3 +11,8 @@ test("the real production loader starts with Telegram linking enabled", () => {
   expect(config.telegram.linkingEnabled).toBe(true);
   expect(config.workerJobs).toContain("telegram-bot");
 });
+test("only roles that run the bot and alert jobs need the bot token", () => {
+  expect(loadConfig({ RUNTIME_ROLE: "api", AGENT_POLICY_ENABLED: "true", TELEGRAM_LINKING_ENABLED: "true" }).telegram.linkingEnabled).toBe(true);
+  expect(() => loadConfig({ RUNTIME_ROLE: "worker", AGENT_POLICY_ENABLED: "true", TELEGRAM_LINKING_ENABLED: "true" })).toThrow(/TELEGRAM_BOT_TOKEN/);
+  expect(() => loadConfig({ RUNTIME_ROLE: "api", TELEGRAM_LINKING_ENABLED: "true" })).toThrow(/AGENT_POLICY_ENABLED/);
+});
