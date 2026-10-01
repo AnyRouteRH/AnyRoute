@@ -2,11 +2,11 @@
 
 ## 1. Abstract
 
-AnyRoute is an inference router that combines a shared model API, USDG accounting, explicit privacy lanes, signed call receipts and controls for agents. Its central design choice is to attach evidence and limits to a request rather than treat every provider, payment credential or execution environment as equivalent. The router selects an eligible endpoint, accounts for the call and records evidence about what happened. A requested privacy floor is a constraint: lack of an eligible endpoint causes refusal.
+AnyRoute combines a shared inference API, USDG accounting, privacy lanes, signed receipts and agent controls. Each request carries evidence and limits: the router selects an eligible endpoint, accounts for the call and records what happened. A requested privacy floor causes refusal if no endpoint qualifies.
 
-The hosted service has SEAL attested serving, a key transparency log anchored in Sigstore Rekor, per-host receipt anchoring, Tor onion access with blind payment tokens, encrypted chat through an attested gateway, private files and retrieval, and a schema-backed data inventory. The AnyRoute Network is open for early hosts running its approved Intel TDX build. Automatic admission checks fresh hardware evidence, a signed host policy and operator and payout-address sanctions screening. Agent rulebooks, approvals, ledgers, alerts, circuit breakers, progressive autonomy and router-signed track-record certificates are also switched on.
+The hosted service has SEAL attested serving, key transparency anchored in Sigstore Rekor, per-host receipt anchoring, Tor onion access with blind tokens, encrypted chat, private files and a data inventory. The network is open for approved Intel TDX hosts, with fresh evidence, signed policy and sanctions screening. Agent rulebooks, approvals on /agents and Telegram, ledgers, alerts, circuit breakers, progressive autonomy, certificates, public profiles and network statistics are switched on. Sealed hosting is available, but no sealed agent is registered at anyroute.tech yet.
 
-On ordinary paths the router reads request text in memory; correctly client-encrypted chat forwards ciphertext instead. Network host payouts, the planned 5% network-fee purchase and burn of $ANYR, and host-bond slashing are not switched on yet. Agreements between agents with escrow and a model-jury dispute process, and sealed agent hosting, are next. This paper separates those states from existing behavior, explains the trust required by each path and gives references for independent inspection. It describes software and protocol mechanics, not an offer or investment advice.
+On ordinary paths the router reads request text in memory; correctly client-encrypted chat forwards ciphertext instead. Network host payouts, the planned 5% network-fee purchase and burn of $ANYR, and host-bond slashing are not switched on yet. Agreements between agents are live, with their escrow and dispute contracts deployed; automatic jury rulings are not switched on yet. Next are automatic jury rulings, agent wallets with on-chain rules, GPU hosts on the network and network payouts. This paper separates those states from existing behavior, explains the trust required by each path and gives references for independent inspection. It describes software and protocol mechanics, not an offer or investment advice.
 
 ## 2. The problem
 
@@ -209,43 +209,43 @@ A specified lane or disclosure ceiling applies to the underlying calls rather th
 
 ### 6.1 The approved build and signed policy
 
-The network is open for early hosts using the approved build in `deploy/network/approved/tdx-qwen2.5-0.5b`. It specifies an Intel TDX confidential VM, the pinned sidecar source and image, the approved inference engine and Qwen2.5 0.5B weights. The recipe is intended for the supported confidential-VM environment and evidence verifier. Hardware availability alone does not establish that an arbitrary deployment satisfies admission.
+The network is open for early hosts running the approved Intel TDX build in a supported confidential VM. The recipe is `deploy/network/approved/tdx-qwen2.5-0.5b`. The router publishes signed host policy v1 at `GET /api/v1/network/policy`, with its record in the key transparency log.
 
-The host policy is published at `/api/v1/network/policy`, with immutable versioned records. It is canonicalized, hashed and signed, and its publication is included in the key log. The policy lists accepted TEE kinds, sidecar image and source hashes, engine entries, models and relevant GPU requirements. The current recipe is policy v1. More permissive entries in a schema are not evidence that those builds are currently approved.
-
-A client checking the policy recomputes canonical bytes and the digest, verifies the signature under an independently pinned key and checks log evidence. Admission also verifies the publication instead of trusting unsigned configuration. The policy requires a quote-bound compose hash, but the current host policy does not approve a compose manifest. That distinction allows host-specific configuration while leaving additional deployment review relevant.
+Admission and clients verify canonical policy bytes, digest, signature and log evidence under an independently pinned key. The policy requires a quote-bound compose hash but does not approve a compose manifest; host-specific configuration still needs deployment review. Policy acceptance does not prove archive-to-image reproducibility, actual engine execution or every operational promise.
 
 ### 6.2 Automatic admission and renewal
 
-A joining host presents an HTTPS endpoint and operator and payout identities under the join protocol. Pending hosts are not routable while checks run. Admission obtains fresh evidence, verifies its quote bindings, compares those bindings with the signed policy and screens the operator and payout addresses. Successful admission starts probation; rejection publishes reasons rather than quietly making the host eligible.
+Joining hosts present an HTTPS endpoint and operator and payout identities. Pending hosts are not routable. Admission checks fresh evidence, quote bindings, the signed policy and sanctions screening of operator and payout addresses. Verified archive, sidecar image, engine and model identifiers must match policy. Claimed GPU evidence is insufficient when policy requires separate verification. Successful admission starts probation; rejection publishes reasons.
 
-The source archive, sidecar image, engine and model identifiers must match the policy through verified bindings. A claimed GPU-confidential-computing field is insufficient when policy requires fresh separately verified GPU evidence. Renewal rechecks eligibility against current accepted policy and evidence. Neither one successful admission nor the existence of a public host record guarantees permanent routing eligibility.
-
-The policy check is an acceptance decision about evidence and declarations. It does not establish archive-to-image reproducibility, prove actual engine execution from an archive hash alone or prove compliance with all operational promises. Sanctions screening is another admission condition, not a hardware property. Its correctness depends on the screening implementation, data and update process.
+Renewal checks current policy and evidence. Neither admission nor a public host record guarantees permanent eligibility. Sanctions screening depends on its implementation, data and updates; it is not a hardware property.
 
 ### 6.3 Probation, routing weight and host records
 
-New hosts begin with reduced routing weight. The default probation period is seven days, with graduation requiring both elapsed time and evidence thresholds. The current defaults require 200 attested successes and observed probe availability of at least 99%. Elapsed time alone is insufficient. The routing code also considers fresh evidence, health, recent failures and latency, and can assign zero traffic when required conditions fail.
+New hosts begin with reduced weight. The default seven-day probation also requires 200 attested successes and observed probe availability of at least 99%; elapsed time alone is insufficient. Routing considers fresh evidence, health, failures and latency, and can assign zero traffic.
 
-These observations influence a multiplier applied within routing; they do not rewrite the requested lane. A host with a bond cannot use that bond to bypass an attestation failure. Bond-aware weighting uses a fresh canonical bond observation matched to the host's operator. The public `/hosts` records show admission state and reasons so a user can distinguish a registered host from an eligible, healthy serving endpoint.
+Weighting never overrides a requested lane or failed attestation. Bond-aware weighting requires a fresh canonical observation matched to the operator. Public /hosts records distinguish registration from current eligibility and expose admission reasons.
 
 ### 6.4 HostBond
 
-The HostBond contract on Robinhood Chain is `0x2921d34fd86d3323a5369a270a82814a74250518`. USDG bonds have a minimum of 5,000 USDG. Bond indexing is switched on and exposed through `/api/v1/network/bonds`. The contract and index represent a distinct mechanism from host attestation and policy acceptance.
+HostBond on Robinhood Chain is `0x2921d34fd86d3323a5369a270a82814a74250518`. Bonded hosts require at least 5,000 USDG. Live indexing at `/api/v1/network/bonds` is separate from attestation and admission.
 
-The contract implements an unbonding cooldown and a slash proposal and dispute process. Slash execution requires a delay and separate owner approval of the relevant dispute state. Those contract capabilities do not mean operational slashing is active: host-bond slashing is not switched on yet. A public bond should therefore be read as recorded collateral under the contract's rules, without implying an active automated penalty process or a guarantee of host behavior.
-
-The contract source is verified through Sourcify and can be compared with the published deployment. Source verification identifies deployed code; it does not establish that every privileged role will act appropriately, that every observation is accurate or that a particular host has a current eligible bond. Readers need the contract state and the canonical index as well as the source.
+The contract has an unbonding cooldown, slash proposal and dispute process; execution requires a delay and separate owner approval. Operational host-bond slashing is not switched on yet. Collateral is not a guarantee of host behavior. Sourcify source verification identifies deployed code, not appropriate privileged actions or accurate observations; readers still need canonical contract state and index freshness.
 
 ### 6.5 Payouts and the network fee
 
-Payouts to network hosts are not switched on yet; no network host payouts are being made. The repository includes payout accounting and a planned 5% network fee used to purchase and burn $ANYR. That fee-and-burn path is also not switched on yet. These mechanics must not be described as an operating distribution system or a source of current host payments.
+Payouts are not switched on yet; no network host payouts are being made. The planned 5% network fee to purchase and burn $ANYR is also not switched on yet. Code availability does not establish current payments.
 
-Enabling payout-related code requires additional configuration, sanctions checks, anchoring and the appropriate contract-payment setup. Fee-burn execution requires its own configured contracts and signer. Those checks are safeguards around a separate activation decision. They do not turn an off feature into a live one merely because the files and configuration options exist.
+Activation requires additional configuration, sanctions checks, anchoring, contract-payment setup and appropriate signers. Fee-burn execution needs its own contracts and signer. Passing safeguards does not itself switch a feature on.
 
 ### 6.6 Joining
 
-The recipe and the `/network` joining instructions define the current supported sequence: prepare the approved confidential VM, supply the sidecar credential, inspect evidence and run the published `join.mjs` program with the operator and payout information. The script is available at `web/public/network/join.mjs` and from the site. Credentials belong in the documented private files and should not be copied into receipts, issue reports or public host descriptions.
+Prepare the approved confidential VM, supply the sidecar credential, inspect evidence and run the published `join.mjs` with operator and payout information, following /network and the recipe. The program is at `web/public/network/join.mjs`. Keep credentials in documented private files, outside public receipts, reports and host descriptions.
+
+### 6.7 Live network statistics
+
+The /network page reads `GET /api/v1/network/stats`, switched on at anyroute.tech: hosts by status, attested now, models on admitted hosts, bonds, waitlist interest and policy version. Model counts are not throughput; interest is not admission.
+
+Public-lane token totals use coarse 100,000-token ranges over retained seven- and thirty-day windows, currently “No data yet”. Missing records do not establish zero activity. These ranges are not differential privacy or complete history after expiry. Private-lane totals are not assigned to hosts by this endpoint. Aggregate counts do not prove an individual host's current eligibility; bond-index and attestation freshness remain separate.
 
 ## 7. Agents: the v5 control surface
 
@@ -261,7 +261,7 @@ The router evaluates applicable policies when reserving spending capacity and se
 
 The kill switch stops the next admitted request. The owner resumes the agent. It is not a mechanism for recalling an answer already delivered or guaranteeing cancellation of every in-flight computation. A request already admitted can complete, so operators should distinguish future admission from cancellation and final settlement.
 
-Ask-first approvals appear on `/agents`. They are single use and expire after fifteen minutes under the current default. The stored approval projection contains intent metadata such as model, lane, output bound, declared tools and cost bound. It does not store the prompt or tool arguments. The approval must match the projected intent and remain within its permitted cost when consumed.
+Ask-first approvals appear on `/agents`; owners can link Telegram there with a one-time code and approve or deny through AnyRoute's bot. Approval details pass through Telegram. The same approvals are single use and expire after fifteen minutes under the current default. The stored approval projection contains intent metadata such as model, lane, output bound, declared tools and cost bound. It does not store the prompt or tool arguments. The approval must match the projected intent and remain within its permitted cost when consumed.
 
 Approving an intent does not authorize arbitrary instructions hidden inside the content. Because prompts are absent from the approval binding, two bodies can share the same projected intent. The feature controls router-visible resource authority; it is not a content review signature. Approval also cannot bypass an independent denial or a circuit-breaker kill.
 
@@ -285,7 +285,27 @@ Track-record certificates are router-signed statements with a fresh pseudonym an
 
 These certificates are not zero-knowledge proofs and are not anonymous credentials. The router sees the activity and signs the statement. A fresh pseudonym reduces reuse of one public identifier, but does not prevent correlation by claim combinations, issuance timing or information held by the router. A relying party must trust the issuer for the facts asserted.
 
-All agent enforcement described here applies to requests through AnyRoute. There is no on-chain enforcement of the rulebook and no agent-to-agent payment mechanism in this control surface. External wallets, tool execution and unrelated endpoints remain outside this boundary. Agreements between agents are next, as Section 11 explains.
+All agent enforcement described here applies to requests through AnyRoute. There is no on-chain enforcement of the rulebook and no agent-to-agent payment mechanism in this control surface. External wallets, tool execution and unrelated endpoints remain outside this boundary. The built agreement system described below is a separate boundary and is not switched on at anyroute.tech.
+
+### 7.6 Opt-in profiles and directory
+
+Profiles and /agents/directory are switched on. Owners choose publication and the rulebook summary. Random slugs never expose the key hash. Profiles include the latest valid track-record certificate, A2A-style card JSON and MCP tool `anyroute_agent_directory`. Discovery does not verify capabilities or establish an invocation endpoint.
+
+Owner-written fields can identify people. Publication links a certificate's pseudonym to the profile; certificates remain router-signed observations, not independent proof. Unpublishing cannot recall retained copies. Profiles change neither enforcement scope nor prompt readers.
+
+### 7.7 Available sealed agent hosting
+
+The owner builds and publishes an agent sidecar image using `deploy/agents/sealed`. The router verifies a registered agent's TDX quote and shows “Sealed · attested” on /agents. Hosting is available, but no sealed agent is registered at anyroute.tech yet.
+
+Trust includes Intel TDX, firmware, the guest OS, verifiers, key-release authorization and measured code. Attestation does not audit code, prove exclusive credential possession or prove every later request came from the VM. External tools need separate review. Ordinary requests remain readable in router memory; sealed hosting alone does not enable encrypted chat.
+
+### 7.8 Agreements between agents
+
+AgreementEscrow, DisputeOracle, the indexer, evidence handling, jury, API, MCP tools and /agents tab are built. The service and contracts are live at anyroute.tech: AgreementEscrow `0xefd8d05f45b8a92aa3b3ef3a7db4c9d3a21f7c96` and DisputeOracle `0xcdeddcea1e039e72868bb8af3206af2647afda5a` on Robinhood Chain, both Sourcify-verified (exact match). Automatic jury rulings are not switched on yet; until they are, a dispute is resolved by the panel or by the 50/50 expiry.
+
+USDG escrow holds individual milestones: delivery digests, payer release, payee claims after unanswered review and reclaiming undelivered work after the deadline. Disputes lock their milestone. Model-jury rulings refund, pay or split; a complete hung tally can reach a separate panel. After 30 days unruled under the deployment default, anyone can transact to settle 50/50, with odd base units to the payee. Jury and panel cannot extend expiry.
+
+The router controls jury signing keys; distinct models can share operators or hardware. Contracts verify authorized signatures, not model execution, attestation or verdict correctness. Panel decisions remain trusted. Malicious or missing evidence and unavailable signers can impede resolution. Both parties, the router and jury models can read evidence, encrypted at rest. Wallet addresses, amounts, digests and rulings are public on chain. Agreements add no prompt encryption or rulebook enforcement over outside transactions.
 
 ## 8. $ANYR mechanics
 
@@ -365,7 +385,13 @@ Feature defaults describe a fresh self-hosted configuration, not the activation 
 | `NETWORK_POLICY_ENABLED` | `false` | Signed host policy switched on |
 | `NETWORK_HOSTS_ENABLED` | `false` | Approved-build admission switched on |
 | `NETWORK_BONDS_ENABLED` | `false` | HostBond indexing switched on |
+| `NETWORK_STATS_ENABLED` | `false` | Network statistics switched on |
 | `AGENT_POLICY_ENABLED` | `false` | Agent rulebook control surface switched on |
+| `AGENT_PROFILES_ENABLED` | `false` | Opt-in profiles and directory switched on |
+| `AGENT_SEALED_ENABLED` | `false` | Registration available; no registered sealed agent yet |
+| `TELEGRAM_LINKING_ENABLED` | `false` | Telegram linking and approvals switched on |
+| `AGENT_AGREEMENTS_ENABLED` | `false` | Switched on at anyroute.tech; contracts deployed on Robinhood Chain |
+| `AGENT_AGREEMENTS_RULINGS_ENABLED` | `false` | Not switched on yet |
 | `NETWORK_PAYOUTS_ENABLED` | `false` | Not switched on yet |
 | `NETWORK_FEE_BURN_ENABLED` | `false` | Not switched on yet |
 | `NETWORK_SLASHING_ENABLED` | `false` | Not switched on yet |
@@ -391,13 +417,11 @@ A useful review keeps evidence types distinct: a hash identifies bytes; a signat
 
 ## 11. What's next
 
-Agreements between agents with escrow and a model-jury dispute process are next. They are not the current agent rulebook, an existing agent-to-agent payment API or on-chain enforcement of today's router policies. The current controls already restrict inference requests through AnyRoute; the proposed agreement boundary adds a different relationship between participants and a separate dispute mechanism.
+Next are deploying the agreements contracts and switching agreements on; agent wallets with on-chain rules; GPU hosts on the network; and network payouts. The agreement code and service already exist, but contract deployment and activation remain separate steps. Agent wallets would add an on-chain spending boundary beyond today's router-enforced rulebook.
 
-Sealed agent hosting in attested hardware is also next. Today's attested model serving does not mean the user's agent loop, tools and persistent state all run inside a sealed host. Any future claim about hosted agents will need evidence for that execution environment and a clear account of its data, credentials, external tool connections and owner controls.
+Current network admission covers the approved Intel TDX build; existing attested inference providers do not establish GPU-host network admission.
 
 Several repository paths await activation rather than a new concept: network host payouts, the planned 5% network-fee purchase and burn of $ANYR, host-bond slashing, email alerts and SDK releases on npm and PyPI are not switched on yet. Their presence in code does not change their status. Activation must satisfy the relevant configuration, role and evidence requirements before public claims change.
-
-The attestation specification also describes fuller GPU-to-CPU quote binding and additional measurement and transport targets that are not switched on yet. The implemented SHA-256 sidecar extension must not be confused with those targets. Future work has no schedule asserted here. Each change needs its own evidence and limits rather than inheriting a guarantee from an existing lane name.
 
 ## 12. References
 
@@ -415,6 +439,8 @@ The attestation specification also describes fuller GPU-to-CPU quote binding and
 ### 12.2 User and operator documentation
 
 Read the [router overview](README.md), [lanes](https://anyroute.tech/docs/#lanes), [Tor unlinkable access](https://anyroute.tech/docs/#unlinkable-tor), [encrypted chat](https://anyroute.tech/docs/#e2ee-phala), [key log](https://anyroute.tech/docs/#key-log), [receipts](https://anyroute.tech/docs/#receipts), [receipt privacy labels](https://anyroute.tech/docs/#what-we-saw), [retrieval](https://anyroute.tech/docs/#rag) and [SDK verification](https://anyroute.tech/docs/#sdk). The [SEAL page](web/app/seal/page.jsx), [data inventory](web/app/keep/page.jsx), [verification page](web/app/verify/page.jsx), [host records](web/app/hosts/page.jsx) and [agent controls](web/app/agents/page.jsx) provide related inspection surfaces.
+
+Read the [network statistics](https://anyroute.tech/docs/#network-stats), [agent profiles](https://anyroute.tech/docs/#agent-profiles), [sealed agents](https://anyroute.tech/docs/#sealed-agents) and [agreements](https://anyroute.tech/docs/#agreements) sections for their distinct availability and trust boundaries. The [sealed agent recipe](deploy/agents/sealed/README.md) describes owner-provided deployment.
 
 The [approved host recipe](deploy/network/approved/tdx-qwen2.5-0.5b/README.md), its [compose template](deploy/network/approved/tdx-qwen2.5-0.5b/docker-compose.template.yml) and the [join program](web/public/network/join.mjs) describe the currently admitted build and join process. The [HostBond Sourcify record](https://sourcify.dev/server/v2/contract/4663/0x2921d34fd86d3323a5369a270a82814a74250518) is the source-verification reference for that deployed contract.
 

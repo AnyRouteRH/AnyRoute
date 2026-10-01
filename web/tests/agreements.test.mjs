@@ -14,7 +14,7 @@ test('agent agreements tab calls party APIs and renders evidence, per-model verd
 });
 test('agreements docs and OpenAPI describe disabled flags, jury trust, retention and parties', () => {
   const docs=read('components/AgreementsDocs.jsx');
-  for(const value of ['id="agreements"','AGENT_AGREEMENTS_ENABLED defaults to false','AGENT_AGREEMENTS_RULINGS_ENABLED defaults to false','router reads evidence','panel','AGREEMENT_RETENTION_DAYS','not deployed at anyroute.tech yet','AGREEMENT_JURY_SIGNER_KEYS']) assert.ok(docs.includes(value),value);
+  for(const value of ['id="agreements"','AGENT_AGREEMENTS_ENABLED defaults to false','AGENT_AGREEMENTS_RULINGS_ENABLED defaults to false','router reads evidence','panel','AGREEMENT_RETENTION_DAYS','deployed on Robinhood Chain','Automatic jury rulings are not switched on yet','AGREEMENT_JURY_SIGNER_KEYS']) assert.ok(docs.includes(value),value);
   assert.match(read('app/docs/page.jsx'),/<AgreementsDocs \/>/);
   const spec=JSON.parse(read('public/openapi.json'));
   for(const path of ['/api/v1/agreements','/api/v1/agreements/prepare','/api/v1/agreements/{id}','/api/v1/agreements/{id}/evidence']) assert.ok(spec.paths[path]);

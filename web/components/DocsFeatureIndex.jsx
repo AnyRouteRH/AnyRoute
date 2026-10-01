@@ -6,13 +6,15 @@ const sections = [
   ["agent-ledger", "Activity & receipts"],
   ["agent-alerts", "Agent alerts"],
   ["agent-certificates", "Track-record certificates"],
-  ["agreements", "Agent agreements"],
+  ["agent-profiles", "Public profiles & directory"],
+  ["agreements", "Agent agreements · live; jury rulings not switched on yet"],
   ["sealed-agents", "Sealed agent hosting"],
   ["e2ee-phala", "Encrypted chat"],
   ["network-host-signup", "Host signup"],
   ["network-host-policy", "Host policy"],
   ["network-payouts", "Host payouts"],
   ["host-bonds", "Host bonds"],
+  ["network-stats", "Live network statistics"],
 ];
 
 export function DocsFeatureLinks() {
@@ -22,7 +24,7 @@ export function DocsFeatureLinks() {
 export default function DocsFeatureIndex() {
   return <section id="whats-new">
     <h2>What’s new</h2>
-    <p>Agent rules and encrypted chat are switched on at anyroute.tech. The network is open for early hosts running the approved build, with automatic admission and probation. Host bonds are indexed; payouts, fee buy-and-burn and slashing are not switched on at anyroute.tech yet.</p>
+    <p>Agent rules, Telegram linking and approvals, opt-in public profiles and encrypted chat are switched on at anyroute.tech. Sealed agent hosting is available, but no sealed agent is registered at anyroute.tech yet. Agreements are switched on, with the escrow and dispute contracts deployed on Robinhood Chain; automatic jury rulings are not switched on yet. The network is open for early hosts running the approved build, with automatic admission and probation. Live network statistics and host bond indexing are switched on; payouts, fee buy-and-burn and slashing are not switched on at anyroute.tech yet.</p>
     <ul>{sections.map(([id, label]) => <li key={id}><a href={`#${id}`}>{label}</a></li>)}</ul>
   </section>;
 }

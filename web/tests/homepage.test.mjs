@@ -49,11 +49,12 @@ test('homepage states approved early-host admission and inactive payouts and sla
   assert.doesNotMatch(main,/\b(?:earn|yield|APY|passive income)\b|Hosting isn’t open yet/i);
 });
 
-test('roadmap marks shipped work live and reserves next for the two stated areas',()=>{
+test('roadmap separates available hosting and inactive agreements from the next steps',()=>{
   const roadmap=renderToStaticMarkup(createElement(Roadmap));
   assert.equal((roadmap.match(/class="live-square"><\/span>Live/g)||[]).length,4);
   const next=roadmap.match(/class="next-stage"[^>]*><span>(.*?)<\/span><b>Next<\/b>/)[1];
-  assert.equal(next,'Agreements between agents with escrow and a model-jury dispute process; sealed agent hosting in attested hardware.');
+  assert.equal(next,'Automatic model-jury rulings for agreements; agent wallets with on-chain rules; GPU hosts on the network; network payouts.');
+  for(const phrase of ['Sealed agent hosting is available','no sealed agent is registered at anyroute.tech yet','Agreements between agents are live','Automatic model-jury rulings are next'])assert.ok(roadmap.includes(phrase),phrase);
   assert.doesNotMatch(roadmap,/coming|contract deployment|live provider onboarding|\b20\d{2}\b|built and tested/i);
 });
 
@@ -65,4 +66,16 @@ test('README includes the approved recipe, HostBond and resolvable docs anchors'
   const docs=fs.readFileSync('app/docs/page.jsx','utf8')+fs.readdirSync('components').filter(n=>n.endsWith('Docs.jsx')).map(n=>fs.readFileSync(`components/${n}`,'utf8')).join('\n');
   for(const [,anchor] of readme.matchAll(/https:\/\/anyroute\.tech\/docs\/#([a-z0-9-]+)/g))assert.ok(docs.includes(`id="${anchor}"`),anchor);
   assert.doesNotMatch(readme,/\b(?:demo|test|tested|mock|simulated|placeholder)\b|local[ -]build/i);
+});
+
+
+test('homepage and README describe the available profiles, sealed hosting, Telegram and stats',()=>{
+  const readme=fs.readFileSync('../README.md','utf8');
+  for(const content of [main,readme]) {
+    for(const anchor of ['agent-profiles','sealed-agents','agent-approvals','network-stats'])assert.ok(content.includes(`/docs/#${anchor}`),anchor);
+    for(const phrase of ['no sealed agent is registered','Approval details pass through Telegram','jury rulings'])assert.ok(content.toLowerCase().includes(phrase.toLowerCase()),phrase);
+    assert.doesNotMatch(content,/not deployed on mainnet|Telegram approvals[^.]*not switched on|sealed (?:agent )?hosting[^.]*is (?:also )?next/i);
+  }
+  for(const phrase of ['Agent profiles','A2A-style cards','Telegram approvals','router verifies a registered agent’s TDX quote'])assert.ok(text.includes(phrase),phrase);
+  for(const phrase of ['100,000-token','No data yet','50/50','router-run model jury','trusted panel'])assert.ok(readme.includes(phrase),phrase);
 });
