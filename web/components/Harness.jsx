@@ -16,6 +16,7 @@ import ImageMode from "./harness/ImageMode";
 import GeneratedImages from "./harness/GeneratedImages";
 import { ImageAttach, ImageNotice, useImageAttachments } from "./harness/ImageAttachments";
 import { imageOutput, imageSettings, imageSendBlock, imageSendError, readsImages } from "../lib/harness-images";
+import { ReadAloud, VoiceControls, VoiceMic, useHarnessVoice } from "./harness/VoiceMode";
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
 
@@ -409,7 +410,7 @@ function ToolCalls({ msg, awaiting, onSubmit }) {
   );
 }
 
-function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage }) {
+function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage, voice }) {
   const facts = replyFacts(msg);
   const waiting = msg.status === "waiting";
   const streaming = msg.status === "streaming" || waiting;
@@ -479,6 +480,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
             </a>
           )}
           <span className={s.footActions}>
+            <ReadAloud msg={msg} voice={voice} />
             {msg.text && <CopyButton text={msg.text} />}
             {last && !busy && (
               <button type="button" className="text-button" onClick={onRegenerate}>
@@ -842,6 +844,8 @@ export default function Harness() {
   const focusLane = lanes[Math.min(focus, lanes.length - 1)];
   const focusModel = find(focusLane?.modelId);
   const busy = inflight > 0;
+  // Voice mode: browser-only adapter; existing send and history paths remain the source of truth.
+  const voice = useHarnessVoice({ draft, setDraft, onSend: send, busy, canSend: !!auth.key && lanes.every((l) => !!find(l.modelId)), canConverse: !!auth.key && !!focusModel && !compare, reply: lanes[0]?.messages.filter((m) => m.role === "assistant").at(-1), scope: lanes.map((l) => `${l.id}:${l.modelId}`).join("|") + `:${priv.on}`, blocked: !!(signin || editing || palette || sheet) });
   const empty = lanes.every((l) => !l.messages.length);
   const acceptsImages = lanes.every((l) => readsImages(find(l.modelId)));
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
@@ -1011,6 +1015,7 @@ export default function Harness() {
 
   const stop = () => controllers.current.forEach((c) => c.abort());
   const newChat = () => {
+    voice.stop();
     stop();
     setLanes((ls) => ls.map((l) => ({ ...l, messages: [] })));
     setEditing(null);
@@ -1216,7 +1221,7 @@ export default function Harness() {
                           <code>{m.text}</code>
                         </div>
                       ) : (
-                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} />
+                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} voice={voice} />
                       ),
                     )}
                   </div>
@@ -1230,6 +1235,7 @@ export default function Harness() {
           className={s.composer}
           onSubmit={(e) => {
             e.preventDefault();
+            voice.stop();
             busy ? stop() : send(draft);
           }}
         >
@@ -1268,7 +1274,7 @@ export default function Harness() {
               rows={1}
               value={draft}
               placeholder={focusModel ? `Message ${compare ? lanes.length + " models" : focusModel.name}` : "Loading models…"}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => voice.editDraft(e.target.value)}
               onPaste={(e) => {
                 const pasted = [...(e.clipboardData?.files || [])];
                 if (pasted.length) { if (!e.clipboardData.getData("text/plain")) e.preventDefault(); addFiles(pasted); }
@@ -1276,16 +1282,18 @@ export default function Harness() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
-                  if (!busy) send(draft);
+                  if (!busy) { voice.stop(); send(draft); }
                 }
               }}
             />
+            <VoiceMic voice={voice} />
             <button type="submit" className={s.send} data-busy={busy || undefined} title={imageBlock || (preparing ? "Preparing images on your device" : undefined)} disabled={!busy && (preparing || !!imageBlock || (!draft.trim() && !files.length) || !focusModel)}>
               {busy ? "Stop" : "Send"}
               <b aria-hidden="true">{busy ? "■" : "↵"}</b>
             </button>
           </div>
           <ImageNotice enabled={acceptsImages} preparing={preparing} error={imageBlock} onSwitch={switchVision} available={all.some(readsImages)} />
+          <VoiceControls voice={voice} />
           <p className={s.hints}>
             <span>
               <kbd>{mod} K</kbd> switch model
