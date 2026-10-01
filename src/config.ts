@@ -1,3 +1,4 @@
+import { networkStatsEnv } from "./network/stats-config.ts";
 import { networkPayoutEnv, networkPayoutSettings } from "./network/payout-config.ts";
 import { hostBondEnv, hostBondSettings } from "./network/bond-config.ts";
 import { networkHostsEnv, networkHostsSettings } from "./network/host-config.ts";
@@ -55,6 +56,7 @@ const schema = z.object({
   ...networkWeightEnv,
   ...sanctionsEnv,
   ...networkHostsEnv,
+  ...networkStatsEnv,
   ...networkPayoutEnv,
   RUNTIME_ROLE: z.enum(["all", "api", "worker"]).default("all"),
   WORKER_JOBS: z.string().default(""),
@@ -564,6 +566,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     sanctions: sanctionsSettings(e, production),
     e2ee: e2eeSettings(e.E2EE_PASSTHROUGH_ENABLED, e.PROVIDERS_FILE, production, { baseUrl: e.E2EE_GATEWAY_BASE_URL, attestationUrl: e.E2EE_GATEWAY_ATTESTATION_URL }),
     networkHosts: networkHostsSettings(e, production),
+    networkStatsEnabled: e.NETWORK_STATS_ENABLED,
     networkPayouts: networkPayoutSettings(e, production),
     networkWeights: { ...networkWeightSettings(e), ...(e.NETWORK_BONDS_ENABLED ? { bonds: { ...hostBondSettings(e), scope: `${e.CHAIN_ID}:${e.HOST_BOND_ADDRESS?.toLowerCase()}` } } : {}) },
     hostBonds: hostBondSettings(e),

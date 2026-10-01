@@ -1,5 +1,6 @@
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
+import NetworkStatsDocs from "../../components/NetworkStatsDocs";
 import HostBondsDocs from "../../components/HostBondsDocs";
 import AgentLedgerDocs from "../../components/AgentLedgerDocs";
 import NetworkHostsDocs from "../../components/NetworkHostsDocs";
@@ -1678,6 +1679,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             shows what the router has recorded for a provider (/verify/?p=&lt;provider id&gt;), the privacy label of a receipt id (/verify/?r=&lt;receipt id&gt;) and checks a pasted receipt in your browser. It reads the router’s record only; use an SDK to check the provider itself.
           </p>
           <HostsDocs /><NetworkHostsDocs /><HostBondsDocs />
+          <NetworkStatsDocs />
           <h2 id="run-a-provider">Run a provider.</h2>
           <p>
             A model host runs the sidecar in front of its model server, inside a confidential VM. The sidecar hashes the weights at boot and refuses to start unless the digest is on its allow-list, binds its TLS key, receipt key and the image, compose and model digests into an Intel TDX quote, and signs a receipt for every

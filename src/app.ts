@@ -1,3 +1,4 @@
+import { networkStatsRoutes } from "./network/stats.ts";
 import { networkBurnRoutes } from "./network/burn-routes.ts";
 import { agentLedgerMiddleware } from "./agents/ledger-context.ts";
 import { agentLedgerRoutes } from "./api/agent-ledger.ts";
@@ -202,6 +203,7 @@ export async function createApp(opts: AppOptions = {}) {
   networkSanctionsRoutes(app, ctx);
   networkBurnRoutes(app, ctx);
   networkHostRoutes(app, ctx);
+  networkStatsRoutes(app, ctx);
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);
   ollamaRoutes(app, ctx);
