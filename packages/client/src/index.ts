@@ -42,3 +42,6 @@ export type { AgentPolicy, AgentLane, AgentIntent, AgentReason, AgentDecision, A
 
 export { verifyRecordCertificate, isRecordCertificate, RECORD_CERTIFICATE_NOTICE } from "./record-certificate.js";
 export type { RecordCertificate, RecordClaim } from "./record-certificate.js";
+
+export { agreementClient } from "./agreements.js";
+export type { AgreementPrepare, AgreementTransaction } from "./agreements.js";

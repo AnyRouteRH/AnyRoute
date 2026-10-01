@@ -1,3 +1,4 @@
+import { agreementRulesSchema } from "../agreements/rulebook.ts";
 import { z } from "zod";
 import { agentBreakersSchema } from "./breakers.ts";
 import { autonomySchema } from "./autonomy-schema.ts";
@@ -21,6 +22,7 @@ export const agentPolicySchema = z.strictObject({
   breakers: agentBreakersSchema.optional(),
   autonomy: autonomySchema.optional(),
   alerts: agentAlertsSchema.optional(),
+  agreements: agreementRulesSchema.optional(),
   on_breach: z.enum(["deny", "kill"]),
 }).partial({ approval: true });
 export type AgentPolicy = z.infer<typeof agentPolicySchema>;

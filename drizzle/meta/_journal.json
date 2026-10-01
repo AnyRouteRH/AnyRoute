@@ -260,6 +260,13 @@
       "when": 1790827597069,
       "tag": "0036_v6_agent_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790832270909,
+      "tag": "0037_v6_agreements",
+      "breakpoints": true
     }
   ]
 }

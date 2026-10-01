@@ -1,5 +1,6 @@
 import AgentProfileDocs from "../../components/AgentProfileDocs";
 import SealedAgentDocs from "../../components/SealedAgentDocs";
+import AgreementsDocs from "../../components/AgreementsDocs";
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import NetworkStatsDocs from "../../components/NetworkStatsDocs";
@@ -816,7 +817,7 @@ export default function Docs() {
           </div>
           <DocsFeatureIndex />
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
-          <AgentLedgerDocs />
+          <AgentLedgerDocs /><AgreementsDocs />
           <AgentAlertDocs />
           <AgentApprovalDocs />
           <AgentCertificateDocs /><AgentProfileDocs /><SealedAgentDocs />

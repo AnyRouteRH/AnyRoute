@@ -17,7 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 // Money columns are pico-USD (1e-12 USD) bigints unless named *_usdg (USDG base units, 1e-6)
-// or *_raw (token base units). Privacy invariant: no table stores prompts or completions.
+// or *_raw (token base units). Inference records retain hashes; opted-in agreement evidence and jury reasons retain content (see inventory).
 
 const money = (name: string) => bigint(name, { mode: "bigint" });
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -1268,3 +1268,4 @@ export { networkFeeLedger, networkReceiptLinks, networkPayoutDispatch } from "..
 export { agentLedgerLinks } from "../agents/ledger-schema.ts";
 
 export { agentProfiles } from "../agents/profile-schema.ts";
+export * from "../agreements/schema.ts";

@@ -1,5 +1,6 @@
 import { networkStatsEnv } from "./network/stats-config.ts";
 import { sealedEnv, guardSealed } from "./agents/sealed/config.ts";
+import { agreementEnv, agreementSettings } from "./agreements/config.ts";
 import { networkPayoutEnv, networkPayoutSettings } from "./network/payout-config.ts";
 import { hostBondEnv, hostBondSettings } from "./network/bond-config.ts";
 import { networkHostsEnv, networkHostsSettings } from "./network/host-config.ts";
@@ -56,6 +57,7 @@ const schema = z.object({
   ...sealedEnv,
   ...hostBondEnv,
   ...networkWeightEnv,
+  ...agreementEnv,
   ...sanctionsEnv,
   ...networkHostsEnv,
   ...networkStatsEnv,
@@ -483,6 +485,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
+      allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
@@ -569,6 +572,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     env: e.ANYROUTE_ENV,
     production,
     hostDashboard: { enabled: e.HOST_DASHBOARD_ENABLED },
+    agreements: agreementSettings(e, production),
     sanctions: sanctionsSettings(e, production),
     e2ee: e2eeSettings(e.E2EE_PASSTHROUGH_ENABLED, e.PROVIDERS_FILE, production, { baseUrl: e.E2EE_GATEWAY_BASE_URL, attestationUrl: e.E2EE_GATEWAY_ATTESTATION_URL }),
     networkHosts: networkHostsSettings(e, production),

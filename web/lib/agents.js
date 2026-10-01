@@ -66,7 +66,7 @@ export function policyForm(policy) {
     restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES],
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
     restrictWindows: p.windows !== undefined, windows: (p.windows || []).map(w => ({ ...w, days: [...w.days] })),
-    ...(p.alerts === undefined ? {} : {alerts:structuredClone(p.alerts)}), approval: p.approval?.above_usd == null ? '' : String(p.approval.above_usd), onBreach: p.on_breach || 'deny' };
+    ...(p.alerts === undefined ? {} : {alerts:structuredClone(p.alerts)}), ...(p.agreements === undefined ? {} : {agreements:structuredClone(p.agreements)}), approval: p.approval?.above_usd == null ? '' : String(p.approval.above_usd), onBreach: p.on_breach || 'deny' };
 }
 
 export function buildPolicy(form) {
@@ -109,6 +109,7 @@ export function buildPolicy(form) {
     }
   }
   buildBreakers(form.breakers, policy, errors);
+  if (form.agreements !== undefined) policy.agreements = structuredClone(form.agreements);
   if (!['deny', 'kill'].includes(form.onBreach)) errors.push('On breach, choose deny or kill.');
   if (form.alerts !== undefined) { policy.alerts = structuredClone(form.alerts); errors.push(...alertSettingsErrors(form.alerts)); }
   return { policy, errors: [...new Set(errors)] };

@@ -1,4 +1,5 @@
 import { directoryMcpArgs, directoryMcpTools, directoryMcpPath } from "./mcp-agent-directory.ts";
+import { agreementMcpTools, agreementMcpArgs, callAgreementMcp } from "../agreements/mcp.ts";
 import { agentMcpTools, agentMcpArgs, callAgentMcp } from "./mcp-agent.ts";
 import { enforceAgentTool } from "../agents/enforce.ts";
 import type { Context, Hono } from "hono";
@@ -168,6 +169,7 @@ const TOOLS = [
 const ARGS: Record<string, z.ZodType> = {
   ...agentMcpArgs,
   ...directoryMcpArgs,
+  ...agreementMcpArgs,
   list_models: listModelsArgs,
   chat: chatArgs,
   get_receipt: receiptArgs,
@@ -380,6 +382,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
     const p = params as { name?: unknown; arguments?: unknown } | null;
     if (!p || typeof p !== "object" || typeof p.name !== "string") throw new RpcError(INVALID_PARAMS, "tools/call needs params.name.");
     if (p.arguments !== undefined && (p.arguments === null || typeof p.arguments !== "object" || Array.isArray(p.arguments))) throw new RpcError(INVALID_PARAMS, "params.arguments must be an object.");
+    if (Object.hasOwn(agreementMcpArgs, p.name) && !ctx.cfg.agreements.enabled) throw new RpcError(INVALID_PARAMS, `Unknown tool: ${p.name}.`);
     const args = p.arguments ?? {};
     const schema = ARGS[p.name];
     if (!schema) throw new RpcError(INVALID_PARAMS, `Unknown tool: ${p.name}.`);
@@ -390,6 +393,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
       if (NEEDS_KEY.has(p.name) && !bearer(c.req.header("authorization")))
         throw new ApiError(401, `The ${p.name} tool needs an AnyRoute API key. Send it as \`Authorization: Bearer sk-ar-v1-...\` in this MCP server's HTTP headers. list_models, get_receipt and verify_receipt work without one.`, "missing_key");
       if (p.name === "anyroute_agent_directory") return ok(await internal(directoryMcpPath(parsed.data as Json), { signal: c.req.raw.signal }, c));
+      if (Object.hasOwn(agreementMcpArgs, p.name)) return ok(await callAgreementMcp(p.name, parsed.data, c, internal));
       switch (p.name) {
         case "anyroute_agent_rules":
         case "anyroute_agent_check":
@@ -473,7 +477,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
         case "ping":
           return c.json(rpcResult(id, {}));
         case "tools/list":
-          return c.json(rpcResult(id, { tools: TOOLS.filter(t => ctx.cfg.agentProfilesEnabled || t.name !== "anyroute_agent_directory") }));
+          return c.json(rpcResult(id, { tools: (ctx.cfg.agreements.enabled ? [...TOOLS, ...agreementMcpTools] : TOOLS).filter(t => ctx.cfg.agentProfilesEnabled || t.name !== "anyroute_agent_directory") }));
         case "tools/call":
           return c.json(rpcResult(id, await callTool(c, m.params)));
         default:

@@ -14,7 +14,9 @@ function stub(routes: Stub) {
       seen.push({ method: req.method, path, auth: req.headers.get("authorization") });
       const hit = path === "/health" ? routes.health : path === "/ready" ? routes.ready : path === "/api/v1/escrow" ? routes.escrow : path === "/ready/metrics" ? routes.metrics : undefined;
       if (!hit) return new Response("not found", { status: 404 });
-      return typeof hit[1] === "string" ? new Response(hit[1], { status: hit[0] }) : Response.json(hit[1], { status: hit[0] });
+      const response = typeof hit[1] === "string" ? new Response(hit[1], { status: hit[0] }) : Response.json(hit[1], { status: hit[0] });
+      response.headers.set("connection", "close"); // Each ephemeral fixture owns its connection; never reuse one after stop(true).
+      return response;
     },
   });
   servers.push(server);

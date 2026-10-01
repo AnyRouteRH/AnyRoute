@@ -1,3 +1,4 @@
+import { registerAgreementJobs } from "../agreements/jobs.ts";
 import { runNetworkFeeBurn } from "../network/fee-burn.ts";
 import { pollHostBonds } from "../network/bond-indexer.ts";
 import { runHostSlasher } from "../network/slashing.ts";
@@ -30,6 +31,7 @@ import { runSkillsMirror } from "../skills/service.ts";
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
+  registerAgreementJobs(ctx, router);
   if (cfg.hostBonds.enabled) { jobs.register("host-bond-indexer", 5_000, () => pollHostBonds(ctx), { atStart: true }); jobs.register("host-slasher", 60_000, () => runHostSlasher(ctx)); }
   if (cfg.agentPolicyEnabled) jobs.register("agent-alerts", 60_000, () => runAgentAlerts(ctx));
   if (cfg.sanctions.enabled) jobs.register("sanctions-refresh", 86_400_000, () => refreshSanctions(ctx), { atStart: true });

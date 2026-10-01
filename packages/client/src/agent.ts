@@ -12,6 +12,7 @@ export type AgentPolicy = {
   approval?: { above_usd: number };
   breakers?: { max_spend_usd_per_minute?: number; max_requests_per_minute?: number; max_denials_per_10min?: number; max_distinct_models_per_hour?: number };
   alerts?: { at_percent?: number[]; denials_in_10min?: number; channels?: ("webhook" | "email" | "telegram")[] };
+  agreements?: { max_escrow_usd?: number; counterparties_allow?: string[] };
   on_breach: "deny" | "kill";
 };
 /** Prompt-free wire intent. Costs are decimal strings in pico USD (10^12 per USD). */

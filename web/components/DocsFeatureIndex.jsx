@@ -6,6 +6,7 @@ const sections = [
   ["agent-ledger", "Activity & receipts"],
   ["agent-alerts", "Agent alerts"],
   ["agent-certificates", "Track-record certificates"],
+  ["agreements", "Agent agreements"],
   ["sealed-agents", "Sealed agent hosting"],
   ["e2ee-phala", "Encrypted chat"],
   ["network-host-signup", "Host signup"],

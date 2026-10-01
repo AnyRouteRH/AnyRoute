@@ -136,17 +136,17 @@ describe("API parity (OpenRouter shapes)", () => {
     expect((await chat(h, { authorization: "Bearer sk-ar-v1-" + "0".repeat(64) }, {})).status).toBe(401);
   });
 
-  test("privacy: no prompt/output columns anywhere in the schema", async () => {
+  test("privacy: only declared agreement evidence and jury reasons retain content", async () => {
     const r = await h.ctx.db.execute(sql`SELECT table_name, column_name, data_type, udt_name FROM information_schema.columns WHERE table_schema = 'public'`);
     const cols = ((r as any).rows ?? r) as { table_name: string; column_name: string }[];
     // Hashes (…_sha256) and prices (price_…) are allowed; anything that could hold text is not.
     const bad = cols.filter((c) => /(^|_)(prompt|content|messages?|completion|output|response|input|answer|text|body)($|_)/.test(c.column_name) && !/_sha256$|^price_|^max_out$|^tokens_|_tokens$/.test(c.column_name));
-    expect(bad.map((c) => `${c.table_name}.${c.column_name}`)).toEqual([]);
+    expect(bad.map((c) => `${c.table_name}.${c.column_name}`).sort()).toEqual(["agreement_evidence.content"]);
     // The data inventory (src/privacy) goes further, on the database as the migrations built it: every column has an entry; every column
     // whose name or type suggests request content or a network address (prompt, content, messages, body, text, ip, address, user_agent,
-    // jsonb, inet ...) carries a reviewed justification; and none is reviewed as holding request text or a caller's address.
+    // jsonb, inet ...) carries a reviewed justification; agreement evidence and jury answer text are explicitly declared, with no caller network address column.
     expect(checkDatabaseColumns(cols as unknown as DatabaseColumn[])).toEqual([]);
-    expect(columnsHoldingRequestData()).toEqual([]);
+    expect(columnsHoldingRequestData()).toEqual(["agreement_evidence.content", "agreement_jury.statement"]);
   });
 });
 

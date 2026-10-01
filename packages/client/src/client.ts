@@ -1,3 +1,4 @@
+import { agreementClient } from "./agreements.js";
 import { agentClient } from "./agent.js";
 import { requestError } from "./agent-errors.js";
 import { e2eeChat, type E2eeChatBody, type E2eeOptions } from "./e2ee.js";
@@ -92,6 +93,7 @@ export type ChatResult = ChatCompletion & { anyroute: AnyRouteMeta };
 export class AnyRoute {
   e2eeChat(body: E2eeChatBody, options: Omit<E2eeOptions, "baseUrl" | "headers" | "fetch">) { return e2eeChat(body, { ...options, baseUrl: this.baseUrl, headers: this.authHeaders(), fetch: this.f }); }
   readonly agent: ReturnType<typeof agentClient>;
+  readonly agreements: ReturnType<typeof agreementClient>;
   readonly baseUrl: string;
   private readonly f: Fetch;
   private keys: KeySet | null;
@@ -104,6 +106,7 @@ export class AnyRoute {
     if (!opts?.baseUrl) throw new AnyRouteError("baseUrl is required", "bad_options");
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.f = opts.fetch ?? ((...a: Parameters<Fetch>) => fetch(...a));
+    this.agreements = agreementClient(this.baseUrl, this.f, () => ({ ...this.opts.headers, ...this.authHeaders() }));
     this.agent = agentClient(this.baseUrl, this.f, () => ({ ...this.opts.headers, ...this.authHeaders() }));
     this.keys = opts.receiptKeys ?? null;
     this.transparency = opts.transparency ? new TransparencyLog({ logUrl: this.baseUrl, ...opts.transparency, fetch: this.f, ed25519: opts.ed25519 }) : null;

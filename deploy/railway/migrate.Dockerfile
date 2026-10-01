@@ -6,6 +6,7 @@ RUN bun install --frozen-lockfile --production --ignore-scripts
 
 COPY scripts/migrate.ts ./scripts/migrate.ts
 COPY src/db ./src/db
+COPY src/agreements/schema.ts ./src/agreements/schema.ts
 COPY src/network/schema.ts ./src/network/schema.ts
 COPY src/network/payout-schema.ts ./src/network/payout-schema.ts
 COPY src/network/bond-schema.ts ./src/network/bond-schema.ts

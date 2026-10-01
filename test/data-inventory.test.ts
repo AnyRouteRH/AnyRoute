@@ -118,10 +118,10 @@ describe("columns that look like request content or a network address", () => {
     expect(checkInventory(schema, docs).join("\n")).toContain("health.body: the review covers [type:json] but the rules flag [name:content, type:json]");
   });
 
-  test("no column is reviewed as holding request text or a caller's network address", () => {
+  test("only declared agreement evidence and jury statements hold request text; no column holds a caller network address", () => {
     // This is the privacy invariant stated at the top of src/db/schema.ts. A column that breaks it must say so in its verdict, and
     // then this test (and the page's headline) change on purpose, in a reviewed commit.
-    expect(columnsHoldingRequestData()).toEqual([]);
+    expect(columnsHoldingRequestData()).toEqual(["agreement_evidence.content", "agreement_jury.statement"]);
   });
 });
 
@@ -129,9 +129,9 @@ describe("the page's summary claims only what the data proves", () => {
   const tables = buildInventory().postgres.tables;
   const ext: ExternalDoc = EXTERNAL;
 
-  test("today it says the database holds no prompt or answer text, and lists the exceptions exactly", () => {
+  test("the inventory names retained agreement evidence and jury answer text, and lists other exceptions exactly", () => {
     const s = summarize(tables, ext);
-    expect(s.headline).toBe("We store no prompt or answer text in our database.");
+    expect(s.headline).toContain("agreement_evidence.content"); expect(s.headline).toContain("agreement_jury.statement");
     const text = JSON.stringify(s);
     expect(text).toContain("response cache");
     expect(text).toContain("generations.attempts");
