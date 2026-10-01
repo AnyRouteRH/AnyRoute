@@ -47,7 +47,7 @@ test('hosted enablement keeps self-host defaults and accurately separates unavai
   assert.match(bonds, /Payouts, fee buy-and-burn and slashing are not switched on at anyroute.tech yet/);
   assert.match(read('app/network/NetworkContent.jsx'), /<NetworkBondsNote \/>/);
   assert.match(read('components/NetworkPayoutDocs.jsx'), /No payouts are being made/);
-  assert.match(read('components/AgentApprovalDocs.jsx'), /Telegram approvals are not switched on/);
+  assert.match(read('components/AgentApprovalDocs.jsx'), /Telegram linking and approvals are switched on at anyroute\.tech/);
   assert.match(read('components/AgentAlertDocs.jsx'), /Email alerts are not switched on/);
 });
 

@@ -271,7 +271,7 @@ MCP exposes `anyroute_agent_rules` and `anyroute_agent_check`. An agent can insp
 
 The per-agent ledger associates activity with signed receipts and supports CSV and JSON export. Policy events and billing evidence provide different views of activity: decisions describe admission, while generation receipts describe served calls. The ledger does not establish that activity outside AnyRoute was captured, and exporting it can expose operational metadata even without conversation text.
 
-Alerts are available in the `/agents` feed, through the existing spend-alert webhook and through Telegram when the owner uses AnyRoute's bot. Telegram approvals and email alerts are not switched on yet. An available notification channel is not interchangeable with an approval channel. Notification delivery can fail independently of a router decision, so enforcement does not rely on a person receiving an alert first.
+Alerts are available in the `/agents` feed, through the existing spend-alert webhook and through Telegram when the owner uses AnyRoute's bot. Owners who link Telegram can also approve or deny requests there, with the same single-use approval as /agents; the approval details pass through Telegram. Email alerts are not switched on yet. An available notification channel is not interchangeable with an approval channel. Notification delivery can fail independently of a router decision, so enforcement does not rely on a person receiving an alert first.
 
 ### 7.4 Circuit breakers and progressive autonomy
 
@@ -395,7 +395,7 @@ Agreements between agents with escrow and a model-jury dispute process are next.
 
 Sealed agent hosting in attested hardware is also next. Today's attested model serving does not mean the user's agent loop, tools and persistent state all run inside a sealed host. Any future claim about hosted agents will need evidence for that execution environment and a clear account of its data, credentials, external tool connections and owner controls.
 
-Several repository paths await activation rather than a new concept: network host payouts, the planned 5% network-fee purchase and burn of $ANYR, host-bond slashing, Telegram approvals, email alerts and SDK releases on npm and PyPI are not switched on yet. Their presence in code does not change their status. Activation must satisfy the relevant configuration, role and evidence requirements before public claims change.
+Several repository paths await activation rather than a new concept: network host payouts, the planned 5% network-fee purchase and burn of $ANYR, host-bond slashing, email alerts and SDK releases on npm and PyPI are not switched on yet. Their presence in code does not change their status. Activation must satisfy the relevant configuration, role and evidence requirements before public claims change.
 
 The attestation specification also describes fuller GPU-to-CPU quote binding and additional measurement and transport targets that are not switched on yet. The implemented SHA-256 sidecar extension must not be confused with those targets. Future work has no schedule asserted here. Each change needs its own evidence and limits rather than inheriting a guarantee from an existing lane name.
 
