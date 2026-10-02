@@ -9,6 +9,8 @@
 //   - A wrong passphrase and a damaged vault both fail to decrypt; a damaged record (not the expected shape) is
 //     reported as unreadable so the person can forget it and start again. There is no recovery: forget() deletes.
 
+import { promptVaultEdits, PRIVATE_PROMPT_BYTES } from "./harness-prompt-vault.js"; // V81: same encrypted vault.
+import { validatePrompts } from "./harness-prompts.js"; // V81: validate decrypted prompt data.
 import { receiptLane } from "./private-mode.js";
 import { historyEdits, savedEntry } from "./harness-history-vault.js";
 
@@ -127,9 +129,10 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
     return subtle().deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations: rounds }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
   }
 
-  async function seal(s, chats) {
+  async function seal(s, chats, prompts = s.prompts) { // V81: preserve prompts across history writes.
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const plain = enc.encode(JSON.stringify({ chats }));
+    const plain = enc.encode(JSON.stringify({ chats, ...(prompts === undefined ? {} : { prompts }) })); // V81
+    if (plain.length > MAX_BYTES + PRIVATE_PROMPT_BYTES + 4096) throw fail("too_large"); // V81: history budget + prompt budget + envelope; history trimming is unchanged.
     const ct = new Uint8Array(await subtle().encrypt({ name: "AES-GCM", iv, additionalData: AAD }, s.key, plain));
     await storage.set({ v: VERSION, kdf: KDF, iterations: s.rounds, salt: b64(s.salt), iv: b64(iv), ct: b64(ct) });
   }
@@ -146,6 +149,7 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
 
   return {
     ...historyEdits({ serial, need, seal, maxBytes: MAX_BYTES, maxChats: MAX_CHATS }),
+    ...promptVaultEdits({ serial, need, seal }), // V81
     /** Whether a vault is stored in this browser (locked or not). */
     exists: async () => !!(await storage.get()),
     /** False where the vault only lives in memory, so it is gone when the tab closes. */
@@ -192,7 +196,7 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
           throw fail("unreadable");
         }
         if (!Array.isArray(doc?.chats)) throw fail("unreadable");
-        session = { key, salt, rounds: record.iterations, chats: doc.chats };
+        session = { key, salt, rounds: record.iterations, chats: doc.chats, ...(doc.prompts === undefined ? {} : { prompts: validatePrompts(doc.prompts) }) }; // V81
       }),
 
     /** Chats, newest first: id, title, when, and how many turns. Nothing else leaves the vault through this. */

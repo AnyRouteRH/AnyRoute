@@ -1,6 +1,7 @@
 import PageFrame from "../../components/PageFrame";
 import { Button } from "../../components/UI";
 import { aboutRequestLabel, buildCommit, loadInventory, sourceUrl, tablesByCategory } from "../../lib/keep";
+import PromptStorageDisclosure from "../../components/harness/PromptStorageDisclosure"; // V81: browser storage supplement.
 import KeepFilter from "./KeepFilter";
 import KeepLog from "./KeepLog";
 import s from "./keep.module.css";
@@ -406,6 +407,7 @@ export default async function KeepPage() {
 
             <h2 id="browser">In your browser.</h2>
             <p>{out.browser.summary}</p>
+            <PromptStorageDisclosure /> {/* V81: browser-only prompt storage. */}
             <ul className={s.plain}>
               {out.browser.items.map((b) => (
                 <li key={b.store}>

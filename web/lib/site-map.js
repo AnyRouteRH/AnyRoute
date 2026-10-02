@@ -100,6 +100,7 @@ for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
 TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
 TASKS.push({ ...task('rulebook-templates', 'agents', 'Start from a rulebook template', 'Review starter limits, then apply a rulebook to a selected agent.', '/agents/#rulebook-templates', 'starter, template, budget, rules'), menu: false }); // V85: search-only.
 TASKS.push({ ...task('request-check', 'agents', 'Check a request against your rules', 'Check agent rules without spending: allow, approval required or deny.', '/agents/#request-check', 'check, try, request, rules'), menu: false }); // V85: search-only.
+TASKS.push({ ...task('prompt-library', 'chat', 'Save and reuse prompts', 'Keep named prompts in this browser and fill in variables before using them.', '/harness/#prompt-library', 'prompts, library, templates, favourites'), menu: false }); // V81: search-only, keeps menus short.
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 
 // Account sections share the task map; existing dashboard hashes remain stable.

@@ -209,7 +209,7 @@ function ForgetDialog({ onForget, onClose }) {
   return (
     <Modal title="Forget everything?" onClose={onClose}>
       <div className={s.dialog}>
-        <p>This deletes the encrypted history from this browser and clears the conversation on screen. It cannot be undone.</p>
+        <p>This deletes the encrypted history and saved private prompts from this browser and clears the conversation on screen. It cannot be undone.</p>
         <div className="button-row">
           <Button
             type="button"
@@ -234,11 +234,12 @@ function ForgetDialog({ onForget, onClose }) {
 
 const fresh = () => [{ id: "l0", modelId: null, messages: [] }];
 
-export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, find }) {
+export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, find, onHistory }) { // V81: publish vault access, never its key.
   const on = priv.on;
   const historyRef = useRef(null);
   const history = () => (historyRef.current ??= createHistory({ storage: browserStorage() }));
   const [vault, setVault] = useState("none"); // none | checking | locked | open
+  useEffect(() => { onHistory?.(on && vault === "open" ? historyRef.current : null); }, [on, vault, onHistory]); // V81
   const [chats, setChats] = useState([]);
   const [dialog, setDialog] = useState(null); // create | unlock | list | forget
   const [note, setNote] = useState("");

@@ -420,3 +420,6 @@
   .lede, .counts, .examples, .user, .reply, .tray li, .drop, .palette[open] { animation: none; }
   .wait i { animation-duration: 3s; }
 }
+
+.hints > span { flex-wrap: wrap; } /* V81: prompt shortcut hint wraps on narrow screens. */
+@media (max-width: 880px) { .barRight { flex-wrap: wrap; } } /* V81: keep all controls reachable. */

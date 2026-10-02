@@ -23,6 +23,7 @@ import { imageOutput, imageSettings, imageSendBlock, imageSendError, readsImages
 import { ReadAloud, useHarnessVoice } from "./harness/VoiceMode";
 // Composer polish: contextual notices and voice menu.
 import ComposerVoice, { VoiceFeedback } from "./harness/ComposerVoice";
+import PromptLibrary, { PromptSlash, usePromptLibrary } from "./harness/PromptLibrary"; // V81: browser prompt library.
 import AppShell from "./harness/AppShell";
 import Limits, { ReplyApproval, useHarnessLimits } from "./harness/Limits"; // U77: router-enforced chat controls.
 import { Button, CopyButton, Modal } from "./UI";
@@ -502,7 +503,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
   );
 }
 
-function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy }) {
+function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy, onSavePrompt }) {
   const [text, setText] = useState(msg.text);
   useEffect(() => setText(msg.text), [editing, msg.text]);
   return (
@@ -541,6 +542,7 @@ function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy }) {
       ) : (
         <>
           <div className={s.userText}>{msg.text}</div>
+          {msg.text && <button type="button" className={s.editBtn} onClick={onSavePrompt}>Save prompt</button> /* V81 */}
           {(msg.attachments || []).length > 0 && (
             <div className={s.userFiles}>
               {msg.attachments.map((a) => (a.kind === "image" ? <img key={a.id} src={a.url} alt={a.name} /> : <span key={a.id}>{a.name}</span>))}
@@ -756,6 +758,7 @@ export default function Harness() {
   const [inflight, setInflight] = useState(0);
   const [drag, setDrag] = useState(false);
   const [announce, setAnnounce] = useState("");
+  const [promptHistory, setPromptHistory] = useState(null); // V81: unlocked history vault only.
   const priv = usePrivateMode(); // private mode: the attested lane only, see harness/PrivateMode.jsx
   const controllers = useRef(new Map());
   const limits = useHarnessLimits(); // U77: tab-scoped child key and approval state.
@@ -858,6 +861,7 @@ export default function Harness() {
   const busy = inflight > 0;
   // Voice mode: browser-only adapter; existing send and history paths remain the source of truth.
   const voice = useHarnessVoice({ draft, setDraft, onSend: send, busy, canSend: !!auth.key && lanes.every((l) => !!find(l.modelId)), canConverse: !!auth.key && !!focusModel && !compare, reply: lanes[0]?.messages.filter((m) => m.role === "assistant").at(-1), scope: lanes.map((l) => `${l.id}:${l.modelId}`).join("|") + `:${priv.on}`, blocked: !!(signin || editing || palette || sheet) });
+  const prompts = usePromptLibrary({ privateMode: priv.on, history: promptHistory, draft, system, model: focusModel?.id, focus, busy, models: all, setDraft, setSystem, setLanes, setFocus, input, setFiles, setEditing, stopVoice: voice.stop }); // V81
   const empty = lanes.every((l) => !l.messages.length);
   const acceptsImages = lanes.every((l) => readsImages(find(l.modelId)));
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
@@ -1130,6 +1134,7 @@ export default function Harness() {
             </button>
           )}
           <div className={s.barRight}>
+            <button id="prompt-library" type="button" className={s.barLink} aria-keyshortcuts="Meta+Shift+P Control+Shift+P" onClick={prompts.open}>Prompts</button> {/* V81 */}
             <button type="button" className={s.barToggle} aria-pressed={compare} onClick={toggleCompare} disabled={!models.length}>
               <i className={s.switch} aria-hidden="true" />
               Compare
@@ -1160,7 +1165,7 @@ export default function Harness() {
           </div>
         </div>
         <AppShell />
-        <PrivateMode priv={priv} lanes={lanes} setLanes={setLanes} setFocus={setFocus} busy={busy} find={find} />
+        <PrivateMode priv={priv} lanes={lanes} setLanes={setLanes} setFocus={setFocus} busy={busy} find={find} onHistory={setPromptHistory} /> {/* V81: prompts share the vault. */}
 
         {compare && (
           <div className={s.laneHeads} style={{ "--lanes": lanes.length }} ref={headsRef} onScroll={(e) => syncScroll(e, lanesRef2)}>
@@ -1230,7 +1235,7 @@ export default function Harness() {
                   <div key={l.id} className={s.lane} onClick={() => compare && setFocus(li)}>
                     {l.messages.map((m) =>
                       m.role === "user" ? (
-                        <UserMsg key={m.id} msg={m} busy={busy} editing={editing === m.id} onEdit={() => setEditing(m.id)} onCancel={() => setEditing(null)} onSave={(t) => send(t, m.attachments || [], turnIndex(l, m.id))} />
+                        <UserMsg key={m.id} msg={m} busy={busy} onSavePrompt={() => prompts.save(m.text, l.modelId)} editing={editing === m.id} onEdit={() => setEditing(m.id)} onCancel={() => setEditing(null)} onSave={(t) => send(t, m.attachments || [], turnIndex(l, m.id))} />
                       ) : m.role === "tool" ? (
                         <div key={m.id} className={s.toolMsg}>
                           <span>{m.name} returned</span>
@@ -1252,9 +1257,10 @@ export default function Harness() {
           onSubmit={(e) => {
             e.preventDefault();
             voice.stop();
-            busy ? stop() : send(draft);
+            if (!prompts.chooseSlash()) busy ? stop() : send(draft); // V81: slash selection never sends.
           }}
         >
+          <PromptSlash library={prompts} /> {/* V81 */}
           <ImageMode model={focusModel} lanes={lanes} find={find} catalogue={shown} enabled={settings.imageOut} busy={busy} onChange={(imageOut) => set({ imageOut, audioOut: false })} onChoose={() => setPalette({ lane: focus, add: false, images: true })} />
           {files.length > 0 && (
             <ul className={s.tray} aria-label="Attachments">
@@ -1296,6 +1302,7 @@ export default function Harness() {
                 if (pasted.length) { if (!e.clipboardData.getData("text/plain")) e.preventDefault(); addFiles(pasted); }
               }}
               onKeyDown={(e) => {
+                if (prompts.onComposerKey(e)) return; // V81
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   if (!busy) { voice.stop(); send(draft); }
@@ -1313,6 +1320,7 @@ export default function Harness() {
           <p className={s.hints}>
             <span>
               <kbd>{mod} ⇧ K</kbd> switch model · <kbd>{mod} K</kbd> search chats
+               · <kbd>{mod} ⇧ P</kbd> prompts · /name {/* V81 */}
             </span>
             {focusModel && draft.trim() && <span className={s.est}>Prompt ≈ {formatUsd(promptCost)}</span>}
           </p>
@@ -1324,6 +1332,7 @@ export default function Harness() {
         )}
       </main>
 
+      <PromptLibrary library={prompts} /> {/* V81: outside the composer form. */}
       <ToolsPanel model={focusModel} settings={settings} set={set} open={sheet === "tools"} onClose={() => setSheet(null)} compare={compare} system={system} setSystem={setSystem} limitsControl={<Limits limits={limits} signedIn={auth.state === "ok"} busy={busy} onStop={stop} />} />
       {sheet && <button type="button" className={s.scrim} aria-label="Close panel" onClick={() => setSheet(null)} />}
 
