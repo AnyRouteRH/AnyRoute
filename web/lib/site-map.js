@@ -27,6 +27,7 @@ export const TASKS = [
   task('inbox', 'build', 'Check your inbox', 'Review pending approvals, alerts, deposits, agreement events and host updates.', '/dashboard/#inbox', 'inbox, notifications, attention'),
   task('dashboard', 'build', 'Manage your API keys', 'Explore your account, then connect a key to see balances, calls and rules.', '/dashboard/', 'dashboard, api key, account', true),
   task('api', 'build', 'Call the API', 'Read request formats, endpoints and the quickstart.', '/docs/#quickstart', 'api, integration, developer', true),
+  task('cost', 'build', 'Estimate model costs', 'Compare input, output and monthly costs using live catalogue prices.', '/cost/', 'cost, estimate, price, monthly, budget'), // V80
   task('payments', 'build', 'Choose a way to pay', 'Read how USDG, $ANYR, stock escrow and x402 payments work.', '/docs/#payments', 'payment, usdg, anyr, stock, escrow, x402', true),
   task('tokens', 'build', 'Get private tokens', 'Buy and spend blind tokens; read the payment and transport limits.', '/tokens/', 'private tokens, blind, credits', true),
   task('seal', 'build', 'Explore SEAL', 'Read the privacy protocol, available paths and their limits.', '/seal/', 'seal, privacy, protocol'),
@@ -94,6 +95,7 @@ export const TASKS = [
 
 // Tools that live inside a page tab are found through search; menus, the mobile menu and the footer stay short.
 const SEARCH_ONLY = new Set(['inbox', 'activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
+SEARCH_ONLY.add('spec'); // V80: keep Build at nine menu tools; spec stays searchable.
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
 TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
 TASKS.push({ ...task('rulebook-templates', 'agents', 'Start from a rulebook template', 'Review starter limits, then apply a rulebook to a selected agent.', '/agents/#rulebook-templates', 'starter, template, budget, rules'), menu: false }); // V85: search-only.

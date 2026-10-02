@@ -10,6 +10,7 @@ const routes=['/','/models/','/harness/','/ask/','/arena/','/docs/','/case-study
 import {auditWhitepaper} from './audit-whitepaper.mjs'; routes.push('/whitepaper/'); auditWhitepaper(root);
 routes.push('/agents/profile/', '/agents/directory/');
 import {auditChangelog} from './audit-changelog.mjs'; routes.push('/changelog/'); auditChangelog(root); // V89: static page and feeds.
+routes.push('/cost/'); // V80: public cost estimates.
 auditNetwork(root);
 let count=0;
 for(const route of routes){

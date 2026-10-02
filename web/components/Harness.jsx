@@ -835,6 +835,7 @@ export default function Harness() {
   useEffect(() => {
     if (!models.length || lanesRef.current[0].modelId) return;
     const last = read(PREFS, {})?.model;
+    const requested = byId.get(new URLSearchParams(window.location.search).get("model")); if (requested) { setLanes(ls => ls.map((l, i) => i === 0 ? { ...l, modelId: requested.id } : l)); return; } // V80: catalogue-checked model links.
     const pick = (last && byId.get(last)) || filterCatalog(models, { caps: ["tools"], sort: "popular" })[0] || models[0];
     setLanes((ls) => ls.map((l, i) => (i === 0 ? { ...l, modelId: pick.id } : l)));
   }, [models, byId]);
