@@ -1,4 +1,5 @@
 import { explainedStream, rememberRoutePlan, routeReceiptFields, routeResponseHeaders } from "../router/explain.ts"; // V84
+import { captureStructuredOutput } from "../structured-output/chat.ts"; // V83
 import { linkNetworkReceipt } from "../network/receipt-link.ts";
 import { agentReservation, enforceAgentCached } from "../agents/enforce.ts";
 import { blindReceipt } from "../blind/set.ts";
@@ -286,6 +287,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   // in memory for this call only; the lane defaults to attested when the model has an attested provider (characters/registry.ts).
   const character = savedRoute || preset ? null : await resolveCharacter(ctx, c, body, key?.accountId ?? wallet?.accountId ?? null, kind, characterId);
   if (routing?.provider) body.provider = { ...routing.provider, ...((body.provider as object) ?? {}) };
+  captureStructuredOutput(ctx, c, kind, body); // V83: resolved defaults, opt-in only.
   // Disclosure ceiling and lane: `provider.disclosure` / `provider.lane` and the X-Anyroute-* headers, the
   // stricter of the two winning, after the key's default and the saved route filled in what the request left unset.
   // A request naming no lane is public, except one relayed through the Oblivious HTTP gateway and paid with a blind

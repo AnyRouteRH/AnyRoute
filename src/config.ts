@@ -1,3 +1,4 @@
+import { structuredOutputEnv } from "./structured-output/options.ts"; // V83: opt-in JSON checking.
 import { networkStatsEnv } from "./network/stats-config.ts";
 import { sealedEnv, guardSealed } from "./agents/sealed/config.ts";
 import { agreementEnv, agreementSettings } from "./agreements/config.ts";
@@ -54,6 +55,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...structuredOutputEnv, // V83
   ...sealedEnv,
   ...hostBondEnv,
   ...networkWeightEnv,
@@ -734,6 +736,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     },
     anthropic: { modelMap: parseModelMap(e.ANTHROPIC_MODEL_MAP) },
     // Off unless enabled. Council members and the judge are billed and receipted like any other call.
+    structuredOutputCheckEnabled: e.STRUCTURED_OUTPUT_CHECK_ENABLED, // V83
     features: { council: e.ANYROUTE_FEATURE_COUNCIL },
     council: { models: councilModels, judge: e.ANYROUTE_COUNCIL_JUDGE ?? null, mode: e.ANYROUTE_COUNCIL_MODE },
     rag: { maxDocuments: e.RAG_MAX_DOCUMENTS, maxBytes: e.RAG_MAX_BYTES, maxChunks: e.RAG_MAX_CHUNKS, maxEmbeddingCalls: e.RAG_MAX_EMBEDDING_CALLS },

@@ -1,4 +1,5 @@
 import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
+import StructuredOutputDocs from "../../components/StructuredOutputDocs"; // V83
 import AgentProfileDocs from "../../components/AgentProfileDocs";
 import SealedAgentDocs from "../../components/SealedAgentDocs";
 import AgreementsDocs from "../../components/AgreementsDocs";
@@ -846,6 +847,7 @@ export default function Docs() {
               2,
             )}
           </Code>
+          <StructuredOutputDocs /> {/* V83: opt-in JSON checking. */}
           <h2 id="presets">Presets: config as code, with versions.</h2>
           <p>
             A preset is a saved route with a version history. It holds the same fallback models, provider preferences and sampling defaults as @route/&lt;slug&gt;, plus what a route may not hold: a system_prompt (up to 16,000 characters), a

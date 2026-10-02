@@ -1881,6 +1881,7 @@
             "description": "Completion JSON, or SSE events followed by data: [DONE] when stream is true.",
             "headers": {
               "X-Anyroute-Route": {"$ref":"#/components/headers/RouteExplanation"},
+              "X-Anyroute-Json-Check": {"description":"V83: valid or invalid for JSON responses; pending for streams, or pending; repair-unsupported when repair was requested. Final stream validation is in receipt.structured_output, not a changed header.","schema":{"type":"string","enum":["valid","invalid","pending","pending; repair-unsupported"]}},
               "X-Anyroute-Disclosure": {
                 "$ref": "#/components/headers/Disclosure"
               },
@@ -15470,6 +15471,9 @@
           }
         }
       },
+      "StructuredOutputOptions": {"type":"object","properties":{"json_check":{"type":"string","enum":["validate","repair"],"description":"V83: Requires STRUCTURED_OUTPUT_CHECK_ENABLED (default false; switched on at anyroute.tech). validate checks the final JSON; repair permits one correction by the same routed model/provider. Both calls are billed normally. Streaming repair validates only. Requires json_object or json_schema and n=1; no council or dual verification. Non-streaming repair requires a bearer API key and bypasses the response cache. Explicit request settings override preset defaults."}}},
+      "StructuredOutputIssue": {"type":"object","required":["path","reason"],"properties":{"path":{"type":"string","description":"JSON Pointer path; empty string is the root."},"reason":{"type":"string"}}},
+      "StructuredOutputResult": {"type":"object","description":"V83: Unsigned response metadata; not written to generation receipts or returned by receipt lookup. Existing batch outputs may retain it with the answer. Original signed payload/sig/v2 stay intact. Top-level usage is for the returned call only; total_cost includes both served calls even if the correction is invalid. Checks do not establish factual accuracy. Supported schema assertions: type (including arrays), nullable, properties, required, additionalProperties, items, enum, const, anyOf, minLength/maxLength, minimum/maximum/exclusiveMinimum/exclusiveMaximum, minItems/maxItems, minProperties/maxProperties, and existing local #/ references via $defs/definitions. Unknown assertions are refused before billing. Limits: 1 MiB answer, 4096 schema nodes, 100000 validation steps, 64 levels, 16 reported errors. Oversized/non-text answers cannot be repaired.","required":["mode","valid","errors","retry_attempted","calls","total_cost"],"properties":{"mode":{"type":"string","enum":["validate","repair"]},"valid":{"type":"boolean"},"errors":{"type":"array","items":{"$ref":"#/components/schemas/StructuredOutputIssue"}},"initial_errors":{"type":"array","items":{"$ref":"#/components/schemas/StructuredOutputIssue"}},"retry_attempted":{"type":"boolean"},"retry_error":{"type":"object","description":"Correction did not return a usable answer. The first charge remains, and a signed correction charge is included even if its attestation was refused after settlement. status when known, reason."},"repair_supported":{"type":"boolean","description":"false for streaming repair; no second call is made."},"note":{"type":"string"},"calls":{"type":"array","minItems":1,"maxItems":2,"items":{"type":"object","required":["attempt","cost","receipt"],"properties":{"attempt":{"type":"integer","minimum":1,"maximum":2},"cost":{"type":"string","description":"Exact USDG charge for this call."},"receipt":{"$ref":"#/components/schemas/Receipt"}}}},"total_cost":{"type":"string","description":"Sum of the served calls' USDG charges."}}},
       "ChatRequest": {
         "type": "object",
         "required": [
@@ -15488,6 +15492,7 @@
           }
         ],
         "properties": {
+          "anyroute": {"$ref":"#/components/schemas/StructuredOutputOptions"},
           "model": {
             "type": "string",
             "description": "Public model ID, optionally with routing suffixes: :nitro sorts providers by throughput (fastest first) and :floor by price (cheapest first), the same as provider.sort throughput and price and winning over it; both only order the providers the other preferences and the lane allow. :free and :private also apply. The reserved ID anyroute/council selects council mode when the router enables it. @route/<slug> calls a saved route and @preset/<name> (or @preset/<name>@<version> to pin one version) calls a preset of the key's account. @character/<id> calls a character: the card is the prompt and models[0], or the character's default model, answers."
@@ -17143,6 +17148,7 @@
       "Receipt": {
         "type": "object",
         "properties": {
+          "structured_output": {"$ref":"#/components/schemas/StructuredOutputResult"},
           "id": {
             "type": "string"
           },
@@ -21952,6 +21958,7 @@
         ],
         "description": "A preset: the routing part of a saved route plus prompt-side defaults. The whole document is at most 64 KB as JSON.",
         "properties": {
+          "anyroute": {"$ref":"#/components/schemas/StructuredOutputOptions"},
           "description": {
             "type": "string",
             "maxLength": 280

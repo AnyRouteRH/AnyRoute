@@ -1,3 +1,4 @@
+import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { inboxStores } from "./inbox.ts"; // U78: account inbox inventory.
 import { activityStores } from "./activity.ts";
 import { profileBodyReader } from "./profiles.ts";
@@ -382,6 +383,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  structuredOutputReader, // V83
   profileBodyReader,
   ...sealedBodyReaders,
   telegramLinkReader,

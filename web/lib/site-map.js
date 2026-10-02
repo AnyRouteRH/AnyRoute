@@ -38,6 +38,7 @@ export const TASKS = [
   task('registry', 'build', 'Find a provider record', 'Inspect provider keys, build history and registry records.', '/registry/', 'registry, provider, key, build'),
   task('providers', 'build', 'Connect a provider', 'Browse providers and read the provider setup instructions.', '/providers/', 'provider, endpoint, serve, inference'),
   task('routing', 'build', 'Set up a saved route', 'Open Saved Routes in the dashboard to set models and routing preferences.', '/dashboard/', 'saved routes, fallback, policy'),
+  task('json-check', 'build', 'Read JSON check options', 'Ask the router to check or repair JSON answers, and see what each costs.', '/docs/#structured-output', 'json, schema, structured output, repair'), // V83
   task('presets', 'build', 'Reuse prompt settings', 'Open Presets in the dashboard to combine prompts, models and settings.', '/dashboard/', 'preset, system prompt, template'),
   task('characters', 'build', 'Use a character card', 'Open Characters in the dashboard to import cards and choose their visibility.', '/dashboard/', 'character, persona, card'),
   task('batches', 'build', 'Run a batch of requests', 'Open Batch Studio in the dashboard to submit and follow request batches.', '/dashboard/', 'batch, bulk, csv, jsonl'),
@@ -94,7 +95,7 @@ export const TASKS = [
 ];
 
 // Tools that live inside a page tab are found through search; menus, the mobile menu and the footer stay short.
-const SEARCH_ONLY = new Set(['inbox', 'activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
+const SEARCH_ONLY = new Set(['json-check', /* V83 */ 'inbox', 'activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
 SEARCH_ONLY.add('spec'); // V80: keep Build at nine menu tools; spec stays searchable.
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
 TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
