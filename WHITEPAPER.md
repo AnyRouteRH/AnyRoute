@@ -86,7 +86,7 @@ The receipt system includes JSON receipts and versioned CBOR/COSE receipt suppor
 
 Inference accounting uses a common USDG settlement unit while allowing several payment paths in the repository. Prepaid calls draw on a ledger balance. Wallet and contract paths have their own authorization and settlement requirements. Escrow deposits credit inference balances after finality and conversion checks. Blind-token calls draw from the shared token pool without attaching an ordinary user account to redemption.
 
-The x402 path is switched on for chat and embeddings. A payment-required response describes the required authorization; the caller supplies a signed USDG transfer authorization, and the router validates and relays it before serving under the applicable constraints. An account-free payment flow still carries payment evidence. It is not the blind-token path and should not be described as separating the payer from the call.
+The x402 path is built for chat and embeddings but is not switched on at anyroute.tech yet. A payment-required response describes the required authorization; the caller supplies a signed USDG transfer authorization, and the router validates and relays it before serving under the applicable constraints. An account-free payment flow still carries payment evidence. It is not the blind-token path and should not be described as separating the payer from the call.
 
 ## 4. SEAL: verifiable privacy
 

@@ -63,7 +63,7 @@ test('history includes earlier shipped feature groups across August, September a
   assert.equal(changelog.at(-1).date, '2026-08-24');
   assert.deepEqual(groupChangelog(changelog).map(group => group.month), ['2026-10', '2026-09', '2026-08']);
   for (const id of ['prepaid-credits', 'streamed-chat-api', 'signed-receipts', 'public-model-pages',
-    'account-dashboard', 'stock-escrow', 'anyr-escrow', 'x402-call-payments', 'harness-chat',
+    'account-dashboard', 'stock-escrow', 'anyr-escrow', 'harness-chat',
     'model-arena', 'public-key-log', 'seal-protocol-pages', 'attested-provider-checks',
     'unlinkable-tor-lane', 'private-token-wallet', 'ask-your-files', 'data-storage-inventory',
     'saved-routing-policies', 'versioned-presets', 'character-cards', 'evaluate-models',

@@ -2060,25 +2060,6 @@ export default [
     ]
   },
   {
-    "id": "x402-call-payments",
-    "date": "2026-09-29",
-    "title": "Pay for a call with x402",
-    "summary": "Pay for chat or embeddings in USDG through x402 without an API key. The payment follows the router’s call and receipt flow.",
-    "links": [
-      {
-        "label": "Open page",
-        "href": "/docs/#payments"
-      },
-      {
-        "label": "View commit",
-        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/03152673382ec7a13cb517750f879da9f3250cc8"
-      }
-    ],
-    "tags": [
-      "build"
-    ]
-  },
-  {
     "id": "dashboard-navigation",
     "date": "2026-09-28",
     "title": "Open account sections by link",
