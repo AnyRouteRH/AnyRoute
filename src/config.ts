@@ -1,4 +1,5 @@
 import { structuredOutputEnv } from "./structured-output/options.ts"; // V83: opt-in JSON checking.
+import { insightsEnv } from "./insights/config.ts"; // V88: off by default.
 import { networkStatsEnv } from "./network/stats-config.ts";
 import { sealedEnv, guardSealed } from "./agents/sealed/config.ts";
 import { agreementEnv, agreementSettings } from "./agreements/config.ts";
@@ -56,6 +57,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 
 const schema = z.object({
   ...structuredOutputEnv, // V83
+  ...insightsEnv, // V88: spend insights.
   ...sealedEnv,
   ...hostBondEnv,
   ...networkWeightEnv,
@@ -586,6 +588,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     networkHosts: networkHostsSettings(e, production),
     statementsEnabled: e.STATEMENTS_ENABLED, // V87
     networkStatsEnabled: e.NETWORK_STATS_ENABLED,
+    spendInsightsEnabled: e.SPEND_INSIGHTS_ENABLED, // V88: read-only spend insights.
     networkPayouts: networkPayoutSettings(e, production),
     networkWeights: { ...networkWeightSettings(e), ...(e.NETWORK_BONDS_ENABLED ? { bonds: { ...hostBondSettings(e), scope: `${e.CHAIN_ID}:${e.HOST_BOND_ADDRESS?.toLowerCase()}` } } : {}) },
     hostBonds: hostBondSettings(e),

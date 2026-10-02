@@ -1,5 +1,6 @@
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
 import { statementRoutes } from "./api/statements.ts"; // V87
+import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
 import { inboxRoutes } from "./api/inbox.ts"; // U78: account inbox.
 import { activityRoutes } from "./api/activity.ts";
 import { networkStatsRoutes } from "./network/stats.ts";
@@ -179,6 +180,7 @@ export async function createApp(opts: AppOptions = {}) {
   generationRoutes(app, ctx);
   activityRoutes(app, ctx);
   statementRoutes(app, ctx); // V87
+  insightsRoutes(app, ctx); // V88: read-only, off by default.
   inboxRoutes(app, ctx); // U78: account inbox.
   keysRoutes(app, ctx);
   teamsRoutes(app, ctx);

@@ -1,0 +1,8 @@
+import type { ExternalDoc } from "./types.ts";
+export const insightsStores: ExternalDoc["otherStores"] = [{
+  id: "spend-insights-reader", name: "Spend insights response in memory",
+  purpose: "GET /api/v1/insights aggregates existing call charges and ledger refunds over at most 92 days, with UTC day or Monday-week buckets. It uses Activity's account-or-own-key access, including session restrictions. Each model/key breakdown includes the first 100 by cost or calls; totals include all visible records. Refunds count when posted; linked refunds use their generation's model and lane. Unlinked refunds have unknown model/lane.",
+  holds: "Exact decimal charges, refunds, net spending, call and token counts, model ids, recorded lanes/disclosure classes, existing key names/short labels, and historical hardware-check counts from signed v1 receipts. Missing evidence and cache calls do not count as proven. An average includes its exact numerator/denominator and a decimal truncated to 12 places. It reads key hashes internally for grouping but returns response-local key numbers. Price comparisons read live catalog capabilities, endpoint lane/disclosure availability and token/request prices at the observed input/output mix; estimates exclude royalties, account fees, cache discounts, reasoning/media/search charges and refunds. No request text, wallet addresses, key secrets, new logs, tables, columns or Redis keys are read or written.",
+  ttl: "Discarded after the response; cache-control is no-store. Existing source retention applies. No durable storage added.", requestText: "none",
+  evidence: [{ file: "src/insights/read.ts", contains: "export async function readInsights" }, { file: "src/api/insights.ts", contains: "c.header('cache-control','no-store')" }],
+}];

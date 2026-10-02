@@ -1,7 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import type { KeyRow } from "../api/auth.ts";
-import { roleOf } from "../api/auth.ts";
+import { activityAccess } from "./access.ts"; // V88: shared spend visibility.
 import { fail } from "../lib/errors.ts";
 import { picoToUsdString } from "../lib/money.ts";
 import { csvCell } from "../agents/ledger.ts";
@@ -17,9 +17,7 @@ export function activityRow(r: Raw) {
 }
 const rowsOf = <T>(r: unknown): T[] => ((r as { rows?: T[] }).rows ?? r) as T[];
 export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, eligible?: SQL) {
-  const role = await roleOf(ctx, key);
-  const session = rowsOf(await ctx.db.execute(sql`select id from agent_sessions where key_hash = ${key.keyHash} limit 1`)).length > 0;
-  const whole = !session && (key.management || role === "owner" || role === "admin");
+  const { session, whole } = await activityAccess(ctx, key);
   const scope = { account: key.accountId, key: whole ? null : key.keyHash, team: key.management ? null : key.teamId };
   const fingerprint = activityFingerprint(q, scope);
   if (q.cursor && q.cursor.filter !== fingerprint) fail(400, "Cursor does not match these filters or this key's access.", "invalid_request");

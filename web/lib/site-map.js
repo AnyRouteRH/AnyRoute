@@ -103,6 +103,7 @@ TASKS.push({ ...task('rulebook-templates', 'agents', 'Start from a rulebook temp
 TASKS.push({ ...task('request-check', 'agents', 'Check a request against your rules', 'Check agent rules without spending: allow, approval required or deny.', '/agents/#request-check', 'check, try, request, rules'), menu: false }); // V85: search-only.
 TASKS.push({ ...task('prompt-library', 'chat', 'Save and reuse prompts', 'Keep named prompts in this browser and fill in variables before using them.', '/harness/#prompt-library', 'prompts, library, templates, favourites'), menu: false }); // V81: search-only, keeps menus short.
 TASKS.push({ ...task('why-this-route', 'learn', 'Understand a route', 'See why each reply went to its provider, and what that explanation does not show.', '/docs/#why-this-route', 'route explanation, provider, routing, fallback'), menu: false }); // V84: search only.
+TASKS.push({ ...task('insights', 'build', 'See where your money goes', 'See spend by model, key and lane, and the same abilities for less.', '/dashboard/#insights', 'spend, insights, cost, model, key, agent, lane'), menu: false }); // V88: search-only.
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 
 // Account sections share the task map; existing dashboard hashes remain stable.
@@ -110,7 +111,7 @@ export const ACCOUNT_GROUPS = [
   { title: 'Home', ids: ['dashboard', 'inbox'] },
   { title: 'Use', ids: ['playground', 'models', 'routing', 'presets', 'characters', 'evals', 'batches', 'skills'] },
   { title: 'Agents', ids: ['rulebook', 'sessions', 'directory'] },
-  { title: 'Money', ids: ['account-activity', 'statements', 'account-payments', 'holders', 'spend', 'api-receipts'] },
+  { title: 'Money', ids: ['insights', 'account-activity', 'statements', 'account-payments', 'holders', 'spend', 'api-receipts'] },
   { title: 'Account', ids: ['account-keys', 'account-export', 'teams', 'providers', 'settings', 'keep'] },
 ];
 TASKS.push(task('account-keys', 'build', 'Manage account keys', 'Explore API keys, then connect to create keys and set budgets.', '/dashboard/#api-keys', 'api keys, budget'));
@@ -118,6 +119,7 @@ TASKS.push(task('account-payments', 'build', 'Add funds to your account', 'Explo
 for (const id of ['account-keys', 'account-payments']) TASKS.find(item => item.id === id).menu = false;
 const accountSection = (taskId, title, hash, description, start) => ({ taskId, title, hash, description, start, href: hash ? '/dashboard/#' + hash : TASKS.find(item => item.id === taskId).href });
 export const ACCOUNT_SECTIONS = [
+  accountSection('insights', 'Insights', 'insights', 'Explore spending by day or week, model, key or agent and lane, with live price comparisons.', 'Connect your key to see where your money goes.'), // V88: signed-out preview.
   accountSection('inbox', 'Inbox', 'inbox', 'Review pending approvals and new alerts, deposits, agreement events and host updates.', 'Connect your key to check items that need your attention.'),
   accountSection('dashboard', 'Home', 'home', 'See your balance, spending, keys, agents and recent call receipts in one place.', 'Connect your key to see what you own and what needs your attention.'),
   accountSection('account-activity', 'Activity', 'activity', 'Follow calls, approvals, alerts, deposits and agreements in one list.', 'Connect your key to read visible activity and export a filtered range.'),
