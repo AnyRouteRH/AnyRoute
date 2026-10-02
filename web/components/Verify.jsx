@@ -1,4 +1,5 @@
 'use client';
+import StatementVerify from './StatementVerify'; // V87
 import ProofBadge from './ProofBadge';
 import {useEffect,useState} from 'react';
 import {CopyButton,Button,Code} from './UI';
@@ -168,6 +169,7 @@ export default function Verify(){
     {view&&<Attestation view={view}/>}
     <Saw receiptId={receiptId} asked={sawAsked} load={sawLoad} view={sawLoad==='ok'?saw:null}/>
     <ReceiptBox providerId={providerId}/>
+    <StatementVerify/> {/* V87 */}
     <section className={styles.section} aria-labelledby="v-sdk"><h2 id="v-sdk">Check the provider itself</h2>
       <p className={styles.lead}>The record above is the router’s account. The SDKs go further before they send anything: they read the provider’s own <span className="mono">/attest</span>, check that the quote commits to its TLS key and digests, that its certificate name is derived from the quote, and refuse if any of it fails. They do not repeat Intel’s signature check on the quote; the router does that, and the SDK says so in its report.</p>
       <Code label="JavaScript · @anyroute/client">{SDK}</Code>

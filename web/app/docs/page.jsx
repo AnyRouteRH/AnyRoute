@@ -1,5 +1,6 @@
 import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
 import StructuredOutputDocs from "../../components/StructuredOutputDocs"; // V83
+import StatementDocs from "../../components/StatementDocs"; // V87
 import AgentProfileDocs from "../../components/AgentProfileDocs";
 import SealedAgentDocs from "../../components/SealedAgentDocs";
 import AgreementsDocs from "../../components/AgreementsDocs";
@@ -819,6 +820,7 @@ export default function Docs() {
           </div>
           <DocsFeatureIndex />
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
+          <StatementDocs /> {/* V87 */}
           <AgentLedgerDocs /><AgreementsDocs />
           <AgentAlertDocs />
           <AgentApprovalDocs />

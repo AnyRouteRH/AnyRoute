@@ -110,8 +110,8 @@ export const ACCOUNT_GROUPS = [
   { title: 'Home', ids: ['dashboard', 'inbox'] },
   { title: 'Use', ids: ['playground', 'models', 'routing', 'presets', 'characters', 'evals', 'batches', 'skills'] },
   { title: 'Agents', ids: ['rulebook', 'sessions', 'directory'] },
-  { title: 'Money', ids: ['account-activity', 'account-payments', 'holders', 'spend', 'api-receipts'] },
-  { title: 'Account', ids: ['account-keys', 'teams', 'providers', 'settings', 'keep'] },
+  { title: 'Money', ids: ['account-activity', 'statements', 'account-payments', 'holders', 'spend', 'api-receipts'] },
+  { title: 'Account', ids: ['account-keys', 'account-export', 'teams', 'providers', 'settings', 'keep'] },
 ];
 TASKS.push(task('account-keys', 'build', 'Manage account keys', 'Explore API keys, then connect to create keys and set budgets.', '/dashboard/#api-keys', 'api keys, budget'));
 TASKS.push(task('account-payments', 'build', 'Add funds to your account', 'Explore Payments, then connect to see deposit instructions and your balance.', '/dashboard/#payments', 'balance, deposit'));
@@ -142,6 +142,10 @@ export const ACCOUNT_SECTIONS = [
   accountSection('settings', 'Settings', 'settings', 'Export account metadata and read how to connect an app.', 'Connect your key to read your account settings.'),
   accountSection('keep', 'What we keep', null, 'Inspect storage, logs and where request text or addresses are read.', 'Open What we keep to read the inventory; no key is needed.'),
 ];
+
+// V87: account-only destinations, also available through search.
+TASKS.push({ ...task('statements', 'build', 'Download a monthly statement', 'Download a signed monthly statement as JSON, or print it to PDF.', '/dashboard/#statements', 'statement, monthly, balance, money, pdf'), menu: false }, { ...task('account-export', 'build', 'Export your data', 'Download accessible account records with an inclusion manifest.', '/dashboard/#export-data', 'export, download, account, data'), menu: false });
+ACCOUNT_SECTIONS.push(accountSection('statements', 'Statements', 'statements', 'Download a signed monthly statement as JSON, or print it to PDF.', 'Connect a key to request a statement.'), accountSection('account-export', 'Export your data', 'export-data', 'Take readable account records with you in one JSON download.', 'Connect a key to export records within its access.'));
 
 for (const section of ACCOUNT_SECTIONS) {
   const item = TASKS.find(task => task.id === section.taskId);

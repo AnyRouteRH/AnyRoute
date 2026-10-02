@@ -1,4 +1,5 @@
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
+import { statementRoutes } from "./api/statements.ts"; // V87
 import { inboxRoutes } from "./api/inbox.ts"; // U78: account inbox.
 import { activityRoutes } from "./api/activity.ts";
 import { networkStatsRoutes } from "./network/stats.ts";
@@ -177,6 +178,7 @@ export async function createApp(opts: AppOptions = {}) {
   modelsRoutes(app, ctx);
   generationRoutes(app, ctx);
   activityRoutes(app, ctx);
+  statementRoutes(app, ctx); // V87
   inboxRoutes(app, ctx); // U78: account inbox.
   keysRoutes(app, ctx);
   teamsRoutes(app, ctx);

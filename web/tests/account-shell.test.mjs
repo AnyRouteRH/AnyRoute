@@ -10,16 +10,16 @@ import { dashboardSections, sectionFromHash, sectionHash, homeChecklist, homeSpe
 test('one account map includes every section once in the intended groups', () => {
   assert.deepEqual(ACCOUNT_GROUPS.map(group => group.title), ['Home', 'Use', 'Agents', 'Money', 'Account']);
   const ids = ACCOUNT_GROUPS.flatMap(group => group.ids);
-  assert.equal(new Set(ids).size, 23);
+  assert.equal(new Set(ids).size, 25);
   assert.deepEqual(new Set(ids), new Set(ACCOUNT_SECTIONS.map(section => section.taskId)));
-  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.title === 'Money').ids, ['account-activity', 'account-payments', 'holders', 'spend', 'api-receipts']);
+  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.title === 'Money').ids, ['account-activity', 'statements', 'account-payments', 'holders', 'spend', 'api-receipts']);
   for (const section of ACCOUNT_SECTIONS) assert.ok(TASKS.some(task => task.id === section.taskId));
   for (const group of GROUPS) assert.ok(menuTasks(group.id).length <= 9);
 });
 
 test('every legacy dashboard deep link selects its view; overview and unknown hashes select Home', () => {
   const legacy = ['playground','saved-routes','presets','characters','eval-lab','batch-studio','models','api-keys','agent-sessions','teams','skills','receipts','spend-watch','payments','holders','providers','settings'];
-  assert.equal(dashboardSections.length, 20);
+  assert.equal(dashboardSections.length, 22);
   for (const hash of legacy) {
     const title = sectionFromHash('#' + hash);
     assert.notEqual(title, 'Home', hash);

@@ -1,4 +1,5 @@
 "use client";
+import AccountStatements from "./account/AccountStatements"; import AccountExport from "./account/AccountExport"; // V87
 import AccountInbox from "./account/AccountInbox"; // U78: account inbox.
 import AccountActivity from "./account/AccountActivity";
 import ProofBadge from "./ProofBadge"; // U76: account receipt marks.
@@ -1221,6 +1222,7 @@ export default function Dashboard() {
         </section>
       ) : live && !signedIn && tab !== "Teams" ? null : (
         <div className="tab-panel" key={tab}>
+          {tab === "Statements" && apiKey && <AccountStatements key={apiKey} apiKey={apiKey}/>} {tab === "Export your data" && apiKey && <AccountExport key={apiKey} apiKey={apiKey}/>} {/* V87 */}
           {tab === "Inbox" && apiKey && <AccountInbox key={apiKey} apiKey={apiKey}/>}
           {tab === "Activity" && ws && <AccountActivity apiKey={apiKey} keys={ws.keys}/>}
           {tab === "Home" && ws && <AccountHome apiKey={apiKey} workspace={ws} onRefresh={() => refresh()} onReceipt={receipt => setModal({ type: "receipt", data: receipt })}/>}
@@ -1742,17 +1744,17 @@ export default function Dashboard() {
                   <h3>{live ? "This browser" : "Browser-local data"}</h3>
                   <p>
                     {live
-                      ? `Signed in with ${ws?.me?.label ?? "—"}. The key is kept in this browser (this tab session only). The router stores key hashes, balances and receipt metadata — never prompts or responses. The export contains your keys (no secrets), balance and receipts.`
+                      ? `Signed in with ${ws?.me?.label ?? "—"}. The key is kept in this browser (this tab session only). Read What we keep for router storage and retention. Open Export your data to download accessible account records with a manifest; key secrets are excluded.`
                       : "Changes persist only in this browser. No account has been created. The workspace export contains demo keys, receipt metadata, sessions and sample balances; it contains no prompt text."}
                   </p>
                   <div className="button-row">
                     <Button
                       secondary
                       onClick={() =>
-                        live ? downloadJSON({ exported_at: new Date().toISOString(), key: ws?.me, keys: ws?.keys, credits: ws?.credits, session: ws?.session, receipts: ws?.receipts }, "anyroute-workspace.json") : downloadJSON(state, "anyroute-sample-workspace.json")
+                        live ? navigate("Export your data") : downloadJSON(state, "anyroute-sample-workspace.json")
                       }
                     >
-                      Export workspace
+                      {live ? "Open data export" : "Export workspace"}
                     </Button>
                     <Button secondary onClick={() => setModal({ type: "reset" })}>
                       {live ? "Sign out of this browser" : "Reset sample workspace"}

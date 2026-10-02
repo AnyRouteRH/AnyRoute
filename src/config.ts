@@ -82,6 +82,7 @@ const schema = z.object({
   TRUST_PROXY: bool.default(false), // true behind exactly one trusted reverse proxy that appends X-Forwarded-For
 
   ROUTE_EXPLAIN_ENABLED: bool.default(false), // V84: route explanations.
+  STATEMENTS_ENABLED: bool.default(false), // V87: read-only signed monthly statements.
   // Receipts
   RECEIPT_SIGNING_KEY: opt,
   RECEIPT_KEY_ROTATION_DAYS: num(7),
@@ -583,6 +584,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     sanctions: sanctionsSettings(e, production),
     e2ee: e2eeSettings(e.E2EE_PASSTHROUGH_ENABLED, e.PROVIDERS_FILE, production, { baseUrl: e.E2EE_GATEWAY_BASE_URL, attestationUrl: e.E2EE_GATEWAY_ATTESTATION_URL }),
     networkHosts: networkHostsSettings(e, production),
+    statementsEnabled: e.STATEMENTS_ENABLED, // V87
     networkStatsEnabled: e.NETWORK_STATS_ENABLED,
     networkPayouts: networkPayoutSettings(e, production),
     networkWeights: { ...networkWeightSettings(e), ...(e.NETWORK_BONDS_ENABLED ? { bonds: { ...hostBondSettings(e), scope: `${e.CHAIN_ID}:${e.HOST_BOND_ADDRESS?.toLowerCase()}` } } : {}) },
