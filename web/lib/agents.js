@@ -62,7 +62,7 @@ const entries = value => String(value || '').split(/[\n,]/).map(s => s.trim()).f
 export function policyForm(policy) {
   const p = policy || {};
   return { ...autonomyForm(p), breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
-    toolAllow: (p.tools?.allow || []).join('\n'), toolDeny: (p.tools?.deny || []).join('\n'),
+    restrictTools: p.tools?.allow !== undefined, /* V85: preserve empty allowlists. */ toolAllow: (p.tools?.allow || []).join('\n'), toolDeny: (p.tools?.deny || []).join('\n'),
     restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES],
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
     restrictWindows: p.windows !== undefined, windows: (p.windows || []).map(w => ({ ...w, days: [...w.days] })),
@@ -86,6 +86,7 @@ export function buildPolicy(form) {
     const items = list(form[input], label);
     if (items.length) { policy[group] ||= {}; policy[group][field] = items; }
   }
+  if (form.restrictTools) policy.tools = { ...policy.tools, allow: entries(form.toolAllow) }; // V85: a blank restricted list denies all tools.
   if (form.restrictLanes) {
     policy.lanes = [...form.lanes];
     if (policy.lanes.length > 64 || policy.lanes.some(lane => !LANES.includes(lane))) errors.push('Choose public, attested or unlinkable lanes.');
