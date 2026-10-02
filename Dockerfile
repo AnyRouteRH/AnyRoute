@@ -21,6 +21,11 @@ COPY --from=inventory /out/inventory.generated.json ./app/keep/inventory.generat
 # service variable); without it the page says the build did not record a commit.
 ARG ANYROUTE_BUILD_COMMIT=""
 ENV ANYROUTE_BUILD_COMMIT=$ANYROUTE_BUILD_COMMIT
+# Public settings for /zkapi/. Pass as build arguments (or service variables); without them the page stays disabled.
+ARG NEXT_PUBLIC_ZKAPI_ENABLED="false"
+ARG NEXT_PUBLIC_ZKAPI_MANIFEST_URL=""
+ARG NEXT_PUBLIC_ZKAPI_MANIFEST_SHA256=""
+ENV NEXT_PUBLIC_ZKAPI_ENABLED=$NEXT_PUBLIC_ZKAPI_ENABLED NEXT_PUBLIC_ZKAPI_MANIFEST_URL=$NEXT_PUBLIC_ZKAPI_MANIFEST_URL NEXT_PUBLIC_ZKAPI_MANIFEST_SHA256=$NEXT_PUBLIC_ZKAPI_MANIFEST_SHA256
 COPY web/components ./components
 COPY web/lib ./lib
 COPY web/public ./public

@@ -1,4 +1,5 @@
 import { rushEnv, rushSettings } from "./rush/config.ts"; // ON3
+import { zkapiPageEnv } from "./zkapi/page-config.ts"; // ZK10: opt-in static-page origins.
 import { structuredOutputEnv } from "./structured-output/options.ts"; // V83: opt-in JSON checking.
 import { insightsEnv } from "./insights/config.ts"; // V88: off by default.
 import { networkStatsEnv } from "./network/stats-config.ts";
@@ -57,6 +58,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...zkapiPageEnv, // ZK10
   ...rushEnv, // ON3
   DEVELOPER_FIRST_CALL_ENABLED: bool.default(false), // ON2: guidance for GETs to model endpoints.
   ...structuredOutputEnv, // V83
@@ -714,6 +716,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     },
     hfBaseUrl: e.HF_BASE_URL.replace(/\/$/, ""),
     webDir: e.WEB_DIR,
+    zkapiPageOrigins: e.ZKAPI_PAGE_ORIGINS, // ZK10
     status: {
       targets: { public: e.STATUS_SLO_PUBLIC, attested: e.STATUS_SLO_ATTESTED, unlinkable: e.STATUS_SLO_UNLINKABLE },
       suggestMinRequests: e.STATUS_SUGGEST_MIN_REQUESTS,

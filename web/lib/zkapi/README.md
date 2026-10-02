@@ -76,18 +76,25 @@ admissions.
 
 ## Hosting policy
 
-The router's current site-wide CSP does not permit external operator fetches
-or WASM compilation. Do not enable funding under that policy. Hosting must
-provide a narrowly scoped policy for /zkapi/ and /zkapi/prover-worker.js:
-keep existing exact inline-script hashes, add worker-src 'self' on the page,
-and add only the configured manifest/operator/indexer HTTPS origins to its
-connect-src. On the worker response, permit script-src 'self'
-'wasm-unsafe-eval' and connect-src 'self' plus the proving-key origin.
-Do not use unsafe-eval, blob workers, wildcard origins or remote scripts.
-Serve .wasm as application/wasm and the module files as text/javascript.
-Other pages retain their existing CSP. No router policy or deployment setting
-is modified by this web card. The export audit checks asset isolation, not
-production HTTP headers.
+The router applies a narrowly scoped policy when ZKAPI_PAGE_ORIGINS is set
+to a comma-separated list of exact HTTPS origins. Paths, trailing slashes,
+wildcards and credentials are refused at startup. Empty preserves the existing
+site policy; do not enable funding under that policy. The hosted gateway,
+manifest, proving keys and indexer share one origin, so list that origin once.
+The /zkapi page, /zkapi/, /zkapi/index.html and /zkapi.html retain the site's
+exact inline-script hashes, add worker-src 'self', and append only those origins
+to connect-src. The /zkapi/prover-worker.js response gets default-src 'none',
+script-src 'self' 'wasm-unsafe-eval', and connect-src 'self' plus those origins.
+No unsafe-eval, blob workers, wildcard origins or remote scripts are allowed.
+The static handler serves .wasm as application/wasm and modules as
+text/javascript. Other pages retain their existing CSP.
+
+The Docker web stage accepts NEXT_PUBLIC_ZKAPI_ENABLED (default false),
+NEXT_PUBLIC_ZKAPI_MANIFEST_URL and NEXT_PUBLIC_ZKAPI_MANIFEST_SHA256 (both
+default empty) as public build arguments. Set them before building, along
+with the matching router origin policy at runtime. The operator must allow
+CORS for the page origin. No deployment setting is changed automatically.
+The export audit checks asset isolation, not production HTTP headers.
 
 ## Recovery and limits
 

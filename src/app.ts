@@ -23,6 +23,7 @@ import { hostBondRoutes } from "./network/bonds.ts";
 import { guardHostSlasher } from "./network/bond-config.ts";
 import { configureNetworkRouting } from "./network/routing.ts";
 import { siteCsp } from "./lib/csp.ts";
+import { zkapiHosting } from "./zkapi/hosting.ts"; // ZK10
 import { EXPOSED_RESPONSE_HEADERS, viaOnion } from "./api/common.ts";
 import { onionIngress } from "./onion/ingress.ts";
 import { kv } from "./db/schema.ts";
@@ -155,6 +156,7 @@ export async function createApp(opts: AppOptions = {}) {
   app.use("/api/*", apiCors);
   app.use("/v1/*", apiCors);
   app.use("/ollama/*", apiCors);
+  if (webBuilt && cfg.zkapiPageOrigins.length) app.use("*", zkapiHosting(csp, cfg.zkapiPageOrigins)); // ZK10: narrowly scoped static policies.
   app.use("*", async (c, next) => {
     await next();
     c.header("x-content-type-options", "nosniff");
