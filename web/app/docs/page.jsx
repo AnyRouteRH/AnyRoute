@@ -1,3 +1,4 @@
+import GetUsdgDocs from "../../components/GetUsdgDocs"; // ON1
 import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
 import StructuredOutputDocs from "../../components/StructuredOutputDocs"; // V83
 import StatementDocs from "../../components/StatementDocs"; // V87
@@ -1167,6 +1168,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           </p>
           <Code label="Claim a royalty: request, then response">{`${claimRequest}\n\n${claimResponse}`}</Code>
           <h2 id="payments">One settlement unit. More ways to pay.</h2>
+          <GetUsdgDocs/> {/* ON1 */}
           <div className="table-wrap">
             <table className="docs-table">
               <thead>

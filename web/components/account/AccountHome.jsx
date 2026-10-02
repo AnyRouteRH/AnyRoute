@@ -1,5 +1,6 @@
 'use client';
 import AccountActivity from './AccountActivity';
+import AddFunds from './AddFunds'; // ON1: first funds after connection.
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { pendingApprovals } from '../../lib/agents.js';
@@ -30,6 +31,7 @@ export default function AccountHome({ apiKey, workspace, onReceipt, onRefresh })
     <div className="panel-heading"><h2>Home</h2><button className="text-button" disabled={refreshing} onClick={async () => { setRefreshing(true); setRefreshError(''); try { await onRefresh(); setRevision(r => r + 1); } catch (e) { setRefreshError(e.message); } finally { setRefreshing(false); } }}>Refresh account details</button></div>
     {refreshError && <p className="error" role="alert">{refreshError}</p>}
     <p>Pay for calls from one balance. Follow each call’s receipt to inspect what ran, where, what it cost and the rules recorded for it.</p>
+    <AddFunds key={apiKey} apiKey={apiKey} balance={workspace.credits.available ?? workspace.credits.balance} onBalance={onRefresh}/> {/* ON1 */}
     <div className={s.cards}>
       <section className="control-panel"><h3>Balance</h3><dl><div><dt>Available</dt><dd>{dollars(workspace.credits.available ?? workspace.credits.balance)}</dd></div></dl><a className="inline-link" href="/dashboard/#payments">Add funds and see payment options</a></section>
       <section className="control-panel"><h3>Spend</h3>{spend ? <><dl><div><dt>Today</dt><dd>{dollars(spend.today)}</dd></div><div><dt>This week</dt><dd>{dollars(spend.week)}</dd></div></dl><p className="help-text">UTC days · week starts Monday · {spend.scope === 'account' ? 'all account keys' : 'this key only'}</p></> : <p className="help-text" role="status">{status('spend')}</p>}<a className="inline-link" href="/dashboard/#spend-watch">Watch spending</a></section>

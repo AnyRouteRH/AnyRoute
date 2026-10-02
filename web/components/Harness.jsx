@@ -1,4 +1,5 @@
 "use client";
+import AddFunds from "./account/AddFunds"; import { fundingError, recoverFundingDraft } from "../lib/add-funds.js"; // ON1
 import RouteExplanation from "./harness/RouteExplanation"; // V84
 import ProofBadge from "./ProofBadge"; // U76: shared evidence labels.
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -420,7 +421,7 @@ function ToolCalls({ msg, awaiting, onSubmit }) {
   );
 }
 
-function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage, voice, limits }) {
+function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage, voice, limits, funding }) {
   const facts = replyFacts(msg);
   const waiting = msg.status === "waiting";
   const streaming = msg.status === "streaming" || waiting;
@@ -460,11 +461,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
               Sign in again
             </button>
           )}
-          {msg.errorKind === "funds" && (
-            <a className="text-button" href="/dashboard/#payments">
-              Add funds
-            </a>
-          )}
+          {/* ON1: funding recovery below keeps the conversation in place. */}
           {last && !busy && msg.errorKind !== "auth" && msg.errorKind !== "funds" && (
             <button type="button" className="text-button" onClick={onRegenerate}>
               Try again
@@ -472,6 +469,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
           )}
         </div>
       )}
+      {last && msg.errorKind === "funds" && funding && <AddFunds key={funding.apiKey} {...funding} force onResume={onRegenerate} disabled={busy}/>} {/* ON1 */}
       {!streaming && (msg.status === "done" || msg.status === "stopped" || facts.receiptId) && (
         <footer className={s.replyFoot}>
           <span title="Tokens in / out">
@@ -956,9 +954,9 @@ export default function Harness() {
         message = "This key was not accepted. Sign in again to keep going.";
         kind = "auth";
         signOut();
-      } else if (err instanceof ApiError && err.status === 402 && err.type !== "key_budget_exceeded") {
+      } else if (fundingError(err)) { // ON1: payment errors keep the draft and retry history.
         message = "Your balance is too low for this call. Add funds, then try again.";
-        kind = "funds";
+        kind = "funds"; setDraft(d => recoverFundingDraft(d, history)); // ON1
       } else if (err instanceof ApiError && err.status === 429) {
         const wait = retryAfterMs(err);
         message = wait != null ? `Rate limited. You can try again in ${Math.max(1, Math.ceil(wait / 1000))} s.` : "Rate limited. Wait a moment and try again.";
@@ -1017,6 +1015,7 @@ export default function Harness() {
     const lastTool = lane.messages.map((m) => m.role).lastIndexOf("tool");
     const cut = Math.max(lastUser, lastTool) + 1;
     const history = lane.messages.slice(0, cut);
+    if (lane.messages.findLast(m => m.role === "assistant")?.errorKind === "funds") setDraft(d => d === recoverFundingDraft("", history) ? "" : d); // ON1
     const reply = { id: uid(), role: "assistant", model: lane.modelId, status: "waiting", text: "" };
     setLanes((ls) => ls.map((l) => (l.id === laneId ? { ...l, messages: [...history, reply] } : l)));
     runLane(laneId, lane.modelId, history, reply.id, lane.messages.findLast((m) => m.role === "assistant")?.imageMode ?? null);
@@ -1202,6 +1201,7 @@ export default function Harness() {
         )}
 
         <div className={s.scroll} ref={scroller} onScroll={onScroll}>
+          {auth.state === "ok" && !lanes.some(l => l.messages.findLast(m => m.role === "assistant")?.errorKind === "funds") && <AddFunds key={auth.key} apiKey={auth.key} balance={auth.balance} onBalance={balance => setAuth(a => ({ ...a, balance }))}/>} {/* ON1 */}
           {empty ? (
             <div className={s.empty}>
               <h1 className={s.display}>
@@ -1244,7 +1244,7 @@ export default function Harness() {
                           <code>{m.text}</code>
                         </div>
                       ) : (
-                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} voice={voice} limits={limits} />
+                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} voice={voice} limits={limits} funding={{ apiKey: auth.key, balance: auth.balance, onBalance: balance => setAuth(a => ({ ...a, balance })) }} /> /* ON1 */
                       ),
                     )}
                   </div>

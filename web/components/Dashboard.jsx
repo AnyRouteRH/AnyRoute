@@ -1,4 +1,5 @@
 "use client";
+import AddFunds from "./account/AddFunds"; import { fundingError } from "../lib/add-funds.js"; // ON1
 import AccountStatements from "./account/AccountStatements"; import AccountExport from "./account/AccountExport"; // V87
 import AccountInsights from "./account/AccountInsights"; // V88: spend insights.
 import AccountInbox from "./account/AccountInbox"; // U78: account inbox.
@@ -988,7 +989,7 @@ export default function Dashboard() {
       } catch (err) {
         if (err?.name === "AbortError") return;
         const hint = err?.metadata?.pay_with ? " (" + err.metadata.pay_with + ")" : "";
-        setErrorKind(err?.type || "");
+        setErrorKind(fundingError(err) ? "insufficient_credits" : err?.type || ""); // ON1
         setError(err.message + hint);
       } finally {
         lock.current = false;
@@ -1282,6 +1283,7 @@ export default function Dashboard() {
                       <input type="checkbox" checked={forceFailure} onChange={(e) => setForceFailure(e.target.checked)} disabled={busy} /> {live ? "Disallow fallbacks (allow_fallbacks: false)" : "Simulate provider timeout"}
                     </label>
                   </details>
+                  {live && errorKind === "insufficient_credits" && <AddFunds key={keyId} apiKey={view.keys.find(k => k.id === keyId)?.secret || apiKey} balance={ws?.credits?.available} force onBalance={() => refresh()} onResume={() => run({ preventDefault() {} })} disabled={busy}/>} {/* ON1 */}
                   {error && (
                     <div className="error" role="alert">
                       {error}
@@ -1490,6 +1492,7 @@ export default function Dashboard() {
               )}
             </>
           )}
+          {live && tab === "Payments" && <AddFunds key={apiKey} apiKey={apiKey} balance={ws?.credits?.available} onBalance={() => refresh()}/>} {/* ON1 */}
           {tab === "Payments" && escrowOn && (
             <>
               <div className="panel-heading">

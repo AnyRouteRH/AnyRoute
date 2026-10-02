@@ -1,0 +1,6 @@
+.card{border:1px solid var(--line-strong);background:var(--white);color:var(--ink);padding:24px;margin:16px 0;min-width:0;font:400 14px/1.5 var(--sans)}
+.heading{display:flex;align-items:start;justify-content:space-between;gap:16px}.heading h3{margin:0;font-size:20px;letter-spacing:-.025em}.heading button{flex:none}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}.fields label{display:block;font:500 11px var(--mono);margin-bottom:6px}.fields input,.fields select{width:100%;min-width:0;border:1px solid var(--line-strong);border-radius:0;padding:10px;background:var(--white);color:var(--ink);font:inherit}
+.card dl{margin:16px 0}.card dl>div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}.card dt{color:var(--muted)}.card dd{margin:0;overflow-wrap:anywhere}.card code{font-size:11px}
+.status{padding:12px;background:var(--signal-tint)}.reminder{padding:12px 0;font-size:14px}.links{margin:16px 0 0}.actions{display:flex;flex-wrap:wrap;gap:8px}
+@media(max-width:500px){.card{padding:16px}.fields{grid-template-columns:1fr}.heading{flex-wrap:wrap}.card dl>div{grid-template-columns:1fr;gap:4px}}
