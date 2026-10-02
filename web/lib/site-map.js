@@ -83,6 +83,7 @@ export const TASKS = [
   task('proof-time', 'verify', 'Inspect proof freshness', 'Read proof-time observations and what they establish.', '/status/#proof-time', 'proof time, freshness, evidence'),
 
   task('docs', 'learn', 'Read the docs', 'Browse guides and reference sections for AnyRoute tools.', '/docs/', 'documentation, guide, help', true),
+  task('changelog', 'learn', "See what's new", 'Follow shipped changes with links to their pages and public commits.', '/changelog/', 'changelog, updates, shipped, rss, atom'), // V89: page, menu, footer and search.
   task('whitepaper', 'learn', 'Read the whitepaper', 'Read the architecture, payment design and routing model.', '/whitepaper/', 'whitepaper, paper, architecture', true),
   task('case-study', 'learn', 'Read the case study', 'Follow an application integration and its routing choices.', '/case-study/', 'case study, example, integration'),
   task('roadmap', 'learn', 'See the roadmap', 'See what is available and what comes next.', '/#roadmap', 'roadmap, planned, future'),

@@ -1,0 +1,18 @@
+.body{max-width:1040px}
+.filters{display:flex;align-items:end;flex-wrap:wrap;gap:16px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.filters label{display:flex;flex-direction:column;gap:8px;font-size:14px;font-weight:550}
+.search{flex:1;min-width:200px}
+.filters input,.filters select{width:100%;min-height:44px;border:1px solid var(--line-strong);border-radius:0;padding:10px 12px;background:var(--paper);font-weight:400}
+.count{font:400 11px/1.5 var(--mono);color:var(--muted);margin:18px 0 40px}
+.month{display:grid;grid-template-columns:180px minmax(0,1fr);gap:32px;margin-bottom:48px}
+.month h2{font-size:clamp(22px,2.4vw,28px);line-height:1.15}
+.entry{padding-bottom:28px;margin-bottom:28px;border-bottom:1px solid var(--line);scroll-margin-top:calc(var(--header) + 24px)}
+.entry:target{border-bottom-color:var(--signal-deep)}
+.meta{display:flex;gap:12px 20px;flex-wrap:wrap;color:var(--muted);font:400 10px/1.6 var(--mono);margin-bottom:12px}
+.entry h3{font-size:clamp(22px,2.2vw,28px);line-height:1.15;margin-bottom:12px}
+.entry h3 a{text-decoration:none}
+.entry h3 a:hover{text-decoration:underline;text-underline-offset:4px}
+.entry p{font-size:17px;line-height:1.6;color:var(--muted);max-width:680px}
+.links{display:flex;gap:4px 20px;flex-wrap:wrap;list-style:none;margin:16px 0 0;padding:0;font-size:14px}
+.links a{display:inline-block;padding:8px 0;text-underline-offset:4px}
+@media(max-width:640px){.month{grid-template-columns:minmax(0,1fr);gap:24px}.filters{align-items:stretch}.filters label{width:100%}.search{min-width:0}.filters button{align-self:start}.count{margin-bottom:28px}}
