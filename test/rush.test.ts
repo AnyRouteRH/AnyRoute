@@ -13,7 +13,8 @@ import { ADMIN, MODELS, startRouter } from "./helpers.ts";
 import type { Ctx } from "../src/context.ts";
 
 test("ON3 flags default off, validate thresholds, and load for production API and worker roles", () => {
-  expect(loadConfig({ ANYROUTE_ENV: "test" }).rush).toEqual({ enabled: false, catalogCache: false, warnUsd: 25, criticalUsd: 5 });
+  expect(loadConfig({ ANYROUTE_ENV: "test" }).rush).toEqual({ enabled: false, catalogCache: false, warnUsd: 25, criticalUsd: 5, balanceUrl: undefined });
+  expect(balanceEndpoint({ baseUrl: "https://relay.example/v1" }, undefined)).toBeNull();
   for (const change of [{ UPSTREAM_BALANCE_WARN_USD: "-1" }, { UPSTREAM_BALANCE_CRITICAL_USD: "30" }, { UPSTREAM_BALANCE_WARN_USD: "Infinity" }]) expect(() => loadConfig({ ANYROUTE_ENV: "test", ...change })).toThrow();
   const address = "0x" + "1".repeat(40);
   const prod = { NODE_ENV: "production", ANYROUTE_ENV: "production", RUNTIME_ROLE: "api", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/test", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", PAYMENTS_MODE: "escrow", ESCROW_ADDRESS: address, ESCROW_START_BLOCK: "1", ESCROW_TOKENS: JSON.stringify([{ symbol: "STOCK", address, decimals: 18, feed: "0x" + "2".repeat(40) }]), UPSTREAM_MONITOR_ENABLED: "true", CATALOG_CACHE_ENABLED: "true" };
@@ -26,8 +27,8 @@ test("balance thresholds have exact boundaries and balances require explicit USD
   expect(parseBalance({ amount_usd: "12.50" })).toBe(12.5);
   expect(parseBalance({ data: { balance_usd: 0 } })).toBe(0);
   for (const v of [{ balance: 500 }, { balance: 20, currency: "EUR" }, { amount_usd: -1 }, { balance_usd: null }, { balance_usd: true }, { balance_usd: "" }]) expect(parseBalance(v)).toBeNull();
-  expect(balanceEndpoint({ baseUrl: "https://api.ppq.ai/v1" })).toBe("https://api.ppq.ai/credits/balance");
-  for (const baseUrl of ["https://inference.phala.com/v1", "https://api.ppq.ai.attacker.invalid", "http://api.ppq.ai", "https://api.ppq.ai:444/v1", "https://credential@api.ppq.ai"]) expect(balanceEndpoint({ baseUrl })).toBeNull();
+  expect(balanceEndpoint({ baseUrl: "https://relay.example/v1" }, "https://relay.example/balance")).toBe("https://relay.example/balance");
+  for (const baseUrl of ["https://inference.phala.com/v1", "https://relay.example.attacker.invalid", "http://relay.example", "https://relay.example:444/v1", "https://credential@relay.example"]) expect(balanceEndpoint({ baseUrl }, "https://relay.example/balance")).toBeNull();
 });
 
 test("credit errors are distinct from auth failures, client errors and rate limits", () => {
@@ -68,12 +69,12 @@ test("list middleware shares byte-identical JSON across aliases, respects filter
 });
 
 test("monitor polls with existing credentials, shares holds across replicas and keeps balances operator-only", async () => {
-  const h = await startRouter({ env: { UPSTREAM_MONITOR_ENABLED: "true", CATALOG_CACHE_ENABLED: "true" } });
+  const h = await startRouter({ env: { UPSTREAM_MONITOR_ENABLED: "true", CATALOG_CACHE_ENABLED: "true", UPSTREAM_BALANCE_URL: "https://relay.example/balance" } });
   try {
-    await h.ctx.db.update(providers).set({ baseUrl: "https://api.ppq.ai/v1", apiKeyEnc: encrypt(h.ctx.cfg.appSecret, "fixture-upstream-key") }).where(eq(providers.id, "alpha"));
+    await h.ctx.db.update(providers).set({ baseUrl: "https://relay.example/v1", apiKeyEnc: encrypt(h.ctx.cfg.appSecret, "fixture-upstream-key") }).where(eq(providers.id, "alpha"));
     await h.ctx.catalog.refresh();
     const fetcher: typeof import("../src/providers/network.ts").providerFetch = async (url, init) => {
-      expect(url).toBe("https://api.ppq.ai/credits/balance");
+      expect(url).toBe("https://relay.example/balance");
       expect(new Headers(init.headers).get("authorization")).toBe("Bearer fixture-upstream-key");
       expect(init.redirect).toBe("error"); expect(init.body).toBe("{}");
       return Response.json({ amount_usd: 0 });

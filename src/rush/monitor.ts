@@ -29,11 +29,13 @@ export function creditErrorText(error: unknown) {
   return [value?.code, value?.error_code, value?.message].filter(v => typeof v === "string").join(" ");
 }
 export function upstreamMonitoring(health?: HealthTracker) { return !!health && runtimes.has(health); }
-/** Only the documented provider origin receives its account credential. No URL override or redirect. */
-export function balanceEndpoint(p: Pick<ProviderRow, "baseUrl">): string | null {
+/** Only the configured balance URL's exact https origin receives the provider's account credential. No redirect. */
+export function balanceEndpoint(p: Pick<ProviderRow, "baseUrl">, balanceUrl: string | undefined): string | null {
+  if (!balanceUrl) return null;
   try {
-    const u = new URL(p.baseUrl);
-    return u.protocol === "https:" && u.hostname === "api.ppq.ai" && !u.port && !u.username && !u.password ? `${u.origin}/credits/balance` : null;
+    const u = new URL(p.baseUrl), b = new URL(balanceUrl);
+    const clean = (x: URL) => x.protocol === "https:" && !x.port && !x.username && !x.password;
+    return clean(u) && clean(b) && u.hostname === b.hostname ? b.toString() : null;
   } catch { return null; }
 }
 export function parseBalance(value: unknown): number | null {
@@ -72,7 +74,7 @@ export async function refreshUpstreamHealth(health: HealthTracker, db: Db) {
 }
 export async function creditFailure(health: HealthTracker | undefined, c: Candidate, apiKey: string | undefined, status: number, message: string) {
   const runtime = health && runtimes.get(health);
-  if (!runtime || !(insufficientCredits(status, message) || status === 402 && balanceEndpoint(c.provider) !== null)) return false;
+  if (!runtime || !(insufficientCredits(status, message) || status === 402 && balanceEndpoint(c.provider, runtime.ctx.cfg.rush.balanceUrl) !== null)) return false;
   // A caller's own key can fail without exhausting the router's upstream account.
   const headers = openProviderHeaders(runtime.ctx.cfg.appSecret, c.provider.headers);
   if (apiKey && c.provider.apiKeyEnc && apiKey === decrypt(runtime.ctx.cfg.appSecret, c.provider.apiKeyEnc) || !apiKey && Object.keys(headers).some(name => ["authorization", "api-key", "x-api-key"].includes(name.toLowerCase()))) {
@@ -93,7 +95,7 @@ export async function runUpstreamMonitor(ctx: Ctx, fetchImpl = providerFetch, no
   let checked = 0;
   for (const p of ctx.catalog.providers.values()) {
     if (p.status !== "live") continue;
-    const endpoint = balanceEndpoint(p);
+    const endpoint = balanceEndpoint(p, ctx.cfg.rush.balanceUrl);
     let snapshot: BalanceSnapshot = { balance_usd: null, checked_at: now, status: endpoint ? "unknown" : "unsupported" };
     const headers = endpoint ? openProviderHeaders(ctx.cfg.appSecret, p.headers) : {};
     if (endpoint && (p.apiKeyEnc || Object.keys(headers).some(name => ["authorization", "api-key", "x-api-key"].includes(name.toLowerCase())))) {
