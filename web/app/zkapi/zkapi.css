@@ -1,0 +1,21 @@
+.zkapi-limits{display:grid;gap:18px;padding:24px;background:var(--paper-2);border:1px solid var(--line);margin-bottom:32px;max-width:960px}
+.zkapi-wallet{max-width:960px;display:grid;gap:20px;padding-bottom:56px}
+.zkapi-banner{padding:18px 24px;border-left:3px solid var(--signal-deep);background:var(--signal-tint)}
+.zkapi-panel{padding:clamp(20px,4vw,32px);border:1px solid var(--line);display:flex;flex-direction:column;align-items:flex-start;gap:16px;min-width:0}
+.zkapi-panel h2{font-size:clamp(26px,3vw,36px)}
+.zkapi-panel p{max-width:760px;color:var(--muted)}
+.zkapi-panel label{font-weight:560}
+.zkapi-panel input:not([type=checkbox]),.zkapi-panel textarea{width:100%;max-width:760px;min-width:0;padding:12px;border:1px solid var(--line-strong);background:var(--white);border-radius:0}
+.zkapi-panel textarea{resize:vertical}
+.zkapi-panel #zk-export,.zkapi-panel #zk-restore,.zkapi-data{font:400 12px/1.7 var(--mono);overflow-wrap:anywhere}
+.zkapi-check{display:flex;gap:12px;align-items:flex-start;font-size:14px}
+.zkapi-check input{margin-top:5px;flex:none;width:18px;height:18px;accent-color:var(--signal-deep)}
+.zkapi-panel details{width:100%;display:block;border-top:1px solid var(--line);padding-top:16px}
+.zkapi-panel summary{cursor:pointer;margin-bottom:16px}
+.zkapi-panel details label,.zkapi-panel details textarea{display:block;margin-bottom:12px}
+.zkapi-panel .ar-button{white-space:normal;line-height:1.4;text-align:left;min-height:46px}
+.zkapi-answer{padding:20px;background:var(--paper-2);width:100%;overflow-wrap:anywhere}
+.zkapi-answer p{white-space:pre-wrap;margin-bottom:16px}
+.zkapi-status{position:sticky;bottom:12px;background:var(--ink);color:var(--paper);padding:18px;overflow-wrap:anywhere}
+.zkapi-status:empty{display:none}
+@media(max-width:500px){.zkapi-panel .button-row{width:100%}.zkapi-panel .button-row .ar-button{width:100%}.zkapi-panel{gap:14px}.zkapi-limits{padding:20px}}

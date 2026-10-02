@@ -5,6 +5,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 const root=path.resolve(process.argv[2]||'out');
+import {auditZkapi} from './audit-zkapi.mjs'; auditZkapi(root); // ZK9: isolated WASM assets.
 import {auditPwa} from './audit-pwa.mjs'; auditPwa(root);
 const routes=['/','/models/','/harness/','/ask/','/arena/','/docs/','/case-study/','/dashboard/','/agents/','/verify/','/status/','/providers/','/registry/','/registry/_/','/legal/privacy/','/legal/terms/','/seal/','/tokens/','/keep/','/network/','/spec/','/hosts/',...(fs.existsSync(path.join(root,'spec'))?fs.readdirSync(path.join(root,'spec'),{withFileTypes:true}).filter(d=>d.isDirectory()).map(d=>`/spec/${d.name}/`):[])];
 import {auditWhitepaper} from './audit-whitepaper.mjs'; routes.push('/whitepaper/'); auditWhitepaper(root);
@@ -12,6 +13,7 @@ routes.push('/agents/profile/', '/agents/directory/');
 import {auditChangelog} from './audit-changelog.mjs'; routes.push('/changelog/'); auditChangelog(root); // V89: static page and feeds.
 routes.push('/admin/'); // ON3: operator shell contains no account data.
 routes.push('/cost/'); // V80: public cost estimates.
+routes.push('/zkapi/'); // ZK9: Sepolia payment page.
 auditNetwork(root);
 let count=0;
 for(const route of routes){

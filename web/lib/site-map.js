@@ -12,6 +12,7 @@ const task = (id, group, title, description, href, keywords, featured = false) =
   ({ id, group, title, description, href, keywords: keywords.split(', '), featured });
 
 export const TASKS = [
+  task('zkapi', 'build', 'Read about zkAPI payments', 'Open the Sepolia pilot and its funding, storage and privacy limits.', '/zkapi/', 'zkapi, sepolia, eth, payment'), // ZK9
   task('chat', 'chat', 'Chat with any model', 'Use the Harness to send messages and choose a model.', '/harness/', 'conversation, assistant, harness', true),
   task('compare', 'chat', 'Compare model answers', 'Put models side by side in the Arena.', '/arena/', 'compare, arena, side by side', true),
   task('images', 'chat', 'Make an image', 'Choose an image-output model in the Harness.', '/harness/', 'picture, draw, art, image, photo', true),
@@ -99,6 +100,7 @@ const SEARCH_ONLY = new Set(['json-check', /* V83 */ 'inbox', 'activity', 'histo
 SEARCH_ONLY.add('payments'); SEARCH_ONLY.add('get-usdg'); // ON1: funding joins Build; payment reference stays searchable.
 TASKS.push(task('get-usdg', 'build', 'Get USDG', 'Read how to get USDG onto Robinhood Chain before adding funds.', '/docs/#get-usdg', 'usdg, bridge, buy, chain, funding')); // ON1
 SEARCH_ONLY.add('spec'); // V80: keep Build at nine menu tools; spec stays searchable.
+SEARCH_ONLY.add('zkapi'); // ZK9: search-only Sepolia pilot.
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
 TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
 TASKS.push({ ...task('rulebook-templates', 'agents', 'Start from a rulebook template', 'Review starter limits, then apply a rulebook to a selected agent.', '/agents/#rulebook-templates', 'starter, template, budget, rules'), menu: false }); // V85: search-only.

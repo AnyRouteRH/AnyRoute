@@ -1,0 +1,7 @@
+zkapi-browser 0.1.0 and its first-party Rust protocol crates declare MIT OR Apache-2.0.
+Source revision: 045b444ea1b52538d1b40273c7cb6ed09468a052
+Source: https://github.com/ethereum/zkapi/tree/045b444ea1b52538d1b40273c7cb6ed09468a052/protocol/rust
+Built by AnyRoute from the pinned Rust source. The JavaScript bindings are generated
+by wasm-bindgen-cli 0.2.117 (MIT OR Apache-2.0). The protocol lockfile identifies
+the transitive Rust packages. This notice is not a license or security audit.
+No upstream JavaScript SDK, signer, proving key or packaged WASM asset is included.

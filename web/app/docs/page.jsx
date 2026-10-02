@@ -1,4 +1,5 @@
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
+import ZkapiDocs from "../../components/ZkapiDocs"; // ZK9: Sepolia browser payment.
 import GetUsdgDocs from "../../components/GetUsdgDocs"; // ON1
 import FirstCallDocs from "../../components/FirstCallDocs"; // ON2
 import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
@@ -824,6 +825,7 @@ export default function Docs() {
           </div>
           <DocsFeatureIndex />
           <KeyProvisioningDocs /> {/* ZK6 */}
+          <ZkapiDocs /> {/* ZK9 */}
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <StatementDocs /> {/* V87 */}
           <AgentLedgerDocs /><AgreementsDocs />

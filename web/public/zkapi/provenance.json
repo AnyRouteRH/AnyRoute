@@ -1,0 +1,21 @@
+{
+  "source_revision": "045b444ea1b52538d1b40273c7cb6ed09468a052",
+  "package": "zkapi-browser",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+  "wasm_bindgen": "wasm-bindgen 0.2.117",
+  "protocol_lock_sha256": "ffdddc0080613649566f0f8bc90bacfa4f1e03105499b42d1639329ba3a1fec0",
+  "command": "bash web/scripts/build-zkapi-wasm.sh",
+  "artifacts": {
+    "zkapi_browser.js": {
+      "bytes": 22604,
+      "sha256": "54db164f069a629e97a5f15a15778358f414bcda8036a97a6a0a44da4554c1f2"
+    },
+    "zkapi_browser_bg.wasm": {
+      "bytes": 1506427,
+      "sha256": "c528ea25c2e15c0b180152b385d3152035abe73e7ede997b05db1f6688d3e8d7"
+    }
+  }
+}
