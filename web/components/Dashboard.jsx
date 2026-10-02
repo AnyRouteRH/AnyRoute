@@ -1,8 +1,13 @@
 "use client";
+import AccountShell from "./account/AccountShell";
+import AccountAnchors from "./account/AccountAnchors.js";
+import AccountHome from "./account/AccountHome";
+import { useAccountKey } from "./account/useAccountKey";
+import { sectionFromHash, sectionHash } from "./account/account-state.js";
 import TelegramLink from "../app/agents/TelegramLink";
 import { useEffect, useRef, useState } from "react";
 import { models as sampleModels, providers as sampleProviders, initialWorkspace, storageKey, routeCall, validWorkspace, money } from "../lib/demo";
-import { API_BASE, ApiError, api, clearKey, downloadJSON, getMode, loadKey, loadWorkspace, saveKey, setMode, streamChat, toCatalogModel, toProvider, toReceiptRow, validKey } from "../lib/api";
+import { API_BASE, ApiError, api, clearKey, downloadJSON, loadKey, loadWorkspace, setMode, streamChat, toCatalogModel, toProvider, toReceiptRow } from "../lib/api";
 import { connect, ensureChain, hasWallet, sendTransactions, shortAddress, signTypedData, walletApiKey } from "../lib/wallet";
 import { Button, Modal, Code, CopyButton } from "./UI";
 import ModelCatalog from "./ModelCatalog";
@@ -19,9 +24,8 @@ import Tracing from "./features/Tracing";
 import Holders from "./features/Holders";
 import PayAnyrDialog from "./PayAnyr";
 
-const tabs = ["Overview", "Playground", "Saved Routes", "Presets", "Characters", "Eval Lab", "Batch Studio", "Models", "API keys", "Agent Sessions", "Teams", "Skills", "Receipts", "Spend Watch", "Payments", "Holders", "Providers", "Settings"];
-const tabId = (t) => t.toLowerCase().replace(" ", "-");
-const publicTabs = ["Models", "Providers", "Holders", "Teams", "Skills"]; // Teams: an invite link (?join=…#teams) works with no key
+// Account shell: preserve feature sections and their dashboard hashes.
+const tabId = sectionHash;
 
 function Field({ label, id, children }) {
   return (
@@ -733,103 +737,12 @@ function WithdrawDialog({ onClose, apiKey, credits, status, onDone }) {
   );
 }
 
-function SignIn({ onKey, onDemo, onSecret, stockMode, anyr }) {
-  const [value, setValue] = useState("");
-  const remember = false;
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState("");
-  async function run(label, fn) {
-    setError("");
-    setBusy(label);
-    try {
-      await fn();
-    } catch (e) {
-      setError(e?.message || String(e));
-    } finally {
-      setBusy("");
-    }
-  }
-  return (
-    <section className="signin-panel" aria-labelledby="signin-title">
-      <div className="signin-copy">
-        <span className="eyebrow">Live workspace</span>
-        <h2 id="signin-title">Connect your workspace</h2>
-        <p>
-          {stockMode
-            ? `Sign in with your wallet, send a listed Stock Token${anyr ? ` or $${anyr.symbol}` : ""} to the escrow wallet and start calling. No account, email or password.`
-            : "Anyroute keys are self-custodial: create a key, deposit USDG to it and start calling. No account, email or password."}
-        </p>
-        <button className="text-button" onClick={onDemo}>
-          Explore the sample workspace instead →
-        </button>
-        <div className="scan-rule" aria-hidden="true" />
-      </div>
-      <div className="signin-form">
-        {error && (
-          <div className="error" role="alert">
-            {error}
-          </div>
-        )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!validKey(value)) return setError("That is not an Anyroute key (sk-ar-v1- followed by 64 hex characters).");
-            run("key", () => onKey(value.trim(), remember));
-          }}
-        >
-          <Field label="API key" id="signin-key">
-            <input id="signin-key" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} placeholder="sk-ar-v1-…" />
-          </Field>
-          <div className="button-row">
-            <Button type="submit" disabled={!!busy}>
-              {busy === "key" ? "Connecting…" : "Connect key"}
-            </Button>
-            {!stockMode && (
-            <Button
-              type="button"
-              secondary
-              disabled={!!busy}
-              onClick={() =>
-                run("new", async () => {
-                  const r = await api("/api/v1/keys", { method: "POST", body: { name: "Workspace key" } });
-                  onSecret(r.key, r.deposit);
-                  await onKey(r.key, remember);
-                })
-              }
-            >
-              {busy === "new" ? "Creating…" : "Create a new key"}
-            </Button>
-            )}
-            {(stockMode || hasWallet()) && (
-              <Button
-                type="button"
-                secondary
-                disabled={!!busy}
-                onClick={() =>
-                  run("wallet", async () => {
-                    const key = await walletApiKey("Wallet key");
-                    onSecret(key, null, "Your wallet’s API key");
-                    await onKey(key, remember);
-                  })
-                }
-              >
-                {busy === "wallet" ? "Waiting for signature…" : "Sign in with wallet"}
-              </Button>
-            )}
-          </div>
-        </form>
-        <p className="help-text">Keys stay in this browser (this tab session only). Prompts are never stored.</p>
-      </div>
-    </section>
-  );
-}
-
 export default function Dashboard() {
   // ---- mode & connection ----
   const [mode, setModeState] = useState(null); // "live" | "demo"
   const [connection, setConnection] = useState("checking"); // checking | ok | unreachable
   const [status, setStatus] = useState(null);
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useAccountKey();
   const [ws, setWs] = useState(null); // live workspace
   const [secrets, setSecrets] = useState({}); // key hash -> secret, for keys created in this session
   const [catalog, setCatalog] = useState([]);
@@ -841,7 +754,7 @@ export default function Dashboard() {
   const [loaded, setLoaded] = useState(false);
   const [storageError, setStorageError] = useState("");
   // ---- shared UI ----
-  const [tab, setTab] = useState("Overview");
+  const [tab, setTab] = useState("Home");
   const [modal, setModal] = useState(null);
   const [notice, setNotice] = useState("");
   const [modelId, setModelId] = useState(sampleModels[0].id);
@@ -860,7 +773,6 @@ export default function Dashboard() {
   const lock = useRef(false);
   const timer = useRef(null);
   const abort = useRef(null);
-  const navRef = useRef(null);
   const sectionRef = useRef(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -882,7 +794,6 @@ export default function Dashboard() {
   }
   async function signInWith(key, remember) {
     const next = await loadWorkspace(key);
-    saveKey(key, remember);
     setApiKey(key);
     setWs(next);
     setKeyId(next.me.hash);
@@ -901,12 +812,13 @@ export default function Dashboard() {
       if (stored) {
         try {
           const next = await loadWorkspace(stored);
+          if (loadKey() !== stored) return;
           setApiKey(stored);
           setWs(next);
           setKeyId(next.me.hash);
           setSecrets((x) => ({ ...x, [next.me.hash]: stored }));
         } catch (e) {
-          if (e instanceof ApiError && (e.status === 401 || e.status === 403)) clearKey();
+          if (e instanceof ApiError && (e.status === 401 || e.status === 403) && loadKey() === stored) setApiKey("");
           else setError(e.message);
         }
       }
@@ -916,7 +828,7 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    const m = getMode();
+    const m = "live";
     setModeState(m);
     if (m === "live") connectLive().finally(() => setLoaded(true));
     else {
@@ -935,8 +847,7 @@ export default function Dashboard() {
       setLoaded(true);
     }
     const selectHash = () => {
-      const match = tabs.find((t) => tabId(t) === window.location.hash.slice(1));
-      setTab(match || "Overview");
+      setTab(sectionFromHash(window.location.hash));
     };
     selectHash();
     const model = new URLSearchParams(window.location.search).get("model");
@@ -965,15 +876,6 @@ export default function Dashboard() {
   useEffect(() => {
     if (live && catalog.length && !catalog.some((m) => m.id === modelId)) setModelId(catalog.find((m) => m.type !== "Embeddings")?.id || catalog[0].id);
   }, [live, catalog, modelId]);
-  // Keep the selected section visible in the horizontally scrolling tab bar (phones).
-  useEffect(() => {
-    const nav = navRef.current;
-    const current = nav?.querySelector("[aria-current]");
-    if (!nav || !current || nav.scrollWidth <= nav.clientWidth) return;
-    const left = current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2;
-    nav.scrollTo({ left: Math.max(0, left), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  }, [tab]);
-
   // Hash links select a workspace section and move assistive-technology focus
   // once its content is ready, including on direct links and browser Back/Forward.
   useEffect(() => {
@@ -1249,17 +1151,9 @@ export default function Dashboard() {
     setModal(null);
   }
 
-  const total = live ? (ws?.credits?.total_usage ?? 0) : view.receipts.reduce((s, r) => s + r.cost, 0);
-  const tokens = view.receipts.reduce((s, r) => s + r.tokens, 0);
   const filtered = view.receipts.filter(
     (r) => (r.id + " " + r.model + " " + r.provider).toLowerCase().includes(receiptQuery.toLowerCase()) && (receiptMode === "All" || (receiptMode === "Private" ? r.private : !r.private)),
   );
-  const stats = [
-    [live ? "Available USDG" : "USDG balance", money(view.balance, 4), live ? "Prepaid · 0% router fee" : "Sample credits"],
-    ["Calls routed", String(view.receipts.length), live ? "Latest " + view.receipts.length : "This browser"],
-    ["Tokens processed", tokens.toLocaleString("en-US"), live ? "Metered by providers" : "Sample usage"],
-    ["Total cost", money(total, 6), live ? "USDG · all time" : "USDG · illustrative"],
-  ];
   const sampleRequest = {
     model: modelId,
     messages: [{ role: "user", content: prompt }],
@@ -1278,54 +1172,11 @@ export default function Dashboard() {
 
   return (
     <main className="dashboard-main" id="content" data-workspace={workspaceState}>
-      <div className="dashboard-heading">
-        <div>
-          <span className="eyebrow">ANYROUTE WORKSPACE</span>
-          <h1>Your routes, in detail.</h1>
-        </div>
-        <span className="badge dark workspace-status" data-state={workspaceState}>
-          <span className="live-square" />
-          {booting ? "LOADING" : live ? (connection === "ok" ? "LIVE · CHAIN " + (status?.chain?.chain_id ?? "") : connection === "unreachable" ? "API UNREACHABLE" : "CONNECTING") : "SAMPLE WORKSPACE"}
-        </span>
-      </div>
-      <div className="workspace-notice" data-state={workspaceState}>
-        {booting ? (
-          "Loading workspace…"
-        ) : live ? (
-          signedIn && ws ? (
-            <>
-              Live workspace · Signed in with {ws.me.label} · Balance, keys and receipts come from the Anyroute API.{" "}
-              <button className="text-button" onClick={() => navigate("Settings")}>
-                Manage →
-              </button>
-            </>
-          ) : connection === "unreachable" ? (
-            "Live workspace · The router did not respond, so no balance, keys or receipts are shown."
-          ) : (
-            "Live workspace · Connect a key to see your balance, keys and receipts."
-          )
-        ) : (
-          <>
-            Sample workspace · All activity stays in this browser. No live inference, wallet or payments.{" "}
-            <button className="text-button" onClick={() => switchMode("live")}>
-              Switch to your live workspace →
-            </button>
-          </>
-        )}
-      </div>
-      <nav className="dashboard-nav" aria-label="Workspace sections" ref={navRef}>
-        {tabs.map((t) => (
-          <a key={t} href={"#" + tabId(t)} aria-current={tab === t ? "page" : undefined} onClick={(event) => {
-            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-            event.preventDefault();
-            navigate(t);
-          }}>
-            {t}
-          </a>
-        ))}
-      </nav>
+      <div className="dashboard-heading"><div><span className="eyebrow">YOUR ACCOUNT</span><h1>One balance. Every call.</h1></div></div>
+      <AccountAnchors/>
+      <AccountShell current={tab} apiKey={signedIn ? apiKey : ""} onConnect={signInWith} onNavigate={navigate} publicContent={tab === "Teams" && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("join")}
+        onDisconnect={() => { clearKey(); setApiKey(""); setWs(null); setSecrets({}); setResult(null); setModal(null); setError(""); setNotice(""); abort.current?.abort(); }}>
       <section ref={sectionRef} className="dashboard-section" tabIndex={-1} aria-label={`${tab} workspace section`}>
-      {tabs.map((t) => <span key={t} id={tabId(t)} className="dashboard-anchor" aria-hidden="true" />)}
       {storageError && (
         <div className="error" role="alert">
           {storageError}
@@ -1344,7 +1195,7 @@ export default function Dashboard() {
       {!loaded ? (
         <div className="empty loading-state" role="status">
           <span className="loading-bar" aria-hidden="true" />
-          {mode === "demo" ? "Loading sample workspace…" : "Connecting to Anyroute…"}
+          Connecting to AnyRoute…
         </div>
       ) : live && connection === "unreachable" ? (
         <section className="router-status dark" aria-labelledby="router-status-title">
@@ -1356,93 +1207,18 @@ export default function Dashboard() {
           </div>
           <h2 id="router-status-title">The Anyroute API is not reachable.</h2>
           <p>
-            Tried {origin || "this site"}/api/v1. Your balance and receipts are safe; this page just cannot reach the router right now. Nothing is shown from sample data unless you choose it.
+            Tried {origin || "this site"}/api/v1. Your balance and receipts are safe; this page just cannot reach the router right now. No account data is shown while the router is unreachable.
           </p>
           <div className="button-row">
             <Button light onClick={() => connectLive()}>
               Retry
             </Button>
-            <Button secondary onClick={() => switchMode("demo")}>
-              Open the sample workspace
-            </Button>
+
           </div>
         </section>
-      ) : live && !signedIn && !publicTabs.includes(tab) ? (
-        <div className="tab-panel" key="signin">
-          {error && (
-            <div className="error" role="alert">
-              {error}
-            </div>
-          )}
-          <SignIn stockMode={stockMode} anyr={status?.escrow?.anyr} onKey={signInWith} onDemo={() => switchMode("demo")} onSecret={(secret, deposit, title) => setReveal({ secret, deposit, title })} />
-        </div>
-      ) : (
+      ) : live && !signedIn && tab !== "Teams" ? null : (
         <div className="tab-panel" key={tab}>
-          {tab === "Overview" && (
-            <>
-              <div className="metric-grid">
-                {stats.map(([label, value, sub], i) => (
-                  <article className="metric" key={label} style={{ "--i": i }}>
-                    <span className="eyebrow">{label}</span>
-                    <strong>{value}</strong>
-                    <span>{sub}</span>
-                  </article>
-                ))}
-              </div>
-              <div className="overview-grid">
-                <section className="usage-panel">
-                  <div className="panel-heading">
-                    <h2>Usage by generation</h2>
-                    <span className="eyebrow">{live ? "METERED TOKENS" : "SAMPLE TOKENS"}</span>
-                  </div>
-                  {view.receipts.length ? (
-                    <>
-                      <div className="usage-chart" role="img" aria-label={view.receipts.length + (live ? " generations using " : " sample generations using ") + tokens + " tokens"}>
-                        {view.receipts
-                          .slice(0, 30)
-                          .reverse()
-                          .map((r, i) => (
-                            <div key={r.id} title={r.model + ": " + r.tokens + " tokens"} style={{ "--i": i, height: Math.max(5, (100 * r.tokens) / Math.max(1, ...view.receipts.map((x) => x.tokens))) + "%" }} />
-                          ))}
-                      </div>
-                      <div className="usage-axis" aria-hidden="true">
-                        <span>Earlier</span>
-                        <span>Latest {Math.min(30, view.receipts.length)}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="usage-empty">
-                      <span className="empty-grid" aria-hidden="true" />
-                      <span>Your first route starts here.</span>
-                      <button className="text-button" onClick={() => navigate("Playground")}>
-                        {live ? "Run a call →" : "Run a sample call →"}
-                      </button>
-                    </div>
-                  )}
-                </section>
-                <section className="quickstart-card">
-                  <span className="eyebrow">ONE KEY. ONE BALANCE.</span>
-                  <h2>
-                    Make a call.
-                    <br />
-                    Follow the receipt.
-                  </h2>
-                  <p>Choose a model, set your route and inspect every cost line.</p>
-                  <Button light onClick={() => navigate("Playground")}>
-                    Open playground
-                  </Button>
-                  <div className="scan-rule" aria-hidden="true" />
-                </section>
-              </div>
-              <div className="panel-heading">
-                <h2>Recent generations</h2>
-                <button className="text-button" onClick={() => navigate("Receipts")}>
-                  View all receipts →
-                </button>
-              </div>
-              <ReceiptTable live={live} receipts={view.receipts.slice(0, 5)} onInspect={(r) => setModal({ type: "receipt", data: r })} emptyAction={() => navigate("Playground")} />
-            </>
-          )}
+          {tab === "Home" && ws && <AccountHome apiKey={apiKey} workspace={ws} onRefresh={() => refresh()} onReceipt={receipt => setModal({ type: "receipt", data: receipt })}/>}
           {tab === "Playground" && (
             <>
               <div className="panel-heading">
@@ -1990,9 +1766,7 @@ export default function Dashboard() {
                     {live ? (
                       <>
                         <CopyButton text={origin + "/api/v1"} label="Copy base URL" />
-                        <button className="text-button" onClick={() => switchMode("demo")}>
-                          Open the sample workspace
-                        </button>
+
                       </>
                     ) : (
                       <button className="text-button" onClick={() => switchMode("live")}>
@@ -2007,6 +1781,7 @@ export default function Dashboard() {
         </div>
       )}
       </section>
+      </AccountShell>
       {modal?.type === "receipt" && <ReceiptDetails receipt={modal.data} apiKey={apiKey} status={status} onClose={() => setModal(null)} />}
       {modal?.type === "key" && <KeyDialog live={live} existing={modal.data} onClose={() => setModal(null)} onSave={saveKeyValues} />}
       {modal?.type === "session" && <SessionDialog live={live} tokens={ws?.tokens || []} paywith={ws?.paywith || {}} existing={modal.data} onClose={() => setModal(null)} onSave={saveSession} />}

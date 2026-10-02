@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import AccountAnchors from '../components/account/AccountAnchors.js';
 import { GROUPS, TASKS } from '../lib/site-map.js';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -44,7 +47,7 @@ test('every destination is an existing page with literal reachable anchor IDs', 
     const [route, anchor] = task.href.split('#');
     const page = path.join(root, 'app', route, 'page.jsx');
     assert.ok(fs.existsSync(page), task.href);
-    if (anchor) assert.ok(sources(page).includes(`id="${anchor}"`) || sources(page).includes(`id='${anchor}'`), task.href);
+    if (anchor) assert.ok((route === '/dashboard/' && renderToStaticMarkup(createElement(AccountAnchors)).includes(`id="${anchor}"`)) || sources(page).includes(`id="${anchor}"`) || sources(page).includes(`id='${anchor}'`), task.href);
   }
 });
 

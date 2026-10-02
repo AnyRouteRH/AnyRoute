@@ -1,10 +1,12 @@
 'use client';
+import AccountShell from '../../components/account/AccountShell';
+import { useAccountKey } from '../../components/account/useAccountKey';
 import { SealedBadge } from './SealedAgent';
 import TelegramLink from "./TelegramLink";
 import Autonomy from "./Autonomy";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/UI';
-import { api, loadKey, saveKey, clearKey, validKey } from '../../lib/api';
+import { api, validKey } from '../../lib/api';
 import { LANES, DAYS, CAP_FIELDS, LIMITS, FEATURE_OFF, buildPolicy, policyForm, capBars, reasonText, decisionText, intentSummary, eventsPage, sampleIntent, confirmKill, errorState, utcTime } from '../../lib/agents';
 import s from './agents.module.css';
 import Approvals from './Approvals';
@@ -118,8 +120,7 @@ function AgentDetail({ agent, request, refreshList, refreshVersion, onError }) {
 }
 
 export default function Agents() {
-  const [key,setKey] = useState('');
-  const [draft,setDraft] = useState('');
+  const [key,setKey] = useAccountKey();
   const [agents,setAgents] = useState([]);
   const [selected,setSelected] = useState('');
   const [busy,setBusy] = useState(false);
@@ -129,7 +130,6 @@ export default function Agents() {
   const [revision,setRevision] = useState(0);
   const onError = useCallback(error => { const state = errorState(error); setOff(state.off); setError(state.off ? '' : state.message); }, []);
   const request = useCallback((path,options = {}) => api(path,{ ...options,key }), [key]);
-  useEffect(() => { const stored = loadKey(); if (stored) { setKey(stored); setDraft(stored); } }, []);
   useEffect(() => {
     if (!key) return;
     const ac = new AbortController(); setBusy(true); setError(''); setOff(false); setLoaded(false);
@@ -137,16 +137,13 @@ export default function Agents() {
     return () => ac.abort();
   }, [key,revision,onError]);
   const agent = agents.find(a => a.key_hash === selected);
-  return <div className={s.body}>
-    <section className="control-panel"><h2>Your API key</h2><p className="help-text">Use a management key or an owner/admin key for this account. The dashboard’s session-storage key is reused. It stays in this browser tab until you disconnect or close it.</p>
-      <form onSubmit={e => { e.preventDefault(); const value = draft.trim(); if (!validKey(value)) { setError('Enter a valid AnyRoute API key.'); return; } saveKey(value); setKey(value); setAgents([]); setSelected(''); setOff(false); setRevision(r => r+1); }}><Field id="principal-key" label="Principal API key"><input id="principal-key" type="password" autoComplete="off" spellCheck={false} required value={draft} onChange={e => setDraft(e.target.value)}/></Field><div className="button-row"><Button type="submit" disabled={busy}>Connect key</Button>{key && <Button type="button" secondary onClick={() => { clearKey(); setKey(''); setDraft(''); setAgents([]); setSelected(''); setLoaded(false); setOff(false); setError(''); }}>Disconnect</Button>}</div></form>
-    </section>
+  return <AccountShell current="Agents" apiKey={key} onConnect={value => { setKey(value); setAgents([]); setSelected(''); setOff(false); setError(''); }} onDisconnect={() => { setKey(''); setAgents([]); setSelected(''); setLoaded(false); setOff(false); setError(''); }}><div className={s.body}>
     {error && <p className="note" role="alert">{error}</p>}
     {off ? <section className="empty" role="status"><h2>{FEATURE_OFF}</h2><p>This router is not serving agent rulebooks.</p></section> : <>
       {key && <section aria-label="Agent keys"><div className={s.heading}><h2>Agent keys</h2><button className="text-button" disabled={busy} onClick={() => setRevision(r => r+1)}>Refresh</button></div>{busy && <p role="status">Reading agent keys…</p>}{loaded && !agents.length && <div className="empty"><p>No agent keys returned for this account.</p><a className="inline-link" href="/dashboard/#api-keys">Manage API keys</a></div>}<div className={s.list}>{agents.map(a => <button key={a.key_hash} className={s.agent} aria-pressed={selected === a.key_hash} onClick={() => { setSelected(a.key_hash); setError(''); }}><div className={s.heading}><strong>{a.name || 'Unnamed agent'}</strong><span className={s.badges}><span className="badge">Rulebook {a.has_policy ? 'on' : 'off'}</span>{a.killed && <span className="badge dark">Killed</span>}</span></div><SealedBadge sealed={a.sealed}/><span className={s.hash}>Policy SHA {a.policy_sha256 ? a.policy_sha256.slice(0,12) : 'None'}</span><Spend agent={a}/></button>)}</div></section>}
       {key && <section aria-label="Agent keys"><div className={s.heading}><h2>Agent keys</h2><button className="text-button" disabled={busy} onClick={() => setRevision(r => r+1)}>Refresh</button></div>{busy && <p role="status">Reading agent keys…</p>}{loaded && !agents.length && <div className="empty"><p>No agent keys returned for this account.</p><a className="inline-link" href="/dashboard/#api-keys">Manage API keys</a></div>}<div className={s.list}>{agents.map(a => <button key={a.key_hash} className={s.agent} aria-pressed={selected === a.key_hash} onClick={() => { setSelected(a.key_hash); setError(''); }}><div className={s.heading}><strong>{a.name || 'Unnamed agent'}</strong><span className={s.badges}><span className="badge">Rulebook {a.has_policy ? 'on' : 'off'}</span>{a.killed && <span className="badge dark">Killed</span>}</span></div><span className={s.hash}>Policy SHA {a.policy_sha256 ? a.policy_sha256.slice(0,12) : 'None'}</span><Spend agent={a}/></button>)}</div></section>}
       {key && <TelegramLink key={key} principalKey={key}/>}
-      {key && <Approvals key={key} request={request} agents={agents} onError={onError}/>}
+      {key && <section id="approvals"><Approvals key={key} request={request} agents={agents} onError={onError}/></section>}
       {key && agent && <Autonomy agent={agent}/> }
       {key && agent && <AgentWorkspace key={key+agent.key_hash} agent={agent} request={request} refreshVersion={revision}><AgentDetail agent={agent} request={request} onError={onError} refreshVersion={revision} refreshList={() => setRevision(r => r+1)}/></AgentWorkspace>}
       {key && agent && <Alerts key={key+agent.key_hash} keyHash={agent.key_hash} request={request} refreshVersion={revision} onError={onError}/>}
@@ -154,5 +151,5 @@ export default function Agents() {
       {!key && <p className="note">Connect your key to read and manage agent rulebooks.</p>}
     </>}
     <p className="help-text">For ordinary requests on every lane today, AnyRoute’s router reads request text in memory to route it, and the provider that answers reads it too. Rulebooks constrain requests through AnyRoute; they do not control calls sent elsewhere.</p>
-  </div>;
+  </div></AccountShell>;
 }

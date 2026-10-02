@@ -1,0 +1,32 @@
+.shell{display:grid;grid-template-columns:200px minmax(0,1fr);gap:32px;align-items:start}
+.sidebar{border:1px solid var(--line);background:var(--paper-2);padding:16px}
+.sidebar nav{display:grid;gap:20px}
+.sidebar nav div{display:grid;gap:4px}
+.sidebar nav :global(.eyebrow){padding:0 8px 4px}
+.sidebar a{display:block;padding:8px;font-size:14px;text-decoration:none;overflow-wrap:anywhere}
+.sidebar a:hover{background:var(--paper-3)}
+.sidebar a[aria-current]{background:var(--ink);color:var(--paper)}
+.content{min-width:0;display:grid;gap:24px}
+.connection{border-top:1px solid var(--line);margin-top:20px;padding-top:16px;overflow-wrap:anywhere}
+.form{display:grid;gap:16px;border-top:1px solid var(--line);margin-top:24px;padding-top:24px}
+.form h3{font-size:20px;margin:0}
+.form p{margin:0;overflow-wrap:anywhere}
+.secret{overflow-wrap:anywhere;word-break:break-all}
+.home{display:grid;gap:24px}
+.home h2{font-size:24px;letter-spacing:-.035em}
+.home h3{font-size:18px;margin:0 0 12px}
+.home ul{padding-left:20px;display:grid;gap:12px}
+.home dl{display:grid;gap:12px;margin:0}
+.home dl div{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.home dt{color:var(--muted)}
+.home dd{margin:0;font-family:var(--mono)}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.cards section{min-width:0}
+.recent{list-style:none!important;padding:0!important}
+.recent li{border-top:1px solid var(--line);padding:12px 0;display:grid;gap:6px;overflow-wrap:anywhere}
+:global(.account-preview-grid){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin-top:8px}
+:global(.account-preview-grid) div{background:var(--white);padding:16px;display:grid;gap:6px;min-width:0}
+:global(.account-preview-grid) strong{font-size:15px}
+:global(.account-preview-grid) span{color:var(--muted);font-size:13px;line-height:1.5}
+/* Phones: the sidebar becomes one swipeable row of sections. */
+@media(max-width:800px){.shell{grid-template-columns:minmax(0,1fr);gap:16px}.sidebar{padding:6px;min-width:0}.sidebar nav{display:flex;gap:4px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}.sidebar nav div{display:flex;gap:4px}.sidebar nav :global(.eyebrow){display:none}.sidebar a{flex:none;white-space:nowrap;scroll-snap-align:start}.connection{margin-top:6px;padding:6px 8px 2px}.cards{grid-template-columns:1fr}:global(.account-preview-grid){grid-template-columns:1fr}}
