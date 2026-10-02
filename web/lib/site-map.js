@@ -161,3 +161,4 @@ for (const section of ACCOUNT_SECTIONS) {
 }
 
 TASKS.push({ ...task('operations', 'build', 'Inspect service operations', 'Use the service operator token to inspect monitoring availability and daily counts.', '/admin/', 'operator, upstream, balance, counts'), menu: false }); // ON3: search-only.
+TASKS.push({ ...task('key-management', 'build', 'Read key provisioning options', 'Read capped-key fields, pagination and inference-only keys.', '/docs/#key-management', 'key, provisioning, scope, inference, management'), menu: false }); // ZK6: search only.

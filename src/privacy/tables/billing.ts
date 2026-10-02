@@ -11,6 +11,7 @@ export const billingTables: Record<string, TableDoc> = {
     retention: "No automatic deletion. The ledger refers to accounts and is append-only, so an account row stays.",
     columns: {
       id: "The account id. For a wallet account it is derived from the wallet address.",
+      inference_keys_default: "Whether newly provisioned child keys default to inference-only access. Management keys can explicitly select account scope.", // ZK6
       kind: "key for an API-key account, wallet for a wallet account.",
       wallet: "The wallet address of a wallet account. Empty for a key account.",
       balance: { purpose: "The settled balance: the sum of the account's ledger lines, in pico-USD. A database trigger keeps it equal to that sum.", request: "aggregate" },

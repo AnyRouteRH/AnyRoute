@@ -2,6 +2,7 @@ export * from "../network/bond-schema.ts";
 import { sql } from "drizzle-orm";
 import {
   pgTable,
+  check, // ZK6
   text,
   bigint,
   integer,
@@ -26,6 +27,7 @@ export const accounts = pgTable(
   "accounts",
   {
     id: text("id").primaryKey(),
+    inferenceKeysDefault: boolean("inference_keys_default").notNull().default(false), // ZK6: new child-key default
     kind: text("kind").notNull().default("key"), // key | wallet
     wallet: text("wallet"),
     balance: money("balance").notNull().default(sql`0`), // settled ledger sum (denormalized, trigger-checked)
@@ -117,6 +119,8 @@ export const keys = pgTable(
     teamId: text("team_id"),
     allowedModels: text("allowed_models").array(),
     payWithDefault: text("pay_with_default"),
+    scope: text("scope"), // ZK6: null keeps existing account access; inference restricts routes
+    includeByokInLimit: boolean("include_byok_in_limit").notNull().default(false), // ZK6: compatibility selection
     management: boolean("management").notNull().default(false),
     routing: jsonb("routing"), // imported presets (LiteLLM aliases, default provider prefs)
     guardrails: jsonb("guardrails"),
@@ -126,7 +130,7 @@ export const keys = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
     lastUsed: ts("last_used"),
   },
-  (t) => [uniqueIndex("keys_chain_uq").on(t.chainKeyHash), index("keys_account_idx").on(t.accountId)],
+  (t) => [uniqueIndex("keys_chain_uq").on(t.chainKeyHash), index("keys_account_idx").on(t.accountId), check("keys_scope_valid", sql`${t.scope} IS NULL OR ${t.scope} = 'inference'`), check("keys_scope_management", sql`${t.scope} IS DISTINCT FROM 'inference' OR ${t.management} = false`)], // ZK6
 );
 
 export const byokKeys = pgTable(

@@ -1,5 +1,6 @@
 import { initializeUpstreamMonitor } from "./rush/monitor.ts"; // ON3
 import { firstCallRoutes, firstCallCsp } from "./developers/first-call.ts"; // ON2
+import { inferenceScopeMiddleware, keyDefaultsRoutes } from "./provisioning/scope.ts"; // ZK6
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
 import { statementRoutes } from "./api/statements.ts"; // V87
 import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
@@ -172,6 +173,7 @@ export async function createApp(opts: AppOptions = {}) {
 
   app.use("*", onionIngress(cfg)); // onion requests: drop every client address header before any route reads one
   app.use("*", statusMiddleware(ctx)); // public-lane outcomes per API surface for /api/v1/status/slo; private lanes are not counted here
+  app.use("*", inferenceScopeMiddleware(ctx)); // ZK6: deny by default before account middleware.
   app.use("*", agentLedgerMiddleware(ctx));
   app.use("*", agentApprovalMiddleware(ctx));
   structuredOutputMiddleware(app, ctx); // V83: ordinary chat routes bill each call.
@@ -187,6 +189,7 @@ export async function createApp(opts: AppOptions = {}) {
   statementRoutes(app, ctx); // V87
   insightsRoutes(app, ctx); // V88: read-only, off by default.
   inboxRoutes(app, ctx); // U78: account inbox.
+  keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
   keysRoutes(app, ctx);
   teamsRoutes(app, ctx);
   escrowRoutes(app, ctx);

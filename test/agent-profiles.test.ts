@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { startRouter, type Harness, MODELS } from "./helpers.ts";
 import { agentProfiles } from "../src/agents/profile-schema.ts";
@@ -71,7 +71,7 @@ test("directory is paginated opt-in only and searches exact tags; disabled keys 
   expect((await (await h.request(`/api/v1/agents/profiles?tag=${tag.slice(0, -1)}`)).json()).data).toEqual([]);
   const row = (await h.ctx.db.select().from(agentProfiles).where(eq(agentProfiles.keyHash, owners[0].hash)))[0];
   await h.ctx.db.update(keys).set({ disabled: true }).where(eq(keys.keyHash, owners[0].hash)); expect((await card(row.slug)).status).toBe(404);
-  await h.ctx.db.update(keys).set({ disabled: false, expiresAt: new Date(Date.now() - 1) }).where(eq(keys.keyHash, owners[0].hash)); expect((await card(row.slug)).status).toBe(404);
+  await h.ctx.db.update(keys).set({ disabled: false, expiresAt: sql`now() - interval '1 millisecond'` }).where(eq(keys.keyHash, owners[0].hash)); expect((await card(row.slug)).status).toBe(404);
   for (const query of ['limit=0', 'limit=51', 'cursor=bad', 'tag=']) expect((await h.request('/api/v1/agents/profiles?' + query)).status).toBe(400);
 });
 test("profile certificates belong to selected key, verify expiry at reads and clear on opt-out", async () => {

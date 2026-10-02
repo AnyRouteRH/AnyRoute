@@ -68,6 +68,7 @@ const schema = z.object({
   ...sanctionsEnv,
   ...networkHostsEnv,
   ...networkStatsEnv,
+  INFERENCE_KEYS_ENABLED: bool.default(false), // ZK6: minting restricted keys; stored scopes are always enforced.
   WEBHOOK_SIGNING_ENABLED: bool.default(false), // V86: signed account webhooks.
   ...networkPayoutEnv,
   RUNTIME_ROLE: z.enum(["all", "api", "worker"]).default("all"),
@@ -593,6 +594,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     sanctions: sanctionsSettings(e, production),
     e2ee: e2eeSettings(e.E2EE_PASSTHROUGH_ENABLED, e.PROVIDERS_FILE, production, { baseUrl: e.E2EE_GATEWAY_BASE_URL, attestationUrl: e.E2EE_GATEWAY_ATTESTATION_URL }),
     networkHosts: networkHostsSettings(e, production),
+    inferenceKeysEnabled: e.INFERENCE_KEYS_ENABLED, // ZK6
     statementsEnabled: e.STATEMENTS_ENABLED, // V87
     networkStatsEnabled: e.NETWORK_STATS_ENABLED,
     rush: rushSettings(e), // ON3

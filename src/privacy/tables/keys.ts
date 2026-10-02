@@ -31,6 +31,8 @@ export const keyTables: Record<string, TableDoc> = {
       team_id: "The team the key belongs to, when it has one.",
       allowed_models: "If set, the only models the key may call.",
       pay_with_default: "The Stock Token symbol the key pays with by default.",
+      scope: "Null keeps account access; inference permits model calls and this key’s own generation and receipt reads only.", // ZK6
+      include_byok_in_limit: "Stored compatibility selection. Provider-side BYOK expenditure is not tracked; usage counts router-billed charges once.", // ZK6
       management: "Whether the key may manage other keys.",
       routing: {
         purpose: "Imported routing presets: model aliases and default provider preferences the owner set for this key.",

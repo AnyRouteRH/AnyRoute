@@ -1,3 +1,4 @@
+import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
 import GetUsdgDocs from "../../components/GetUsdgDocs"; // ON1
 import FirstCallDocs from "../../components/FirstCallDocs"; // ON2
 import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
@@ -822,6 +823,7 @@ export default function Docs() {
             The router serves this site, so your base URL is this site’s address followed by /api/v1. Create a key in the dashboard, deposit USDG to it and call it from any OpenAI- or OpenRouter-compatible client.
           </div>
           <DocsFeatureIndex />
+          <KeyProvisioningDocs /> {/* ZK6 */}
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <StatementDocs /> {/* V87 */}
           <AgentLedgerDocs /><AgreementsDocs />

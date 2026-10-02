@@ -1,3 +1,4 @@
+import { accountDefaultScope } from "../provisioning/keys.ts"; // ZK6
 import type { Context, Hono } from "hono";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
@@ -107,6 +108,7 @@ async function issueMemberKey(ctx: Ctx, tx: Tx, team: TeamRow, principal: Princi
     keyHash: d.keyHash,
     chainKeyHash: d.chainKeyHash,
     keyAddress: d.keyAddress,
+    scope: await accountDefaultScope(ctx, tx, team.ownerAccount), // ZK6
     accountId: team.ownerAccount,
     label: d.label,
     name: `${principal.kind} sign-in`,

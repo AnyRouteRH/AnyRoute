@@ -1,3 +1,4 @@
+import { compatibilityFields, keyPagination, provisionedScope } from "../provisioning/keys.ts"; // ZK6
 import type { Context, Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { encodeFunctionData, formatUnits, parseUnits, recoverMessageAddress, type Hex } from "viem";
@@ -20,6 +21,8 @@ import { actorOf, appendAudit, type AuditDetail } from "../teams/audit.ts";
 import { assertFitsOrgBudget } from "../teams/org.ts";
 
 const keySpec = z.object({
+  include_byok_in_limit: z.boolean().optional(), // ZK6
+  scope: z.enum(["inference", "account"]).optional(), // ZK6: create only
   name: z.string().max(100).optional(),
   limit: z.number().nonnegative().nullable().optional(), // USD (OpenRouter provisioning API name)
   budget_usd: z.number().nonnegative().nullable().optional(), // alias of limit
@@ -44,6 +47,7 @@ const keySpec = z.object({
 
 export function keyJson(k: KeyRow) {
   return {
+    ...compatibilityFields(k), // ZK6: additive exact counters and issuer fields
     hash: k.keyHash,
     name: k.name,
     label: k.label,
@@ -106,6 +110,7 @@ const keyJsonWithTracing = (ctx: Ctx, k: KeyRow) => ({ ...keyJson(k), tracing: t
 function applySpec(v: z.infer<typeof keySpec>) {
   const budget = v.budget_usd !== undefined ? v.budget_usd : v.limit;
   return {
+    ...(v.include_byok_in_limit !== undefined ? { includeByokInLimit: v.include_byok_in_limit } : {}), // ZK6
     ...(v.name !== undefined ? { name: v.name } : {}),
     ...(budget !== undefined ? { budget: budget == null ? null : usdToPico(budget) } : {}),
     ...(v.limit_reset !== undefined ? { budgetReset: v.limit_reset } : {}),
@@ -135,6 +140,7 @@ function keyChange(spec: z.infer<typeof keySpec>, patch: ReturnType<typeof apply
 /** Create a virtual sub-key under `caller` (same account and balance, parent = caller). The secret is
  *  returned once; only its hash is stored. Shared by POST /api/v1/keys and Agent Sessions. */
 export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeof keySpec>, db: Db | Tx = ctx.db) {
+  const scope = await provisionedScope(ctx, caller, spec, db); // ZK6
   if (spec.management && !caller.management) fail(403, "Only a management key can create management keys.", "forbidden");
   const teamId = spec.team ?? (caller.management ? null : caller.teamId);
   // A non-management key creates keys only in its own team, and never with a role above its own.
@@ -158,6 +164,7 @@ export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeo
     chainKeyHash: d.chainKeyHash,
     keyAddress: d.keyAddress,
     accountId: caller.accountId,
+    scope, // ZK6
     parentHash: caller.keyHash,
     label: d.label,
     teamId,
@@ -194,6 +201,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     const auth = c.req.header("authorization");
     const secret = generateApiKey();
     if (!auth) {
+      if (spec.scope !== undefined) fail(403, "Only a management key can set key scope.", "forbidden"); // ZK6
       const from = addressBucket(c, ctx.cfg);
       const r = await ctx.limiter.take(`newkey:${from.id}`, 1, from.scale(ctx.cfg.limits.newKeysPerHour), 3_600_000);
       if (!r.ok) fail(429, "Too many new keys from this address. Try again later.", "rate_limited");
@@ -213,9 +221,9 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
   app.get("/api/v1/keys", async (c) => {
     const caller = await sub(ctx, c);
     await requireRole(ctx, caller, ["owner", "admin", "viewer"]);
-    const rows = await ctx.db.select().from(keys).where(eq(keys.accountId, caller.accountId)).orderBy(desc(keys.createdAt));
-    const visible = caller.management ? rows : rows.filter((k) => k.teamId && k.teamId === caller.teamId);
-    return c.json({ data: visible.map(keyJson) });
+    const { offset, limit } = keyPagination(c.req.query()); // ZK6: disabled rows remain visible
+    const rows = await ctx.db.select().from(keys).where(and(eq(keys.accountId, caller.accountId), ...(caller.management ? [] : [eq(keys.teamId, caller.teamId ?? "")]))).orderBy(desc(keys.createdAt), desc(keys.keyHash)).offset(offset).limit(limit);
+    return c.json({ data: rows.map(keyJson) });
   });
   app.get("/api/v1/keys/:hash", async (c) => {
     const caller = await sub(ctx, c);
@@ -231,6 +239,8 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     const [session] = await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, k.keyHash));
     if (session) fail(409, "This key belongs to an agent session; manage it with /api/v1/sessions.", "session_key");
     const spec = keySpec.parse(await readJson(c));
+    if (spec.scope !== undefined) fail(400, "Scope is fixed at creation; mint a new key to change it.", "invalid_request"); // ZK6
+    if (k.scope === "inference" && spec.management === true) fail(403, "An inference-only key cannot gain management rights.", "forbidden"); // ZK6
     if (spec.management !== undefined && !caller.management) fail(403, "Only a management key can change management rights.", "forbidden");
     if (spec.role !== undefined) fail(400, "Change a key's role with PUT /api/v1/teams/:id/members/:hash.", "invalid_request");
     const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}), ...tracingPatch(ctx, spec, k.tracing) };
@@ -250,7 +260,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     // Keys are disabled rather than removed: generations and on-chain balances reference them.
     await ctx.db.update(keys).set({ disabled: true }).where(eq(keys.keyHash, k.keyHash));
     if (k.teamId && !k.disabled) await appendAudit(ctx.db, k.teamId, await actorOf(ctx.db, caller), "key.disable", k.keyHash, {});
-    return c.json({ data: { hash: k.keyHash, deleted: true } });
+    return c.json({ deleted: true, data: { hash: k.keyHash, deleted: true } }); // ZK6
   });
 
   // Current key (OpenRouter GET /api/v1/key shape).

@@ -83,7 +83,7 @@ export function generationRoutes(app: Hono, ctx: Ctx) {
     const before = c.req.query("before");
     // A session key lists only its own calls, not the whole account's.
     const [session] = await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, key.keyHash));
-    const scope = session ? eq(generations.keyHash, key.keyHash) : eq(generations.accountId, key.accountId);
+    const scope = session || key.scope === "inference" ? /* ZK6: own calls only */ eq(generations.keyHash, key.keyHash) : eq(generations.accountId, key.accountId);
     const rows = await ctx.db
       .select()
       .from(generations)
@@ -104,7 +104,7 @@ export function generationRoutes(app: Hono, ctx: Ctx) {
     let allowed = false;
     if (secret) {
       const key = await resolveKey(ctx, secret);
-      allowed = !!key && key.accountId === g.accountId;
+      allowed = !!key && key.accountId === g.accountId && (key.scope !== "inference" || key.keyHash === g.keyHash); // ZK6
     } else if (c.req.header("x-wallet-auth")) {
       const w = await walletAuth(ctx, c.req.header("x-wallet-auth")!, (await import("../lib/util.ts")).sha256(""));
       allowed = w.accountId === g.accountId;
