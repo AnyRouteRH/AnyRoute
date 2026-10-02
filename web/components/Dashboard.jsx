@@ -1,4 +1,5 @@
 "use client";
+import AccountActivity from "./account/AccountActivity";
 import AccountShell from "./account/AccountShell";
 import AccountAnchors from "./account/AccountAnchors.js";
 import AccountHome from "./account/AccountHome";
@@ -1218,6 +1219,7 @@ export default function Dashboard() {
         </section>
       ) : live && !signedIn && tab !== "Teams" ? null : (
         <div className="tab-panel" key={tab}>
+          {tab === "Activity" && ws && <AccountActivity apiKey={apiKey} keys={ws.keys}/>}
           {tab === "Home" && ws && <AccountHome apiKey={apiKey} workspace={ws} onRefresh={() => refresh()} onReceipt={receipt => setModal({ type: "receipt", data: receipt })}/>}
           {tab === "Playground" && (
             <>

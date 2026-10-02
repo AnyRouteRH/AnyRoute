@@ -23,6 +23,7 @@ export const TASKS = [
   task('install', 'chat', 'Install the app', 'Open the Harness and use browser installation on your phone or desktop.', '/harness/', 'pwa, mobile, phone, install'),
   task('models', 'chat', 'Find models and prices', 'Search one model catalog by capability, provider, context and price.', '/models/', 'catalog, pricing, cost, models, capabilities, images, audio, network'),
 
+  task('account-activity', 'agents', 'See all your activity', 'Follow calls, approvals, alerts and funds, with receipts and exports.', '/dashboard/#activity', 'activity, history, ledger, receipts, export'),
   task('dashboard', 'build', 'Manage your API keys', 'Explore your account, then connect a key to see balances, calls and rules.', '/dashboard/', 'dashboard, api key, account', true),
   task('api', 'build', 'Call the API', 'Read request formats, endpoints and the quickstart.', '/docs/#quickstart', 'api, integration, developer', true),
   task('payments', 'build', 'Choose a way to pay', 'Read how USDG, $ANYR, stock escrow and x402 payments work.', '/docs/#payments', 'payment, usdg, anyr, stock, escrow, x402', true),
@@ -44,7 +45,7 @@ export const TASKS = [
   task('evals', 'build', 'Evaluate model answers', 'Open Eval Lab in the dashboard to compare answers against your cases.', '/dashboard/', 'eval, evaluation, rubric, benchmark'),
   task('skills', 'build', 'Inspect a skill', 'Open Skills in the dashboard to read scan reports and installation details.', '/dashboard/', 'skills, scan, install'),
   task('spend', 'build', 'Watch API spending', 'Open Spend Watch in the dashboard to inspect usage and spending controls.', '/dashboard/', 'spend watch, usage, costs'),
-  task('api-receipts', 'build', 'Review your API calls', 'Open Receipts in the dashboard to inspect recorded calls.', '/dashboard/', 'api receipts, calls, history'),
+  task('api-receipts', 'build', 'Review your API calls', 'Open Activity for calls, receipts and account events; Receipts keeps extra tools.', '/dashboard/#activity', 'api receipts, calls, history'),
   task('holders', 'build', 'Inspect $ANYR account benefits', 'Open Holders in the dashboard to inspect balance, tier and credit details.', '/dashboard/', 'holders, tier, balance, anyr'),
   task('settings', 'build', 'Set account preferences', 'Open Settings in the dashboard to manage account preferences.', '/dashboard/', 'settings, account, preferences'),
   task('mcp', 'build', 'Connect agent tools', 'Read the MCP tool interface and connection instructions.', '/docs/#mcp', 'mcp, tools, agent'),
@@ -53,7 +54,7 @@ export const TASKS = [
   task('sessions', 'agents', 'Give an agent a session', 'Open Agent Sessions in the dashboard to set a session budget and lifetime.', '/dashboard/', 'agent sessions, session, ttl'),
   task('approvals', 'agents', "Approve an agent’s payment", 'Review how approvals work, then connect a key to approve or deny a request.', '/agents/', 'approval, approve, deny, payment', true),
   task('telegram', 'agents', 'Link Telegram approvals', 'Connect Telegram from Agents for approvals and alerts.', '/agents/', 'telegram, bot, notification'),
-  task('activity', 'agents', 'Review agent activity', 'Select an agent, then Activity & receipts to inspect or export its ledger.', '/agents/', 'activity, ledger, receipts, csv, json'),
+  task('activity', 'agents', 'Review agent activity', 'Open Activity for calls and agent events; Agents keeps the per-agent ledger.', '/dashboard/#activity', 'activity, ledger, receipts, csv, json'),
   task('alerts', 'agents', 'Set agent alerts', 'Configure the alert feed, spend webhook or linked Telegram notifications.', '/agents/', 'alerts, notification, webhook'),
   task('breakers', 'agents', 'Set circuit breakers', 'Configure rulebook breakers that stop subsequent requests through AnyRoute.', '/agents/', 'breaker, kill switch, stop, safety'),
   task('autonomy', 'agents', 'Adjust agent autonomy', 'Review progressive autonomy and spending caps for a selected agent.', '/agents/', 'autonomy, spending, caps'),
@@ -90,7 +91,7 @@ export const TASKS = [
 ];
 
 // Tools that live inside a page tab are found through search; menus, the mobile menu and the footer stay short.
-const SEARCH_ONLY = new Set(['history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
+const SEARCH_ONLY = new Set(['activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 
@@ -99,7 +100,7 @@ export const ACCOUNT_GROUPS = [
   { title: 'Home', ids: ['dashboard'] },
   { title: 'Use', ids: ['playground', 'models', 'routing', 'presets', 'characters', 'evals', 'batches', 'skills'] },
   { title: 'Agents', ids: ['rulebook', 'sessions', 'directory'] },
-  { title: 'Money', ids: ['account-payments', 'holders', 'spend', 'api-receipts'] },
+  { title: 'Money', ids: ['account-activity', 'account-payments', 'holders', 'spend', 'api-receipts'] },
   { title: 'Account', ids: ['account-keys', 'teams', 'providers', 'settings', 'keep'] },
 ];
 TASKS.push(task('account-keys', 'build', 'Manage account keys', 'Explore API keys, then connect to create keys and set budgets.', '/dashboard/#api-keys', 'api keys, budget'));
@@ -108,6 +109,7 @@ for (const id of ['account-keys', 'account-payments']) TASKS.find(item => item.i
 const accountSection = (taskId, title, hash, description, start) => ({ taskId, title, hash, description, start, href: hash ? '/dashboard/#' + hash : TASKS.find(item => item.id === taskId).href });
 export const ACCOUNT_SECTIONS = [
   accountSection('dashboard', 'Home', 'home', 'See your balance, spending, keys, agents and recent call receipts in one place.', 'Connect your key to see what you own and what needs your attention.'),
+  accountSection('account-activity', 'Activity', 'activity', 'Follow calls, approvals, alerts, deposits and agreements in one list.', 'Connect your key to read visible activity and export a filtered range.'),
   accountSection('playground', 'Playground', 'playground', 'Send an API request and inspect its answer, cost and receipt.', 'Connect your key, choose a model and send a request.'),
   accountSection('models', 'Models', 'models', 'Browse models, providers and per-token prices.', 'Connect your key to choose a model for your next call.'),
   accountSection('routing', 'Saved Routes', 'saved-routes', 'Save model choices, fallbacks and routing preferences for repeat calls.', 'Connect your key to create a saved route.'),

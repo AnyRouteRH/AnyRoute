@@ -1,4 +1,5 @@
 'use client';
+import AccountActivity from './AccountActivity';
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { pendingApprovals } from '../../lib/agents.js';
@@ -37,8 +38,6 @@ export default function AccountHome({ apiKey, workspace, onReceipt, onRefresh })
       <section className="control-panel"><h3>Waiting for you</h3>{approvals ? <p>{approvals.length} approvals waiting</p> : <p className="help-text" role="status">{status('approvals')}</p>}<a className="inline-link" href="/agents/#approvals">Review approvals</a></section>
       {steps.length > 0 && <section className="control-panel"><h3>Next steps</h3><ul>{steps.map(step => <li key={step.id}><a className="inline-link" href={step.href}>{step.title}</a></li>)}</ul></section>}
     </div>
-    <section className="control-panel"><div className="panel-heading"><h3>Recent calls</h3><a className="inline-link" href="/dashboard/#receipts">View all receipts</a></div>
-      {workspace.receipts.length ? <ul className={s.recent}>{workspace.receipts.slice(0, 5).map(receipt => <li key={receipt.id}><strong>{receipt.model}</strong><span>{receipt.provider || 'Provider not recorded'} · {dollars(receipt.cost)} · {new Date(receipt.time).toLocaleString()}</span><button className="text-button" onClick={() => onReceipt(receipt)}>Inspect receipt {receipt.id}</button></li>)}</ul> : <p>No calls recorded yet. <a className="inline-link" href="/dashboard/#playground">Send your first request</a>.</p>}
-    </section>
+    <AccountActivity apiKey={apiKey} recent/>
   </div>;
 }
