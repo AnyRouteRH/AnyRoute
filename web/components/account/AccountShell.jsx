@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, CopyButton, Modal } from '../UI';
 import { AccountNavigation, AccountPreview } from './AccountViews.js';
 import AccountConnect from './AccountConnect';
+import FirstCallQuickstart from './FirstCallQuickstart'; // ON2
 import s from './AccountShell.module.css';
 export default function AccountShell({ current, apiKey, onConnect, onDisconnect, onNavigate, publicContent = false, children }) {
   const [secret, setSecret] = useState('');
@@ -18,7 +19,7 @@ export default function AccountShell({ current, apiKey, onConnect, onDisconnect,
       <div className={s.connection}>{apiKey ? <><p className="help-text">Key connected · this tab only</p><Button secondary onClick={onDisconnect}>Disconnect</Button></> : <p className="help-text">Explore your account. Connect a key when you are ready.</p>}</div>
     </aside>
     <div className={s.content} ref={content}>
-      {!apiKey && <AccountPreview current={current}><AccountConnect onConnect={onConnect} onSecret={setSecret}/></AccountPreview>}
+      {!apiKey && <AccountPreview current={current}><AccountConnect onConnect={onConnect} onSecret={setSecret}/>{current === 'Home' && <FirstCallQuickstart/>} {/* ON2 */}</AccountPreview>}
       {(apiKey || publicContent) && children}
     </div>
     {secret && <Modal title="Save your API key" onClose={() => setSecret('')}><p>Keep this key safe. Anyone with it can use its account access and balance.</p><code className={s.secret}>{secret}</code><div className="button-row"><CopyButton text={secret} label="Copy key"/><Button onClick={() => setSecret('')}>Done</Button></div></Modal>}

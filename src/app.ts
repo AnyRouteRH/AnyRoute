@@ -1,4 +1,5 @@
 import { initializeUpstreamMonitor } from "./rush/monitor.ts"; // ON3
+import { firstCallRoutes, firstCallCsp } from "./developers/first-call.ts"; // ON2
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
 import { statementRoutes } from "./api/statements.ts"; // V87
 import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
@@ -159,7 +160,7 @@ export async function createApp(opts: AppOptions = {}) {
     c.header("referrer-policy", "no-referrer");
     c.header("x-frame-options", "DENY");
     if (c.res.headers.get("content-type")?.includes("text/html")) {
-      c.header("content-security-policy", csp);
+      c.header("content-security-policy", firstCallCsp(c.req.method, c.req.path, cfg.developerFirstCallEnabled) ?? csp); // ON2: retain the script-free endpoint page policy.
       // Tell Tor Browser this page has an onion twin (only on the clearnet site; it does nothing without ONION_ADDRESS).
       if (cfg.onion.address && c.req.method === "GET" && !viaOnion(c, cfg)) {
         const url = new URL(c.req.url);
@@ -174,6 +175,7 @@ export async function createApp(opts: AppOptions = {}) {
   app.use("*", agentLedgerMiddleware(ctx));
   app.use("*", agentApprovalMiddleware(ctx));
   structuredOutputMiddleware(app, ctx); // V83: ordinary chat routes bill each call.
+  firstCallRoutes(app, cfg.developerFirstCallEnabled, cfg.publicUrl); // ON2
   chatRoutes(app, ctx);
   e2eeRoutes(app, ctx);
   embeddingsRoutes(app, ctx);

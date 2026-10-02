@@ -1,0 +1,13 @@
+/* ON2: use the existing account and docs colors and type. */
+.first-call{display:grid;gap:16px;min-width:0;margin-bottom:24px}
+.first-call p{margin:0}
+.first-call .code-panel{min-width:0;max-width:100%;margin:0}
+.first-call .text-button{justify-self:start}
+.first-call-steps{list-style:none;padding:0!important;margin:0;display:grid;gap:12px}
+.first-call-steps li{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);background:var(--white);padding:16px;min-width:0}
+.first-call-steps li>div{min-width:0;overflow-wrap:anywhere}
+.first-call-mark{flex:none;display:grid;place-items:center;width:28px;height:28px;border:1px solid var(--line);font:13px var(--mono)}
+.first-call-mark[data-done=true]{background:var(--signal-tint);color:var(--signal-deep)}
+.first-call-status{display:inline-block;margin-left:12px;font:11px var(--mono);color:var(--muted)}
+.first-call-steps .help-text{margin-top:6px}
+@media(max-width:480px){.first-call-steps li{padding:12px}.first-call-status{display:block;margin:4px 0}}

@@ -58,6 +58,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 
 const schema = z.object({
   ...rushEnv, // ON3
+  DEVELOPER_FIRST_CALL_ENABLED: bool.default(false), // ON2: guidance for GETs to model endpoints.
   ...structuredOutputEnv, // V83
   ...insightsEnv, // V88: spend insights.
   ...sealedEnv,
@@ -585,6 +586,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   return {
     env: e.ANYROUTE_ENV,
     production,
+    developerFirstCallEnabled: e.DEVELOPER_FIRST_CALL_ENABLED, // ON2
     routeExplain: e.ROUTE_EXPLAIN_ENABLED, // V84
     hostDashboard: { enabled: e.HOST_DASHBOARD_ENABLED },
     agreements: agreementSettings(e, production),
