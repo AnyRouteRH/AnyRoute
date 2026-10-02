@@ -15217,6 +15217,8 @@
           "supported_parameters"
         ],
         "properties": {
+          "capabilities": { "type": "array", "items": { "type": "string", "enum": ["vision", "imageOut", "audio", "tools", "longContext", "attested", "network", "encrypted"] }, "description": "Shared catalogue tags; longContext means at least 128,000 tokens. network requires a live fresh-attested network-host offer for an admitted model. encrypted requires the separate enabled gateway path, exact model ID and fresh evidence; ordinary chat remains readable by the router." },
+          "provider_names": { "type": "array", "items": { "type": "string" }, "description": "Names of providers with live servable offers for this model." },
           "id": {
             "type": "string"
           },

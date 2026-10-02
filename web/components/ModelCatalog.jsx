@@ -1,198 +1,74 @@
 "use client";
-import { useEffect, useState } from "react";
-import { models as sampleModels } from "../lib/demo";
-import { api, getMode, setMode, toCatalogModel } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { api, toCatalogModel } from "../lib/api";
+import { MODEL_CAPABILITIES } from "../lib/model-capabilities.js";
+import { CATALOG_SORTS, filterModels, modelTagCounts } from "../lib/model-catalog.js";
+import { CapabilityChips, CapabilityGuide } from "./ModelCapabilities";
 import { Button, Modal } from "./UI";
+import s from "./ModelCatalog.module.css";
 
-export default function ModelCatalog({ onChoose, source }) {
+export default function ModelCatalog({ onChoose }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("All");
+  const [tags, setTags] = useState([]);
   const [sort, setSort] = useState("name");
   const [selected, setSelected] = useState(null);
-  const [mode, setModeState] = useState(source || null);
-  const [liveModels, setLiveModels] = useState(null);
+  const [models, setModels] = useState(null);
   const [observedAt, setObservedAt] = useState(null);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    const m = source || getMode();
-    setModeState(m);
-    if (m !== "live") return;
-    api("/api/v1/models")
-      .then((r) => {
-        setLiveModels(r.data.map(toCatalogModel));
-        setObservedAt(new Date());
-      })
-      .catch((e) => setError(e.message));
-  }, [source]);
-  const live = mode === "live";
-  const models = live ? liveModels || [] : sampleModels;
-  const visible = models
-    .filter((m) => (m.name + " " + m.id).toLowerCase().includes(query.toLowerCase()) && (filter === "All" || (filter === "Private" ? m.private : m.type === filter)))
-    .sort((a, b) => (sort === "price" ? a.price - b.price : a.name.localeCompare(b.name)));
-  const perM = (n) => (n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2));
-  return (
-    <>
-      <div className="catalog-tools">
-        <label className="search-label">
-          <span className="sr-only">Search models</span>
-          <input className="search-field" placeholder="Search models or authors…" value={query} onChange={(e) => setQuery(e.target.value)} />
-        </label>
-        <label className="select-label">
-          <span className="sr-only">Filter models</span>
-          <select aria-label="Filter models" value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option>All</option>
-            <option>General</option>
-            <option>Reasoning</option>
-            <option>Private</option>
-          </select>
-        </label>
-        <label className="select-label">
-          <span className="sr-only">Sort models</span>
-          <select aria-label="Sort models" value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="name">Name</option>
-            <option value="price">{live ? "Price" : "Sample price"}</option>
-          </select>
-        </label>
-      </div>
-      <div className="catalog-meta">
-        <p className="catalog-note">
-          {live
-            ? `Live catalog${observedAt ? " · updated " + observedAt.toLocaleTimeString("en-GB") : ""} · Prices are per 1M tokens from the cheapest live provider; routing may pick another provider by uptime and quality.`
-            : "Sample catalog · Prices and availability below are illustrative, not live offers."}
-        </p>
-        {(!live || liveModels) && !error && (
-          <span className="catalog-count" aria-live="polite">
-            {visible.length} of {models.length} {live ? "models" : "sample models"}
-          </span>
-        )}
-      </div>
-      {live && error && (
-        <div className="empty">
-          <h3>The model catalog could not be loaded.</h3>
-          <p>{error}</p>
-          <Button
-            secondary
-            onClick={() => {
-              setMode("demo");
-              window.location.reload();
-            }}
-          >
-            View the sample catalog
-          </Button>
-        </div>
-      )}
-      {live && !error && !liveModels && (
-        <div className="empty loading-state" role="status">
-          <span className="loading-bar" aria-hidden="true" />
-          Loading the live catalog…
-        </div>
-      )}
-      <div className="model-grid">
-        {visible.map((m, i) => (
-          <article className="route-card model-card" key={m.id} style={{ "--i": Math.min(i, 10) }}>
-            <div className="eyebrow">
-              {m.author}
-              <span className="live-square" />
-              {m.type}
-            </div>
-            <h3>{m.name}</h3>
-            <p>{m.description}</p>
-            <div className="model-meta">
-              <span>{m.context} context</span>
-              <span>{live ? (m.private ? "Attested private route" : "Standard route") : m.private ? "Private route fixture" : "Standard route fixture"}</span>
-            </div>
-            <div className="model-meta">
-              <span>${perM(m.price)} / 1M input</span>
-              <span>${perM(m.output)} / 1M output</span>
-            </div>
-            <div className="button-row">
-              <button className="text-button" onClick={() => setSelected(m)}>
-                Model details →
-              </button>
-              {onChoose ? (
-                <button className="text-button" onClick={() => onChoose(m.id)}>
-                  Try model →
-                </button>
-              ) : (
-                <a className="text-button" href={"/dashboard/?model=" + encodeURIComponent(m.id) + "#playground"}>
-                  Try model →
-                </a>
-              )}
-            </div>
-            <div className="card-ramp" aria-hidden="true" />
-          </article>
-        ))}
-      </div>
-      {!visible.length && (!live || liveModels) && !error && (
-        <div className="empty">
-          <h3>No matching models</h3>
-          <p>{live && !models.length ? "No providers are serving models yet." : "Try a different search or clear the filters."}</p>
-          <Button
-            secondary
-            onClick={() => {
-              setQuery("");
-              setFilter("All");
-            }}
-          >
-            Clear filters
-          </Button>
-        </div>
-      )}
-      {selected && (
-        <Modal title={selected.name} onClose={() => setSelected(null)}>
-          <p>{selected.description}</p>
-          <dl className="detail-list">
-            <div>
-              <dt>Model ID</dt>
-              <dd>{selected.id}</dd>
-            </div>
-            <div>
-              <dt>{live ? "Context" : "Example context"}</dt>
-              <dd>{live ? (selected.contextLength || 0).toLocaleString("en-US") + " tokens" : selected.context}</dd>
-            </div>
-            <div>
-              <dt>{live ? "Input / output" : "Sample input / output"}</dt>
-              <dd>
-                ${perM(selected.price)} / ${perM(selected.output)} per 1M tokens
-              </dd>
-            </div>
-            <div>
-              <dt>{live ? "Private route" : "Private sample route"}</dt>
-              <dd>{live ? (selected.private ? "Available from an attested provider" : "No attested provider right now") : selected.private ? "Available in this demo" : "Unavailable in this demo"}</dd>
-            </div>
-            {live && (
-              <>
-                <div>
-                  <dt>Providers</dt>
-                  <dd>
-                    {selected.providers} · {selected.quantization.join(", ") || "quantization not declared"}
-                    {selected.zdr ? " · zero data retention available" : ""}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Creator royalty</dt>
-                  <dd>{selected.creator ? `${selected.royaltyBps / 100}% to ${selected.creator.slice(0, 10)}…` : "None"}</dd>
-                </div>
-              </>
-            )}
-          </dl>
-          <div className="note">
-            {live ? "Supplied by the provider registry: each provider publishes its models, prices and quantization, and quant canaries check the claims hourly." : "These are frontend fixtures. The production catalog must be supplied by the verified provider registry."}
-          </div>
-          {onChoose ? (
-            <Button
-              onClick={() => {
-                setSelected(null);
-                onChoose(selected.id);
-              }}
-            >
-              Open playground
-            </Button>
-          ) : (
-            <Button href={"/dashboard/?model=" + encodeURIComponent(selected.id) + "#playground"}>Open playground</Button>
-          )}
-        </Modal>
-      )}
-    </>
-  );
+    let active = true;
+    setError("");
+    api("/api/v1/models").then(r => {
+      if (!active) return;
+      setModels(r.data);
+      setObservedAt(new Date());
+    }).catch(e => active && setError(e.message));
+    return () => { active = false; };
+  }, [attempt]);
+  const visible = useMemo(() => filterModels(models || [], { query, tags, sort }), [models, query, tags, sort]);
+  const counts = useMemo(() => modelTagCounts(models || [], { query, tags }), [models, query, tags]);
+  const perM = n => (n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2));
+  const toggle = key => setTags(current => current.includes(key) ? current.filter(tag => tag !== key) : [...current, key]);
+  const chooseHref = id => "/dashboard/?model=" + encodeURIComponent(id) + "#playground";
+  return <>
+    <div className="catalog-tools">
+      <label className="search-label"><span className="sr-only">Search models or providers</span><input type="search" className="search-field" placeholder="Search models or providers…" value={query} onChange={e => setQuery(e.target.value)} /></label>
+      <label className="select-label"><span className="sr-only">Sort models</span><select aria-label="Sort models" value={sort} onChange={e => setSort(e.target.value)}>{CATALOG_SORTS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+    </div>
+    <div className={s.filters} role="group" aria-label="Filter by capability">{MODEL_CAPABILITIES.map(tag => <button type="button" key={tag.key} title={tag.explanation} aria-pressed={tags.includes(tag.key)} onClick={() => toggle(tag.key)} disabled={!tags.includes(tag.key) && !counts[tag.key]}>{tag.label} <span>{counts[tag.key]}</span></button>)}</div>
+    <CapabilityGuide />
+    <div className="catalog-meta"><p className="catalog-note">Live catalog{observedAt ? " · updated " + observedAt.toLocaleTimeString("en-GB") : ""} · Prices are per 1M tokens from the cheapest live provider; routing may pick another provider by uptime and quality.</p>{models && !error && <span className="catalog-count" aria-live="polite">{visible.length} of {models.length} models</span>}</div>
+    {error && <div className="empty"><h3>The model catalog could not be loaded.</h3><p>{error}</p><Button secondary onClick={() => setAttempt(n => n + 1)}>Retry</Button></div>}
+    {!error && !models && <div className="empty loading-state" role="status"><span className="loading-bar" aria-hidden="true" />Loading the live catalog…</div>}
+    <div className="model-grid">{visible.map((raw, i) => {
+      const model = toCatalogModel(raw);
+      return <article className="route-card model-card" key={model.id} style={{ "--i": Math.min(i, 10) }}>
+        <div className="eyebrow">{model.author}<span className="live-square" />{model.type}</div>
+        <h3>{model.name}</h3><p>{model.description}</p><CapabilityChips model={raw} />
+        <div className="model-meta"><span>{model.context} context</span><span>{model.providers} provider{model.providers === 1 ? "" : "s"}</span></div>
+        <div className="model-meta"><span>${perM(model.price)} / 1M input</span><span>${perM(model.output)} / 1M output</span></div>
+        <div className="button-row"><button className="text-button" onClick={() => setSelected(raw)}>Model details →</button>{onChoose ? <button className="text-button" onClick={() => onChoose(model.id)}>Try model →</button> : <a className="text-button" href={chooseHref(model.id)}>Try model →</a>}</div>
+        <div className="card-ramp" aria-hidden="true" />
+      </article>;
+    })}</div>
+    {!visible.length && models && !error && <div className="empty"><h3>No matching models</h3><p>{!models.length ? "No providers are serving models yet." : "Try a different search or clear the filters."}</p><Button secondary onClick={() => { setQuery(""); setTags([]); }}>Clear filters</Button></div>}
+    {selected && <ModelDetails raw={selected} onClose={() => setSelected(null)} onChoose={onChoose} />}
+  </>;
+}
+
+function ModelDetails({ raw, onClose, onChoose }) {
+  const model = toCatalogModel(raw);
+  return <Modal title={model.name} onClose={onClose}>
+    <p>{model.description}</p><CapabilityChips model={raw} /><CapabilityGuide />
+    <dl className="detail-list">
+      <div><dt>Model ID</dt><dd>{model.id}</dd></div>
+      <div><dt>Context</dt><dd>{(model.contextLength || 0).toLocaleString("en-US")} tokens</dd></div>
+      <div><dt>Input / output</dt><dd>${model.price.toLocaleString("en-US", { maximumSignificantDigits: 6 })} / ${model.output.toLocaleString("en-US", { maximumSignificantDigits: 6 })} per 1M tokens</dd></div>
+      <div><dt>Providers</dt><dd>{raw.provider_names?.join(", ") || model.providers} · {model.quantization.join(", ") || "quantization not declared"}</dd></div>
+      <div><dt>Creator royalty</dt><dd>{model.creator ? `${model.royaltyBps / 100}% to ${model.creator.slice(0, 10)}…` : "None"}</dd></div>
+    </dl>
+    <div className="note">Providers declare modalities, prices and context limits. Hardware tags reflect the router’s current checks. Ordinary chat is readable by the router in memory; encrypted chat requires the separate gateway setup.</div>
+    {onChoose ? <Button onClick={() => { onClose(); onChoose(model.id); }}>Choose model</Button> : <Button href={"/dashboard/?model=" + encodeURIComponent(model.id) + "#playground"}>Open playground</Button>}
+  </Modal>;
 }

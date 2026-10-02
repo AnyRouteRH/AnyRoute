@@ -21,7 +21,7 @@ export const TASKS = [
   task('encrypted', 'chat', 'Use encrypted chat', 'Follow the device-encryption setup for the attested gateway.', '/docs/#e2ee-phala', 'encrypted, encryption, e2ee'),
   task('history', 'chat', 'Organise your chats', 'Search, pin, rename, export or import chats in the Harness.', '/harness/', 'history, conversations, export, import'),
   task('install', 'chat', 'Install the app', 'Open the Harness and use browser installation on your phone or desktop.', '/harness/', 'pwa, mobile, phone, install'),
-  task('models', 'chat', 'Find models and prices', 'Browse the model catalog, providers and per-token rates.', '/models/', 'catalog, pricing, cost, models'),
+  task('models', 'chat', 'Find models and prices', 'Search one model catalog by capability, provider, context and price.', '/models/', 'catalog, pricing, cost, models, capabilities, images, audio, network'),
 
   task('dashboard', 'build', 'Manage your API keys', 'Explore your account, then connect a key to see balances, calls and rules.', '/dashboard/', 'dashboard, api key, account', true),
   task('api', 'build', 'Call the API', 'Read request formats, endpoints and the quickstart.', '/docs/#quickstart', 'api, integration, developer', true),

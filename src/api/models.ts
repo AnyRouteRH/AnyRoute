@@ -1,3 +1,4 @@
+import { capabilityJson, catalogOffers } from "./model-capabilities.ts";
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
 import { SORT_SUFFIXES, outputModalities, type Candidate, type ManifestRef, type ModelRow, type Modifier } from "../catalog/catalog.ts";
@@ -30,7 +31,7 @@ const live = (o: Candidate) => o.status === "live" && o.provider.status === "liv
 /** Live offers that may serve the model now: a restricted variant lists only attested, classifier-enabled endpoints. */
 export const servable = (ctx: Ctx, m: ModelRow) => {
   const lane = ctx.catalog.laneOf(m);
-  return ctx.catalog.offers(m.id).filter(live).filter((o) => offerEligible(ctx, lane, o));
+  return catalogOffers(ctx, m).filter(live).filter((o) => offerEligible(ctx, lane, o));
 };
 
 /**
@@ -181,6 +182,7 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     creator: m.creator ?? null,
     royalty_bps: m.creator ? m.royaltyBps : 0,
     ...laneJson(ctx, m),
+    ...capabilityJson(ctx, m, offers),
   };
 }
 

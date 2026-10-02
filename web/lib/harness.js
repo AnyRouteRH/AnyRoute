@@ -2,6 +2,8 @@
 // Catalogue normalisation, capability filters, search and sort, request building with parameter
 // gating (a setting the model does not declare is never sent), and the stream accumulator.
 // No DOM, no storage: the page (components/Harness.jsx) owns those, and tests drive this file directly.
+import { MODEL_CAPABILITIES, modelCapabilities, modelModalities } from "./model-capabilities.js";
+import { catalogHasCapability } from "./harness-catalog-capabilities.js";
 import { modelInputs } from "./harness-images.js";
 
 // ---------------------------------------------------------------- capabilities
@@ -65,7 +67,6 @@ const perMillion = (v) => {
 
 /** API catalogue record → the shape the harness renders and gates against. */
 export function normalizeModel(raw, order = 0) {
-  const arch = raw.architecture || {};
   const params = new Set(raw.supported_parameters || []);
   const maker = makerOf(raw.id);
   const m = {
@@ -79,7 +80,9 @@ export function normalizeModel(raw, order = 0) {
     outPrice: perMillion(raw.pricing?.completion),
     requestPrice: Number(raw.pricing?.request || 0) || 0,
     inputs: modelInputs(raw),
-    outputs: arch.output_modalities || ["text"],
+    outputs: modelModalities(raw, "output"),
+    capabilities: modelCapabilities(raw),
+    providerNames: [raw.provider_name, ...(raw.provider_names || [])].filter(Boolean).join(" "),
     params,
     attested: raw.disclosure?.best === "attested" || (!raw.disclosure && !!raw.attested_available),
     disclosure: raw.disclosure?.best || (raw.attested_available ? "attested" : null),
@@ -138,7 +141,7 @@ export function matchScore(m, query) {
   if (!words.length) return 0;
   const name = m.name.toLowerCase();
   const id = m.id.toLowerCase();
-  const maker = m.makerLabel.toLowerCase() + " " + m.maker;
+  const maker = m.makerLabel.toLowerCase() + " " + m.maker + " " + (m.providerNames || "").toLowerCase();
   const cid = compact(m.id + m.name);
   let score = 0;
   for (const w of words) {
@@ -178,7 +181,7 @@ export function filterCatalog(models, { query = "", caps = [], sort = "popular" 
   const cmp = COMPARE[sort] || COMPARE.popular;
   const rows = [];
   for (const m of models) {
-    if (!need.every((k) => m.caps.has(k))) continue;
+    if (!need.every((k) => catalogHasCapability(m, k))) continue;
     const s = matchScore(m, query);
     if (s === null) continue;
     rows.push({ m, s });
@@ -189,8 +192,8 @@ export function filterCatalog(models, { query = "", caps = [], sort = "popular" 
 
 /** How many models each chip would leave, given the other chosen chips and the query. */
 export function capCounts(models, { query = "", caps = [] } = {}) {
-  const base = models.filter((m) => [...caps].every((k) => m.caps.has(k)) && matchScore(m, query) !== null);
-  return Object.fromEntries(CAPS.map((c) => [c.key, base.filter((m) => m.caps.has(c.key)).length]));
+  const base = models.filter((m) => [...caps].every((k) => catalogHasCapability(m, k)) && matchScore(m, query) !== null);
+  return Object.fromEntries([...CAPS, ...MODEL_CAPABILITIES].map((c) => [c.key, base.filter((m) => catalogHasCapability(m, c.key)).length]));
 }
 
 /** Groups in the order their first model appears, so the sort decides the group order too. */

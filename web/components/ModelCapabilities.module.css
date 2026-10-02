@@ -1,0 +1,10 @@
+.chips { display: flex; flex-wrap: wrap; gap: 4px; max-width: 100%; margin: 8px 0; }
+.chip { padding: 5px 6px; font: 500 10px/1.3 var(--mono); background: var(--paper-2); color: var(--muted); }
+.chips[data-dark] .chip { background: var(--ink-3); color: var(--muted-dark); }
+.guide { margin: 12px 0; font-size: 12px; color: var(--muted); }
+.guide summary { cursor: pointer; padding: 6px 0; }
+.guide ul { padding-left: 18px; margin: 8px 0; }
+.guide li { margin-bottom: 8px; }
+.guide a { text-decoration: underline; text-underline-offset: 3px; }
+.guide[data-dark] { color: var(--muted-dark); }
+.guide[data-dark] b, .guide[data-dark] a { color: var(--paper); }

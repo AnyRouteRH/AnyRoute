@@ -5,13 +5,16 @@ import { hasWallet, walletApiKey } from "../lib/wallet";
 import { formatMs, formatUsd, receiptHref, estimateTokens } from "../lib/arena";
 import { retryAfterMs } from "../lib/batch";
 import {
-  CAPS, DISCLOSURE_LABEL, SORTS, TOOL_PRESETS,
+  DISCLOSURE_LABEL, SORTS, TOOL_PRESETS,
   applyChunk, blankReply, buildRequest, capCounts, catalogueCounts, defaultSettings, filterCatalog,
   formatContext, formatPrice, groupByMaker, ignoredSettings, normalizeModel, parseTools, parseSchema, pcm16ToWav, replyFacts,
   routeAsModel, sampleToolResult, supportFor,
 } from "../lib/harness";
+import { MODEL_CAPABILITIES as CAPS } from "../lib/model-capabilities.js"; // Shared catalogue vocabulary.
+import { CapabilityChips, CapabilityGuide } from "./ModelCapabilities";
 import Markdown from "./Markdown";
 import PrivateMode, { ReplyPrivacy, usePrivateMode } from "./harness/PrivateMode";
+import ModelFilters from "./harness/ModelFilters";
 import ImageMode from "./harness/ImageMode";
 import GeneratedImages from "./harness/GeneratedImages";
 import { ImageAttach, ImageNotice, useImageAttachments } from "./harness/ImageAttachments";
@@ -22,6 +25,7 @@ import ComposerVoice, { VoiceFeedback } from "./harness/ComposerVoice";
 import AppShell from "./harness/AppShell";
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
+import catalogStyles from "./ModelPickerCapabilities.module.css";
 
 const MAX_LANES = 3;
 const FAVS = "anyroute-harness-favs";
@@ -106,13 +110,7 @@ function Slider({ label, value, min, max, step, fallback, onChange }) {
 }
 
 function CapTags({ model }) {
-  const tags = CAPS.filter((c) => model.caps.has(c.key));
-  if (!tags.length) return <span className={s.capTag}>Text</span>;
-  return tags.map((c) => (
-    <span key={c.key} className={s.capTag} data-green={c.key === "attested" || undefined}>
-      {c.label}
-    </span>
-  ));
+  return <CapabilityChips model={model} dark />;
 }
 
 // ---------------------------------------------------------------- model rail
@@ -156,12 +154,14 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
         </label>
         <div className={s.chips} role="group" aria-label="Filter by capability">
           {CAPS.map((c) => (
-            <button type="button" key={c.key} aria-pressed={caps.includes(c.key)} onClick={() => toggleCap(c.key)} disabled={!caps.includes(c.key) && !counts[c.key]}>
+            <button type="button" key={c.key} aria-pressed={caps.includes(c.key)} title={c.explanation} onClick={() => toggleCap(c.key)} disabled={!caps.includes(c.key) && !counts[c.key]}>
               {c.label}
               <small>{counts[c.key] ?? 0}</small>
             </button>
           ))}
         </div>
+        <ModelFilters caps={caps} counts={counts} onToggle={toggleCap} className={s.chips} />
+        <CapabilityGuide dark />
         <div className={s.railSort}>
           <Segmented label="Sort models" value={prefs.sort} options={SORTS.map((x) => [x.key, x.label])} onChange={(v) => setPrefs({ ...prefs, sort: v })} />
           <button type="button" className={s.groupToggle} aria-pressed={!!prefs.group} onClick={() => setPrefs({ ...prefs, group: !prefs.group })}>
@@ -206,6 +206,7 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
                       {formatContext(m.context)} · {formatPrice(m.inPrice)}
                       {m.outPrice ? " / " + formatPrice(m.outPrice) : ""}
                     </span>
+                    <CapTags model={m} />
                   </button>
                   {!m.route && (
                     <button type="button" className={s.fav} aria-pressed={favs.includes(m.id)} onClick={() => toggleFav(m.id)} aria-label={(favs.includes(m.id) ? "Remove " : "Add ") + m.name + (favs.includes(m.id) ? " from favourites" : " to favourites")}>
@@ -253,7 +254,7 @@ function Palette({ models, onPick, onClose, title, onBrowse }) {
           <input autoFocus placeholder={title} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={key} role="combobox" aria-expanded="true" aria-controls="palette-list" aria-activedescendant={list[active] ? "pal-" + active : undefined} spellCheck={false} autoComplete="off" />
           <kbd>Esc</kbd>
         </label>
-        <ul id="palette-list" role="listbox" ref={listRef} className={s.paletteList}>
+        <ul id="palette-list" role="listbox" ref={listRef} className={`${s.paletteList} ${catalogStyles.paletteList}`}>
           {list.map((m, i) => (
             <li key={m.id} id={"pal-" + i} role="option" aria-selected={i === active} data-active={i === active || undefined} onMouseMove={() => setActive(i)} onClick={() => onPick(m.id)}>
               <span className={s.palName}>
