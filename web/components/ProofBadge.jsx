@@ -11,8 +11,11 @@ function Icon({ name }) {
 export default function ProofBadge({ evidence, now, dark = false, linked = true, explain = false }) {
   return <span className={s.group} data-dark={dark || undefined}>
     {proofBadges(evidence, now).map(mark => <span className={s.item} key={mark.key}>
-      <span className={s.badge} data-tone={mark.tone} title={`${mark.explanation} ${mark.context}`}><Icon name={mark.icon} />{mark.label}</span>
-      {explain ? <span className={s.explanation}>{mark.explanation} {mark.context}</span> : <span className="sr-only">{mark.explanation} {mark.context}</span>}
+      {linked && !explain
+        // Tap or click shows the explanation; a hover-only title can't be read on touch screens.
+        ? <details className={s.pop}><summary className={s.badge} data-tone={mark.tone} title={`${mark.explanation} ${mark.context}`}><Icon name={mark.icon} />{mark.label}</summary><span className={s.popover} role="note">{mark.explanation} {mark.context}</span></details>
+        : <span className={s.badge} data-tone={mark.tone} title={`${mark.explanation} ${mark.context}`}><Icon name={mark.icon} />{mark.label}</span>}
+      {explain ? <span className={s.explanation}>{mark.explanation} {mark.context}</span> : !linked && <span className="sr-only">{mark.explanation} {mark.context}</span>}
       {linked && <a className={s.check} href={mark.href} aria-label={`How to check: ${mark.label}`} onClick={event => event.stopPropagation()}>How to check</a>}
     </span>)}
   </span>;
