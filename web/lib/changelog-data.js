@@ -5,6 +5,182 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "signed-webhooks",
+    "date": "2026-10-02",
+    "title": "See every webhook signed",
+    "summary": "Webhook destinations get a signing secret shown once, and each delivery carries an HMAC signature and event id. Subscribe to approvals, deposits, agreement events, host status and alerts, with a delivery log and a sample event you can send.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/dashboard/webhooks/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/1f012618d72ae4437fc82d59aac5713b84afc73c"
+      }
+    ],
+    "tags": [
+      "agents",
+      "build",
+      "verify"
+    ]
+  },
+  {
+    "id": "spend-insights",
+    "date": "2026-10-02",
+    "title": "See where your money goes",
+    "summary": "Insights shows spend by day or week, model, key or agent and lane, plus live models with the same capability tags at a lower price for your mix. It compares prices, not quality.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/dashboard/#insights"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/01cb510a7efc2ff5ed6d9dd6ebd6b4c6c826f6e1"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "monthly-statements",
+    "date": "2026-10-02",
+    "title": "Download signed monthly statements and export your data",
+    "summary": "Monthly statements reconcile balances, deposits, refunds, usage and fees, are signed with the router's receipt key and can be checked on /verify. Export your data downloads what your account can read as one JSON bundle.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/dashboard/#statements"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/eeff7310fb89e3a94a5e6855d486c6800bccf93a"
+      }
+    ],
+    "tags": [
+      "build",
+      "verify"
+    ]
+  },
+  {
+    "id": "json-check",
+    "date": "2026-10-02",
+    "title": "Ask the router to check JSON answers",
+    "summary": "Opt in with anyroute.json_check to validate a structured answer against its schema, or to repair it once with the same model. Both calls of a repair are billed and receipted, and a repair can still fail.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#structured-output"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/7ac9fdf50221277ddf1b08aebc6de1e717199c46"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "why-this-route",
+    "date": "2026-10-02",
+    "title": "See why each reply went to its provider",
+    "summary": "Replies explain the routing choice: the reason, how many providers were eligible and why others were skipped, as a header, a signed receipt field and a note under each Harness reply.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#why-this-route"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/70aaece54f78db64682a92c8298d0a4abc282ed2"
+      }
+    ],
+    "tags": [
+      "chat",
+      "verify"
+    ]
+  },
+  {
+    "id": "prompt-library",
+    "date": "2026-10-02",
+    "title": "Save and reuse prompts",
+    "summary": "Keep named prompts in the Harness with {{variables}}, tags and an optional model, run them on several models, and import or export the library. Prompts stay in this browser.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/harness/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/7c60e2333a1c5d2c5c6b6c5bc631f1be30480070"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "cost-estimator",
+    "date": "2026-10-02",
+    "title": "Estimate what a request will cost",
+    "summary": "Price a request on every live model before signing in, with per-request and 30-day totals, capability filters and links into the chat. Prompts never leave the browser.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/cost/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/beee72fcdeb57d68a605c12ed3523625edd13d5c"
+      }
+    ],
+    "tags": [
+      "build",
+      "chat"
+    ]
+  },
+  {
+    "id": "live-previews",
+    "date": "2026-10-02",
+    "title": "Preview code in chat replies",
+    "summary": "Code blocks in Harness replies get copy and download, and HTML, SVG and Markdown blocks open in a sandboxed preview with no network access. Scripts stay off unless you switch them on.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/harness/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/332d0d78cba6c8c50116dae6a90a602e7694202e"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "starter-rulebooks",
+    "date": "2026-10-02",
+    "title": "Start an agent from a rulebook template",
+    "summary": "Six starter rulebooks show every cap, lane, tool and working hour before you apply them, and Try a request asks the router whether a request would be allowed without spending.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/agents/#rulebook-templates"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/dcaa1d7be2c4e11c5257cecfeb92aa6805cf0ef9"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
     "id": "account-activity",
     "date": "2026-10-02",
     "title": "Follow account activity in one list",

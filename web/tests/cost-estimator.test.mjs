@@ -135,3 +135,11 @@ test('a model with no listed token prices is shown as unavailable, never as $0 o
   assert.equal(rows[0].model.id, 'y/text');
   assert.equal(rows.find(r => r.model.id === 'x/clip').cheapest, false);
 });
+
+test('embedding-only models are left out of chat cost estimates, like the Harness', async () => {
+  const { costRows } = await import('../lib/cost-estimator.js');
+  const embed = { id: 'q/embed', name: 'Embed', pricing: { prompt: '0.00000001', completion: '0' }, architecture: { input_modalities: ['text'], output_modalities: ['embeddings'] } };
+  const chat = { id: 'q/chat', name: 'Chat', pricing: { prompt: '0.000001', completion: '0.000002' }, architecture: { input_modalities: ['text'], output_modalities: ['text'] } };
+  const rows = costRows([embed, chat], { input: 100, output: 100, volume: 1 });
+  assert.deepEqual(rows.map(r => r.model.id), ['q/chat']);
+});

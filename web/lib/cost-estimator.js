@@ -91,7 +91,9 @@ export function formatCost(amount, digits = 6) {
   return rounded === 0n ? '<$' + text(1n) : '$' + text(rounded);
 }
 export function costRows(models, { query = '', tags = [], sort = 'total', input = 0, output = 512, volume = 100 } = {}) {
-  const rows = filterModels(models, { query, tags }).map(model => ({ model, cost: modelCost(model, input, output, volume) }));
+  // Chat pricing only: embedding-only models can't answer a prompt (the Harness leaves them out too).
+  const chatModels = models.filter(model => !(model.architecture?.output_modalities || []).includes('embeddings'));
+  const rows = filterModels(chatModels, { query, tags }).map(model => ({ model, cost: modelCost(model, input, output, volume) }));
   const nameOrder = (a, b) => String(a.model.name || a.model.id).localeCompare(String(b.model.name || b.model.id)) || String(a.model.id).localeCompare(String(b.model.id));
   const cheapest = [...rows].filter(row => row.cost.total !== null).sort((a, b) => a.cost.total < b.cost.total ? -1 : a.cost.total > b.cost.total ? 1 : nameOrder(a, b)).slice(0, 3);
   const highlighted = new Set(cheapest.map(row => row.model.id));
