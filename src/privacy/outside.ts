@@ -1,3 +1,4 @@
+import { inboxStores } from "./inbox.ts"; // U78: account inbox inventory.
 import { activityStores } from "./activity.ts";
 import { profileBodyReader } from "./profiles.ts";
 import { sealedBodyReaders, sealedOtherStores } from "./sealed.ts";
@@ -709,6 +710,7 @@ export const EXTERNAL: ExternalDoc = {
   },
   otherStores: [
     ...activityStores,
+    ...inboxStores,
     { id: "network-routing-evidence", name: "Network host routing evidence in memory", purpose: "When NETWORK_HOSTS_ENABLED is on, routing uses existing signed generation records, health probes and attestation outcomes to limit admitted hosts during probation and exclude unavailable hosts.", holds: "Provider ids, probation deadlines, aggregate attested success and recent outcome counts, fresh canonical active bond base units matched to the host id and operator wallet, probe availability and median latency, the latest attestation failure flag and refresh time. No request text or caller address. Successful network probes also record latency in the existing health table.", ttl: "Rebuilt by health refreshes, including idle flushes; evidence older than 120 seconds is refused. Failed refreshes clear the evidence. Lost when the router instance is released or exits.", requestText: "none", evidence: [ev("src/network/routing.ts", "const states = new WeakMap<HealthView, State>();"), ev("src/network/routing.ts", "state.evidence = new Map();"), ev("src/network/weight-config.ts", "evidenceMaxAgeMs: 120_000")] },
     ...networkJoinStores,
     ...networkStatsStores,

@@ -24,6 +24,7 @@ export const TASKS = [
   task('models', 'chat', 'Find models and prices', 'Search one model catalog by capability, provider, context and price.', '/models/', 'catalog, pricing, cost, models, capabilities, images, audio, network'),
 
   task('account-activity', 'agents', 'See all your activity', 'Follow calls, approvals, alerts and funds, with receipts and exports.', '/dashboard/#activity', 'activity, history, ledger, receipts, export'),
+  task('inbox', 'build', 'Check your inbox', 'Review pending approvals, alerts, deposits, agreement events and host updates.', '/dashboard/#inbox', 'inbox, notifications, attention'),
   task('dashboard', 'build', 'Manage your API keys', 'Explore your account, then connect a key to see balances, calls and rules.', '/dashboard/', 'dashboard, api key, account', true),
   task('api', 'build', 'Call the API', 'Read request formats, endpoints and the quickstart.', '/docs/#quickstart', 'api, integration, developer', true),
   task('payments', 'build', 'Choose a way to pay', 'Read how USDG, $ANYR, stock escrow and x402 payments work.', '/docs/#payments', 'payment, usdg, anyr, stock, escrow, x402', true),
@@ -91,14 +92,14 @@ export const TASKS = [
 ];
 
 // Tools that live inside a page tab are found through search; menus, the mobile menu and the footer stay short.
-const SEARCH_ONLY = new Set(['activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
+const SEARCH_ONLY = new Set(['inbox', 'activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
 TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 
 // Account sections share the task map; existing dashboard hashes remain stable.
 export const ACCOUNT_GROUPS = [
-  { title: 'Home', ids: ['dashboard'] },
+  { title: 'Home', ids: ['dashboard', 'inbox'] },
   { title: 'Use', ids: ['playground', 'models', 'routing', 'presets', 'characters', 'evals', 'batches', 'skills'] },
   { title: 'Agents', ids: ['rulebook', 'sessions', 'directory'] },
   { title: 'Money', ids: ['account-activity', 'account-payments', 'holders', 'spend', 'api-receipts'] },
@@ -109,6 +110,7 @@ TASKS.push(task('account-payments', 'build', 'Add funds to your account', 'Explo
 for (const id of ['account-keys', 'account-payments']) TASKS.find(item => item.id === id).menu = false;
 const accountSection = (taskId, title, hash, description, start) => ({ taskId, title, hash, description, start, href: hash ? '/dashboard/#' + hash : TASKS.find(item => item.id === taskId).href });
 export const ACCOUNT_SECTIONS = [
+  accountSection('inbox', 'Inbox', 'inbox', 'Review pending approvals and new alerts, deposits, agreement events and host updates.', 'Connect your key to check items that need your attention.'),
   accountSection('dashboard', 'Home', 'home', 'See your balance, spending, keys, agents and recent call receipts in one place.', 'Connect your key to see what you own and what needs your attention.'),
   accountSection('account-activity', 'Activity', 'activity', 'Follow calls, approvals, alerts, deposits and agreements in one list.', 'Connect your key to read visible activity and export a filtered range.'),
   accountSection('playground', 'Playground', 'playground', 'Send an API request and inspect its answer, cost and receipt.', 'Connect your key, choose a model and send a request.'),

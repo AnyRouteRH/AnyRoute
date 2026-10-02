@@ -16,7 +16,7 @@ export function activityRow(r: Raw) {
     status: r.status, reference: r.reference, approval_limit: r.limit_pico === null ? null : picoToUsdString(BigInt(r.limit_pico)) };
 }
 const rowsOf = <T>(r: unknown): T[] => ((r as { rows?: T[] }).rows ?? r) as T[];
-export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery) {
+export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, eligible?: SQL) {
   const role = await roleOf(ctx, key);
   const session = rowsOf(await ctx.db.execute(sql`select id from agent_sessions where key_hash = ${key.keyHash} limit 1`)).length > 0;
   const whole = !session && (key.management || role === "owner" || role === "admin");
@@ -76,7 +76,7 @@ export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery) {
           and r.args->>'id' = p.data->>'agreementId' and r.args->>'milestone' = p.data->>'milestone')))`);
   if (!sources.length) return { data: [], next_cursor: null, scope: whole ? "account" : "key" };
   const bounded = sources.map(s => sql`(select * from (${s}) source(id,at,kind,title,amount_pico,model,lane,"where",key_label,receipt_id,status,reference,limit_pico) where
-    (${q.kind ?? null}::text is null or kind = ${q.kind ?? null}) and (${q.model ?? null}::text is null or model = ${q.model ?? null})
+    (${eligible ?? sql`true`}) and (${q.kind ?? null}::text is null or kind = ${q.kind ?? null}) and (${q.model ?? null}::text is null or model = ${q.model ?? null})
     and (${q.from ?? null}::timestamptz is null or at >= ${q.from ?? null}::timestamptz)
     and (${q.to ?? null}::timestamptz is null or at < ${q.to ?? null}::timestamptz)
     and (${q.cursor?.at ?? null}::timestamptz is null or (at,id collate "C") < (${q.cursor?.at ?? null}::timestamptz,${q.cursor?.id ?? null}::text collate "C"))

@@ -1,4 +1,5 @@
 "use client";
+import AccountInbox from "./account/AccountInbox"; // U78: account inbox.
 import AccountActivity from "./account/AccountActivity";
 import ProofBadge from "./ProofBadge"; // U76: account receipt marks.
 import AccountShell from "./account/AccountShell";
@@ -1220,6 +1221,7 @@ export default function Dashboard() {
         </section>
       ) : live && !signedIn && tab !== "Teams" ? null : (
         <div className="tab-panel" key={tab}>
+          {tab === "Inbox" && apiKey && <AccountInbox key={apiKey} apiKey={apiKey}/>}
           {tab === "Activity" && ws && <AccountActivity apiKey={apiKey} keys={ws.keys}/>}
           {tab === "Home" && ws && <AccountHome apiKey={apiKey} workspace={ws} onRefresh={() => refresh()} onReceipt={receipt => setModal({ type: "receipt", data: receipt })}/>}
           {tab === "Playground" && (
