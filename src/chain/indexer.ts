@@ -1,3 +1,4 @@
+import { withHostStatus } from "../webhooks/hosts.ts"; // V86: atomic host status notices.
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { keccak256, toBytes, type Hex } from "viem";
 import type { Ctx } from "../context.ts";
@@ -265,13 +266,13 @@ async function applyEvent(ctx: Ctx, e: EventRow): Promise<boolean> {
       await ctx.db.update(slashes).set({ status: "executed", executedAt: new Date(), txHash: e.txHash }).where(eq(slashes.onchainId, a.slashId));
       const all = await ctx.db.select({ id: providers.id, bond: providers.bondUsdg }).from(providers);
       const p = all.find((x) => idHash(x.id) === a.providerId);
-      if (p) await ctx.db.update(providers).set({ bondUsdg: p.bond - BigInt(a.amount) > 0n ? p.bond - BigInt(a.amount) : 0n, ...(a.delisted ? { status: "delisted" } : {}), updatedAt: new Date() }).where(eq(providers.id, p.id));
+      if (p) await withHostStatus(ctx, p.id, db => db.update(providers).set({ bondUsdg: p.bond - BigInt(a.amount) > 0n ? p.bond - BigInt(a.amount) : 0n, ...(a.delisted ? { status: "delisted" } : {}), updatedAt: new Date() }).where(eq(providers.id, p.id)));
       return true;
     }
     case "providerBond.Delisted": {
       const all = await ctx.db.select({ id: providers.id }).from(providers);
       const p = all.find((x) => idHash(x.id) === a.providerId);
-      if (p) await ctx.db.update(providers).set({ status: "delisted", updatedAt: new Date() }).where(eq(providers.id, p.id));
+      if (p) await withHostStatus(ctx, p.id, db => db.update(providers).set({ status: "delisted", updatedAt: new Date() }).where(eq(providers.id, p.id)));
       return true;
     }
     case "royalty.Registered":

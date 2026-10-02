@@ -1,3 +1,4 @@
+import { withHostStatus } from "../webhooks/hosts.ts"; // V86: atomic host status notices.
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { keccak256, toBytes, type Hex } from "viem";
 import type { Ctx } from "../context.ts";
@@ -171,7 +172,7 @@ async function executeReady(ctx: Ctx, now: number) {
     const refunded = s.refunded > 0n ? s.refunded : await refund(ctx, s, usdgToPico(s.amountUsdg), "slashrefund");
     await ctx.db.update(slashes).set({ status: "executed", executedAt: new Date(now), refunded }).where(eq(slashes.id, s.id));
     if (s.delist) {
-      await ctx.db.update(providers).set({ status: "delisted", updatedAt: new Date() }).where(eq(providers.id, s.providerId));
+      await withHostStatus(ctx, s.providerId, db => db.update(providers).set({ status: "delisted", updatedAt: new Date() }).where(eq(providers.id, s.providerId)));
       await ctx.db.update(offers).set({ status: "disabled" }).where(eq(offers.providerId, s.providerId));
     }
     out.push({ id: s.id, refunded: refunded.toString(), chain });

@@ -65,6 +65,7 @@ const schema = z.object({
   ...sanctionsEnv,
   ...networkHostsEnv,
   ...networkStatsEnv,
+  WEBHOOK_SIGNING_ENABLED: bool.default(false), // V86: signed account webhooks.
   ...networkPayoutEnv,
   RUNTIME_ROLE: z.enum(["all", "api", "worker"]).default("all"),
   WORKER_JOBS: z.string().default(""),
@@ -491,6 +492,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
+      allowed.push("webhooks"); // V86: bounded event delivery.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
@@ -589,6 +591,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     statementsEnabled: e.STATEMENTS_ENABLED, // V87
     networkStatsEnabled: e.NETWORK_STATS_ENABLED,
     spendInsightsEnabled: e.SPEND_INSIGHTS_ENABLED, // V88: read-only spend insights.
+    webhookSigningEnabled: e.WEBHOOK_SIGNING_ENABLED, // V86: off preserves existing delivery.
     networkPayouts: networkPayoutSettings(e, production),
     networkWeights: { ...networkWeightSettings(e), ...(e.NETWORK_BONDS_ENABLED ? { bonds: { ...hostBondSettings(e), scope: `${e.CHAIN_ID}:${e.HOST_BOND_ADDRESS?.toLowerCase()}` } } : {}) },
     hostBonds: hostBondSettings(e),

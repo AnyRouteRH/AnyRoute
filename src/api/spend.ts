@@ -1,3 +1,4 @@
+import { signingForRule } from "../webhooks/store.ts"; // V86: reveal new signing keys once.
 import type { Context, Hono } from "hono";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -162,6 +163,7 @@ export function spendRoutes(app: Hono, ctx: Ctx) {
     await checkTarget(k, d);
     const webhookUrlEnc = sealWebhook(v.webhook_url);
     const id = uid("sa_");
+    let signing = {}; // V86: creation-only signing response.
     await ctx.db.transaction(async (tx) => {
       // Serialize rule creation per account so concurrent requests cannot pass the cap together.
       await tx.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, k.accountId)).for("update");
@@ -169,9 +171,10 @@ export function spendRoutes(app: Hono, ctx: Ctx) {
       if (Number(n) >= MAX_RULES_PER_ACCOUNT)
         fail(409, `An account can have at most ${MAX_RULES_PER_ACCOUNT} alert rules. Delete one first.`, "too_many_rules");
       await tx.insert(spendAlerts).values({ id, accountId: k.accountId, keyHash: d.keyHash, kind: d.kind, window: d.window, thresholdUsd: d.thresholdUsd, pct: d.pct, webhookUrlEnc, enabled: v.enabled ?? true, state: { v: 1, history: [] }, createdBy: k.keyHash });
+      signing = await signingForRule(ctx, tx, { id, accountId: k.accountId, createdBy: k.keyHash, keyHash: d.keyHash, webhookUrlEnc }); // V86.
     });
     const [row] = await ctx.db.select().from(spendAlerts).where(eq(spendAlerts.id, id));
-    return c.json({ data: ruleJson(row, d.keyHash ? (await keyRows(k.accountId, [d.keyHash])).get(d.keyHash) : undefined) }, 201);
+    if (ctx.cfg.webhookSigningEnabled) c.header("cache-control", "no-store"); return c.json({ data: ruleJson(row, d.keyHash ? (await keyRows(k.accountId, [d.keyHash])).get(d.keyHash) : undefined), ...signing }, 201); // V86.
   });
 
   app.patch("/api/v1/spend/alerts/:id", async (c) => {
@@ -183,6 +186,7 @@ export function spendRoutes(app: Hono, ctx: Ctx) {
     const d = shape(current.kind, v, { kind: current.kind, window: current.window, keyHash: current.keyHash, thresholdUsd: current.thresholdUsd, pct: current.pct });
     await checkTarget(k, d);
     const webhookUrlEnc = v.webhook_url === undefined ? undefined : sealWebhook(v.webhook_url);
+    let signing = {}; // V86: changed destinations reveal a fresh secret once.
     await ctx.db.transaction(async (tx) => {
       const [row] = await tx.select().from(spendAlerts).where(eq(spendAlerts.id, current.id)).for("update");
       if (!row) fail(404, "Alert rule not found.", "not_found");
@@ -204,9 +208,10 @@ export function spendRoutes(app: Hono, ctx: Ctx) {
           ...(conditionChanged ? { lastPeriod: null } : {}),
         })
         .where(eq(spendAlerts.id, row.id));
+      signing = await signingForRule(ctx, tx, { ...row, createdBy: row.createdBy ?? k.keyHash, keyHash: d.keyHash, webhookUrlEnc: webhookUrlEnc === undefined ? row.webhookUrlEnc : webhookUrlEnc }, webhookUrlEnc !== undefined); // V86.
     });
     const [row] = await ctx.db.select().from(spendAlerts).where(eq(spendAlerts.id, current.id));
-    return c.json({ data: ruleJson(row, d.keyHash ? (await keyRows(k.accountId, [d.keyHash])).get(d.keyHash) : undefined) });
+    if (ctx.cfg.webhookSigningEnabled) c.header("cache-control", "no-store"); return c.json({ data: ruleJson(row, d.keyHash ? (await keyRows(k.accountId, [d.keyHash])).get(d.keyHash) : undefined), ...signing }); // V86.
   });
 
   app.delete("/api/v1/spend/alerts/:id", async (c) => {

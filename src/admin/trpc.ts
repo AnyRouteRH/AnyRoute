@@ -1,3 +1,4 @@
+import { withHostStatus, recordHostStatus } from "../webhooks/hosts.ts"; // V86: recorded host transitions.
 import { exportWaitlist } from "../network/waitlist.ts";
 import type { Hono } from "hono";
 import { trpcServer } from "@hono/trpc-server";
@@ -93,6 +94,7 @@ export const adminRouter = t.router({
           .set({ status, shadowUntil: input.live ? null : new Date(Date.now() + ctx.app.cfg.canaries.shadowDays * 86_400_000), ...(input.api_key ? { apiKeyEnc: encrypt(ctx.app.cfg.appSecret, input.api_key) } : {}), updatedAt: new Date() })
           .where(and(eq(providers.id, input.id), eq(providers.status, "applied")))
           .returning({ id: providers.id });
+        if (ctx.app.cfg.webhookSigningEnabled) { const [after] = await tx.select().from(providers).where(eq(providers.id, input.id)); await recordHostStatus(ctx.app, tx, provider, after); } // V86.
         if (!approved.length) throw new TRPCError({ code: "CONFLICT", message: "Only a pending application can be approved." });
       });
       await ctx.app.jobs.run("provider-registry").catch(() => undefined);
@@ -170,11 +172,11 @@ export const adminRouter = t.router({
     setStatus: operator.input(z.object({ id: z.string(), status: z.enum(["applied", "shadow", "live", "suspended", "delisted"]) })).mutation(async ({ ctx, input }) => {
       // A pending application becomes active only through `approve`, which binds it to the reviewed revision.
       const activates = input.status === "shadow" || input.status === "live";
-      const changed = await ctx.app.db
+      const changed = await withHostStatus(ctx.app, input.id, db => db
         .update(providers)
         .set({ status: input.status, updatedAt: new Date() })
         .where(activates ? and(eq(providers.id, input.id), ne(providers.status, "applied")) : eq(providers.id, input.id))
-        .returning({ id: providers.id });
+        .returning({ id: providers.id })); // V86.
       if (!changed.length && activates) {
         const [pending] = await ctx.app.db.select({ id: providers.id }).from(providers).where(eq(providers.id, input.id));
         if (pending) throw new TRPCError({ code: "CONFLICT", message: "Approve a pending application with providers.approve and its review hash." });

@@ -1,3 +1,4 @@
+import { withHostStatus } from "../webhooks/hosts.ts"; // V86: atomic host status notices.
 import { recordPolicyRejection } from "./slashing.ts";
 import { eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -41,7 +42,7 @@ export async function admitHost(ctx: Ctx, provider: typeof providers.$inferSelec
     }
   }
   const status = reasons.length ? "rejected" : "probation";
-  await ctx.db.update(providers).set({ status, staticModels: status === "probation" && staticModels?.length ? staticModels : null, networkReasons: [...new Set(reasons)], attested: hardware, shadowUntil: status === "probation" ? new Date(Date.now() + ctx.cfg.networkHosts.probationDays * 86_400_000) : null, updatedAt: new Date() }).where(eq(providers.id, provider.id));
+  await withHostStatus(ctx, provider.id, db => db.update(providers).set({ status, staticModels: status === "probation" && staticModels?.length ? staticModels : null, networkReasons: [...new Set(reasons)], attested: hardware, shadowUntil: status === "probation" ? new Date(Date.now() + ctx.cfg.networkHosts.probationDays * 86_400_000) : null, updatedAt: new Date() }).where(eq(providers.id, provider.id)));
   if (status === "rejected") await rejectHost(ctx, provider.id, reasons);
   else if (policyVersion !== null) await saveHostDisclosure(ctx, provider.id, policyVersion);
   return { provider_id: provider.id, status, reasons: [...new Set(reasons)], dashboard: `/hosts/?id=${encodeURIComponent(provider.id)}` };

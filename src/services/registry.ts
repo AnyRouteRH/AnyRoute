@@ -1,3 +1,4 @@
+import { withHostStatus } from "../webhooks/hosts.ts"; // V86: atomic host status notices.
 import { probationDiscovery, probationRegistryFilter } from "../network/offers.ts";
 import { openProviderHeaders } from "../providers/headers.ts";
 import { and, eq, inArray, notInArray, or } from "drizzle-orm";
@@ -166,7 +167,7 @@ async function advanceOnboarding(ctx: Ctx, p: typeof providers.$inferSelect, _sc
     const recent = rows.filter((r) => r.ts.getTime() >= p.shadowUntil!.getTime() - ctx.cfg.canaries.shadowDays * 86_400_000);
     const mismatch = recent.some((r) => r.quantMatch === false);
     if (recent.length && !mismatch) {
-      await ctx.db.update(providers).set({ status: "live", updatedAt: new Date() }).where(eq(providers.id, p.id));
+      await withHostStatus(ctx, p.id, db => db.update(providers).set({ status: "live", updatedAt: new Date() }).where(eq(providers.id, p.id)));
       await ctx.db.update(offers).set({ status: "live" }).where(and(eq(offers.providerId, p.id), eq(offers.status, "shadow")));
       log.info("provider promoted to live", { provider: p.id });
     }

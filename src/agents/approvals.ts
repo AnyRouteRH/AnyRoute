@@ -1,3 +1,4 @@
+import { recordApprovalWebhook } from "../webhooks/approvals.ts"; // V86: transaction-bound notices.
 import { ledgerApproval } from "./ledger-context.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
@@ -63,6 +64,7 @@ export async function prepareApproval(db: Db, tx: Tx, rows: PolicyRow[], intents
   if (!row) {
     [row] = await tx.insert(agentApprovals).values({ id: randomBytes(18).toString("base64url"), keyHash, intent: project(intents), intentHash, maxCostPico: cost, requestedAt: now, expiresAt: new Date(now.getTime() + (ttl.get(db) ?? 900) * 1000) }).returning();
     await event(tx, row, "approval_requested", rows, now);
+    await recordApprovalWebhook(db, tx, row); // V86.
   }
   return { error: new ApiError(403, refusal.message, refusal.type, { ...refusal.metadata, approval_id: row.id, expires_at: row.expiresAt.toISOString(), poll: `/api/v1/agents/approvals/${row.id}` }) };
 }
@@ -75,6 +77,7 @@ export async function decideApproval(db: Db, accountId: string, id: string, acto
     if (statusAt(row, now) !== "pending") fail(409, "Approval is no longer pending.", "agent_approval_unavailable");
     const [updated] = await tx.update(agentApprovals).set({ status: action === "approve" ? "approved" : "denied", decidedAt: now, decidedBy: actor }).where(eq(agentApprovals.id, id)).returning();
     await event(tx, updated, action === "approve" ? "approval_approved" : "approval_denied", undefined, now);
+    await recordApprovalWebhook(db, tx, updated, true); // V86.
     return updated;
   };
   return transaction ? decide(transaction) : db.transaction(decide);

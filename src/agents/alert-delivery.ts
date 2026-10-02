@@ -1,10 +1,11 @@
+import { sendRuleWebhook } from "../webhooks/delivery.ts"; // V86: shared signed transport.
 import { linkedAlertTargets } from "../telegram/delivery.ts";
 import { and, eq, isNotNull, like, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { agentSessions, keys, kv, spendAlerts } from "../db/schema.ts";
 import { decrypt, sha256 } from "../lib/util.ts";
 import { roleOf } from "../api/auth.ts";
-import { sendWebhook, type SpendWatchOptions } from "../services/spend-watch.ts";
+import { type SpendWatchOptions } from "../services/spend-watch.ts";
 import { TelegramApi } from "../services/telegram.ts";
 import { lockAccount, policyState } from "./store.ts";
 import { agentPolicies } from "./schema.ts";
@@ -14,7 +15,7 @@ export type AlertDeliveryOptions = Pick<SpendWatchOptions, "send" | "resolve"> &
 const nowTime = Date.now;
 type Target = { id: string; send: () => Promise<boolean> };
 export const agentAlertPayload = (alert: AgentAlert) => ({ source: "anyroute", type: "agent_alert", id: alert.id, key_hash: alert.key_hash, at: alert.at, kind: alert.kind, ...(alert.window ? { window: alert.window, percent: alert.percent } : {}), ...(alert.count ? { count: alert.count } : {}) });
-// Spend Watch account webhooks currently have no signing secret or signature scheme. Reuse its guarded transport.
+// V86: legacy destinations stay unsigned until their owner rotates; egress remains guarded.
 async function targets(ctx: Ctx, account: string, alert: AgentAlert, opts: AlertDeliveryOptions): Promise<Target[]> {
   const out: Target[] = [];
   if (alert.channels.includes("webhook")) {
@@ -23,9 +24,9 @@ async function targets(ctx: Ctx, account: string, alert: AgentAlert, opts: Alert
     for (const rule of rules.filter(r => r.keyHash === null || r.keyHash === alert.key_hash).slice(0, 20)) {
       try {
         const url = decrypt(ctx.cfg.appSecret, rule.webhookUrlEnc!);
-        if (seen.has(url)) continue;
+        if (!ctx.cfg.webhookSigningEnabled && seen.has(url)) continue; // V86: each signed destination owns its secret.
         seen.add(url);
-        out.push({ id: `webhook:${rule.id}`, send: async () => (await sendWebhook(url, agentAlertPayload(alert), opts)).ok });
+        out.push({ id: `webhook:${rule.id}`, send: async () => (await sendRuleWebhook(ctx, rule.id, url, { id: alert.id, event: "agent.alert", reference: alert.id, at: new Date(alert.at) }, agentAlertPayload(alert), opts)).ok });
       } catch { /* An unreadable destination is not linked. */ }
     }
   }

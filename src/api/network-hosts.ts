@@ -1,3 +1,4 @@
+import { recordHostStatus } from "../webhooks/hosts.ts"; // V86: recorded host transitions.
 import type { Context, Hono } from "hono";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -64,6 +65,7 @@ export function networkHostRoutes(app: Hono, ctx: Ctx) {
       if (old && (!old.networkHost || old.operator !== wallet || old.baseUrl !== `${endpoint}/v1`)) fail(409, "Host identity conflicts with an existing provider.", "conflict");
       const values = { name: spec.name, baseUrl: `${endpoint}/v1`, kind: "sidecar", operator: wallet, payoutMode: "usdg", payoutAddress: spec.payout_address.toLowerCase(), networkHost: true, networkReasons: [], status: "pending", attested: false, attestedAt: null, attestationHash: null, classifierEnabled: false, shadowUntil: null, teeKind: "tdx", attestationUrl: `${endpoint}/attest`, networkModels: spec.models, contact: spec.contact ?? null, updatedAt: new Date() };
       const [provider] = old ? await tx.update(providers).set(values).where(eq(providers.id, id)).returning() : await tx.insert(providers).values({ id, ...values }).returning();
+      await recordHostStatus(ctx, tx, old, provider); // V86.
       onKeyPublished(tx, (kind, entry) => published.push({ kind, entry }));
       try {
         const admitted = await admitHost({ ...ctx, db: tx as unknown as Db }, provider, spec.models);

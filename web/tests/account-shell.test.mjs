@@ -10,7 +10,8 @@ import { dashboardSections, sectionFromHash, sectionHash, homeChecklist, homeSpe
 test('one account map includes every section once in the intended groups', () => {
   assert.deepEqual(ACCOUNT_GROUPS.map(group => group.title), ['Home', 'Use', 'Agents', 'Money', 'Account']);
   const ids = ACCOUNT_GROUPS.flatMap(group => group.ids);
-  assert.equal(new Set(ids).size, 26);
+  assert.equal(new Set(ids).size, 27); // V86: Webhooks joins Account.
+  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.title === 'Account').ids, ['account-keys', 'account-export', 'teams', 'providers', 'settings', 'webhooks', 'keep']);
   assert.deepEqual(new Set(ids), new Set(ACCOUNT_SECTIONS.map(section => section.taskId)));
   assert.deepEqual(ACCOUNT_GROUPS.find(group => group.title === 'Money').ids, ['insights', 'account-activity', 'statements', 'account-payments', 'holders', 'spend', 'api-receipts']);
   for (const section of ACCOUNT_SECTIONS) assert.ok(TASKS.some(task => task.id === section.taskId));

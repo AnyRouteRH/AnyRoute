@@ -1,3 +1,4 @@
+import { runWebhooks } from "../webhooks/worker.ts"; // V86: bounded event delivery.
 import { registerAgreementJobs } from "../agreements/jobs.ts";
 import { runNetworkFeeBurn } from "../network/fee-burn.ts";
 import { pollHostBonds } from "../network/bond-indexer.ts";
@@ -62,6 +63,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   jobs.register("buyback", 3_600_000, () => runBuyback(ctx));
   if (cfg.networkPayouts.burnEnabled) jobs.register("network-fee-burn", 3_600_000, () => runNetworkFeeBurn(ctx));
   jobs.register("chain-indexer", 5_000, async () => (chainOn() ? pollChain(ctx) : { skipped: "no contracts" }), { atStart: true });
+  if (cfg.webhookSigningEnabled) jobs.register("webhooks", 60_000, () => runWebhooks(ctx)); // V86.
   jobs.register("spend-watch", 60_000, () => runSpendWatch(ctx));
   jobs.register("escrow-indexer", 5_000, () => pollEscrow(ctx), { atStart: true });
   jobs.register("paywith-aggregator", 60_000, async () => (ctx.chain.address("payWithStock") ? runPaywithAggregator(ctx) : { skipped: "not configured" }));

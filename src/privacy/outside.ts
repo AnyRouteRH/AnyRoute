@@ -1,6 +1,7 @@
 import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { statementStores } from "./statements.ts"; // V87
 import { insightsStores } from "./insights.ts"; // V88: read-only aggregates.
+import { webhookBodyReader, webhookStores } from "./webhooks.ts"; // V86: event delivery.
 import { inboxStores } from "./inbox.ts"; // U78: account inbox inventory.
 import { activityStores } from "./activity.ts";
 import { profileBodyReader } from "./profiles.ts";
@@ -386,6 +387,7 @@ const addressReaders: Touchpoint[] = [
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
   structuredOutputReader, // V83
+  webhookBodyReader, // V86.
   profileBodyReader,
   ...sealedBodyReaders,
   telegramLinkReader,
@@ -713,6 +715,7 @@ export const EXTERNAL: ExternalDoc = {
     evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify({ t: new Date().toISOString(), level, msg, ...fields }")],
   },
   otherStores: [
+    ...webhookStores, // V86.
     ...activityStores,
     ...statementStores, // V87
     ...insightsStores, // V88: spend insights.

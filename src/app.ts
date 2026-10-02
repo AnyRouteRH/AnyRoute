@@ -1,6 +1,7 @@
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
 import { statementRoutes } from "./api/statements.ts"; // V87
 import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
+import { webhookRoutes } from "./webhooks/routes.ts"; // V86: signed destinations.
 import { inboxRoutes } from "./api/inbox.ts"; // U78: account inbox.
 import { activityRoutes } from "./api/activity.ts";
 import { networkStatsRoutes } from "./network/stats.ts";
@@ -199,6 +200,7 @@ export async function createApp(opts: AppOptions = {}) {
   telegramLinkingRoutes(app, ctx);
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
+  webhookRoutes(app, ctx); // V86.
   holdersRoutes(app, ctx);
   disclosureRoutes(app, ctx);
   ipxRoutes(app, ctx);

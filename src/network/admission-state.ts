@@ -1,3 +1,4 @@
+import { recordHostStatus } from "../webhooks/hosts.ts"; // V86: atomic host status notices.
 import { desc, eq } from "drizzle-orm";
 import { verify } from "node:crypto";
 import type { Ctx } from "../context.ts";
@@ -37,7 +38,9 @@ export async function saveHostDisclosure(ctx: Ctx, providerId: string, version: 
 
 export async function rejectHost(ctx: Ctx, providerId: string, reasons: string[]) {
   await ctx.db.transaction(async tx => {
+    const [before] = ctx.cfg.webhookSigningEnabled ? await tx.select().from(providers).where(eq(providers.id, providerId)).for("update") : []; // V86.
     await tx.update(providers).set({ status: "rejected", attested: false, staticModels: null, shadowUntil: null, networkReasons: [...new Set(reasons)], updatedAt: new Date() }).where(eq(providers.id, providerId));
+    if (ctx.cfg.webhookSigningEnabled) { const [after] = await tx.select().from(providers).where(eq(providers.id, providerId)); await recordHostStatus(ctx, tx, before, after); } // V86.
     await tx.update(offers).set({ status: "disabled", updatedAt: new Date() }).where(eq(offers.providerId, providerId));
     await tx.delete(providerDisclosure).where(eq(providerDisclosure.providerId, providerId));
   });

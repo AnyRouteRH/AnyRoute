@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
-import { Button, Modal } from "../UI";
+import { Button, CopyButton, Modal } from "../UI";
 import styles from "./SpendWatch.module.css";
 
 /**
@@ -557,6 +557,8 @@ export default function SpendWatch({ live, apiKey, ws, notify }) {
   const [modal, setModal] = useState(null); // { type: "rule", rule? } | { type: "delete", rule }
   const [nonce, setNonce] = useState(0);
   const [busyRule, setBusyRule] = useState("");
+  const [signingSecret, setSigningSecret] = useState(""); // V86: owner sees it once.
+  useEffect(() => { setSigningSecret(""); }, [apiKey]); // V86: forget on disconnect.
   const sample = useMemo(() => (live ? null : sampleData(period, Date.now())), [live, period]);
 
   useEffect(() => {
@@ -602,6 +604,7 @@ export default function SpendWatch({ live, apiKey, ws, notify }) {
     const r = await api(editing ? "/api/v1/spend/alerts/" + encodeURIComponent(editing.id) : "/api/v1/spend/alerts", { key: apiKey, method: editing ? "PATCH" : "POST", body });
     setRules((list) => (editing ? (list || []).map((x) => (x.id === editing.id ? r.data : x)) : [...(list || []), r.data]));
     setModal(null);
+    if (r.signing_secret) setSigningSecret(r.signing_secret); // V86: no browser storage.
     notify?.(editing ? "Alert rule saved." : "Alert rule created. It is checked every minute.");
   }
   async function toggleRule(rule) {
@@ -643,6 +646,8 @@ export default function SpendWatch({ live, apiKey, ws, notify }) {
 
   return (
     <div className={styles.root}>
+      {signingSecret && <Modal title="Save your signing secret" onClose={() => setSigningSecret("")}><p>This secret is shown once. Store it in your receiver. Rotate it in Webhooks if you need a replacement.</p><code style={{ display: "block", overflowWrap: "anywhere" }}>{signingSecret}</code><CopyButton text={signingSecret} label="Copy secret"/><Button onClick={() => setSigningSecret("")}>Saved</Button></Modal>} {/* V86. */}
+      <p className="help-text"><a href="/dashboard/webhooks/">Manage webhook signing and event subscriptions</a> where enabled.</p> {/* V86. */}
       <div className="panel-heading">
         <div>
           <h2>{live ? "Where the money goes." : "Where the money goes (sample)."}</h2>

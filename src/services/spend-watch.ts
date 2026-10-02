@@ -1,3 +1,4 @@
+import { sendRuleWebhook } from "../webhooks/delivery.ts"; // V86: signed legacy alert transport.
 import { isIP } from "node:net";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -505,6 +506,7 @@ export async function claimFiring(db: Db, rule: SpendAlertRow, plan: Plan, now: 
 export type Resolve = (hostname: string) => Promise<{ address: string; family: number }[]>;
 export type SpendWatchOptions = {
   now?: () => number;
+  headers?: Record<string, string>; // V86: signature and event identity.
   /** DNS for webhook egress (tests). The answers still pass the public-address check. */
   resolve?: Resolve;
   /** Replaces the network transport entirely (tests only; the URL is still checked first). */
@@ -514,11 +516,11 @@ type SendResult = { ok: boolean; status: number | null; error: string | null; bl
 
 /** POST the payload through the provider egress guard: HTTPS only, public addresses only, DNS pinned,
  *  no redirects, 5 s. Never logs or returns the URL, the response body or exception text. */
-export async function sendWebhook(url: string, body: unknown, opts: Pick<SpendWatchOptions, "resolve" | "send"> = {}): Promise<SendResult> {
+export async function sendWebhook(url: string, body: unknown, opts: Pick<SpendWatchOptions, "resolve" | "send" | "headers"> = {}): Promise<SendResult> {
   if (webhookUrlProblem(url)) return { ok: false, status: null, error: "destination_blocked", blocked: true };
   const init: RequestInit = {
     method: "POST",
-    headers: { "content-type": "application/json", "user-agent": "Anyroute-SpendWatch/1" },
+    headers: { "content-type": "application/json", "user-agent": "Anyroute-SpendWatch/1", ...opts.headers },
     body: JSON.stringify(body),
     redirect: "error",
     signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
@@ -570,7 +572,7 @@ async function deliverDue(ctx: Ctx, ruleId: string, now: number, opts: SpendWatc
   }
   const results = new Map<string, SendResult>();
   for (const f of claim.firings)
-    results.set(f.id, url ? await sendWebhook(url, webhookPayload(ruleId, f), opts) : { ok: false, status: null, error: "undecryptable", blocked: true });
+    results.set(f.id, url ? await sendRuleWebhook(ctx, ruleId, url, { id: f.id, event: "spend.alert", reference: ruleId, at: new Date(f.at) }, webhookPayload(ruleId, f), opts) : { ok: false, status: null, error: "undecryptable", blocked: true });
 
   let delivered = 0;
   let failed = claim.exhausted;
