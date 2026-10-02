@@ -1,0 +1,17 @@
+.limits { border-bottom: 1px solid var(--line); padding: 14px 20px; font-size: 12.5px; line-height: 1.5; }
+.limits summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.limits summary span { margin-left: 8px; color: var(--muted); font: 400 10.5px var(--mono); }
+.panel { display: grid; gap: 12px; padding-top: 14px; color: var(--muted); }
+.panel p, .approval p { margin: 0; overflow-wrap: anywhere; }
+.fields { display: grid; gap: 14px; }
+.field { display: grid; gap: 5px; color: var(--ink); }
+.field input { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font: 400 13px var(--mono); }
+.field small { color: var(--muted); font-size: 11px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.panel > button { justify-self: start; max-width: 100%; white-space: normal; }
+.panel a, .approval a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.error { color: #96161b; }
+.approval { display: grid; gap: 12px; margin: 14px 0; padding: 16px; background: var(--paper-2); border: 1px solid var(--line); color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.approval b { color: var(--ink); }
+.limits summary:focus-visible, .field input:focus-visible, .panel button:focus-visible, .approval button:focus-visible, .panel a:focus-visible, .approval a:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+@media (max-width: 540px) { .actions button { min-height: 40px; } }

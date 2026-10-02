@@ -93,6 +93,7 @@ export const TASKS = [
 // Tools that live inside a page tab are found through search; menus, the mobile menu and the footer stay short.
 const SEARCH_ONLY = new Set(['activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
+TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 
 // Account sections share the task map; existing dashboard hashes remain stable.

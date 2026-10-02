@@ -1,7 +1,7 @@
 "use client";
 import ProofBadge from "./ProofBadge"; // U76: shared evidence labels.
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, api, clearKey, loadKey, saveKey, streamChat, validKey } from "../lib/api";
+import { ApiError, api, clearKey, loadKey, saveKey, validKey } from "../lib/api";
 import { hasWallet, walletApiKey } from "../lib/wallet";
 import { formatMs, formatUsd, receiptHref, estimateTokens } from "../lib/arena";
 import { retryAfterMs } from "../lib/batch";
@@ -24,6 +24,7 @@ import { ReadAloud, useHarnessVoice } from "./harness/VoiceMode";
 // Composer polish: contextual notices and voice menu.
 import ComposerVoice, { VoiceFeedback } from "./harness/ComposerVoice";
 import AppShell from "./harness/AppShell";
+import Limits, { ReplyApproval, useHarnessLimits } from "./harness/Limits"; // U77: router-enforced chat controls.
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
 import catalogStyles from "./ModelPickerCapabilities.module.css";
@@ -415,7 +416,7 @@ function ToolCalls({ msg, awaiting, onSubmit }) {
   );
 }
 
-function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage, voice }) {
+function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage, voice, limits }) {
   const facts = replyFacts(msg);
   const waiting = msg.status === "waiting";
   const streaming = msg.status === "streaming" || waiting;
@@ -427,6 +428,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
         <span>{model?.makerLabel}</span>
         {streaming && <span className={s.live}>{waiting ? "Routing" : "Streaming"}</span>}
       </header>
+      {limits && <ReplyApproval limits={limits} messageId={msg.id} /> /* U77: same approval as Agents. */}
       {msg.reasoning && (
         <details className={s.thinking} open={streaming && !msg.text ? true : undefined}>
           <summary>
@@ -555,7 +557,7 @@ function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy }) {
 
 // ---------------------------------------------------------------- tools panel
 
-function ToolsPanel({ model, settings, set, open, onClose, compare, system, setSystem }) {
+function ToolsPanel({ model, settings, set, open, onClose, compare, system, setSystem, limitsControl }) {
   const sup = supportFor(model);
   const toolsCheck = settings.tools ? parseTools(settings.toolsText) : {};
   const schemaCheck = settings.format === "schema" ? parseSchema(settings.schema) : {};
@@ -577,7 +579,7 @@ function ToolsPanel({ model, settings, set, open, onClose, compare, system, setS
     if (!list.some((t) => (t.function || t).name === name)) list.push(TOOL_PRESETS[name]);
     set({ tools: true, toolsText: JSON.stringify(list, null, 2) });
   };
-  if (!model) return <aside className={s.toolsPanel} aria-label="Tools" />;
+  if (!model) return <aside className={s.toolsPanel} data-open={open || undefined} aria-label="Tools"><div className={s.toolsHead}><h2>Tools</h2><button type="button" className={s.sheetClose} onClick={onClose}>Done</button></div><div className={s.toolsBody}>{limitsControl}</div></aside>; // U77: limits remain reachable before models load.
   const any = sup.reasoning || sup.web || sup.json || sup.schema || sup.tools || sup.imageOut || sup.audioOut || sup.verbosity;
   return (
     <aside className={s.toolsPanel} data-open={open || undefined} aria-label="Tools">
@@ -593,6 +595,7 @@ function ToolsPanel({ model, settings, set, open, onClose, compare, system, setS
         </button>
       </div>
       <div className={s.toolsBody}>
+        {limitsControl /* U77: dedicated child session; enforcement stays in the router. */}
         <section className={s.sect}>
           <h3>
             <label htmlFor="system-prompt">System prompt</label>
@@ -753,6 +756,7 @@ export default function Harness() {
   const [announce, setAnnounce] = useState("");
   const priv = usePrivateMode(); // private mode: the attested lane only, see harness/PrivateMode.jsx
   const controllers = useRef(new Map());
+  const limits = useHarnessLimits(); // U77: tab-scoped child key and approval state.
   const lanesRef = useRef(lanes);
   lanesRef.current = lanes;
   const settingsRef = useRef(settings);
@@ -790,6 +794,7 @@ export default function Harness() {
 
   const loadAccount = useCallback(async (key) => {
     const [me, credits] = await Promise.all([api("/api/v1/key", { key }), api("/api/v1/credits", { key })]);
+    await limits.connect(key, me.data.hash); // U77: restore limits before accepting chat.
     setAuth({ key, label: me.data?.label || me.data?.name || "Key", balance: credits.data?.available ?? null, tier: null, state: "ok" });
     api("/api/v1/holder", { key })
       .then((r) => r.data?.tier?.name && setAuth((a) => (a.key === key ? { ...a, tier: r.data.tier.name } : a)))
@@ -802,7 +807,8 @@ export default function Harness() {
     const key = authRef.current.key;
     if (key) api("/api/v1/credits", { key }).then((r) => setAuth((a) => (a.key === key ? { ...a, balance: r.data?.available ?? a.balance } : a))).catch(() => {});
   }, []);
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
+    controllers.current.forEach((c) => c.abort()); try { await limits.signOut(); } catch { return; } // U77: revoke before clearing sign-in.
     clearKey();
     setAuth({ key: "", label: "", balance: null, tier: null, state: "none" });
     setRouteRows([]);
@@ -918,7 +924,8 @@ export default function Harness() {
     };
     patchMsg(laneId, msgId, { notes, imageMode: !!body.modalities?.includes("image") });
     try {
-      await streamChat({
+      await limits.streamChat({ // U77: no parent-key fallback when limits are on.
+        messageId: msgId,
         key,
         body,
         signal: ctl.signal,
@@ -936,11 +943,11 @@ export default function Harness() {
       const stopped = err?.name === "AbortError";
       let message = err?.message || "The route failed.";
       let kind = err?.type || "";
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403) && !err.type?.startsWith("agent_") && !limits.state.session) {
         message = "This key was not accepted. Sign in again to keep going.";
         kind = "auth";
         signOut();
-      } else if (err instanceof ApiError && err.status === 402) {
+      } else if (err instanceof ApiError && err.status === 402 && err.type !== "key_budget_exceeded") {
         message = "Your balance is too low for this call. Add funds, then try again.";
         kind = "funds";
       } else if (err instanceof ApiError && err.status === 429) {
@@ -1044,8 +1051,8 @@ export default function Harness() {
   }, [draft]);
 
   const onKey = async (key) => {
-    saveKey(key);
     await loadAccount(key);
+    saveKey(key); // U77: keep the revoking account key until a key change succeeds.
     setSignin(null);
     if (pendingSend.current) {
       pendingSend.current = false;
@@ -1225,7 +1232,7 @@ export default function Harness() {
                           <code>{m.text}</code>
                         </div>
                       ) : (
-                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} voice={voice} />
+                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} voice={voice} limits={limits} />
                       ),
                     )}
                   </div>
@@ -1312,7 +1319,7 @@ export default function Harness() {
         )}
       </main>
 
-      <ToolsPanel model={focusModel} settings={settings} set={set} open={sheet === "tools"} onClose={() => setSheet(null)} compare={compare} system={system} setSystem={setSystem} />
+      <ToolsPanel model={focusModel} settings={settings} set={set} open={sheet === "tools"} onClose={() => setSheet(null)} compare={compare} system={system} setSystem={setSystem} limitsControl={<Limits limits={limits} signedIn={auth.state === "ok"} busy={busy} onStop={stop} />} />
       {sheet && <button type="button" className={s.scrim} aria-label="Close panel" onClick={() => setSheet(null)} />}
 
       {palette && (
