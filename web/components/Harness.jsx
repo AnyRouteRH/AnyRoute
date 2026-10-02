@@ -13,7 +13,7 @@ import {
 } from "../lib/harness";
 import { MODEL_CAPABILITIES as CAPS } from "../lib/model-capabilities.js"; // Shared catalogue vocabulary.
 import { CapabilityChips, CapabilityGuide } from "./ModelCapabilities";
-import Markdown from "./Markdown";
+import Markdown from "./harness/ReplyMarkdown"; // V82: browser-only code previews.
 import PrivateMode, { ReplyPrivacy, usePrivateMode } from "./harness/PrivateMode";
 import ModelFilters from "./harness/ModelFilters";
 import ImageMode from "./harness/ImageMode";

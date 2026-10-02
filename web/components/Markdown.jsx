@@ -19,10 +19,11 @@ function Inline({ spans }) {
 
 const lines = (text) => text.split("\n").flatMap((l, i) => (i ? [<br key={i} />, <Inline key={"l" + i} spans={parseInline(l)} />] : [<Inline key={"l" + i} spans={parseInline(l)} />]));
 
-function Blocks({ blocks }) {
+function Blocks({ blocks, renderCode }) { // V82: optional chat code controls.
   return blocks.map((b, i) => {
     switch (b.type) {
       case "code":
+        if (renderCode) return <div key={i}>{renderCode(b)}</div>; // V82
         return (
           <div className={s.code} key={i}>
             <div className={s.codeBar}>
@@ -41,7 +42,7 @@ function Blocks({ blocks }) {
       case "rule":
         return <hr key={i} />;
       case "quote":
-        return <blockquote key={i}><Blocks blocks={b.blocks} /></blockquote>;
+        return <blockquote key={i}><Blocks blocks={b.blocks} renderCode={renderCode} /></blockquote>;
       case "list": {
         const L = b.ordered ? "ol" : "ul";
         return (
@@ -66,10 +67,10 @@ function Blocks({ blocks }) {
 }
 
 /** Markdown for model replies: parsed to data first (lib/markdown.js), never injected as HTML. */
-function Markdown({ text }) {
+function Markdown({ text, renderCode }) { // V82
   return (
     <div className={s.md}>
-      <Blocks blocks={parseBlocks(text)} />
+      <Blocks blocks={parseBlocks(text)} renderCode={renderCode} />
     </div>
   );
 }
