@@ -43,6 +43,9 @@ test('public copy excludes banned words and features not switched on', () => {
 test('every entry maps to commits in git history and uses their newest UTC committer day', t => {
   const result = spawnSync('git', ['log', 'HEAD', '--format=%H %ct'], { cwd: new URL('../..', import.meta.url), encoding: 'utf8' });
   if (result.error?.code === 'ENOENT' || /not a git repository/i.test(result.stderr || '')) return t.skip('Git history is unavailable');
+  // CI checks out a shallow clone; full history is checked wherever it exists (local gates).
+  const shallow = spawnSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: new URL('../..', import.meta.url), encoding: 'utf8' });
+  if (shallow.stdout?.trim() === 'true') return t.skip('Shallow clone: commit history is incomplete');
   assert.ifError(result.error);
   assert.equal(result.status, 0, result.stderr);
   const commits = new Map(result.stdout.trim().split('\n').map(line => line.split(' ')));
