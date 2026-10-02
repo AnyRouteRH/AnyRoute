@@ -177,7 +177,7 @@ export async function createApp(opts: AppOptions = {}) {
   app.use("*", agentLedgerMiddleware(ctx));
   app.use("*", agentApprovalMiddleware(ctx));
   structuredOutputMiddleware(app, ctx); // V83: ordinary chat routes bill each call.
-  firstCallRoutes(app, cfg.developerFirstCallEnabled, cfg.publicUrl); // ON2
+  firstCallRoutes(app, cfg.developerFirstCallEnabled, cfg.siteUrl); // ON2: the public site address, not the router host
   chatRoutes(app, ctx);
   e2eeRoutes(app, ctx);
   embeddingsRoutes(app, ctx);

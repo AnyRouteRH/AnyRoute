@@ -78,6 +78,8 @@ const schema = z.object({
   HOST: z.string().default("127.0.0.1"),
   PORT: int(8787),
   PUBLIC_BASE_URL: z.string().default("http://127.0.0.1:8787"),
+  // Public website address shown to people (e.g. in copy-paste examples); default: PUBLIC_BASE_URL. Not used for receipts or issuers.
+  SITE_URL: z.string().url().optional(),
   // Passkeys for organisation members (WebAuthn). Default: the host and origin of PUBLIC_BASE_URL, where the dashboard is served.
   WEBAUTHN_RP_ID: opt,
   WEBAUTHN_ORIGINS: opt, // comma-separated origins allowed in clientDataJSON
@@ -610,6 +612,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     host: e.HOST,
     port: e.PORT,
     publicUrl: e.PUBLIC_BASE_URL.replace(/\/$/, ""),
+    siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),
     webauthn: {
       rpId: e.WEBAUTHN_RP_ID ?? new URL(e.PUBLIC_BASE_URL).hostname,
       origins: e.WEBAUTHN_ORIGINS ? e.WEBAUTHN_ORIGINS.split(",").map((o) => o.trim().replace(/\/$/, "")).filter(Boolean) : [new URL(e.PUBLIC_BASE_URL).origin],

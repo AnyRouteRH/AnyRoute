@@ -68,3 +68,9 @@ test('real router returns guidance without auth and preserves a billed POST and 
   await response.text();
   expect((await (await h.request('/api/v1/generations?limit=1', { headers: key.auth })).json()).data).toHaveLength(1);
 });
+
+test("examples use SITE_URL when set, and PUBLIC_BASE_URL otherwise", async () => {
+  const { loadConfig } = await import("../src/config.ts");
+  expect(loadConfig({ ANYROUTE_ENV: "test", PUBLIC_BASE_URL: "https://router.internal", SITE_URL: "https://site.example/" }).siteUrl).toBe("https://site.example");
+  expect(loadConfig({ ANYROUTE_ENV: "test", PUBLIC_BASE_URL: "https://router.internal/" }).siteUrl).toBe("https://router.internal");
+});
