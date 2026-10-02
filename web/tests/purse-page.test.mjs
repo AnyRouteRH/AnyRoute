@@ -1,3 +1,4 @@
+import {TASKS} from '../lib/site-map.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -48,8 +49,9 @@ test("the wrong $ANYR contract appears nowhere, and the right one is checked aga
 });
 
 test("the page is linked from the header and the footer and is part of the build audit", () => {
-  assert.match(read("components/UI.jsx"), /\['Private tokens','\/tokens\/'\]/);
-  assert.match(read("components/Footer.jsx"), /\['Private tokens','\/tokens\/'\]/);
+  assert.match(read("components/UI.jsx"), /<DesktopGroups path=\{path\}\/>/);
+  assert.ok(TASKS.some(task => task.id === "tokens" && task.href === "/tokens/"));
+  assert.match(read("components/Footer.jsx"), /TASKS.filter/);
   assert.match(read("scripts/audit-build.mjs"), /'\/tokens\/'/);
   const page = read("app/tokens/page.jsx");
   assert.match(page, /export const metadata/);

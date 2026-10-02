@@ -2,19 +2,21 @@
 import {useEffect,useRef,useState} from 'react';
 import {Wordmark} from './Logo';
 import InstallApp from './harness/InstallApp';
+// NAV1: shared task disclosures and search.
+import {DesktopGroups,MobileGroups} from './nav/GroupMenus';
+import SearchButton from './nav/SearchButton';
+import SiteSearch from './nav/SiteSearch';
 
 export function Button({children,href,secondary=false,light=false,className='',...props}){const cls='ar-button'+(secondary?' secondary':'')+(light?' light':'')+(className?' '+className:'');const inner=<>{!secondary&&<i aria-hidden="true"/>}<span>{children}</span><b aria-hidden="true">→</b></>;return href?<a className={cls} href={href} {...props}>{inner}</a>:<button className={cls} {...props}>{inner}</button>}
 
 export function Brand(){return <a href="/" className="brand" aria-label="Anyroute home"><Wordmark aria-hidden="true" title=""/></a>}
-
-const LINKS=[['Models','/models/'],['Harness','/harness/'],['Ask files','/ask/'],['Arena','/arena/'],['Agents','/agents/'],['Network','/network/'],['Hosts','/hosts/'],['Docs','/docs/'],['Whitepaper','/whitepaper/'],['SEAL','/seal/'],['Private tokens','/tokens/'],['Case study','/case-study/'],['Roadmap','/#roadmap'],['About','/#about']];
 
 /** Fixed header: dark over dark heroes, hides on scroll down, returns on scroll up. */
 export function Header({app=false}){
   const [open,setOpen]=useState(false);const [tone,setTone]=useState('light');const [hidden,setHidden]=useState(false);const button=useRef(null);const [path,setPath]=useState('');
   useEffect(()=>{setPath(location.pathname);let last=scrollY,raf=0;const update=()=>{raf=0;const hero=document.querySelector('[data-dark-hero]');const y=scrollY;setTone(hero&&hero.getBoundingClientRect().bottom>40?'dark':'light');setHidden(y>last&&y>480);last=y};const on=()=>{if(!raf)raf=requestAnimationFrame(update)};update();addEventListener('scroll',on,{passive:true});addEventListener('resize',on);return()=>{removeEventListener('scroll',on);removeEventListener('resize',on);cancelAnimationFrame(raf)}},[]);
   useEffect(()=>{const close=e=>{if(e.key==='Escape'&&open){setOpen(false);button.current?.focus()}};document.addEventListener('keydown',close);document.documentElement.style.overflow=open?'hidden':'';return()=>{document.removeEventListener('keydown',close);document.documentElement.style.overflow=''}},[open]);
-  return <><a className="skip" href="#content">Skip to content</a><header className={'site-header'+(open?' expanded':'')} data-tone={tone} data-hidden={hidden}><nav aria-label="Main navigation"><div className="nav-left"><Brand/><div className="desktop-links">{LINKS.map(([label,url])=><a key={label} href={url} aria-current={path&&url.startsWith(path)&&path!=='/'?'page':undefined}>{label}</a>)}</div></div><div className="nav-buttons"><Button href={app?'/docs/':'/dashboard/'}>{app?'Read docs':'Open dashboard'}</Button><Button href={app?'/':'/docs/'} secondary>{app?'Website':'API docs'}</Button></div>{app&&/^\/harness\/?$/.test(path)&&<InstallApp/>}<button ref={button} className="menu-toggle" aria-label={open?'Close menu':'Open menu'} aria-expanded={open} aria-controls="mobile-menu" onClick={()=>setOpen(!open)}><span/><span/></button></nav>{open&&<div className="mobile-menu" id="mobile-menu">{[['Home','/'],...LINKS].map(([label,url],i)=><a key={label} href={url} style={{'--i':i}} onClick={()=>setOpen(false)}><small>0{i+1}</small>{label}</a>)}<div className="button-row"><Button href="/dashboard/" light>Open dashboard</Button><Button href="/docs/" secondary>API docs</Button></div></div>}</header></>;
+  return <><a className="skip" href="#content">Skip to content</a><header className={'site-header'+(open?' expanded':'')} data-tone={tone} data-hidden={hidden}><nav aria-label="Main navigation"><div className="nav-left"><Brand/><DesktopGroups path={path}/></div><div className="nav-buttons"><Button href={app?'/docs/':'/dashboard/'}>{app?'Read docs':'Open dashboard'}</Button><Button href={app?'/':'/docs/'} secondary>{app?'Website':'API docs'}</Button></div><SearchButton onOpen={()=>setOpen(false)} hint={!/^\/harness\/?$/.test(path)}/>{app&&/^\/harness\/?$/.test(path)&&<InstallApp/>}<button ref={button} className="menu-toggle" aria-label={open?'Close menu':'Open menu'} aria-expanded={open} aria-controls="mobile-menu" onClick={()=>setOpen(!open)}><span/><span/></button></nav>{open&&<div className="mobile-menu" id="mobile-menu"><MobileGroups onNavigate={()=>setOpen(false)}/><div className="button-row"><Button href="/dashboard/" light>Open dashboard</Button><Button href="/docs/" secondary>API docs</Button></div></div>}</header><SiteSearch/></>;
 }
 
 /** Page-wide motion: scroll reveals, count-ups, cursor spotlights and scroll progress. Respects reduced motion. */

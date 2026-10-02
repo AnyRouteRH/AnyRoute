@@ -2,7 +2,10 @@ import SignalField from './SignalField';
 import {Button} from './UI';
 import {Wordmark} from './Logo';
 
-const COLUMNS=[['Product',[['Models','/models/'],['Harness','/harness/'],['Ask your files','/ask/'],['Arena','/arena/'],['Dashboard','/dashboard/'],['Agents','/agents/'],['Playground','/dashboard/#playground'],['Case study','/case-study/']]],['Developers',[['API docs','/docs/'],['Whitepaper','/whitepaper/'],['SDKs','/docs/#sdk'],['Verify a provider','/verify/'],['SEAL privacy protocol','/seal/'],['Private tokens','/tokens/'],['SEAL spec','/spec/'],['Registry','/registry/'],['Badge','/docs/#badge'],['Status','/status/'],['Proof-time','/status/#proof-time'],['Providers','/providers/'],['Quickstart','/#developers'],['Route types','/#routes'],['How it works','/#how-it-works']]],['Anyroute',[['About','/#about'],['Roadmap','/#roadmap'],['Privacy route','/#privacy'],['Data notice','/legal/privacy/'],['What we keep','/keep/'],['AnyRoute Network','/network/'],['Hosts','/hosts/'],['Terms','/legal/terms/'],['Support','mailto:Anyroute1@atomicmail.io']]]];
+import {GROUPS,TASKS} from '../lib/site-map';
+// Footer-only links that aren't tools in the menus: page sections, SDKs, a few search-only pages and support.
+const EXTRA={build:[['SDKs','/docs/#sdk'],['Playground','/dashboard/#playground'],['Registry','/registry/']],verify:[['Badge','/docs/#badge'],['Proof-time','/status/#proof-time']],learn:[['Quickstart','/#developers'],['How it works','/#how-it-works'],['Route types','/#routes'],['Privacy route','/#privacy'],['Support','mailto:Anyroute1@atomicmail.io']]};
+const COLUMNS=GROUPS.map(group=>[group.title,[...TASKS.filter(task=>task.group===group.id&&task.menu).map(task=>[task.title,task.href]),...(EXTRA[group.id]||[])]]);
 
 /** Site footer: closing call to action over the signal curtain, link columns and the oversized wordmark. */
 export default function Footer(){return <footer className="site-footer">

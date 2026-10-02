@@ -1,3 +1,4 @@
+import {TASKS} from '../lib/site-map.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -82,7 +83,8 @@ test('the page is wired: the board and proof-time on /status, relative API paths
  assert.doesNotMatch(board,/https?:\/\//,'the board names no host');
  assert.match(board,/REFRESH_MS/);
  const footer=read('components/Footer.jsx');
- assert.match(footer,/\['Status','\/status\/'\]/);
+ assert.match(footer,/TASKS.filter/);
+ assert.ok(TASKS.some(task=>task.id==='status'&&task.href==='/status/'));
  const css=read('components/StatusBoard.module.css');
  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g,''),/\b(border(-(top|right|bottom|left|width|style|color))*|outline)\s*:/,'colour fields, not outlines');
  for(const f of ['app/status/page.jsx','components/StatusBoard.jsx','lib/status-slo.js'])assert.doesNotMatch(read(f).replace(/title: "[^"]*"/,''),/—/,`${f} has an em dash`);
