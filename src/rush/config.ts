@@ -1,0 +1,14 @@
+import { z } from "zod";
+
+const flag = z.union([z.boolean(), z.string()]).transform(v => typeof v === "boolean" ? v : ["1", "true", "yes", "on"].includes(v.toLowerCase())).default(false);
+export const rushEnv = {
+  UPSTREAM_MONITOR_ENABLED: flag,
+  CATALOG_CACHE_ENABLED: flag,
+  UPSTREAM_BALANCE_WARN_USD: z.coerce.number().finite().nonnegative().default(25),
+  UPSTREAM_BALANCE_CRITICAL_USD: z.coerce.number().finite().nonnegative().default(5),
+};
+
+export function rushSettings(e: z.infer<z.ZodObject<typeof rushEnv>>) {
+  if (e.UPSTREAM_BALANCE_CRITICAL_USD > e.UPSTREAM_BALANCE_WARN_USD) throw new Error("Upstream critical balance must not exceed warning balance.");
+  return { enabled: e.UPSTREAM_MONITOR_ENABLED, catalogCache: e.CATALOG_CACHE_ENABLED, warnUsd: e.UPSTREAM_BALANCE_WARN_USD, criticalUsd: e.UPSTREAM_BALANCE_CRITICAL_USD };
+}

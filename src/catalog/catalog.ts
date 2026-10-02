@@ -1,3 +1,4 @@
+import { invalidateCatalogJson } from "../rush/cache.ts"; // ON3
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { laneCandidates, measurements, models, modelsLane, offers, providerDisclosure, providers } from "../db/schema.ts";
@@ -103,6 +104,7 @@ export class Catalog {
         this.gpuAttested = gpu;
         this.manifests = manifests;
         this.loadedAt = Date.now();
+        invalidateCatalogJson(this); // ON3: successful catalogue sync.
       } finally {
         this.loading = null;
       }

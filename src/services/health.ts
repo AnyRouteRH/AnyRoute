@@ -1,3 +1,4 @@
+import { refreshUpstreamHealth } from "../rush/monitor.ts"; // ON3
 import { sql } from "drizzle-orm";
 import { refreshNetworkRouting } from "../network/routing.ts";
 import type { Db } from "../db/client.ts";
@@ -134,6 +135,7 @@ export class HealthTracker implements HealthView {
 
   /** Persist buffered events. */
   async flush(db: Db) {
+    await refreshUpstreamHealth(this, db); // ON3
     if (!this.pending.length) { await refreshNetworkRouting(this, db).catch(() => undefined); return 0; }
     const batch = this.pending.splice(0, this.pending.length);
     try {

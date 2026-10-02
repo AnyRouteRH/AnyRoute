@@ -159,3 +159,5 @@ for (const section of ACCOUNT_SECTIONS) {
   const item = TASKS.find(task => task.id === section.taskId);
   if (section.hash && item.href === '/dashboard/') item.href = section.href;
 }
+
+TASKS.push({ ...task('operations', 'build', 'Inspect service operations', 'Use the service operator token to inspect monitoring availability and daily counts.', '/admin/', 'operator, upstream, balance, counts'), menu: false }); // ON3: search-only.

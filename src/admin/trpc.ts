@@ -1,3 +1,4 @@
+import { rushAdmin } from "../rush/admin.ts"; // ON3
 import { withHostStatus, recordHostStatus } from "../webhooks/hosts.ts"; // V86: recorded host transitions.
 import { exportWaitlist } from "../network/waitlist.ts";
 import type { Hono } from "hono";
@@ -49,6 +50,7 @@ const reviewView = (row: typeof providers.$inferSelect) => {
 };
 
 export const adminRouter = t.router({
+  rush: operator.input(z.object({ days: z.number().int().min(1).max(90).default(30) }).default({ days: 30 })).query(({ ctx, input }) => rushAdmin(ctx.app, input.days)), // ON3
   networkWaitlistExport: operator.input(z.strictObject({ after: z.uuid().optional(), limit: z.number().int().min(1).max(1000).default(100) })).query(async ({ ctx, input }) => ser(await exportWaitlist(ctx.app, input))),
   network: t.router({ publishPolicy: operator.input(hostPolicySchema).mutation(({ ctx, input }) => publishHostPolicy(ctx.app, input)) }),
   providers: t.router({
@@ -332,6 +334,7 @@ export const adminRouter = t.router({
 export type AdminRouter = typeof adminRouter;
 
 export function adminRoutes(app: Hono, ctx: Ctx) {
+  app.use("/trpc/*", async (c, next) => { await next(); c.header("cache-control", "no-store"); }); // ON3: operator aggregates must never be cached.
   app.use(
     "/trpc/*",
     trpcServer({

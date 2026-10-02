@@ -1,3 +1,4 @@
+import { rushKvNotes } from "../rush.ts"; // ON3
 import { telegramLinkNotes } from "../telegram-linking.ts";
 import type { TableDoc } from "../types.ts";
 import { CREATED, JSON_FIELDS, UPDATED, rv } from "./common.ts";
@@ -156,6 +157,7 @@ export const operationTables: Record<string, TableDoc> = {
       "Per key family: a wallet sign-in or team challenge is deleted when used and any older than 10 minutes is deleted when the next challenge is made; a team invite is deleted when used and expired ones when the next invite is made; a Telegram user's row is deleted by /forget; other families are overwritten in place.",
     notes: [
       ...telegramLinkNotes,
+      ...rushKvNotes, // ON3
       "agent-alerts:<account id>: newest 100 metadata-only owner alerts per account, visible for up to 90 days; expired feed, denial and dedupe metadata is purged on the next alert write or enabled worker cleanup, while inactive account rows remain until operator deletion; threshold cooldowns, denial counts with up to 10,000 recent timestamps and random transaction batch markers per key (10-minute rolling retention on writes/cleanup), timestamps, key hashes, selected channels, delivery attempts, destination rule ids or Telegram ids and per-account delivery rate/lease state. No prompt, answer, intent, kill reason, webhook URL or API key is copied. Existing Spend Watch destinations are decrypted for guarded egress; existing Telegram principal links are decrypted and permission-checked before delivery. Email has no account destination. Delivery is at-least-once; a crash after sending can repeat an attempt.",
       "telegram:offset, telegram:user:<Telegram user id>: the update cursor, and per user the API key sealed under APP_SECRET, the chosen model and the private-mode switch (services/telegram.ts). Message text is not stored.",
       "wallet-login:<nonce>: a sign-in challenge (wallet address, the router's own origin, chain id, expiry and the message to sign). Deleted when used; older ones are pruned.",

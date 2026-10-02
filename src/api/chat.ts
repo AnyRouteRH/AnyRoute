@@ -1,3 +1,4 @@
+import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
 import { explainedStream, rememberRoutePlan, routeReceiptFields, routeResponseHeaders } from "../router/explain.ts"; // V84
 import { captureStructuredOutput } from "../structured-output/chat.ts"; // V83
 import { linkNetworkReceipt } from "../network/receipt-link.ts";
@@ -189,6 +190,7 @@ function selectTargets(
     const refusal = disclosureRefusal(disc, resolved.map((r) => r.model.id), excluded, () => resolved.some((r) => plan(r, relaxed).ordered.length > 0));
     if (refusal) throw refusal;
   }
+  if (!targets.length) refuseCreditOutage(ctx.cfg.rush.enabled, excluded); // ON3
   return { targets, excluded };
 }
 
@@ -477,6 +479,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
 }
 
 function allFailed(attempts: Attempt[], last?: { status?: number; errorKind: string; message: string }): ApiError {
+  refuseCreditExhaustion(attempts); // ON3
   const allRejected = attempts.length > 0 && attempts.every((a) => a.error_kind === "rejected");
   const status = allRejected ? (last?.status && last.status >= 400 && last.status < 500 ? last.status : 400) : 502;
   return new ApiError(

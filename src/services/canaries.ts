@@ -80,7 +80,7 @@ function readFingerprint(json: any): Fingerprint {
 }
 
 async function ask(ctx: Ctx, c: Candidate, body: Record<string, unknown>) {
-  const r = await callUpstream({
+  const r = await callUpstream({ health: ctx.health, // ON3
     appSecret: ctx.cfg.appSecret,
     candidate: c,
     path: "/chat/completions",

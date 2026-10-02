@@ -1,3 +1,4 @@
+import { rushEnv, rushSettings } from "./rush/config.ts"; // ON3
 import { structuredOutputEnv } from "./structured-output/options.ts"; // V83: opt-in JSON checking.
 import { insightsEnv } from "./insights/config.ts"; // V88: off by default.
 import { networkStatsEnv } from "./network/stats-config.ts";
@@ -56,6 +57,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...rushEnv, // ON3
   ...structuredOutputEnv, // V83
   ...insightsEnv, // V88: spend insights.
   ...sealedEnv,
@@ -494,6 +496,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
       allowed.push("webhooks"); // V86: bounded event delivery.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
+      allowed.push("upstream-monitor"); // ON3
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
@@ -590,6 +593,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     networkHosts: networkHostsSettings(e, production),
     statementsEnabled: e.STATEMENTS_ENABLED, // V87
     networkStatsEnabled: e.NETWORK_STATS_ENABLED,
+    rush: rushSettings(e), // ON3
     spendInsightsEnabled: e.SPEND_INSIGHTS_ENABLED, // V88: read-only spend insights.
     webhookSigningEnabled: e.WEBHOOK_SIGNING_ENABLED, // V86: off preserves existing delivery.
     networkPayouts: networkPayoutSettings(e, production),

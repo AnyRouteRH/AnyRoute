@@ -1,3 +1,4 @@
+import { creditUnavailable } from "../rush/monitor.ts"; // ON3
 import { rememberRouteResult } from "./explain.ts"; // V84
 import { forwardNetworkReceipt } from "../network/receipt-link.ts";
 import type { Candidate, ModelRow } from "../catalog/catalog.ts";
@@ -89,9 +90,10 @@ export async function route(opts: {
     if (pass === 1) await new Promise((r) => setTimeout(r, 250));
   for (const target of passes[pass]) {
     for (const c of target.ordered) {
+      if (creditUnavailable(opts.health, c.providerId)) continue; // ON3: also skip precomputed fallback targets.
       if (attempts.length >= opts.maxAttempts) return { ok: false, attempts, last };
       const { body, dropped } = upstreamBody(c, opts.body, opts.stream);
-      const r = await callUpstream({
+      const r = await callUpstream({ health: opts.health, // ON3
         candidate: c,
         path: opts.path,
         body,

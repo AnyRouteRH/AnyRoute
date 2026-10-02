@@ -1,3 +1,4 @@
+import { initializeUpstreamMonitor } from "./rush/monitor.ts"; // ON3
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
 import { statementRoutes } from "./api/statements.ts"; // V87
 import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
@@ -142,6 +143,7 @@ export async function createApp(opts: AppOptions = {}) {
   if (cfg.agreements.rulings) await guardAgreementSigners(ctx.chain.client, cfg.agreements.oracle!, cfg.agreements.signerKeys!, cfg.agreements.threshold);
   if (ctx.blind) await ensurePool(ctx);
 
+  await initializeUpstreamMonitor(ctx); // ON3
   const webDir = resolve(cfg.webDir ?? resolve(import.meta.dir, "../web/out"));
   const webBuilt = existsSync(resolve(webDir, "index.html"));
   const csp = webBuilt ? siteCsp(webDir) : "frame-ancestors 'none'; object-src 'none'; base-uri 'none'";

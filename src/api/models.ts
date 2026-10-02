@@ -1,3 +1,4 @@
+import { cacheModelLists } from "../rush/cache.ts"; // ON3
 import { capabilityJson, catalogOffers } from "./model-capabilities.ts";
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
@@ -198,6 +199,7 @@ function gpuAttested(ctx: Ctx, m: ModelRow) {
 }
 
 export function modelsRoutes(app: Hono, ctx: Ctx) {
+  cacheModelLists(app, ctx); // ON3
   const list = async (c: import("hono").Context) => {
     await ctx.catalog.ensureFresh();
     const need = (c.req.query("supported_parameters") ?? "").split(",").map((s) => s.trim()).filter(Boolean);

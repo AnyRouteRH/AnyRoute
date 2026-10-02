@@ -44,7 +44,8 @@ export async function callInternalJuryModel(ctx: Ctx, model: string, bundle: unk
     body.max_tokens = maxOutputTokens(body, candidate, ctx.catalog.models.get(candidate.modelId)!, prompt);
     const upstream = upstreamBody(candidate, body, false).body;
     const apiKey = providerKey(candidate, ctx.cfg.appSecret);
-    const result = await callUpstream({ appSecret: ctx.cfg.appSecret, candidate, path: "/chat/completions", body: upstream,
+    const result = await callUpstream({ health: ctx.health, // ON3
+ appSecret: ctx.cfg.appSecret, candidate, path: "/chat/completions", body: upstream,
       stream: false, apiKey, signal: AbortSignal.timeout(60000), timeoutMs: 60000, firstTokenTimeoutMs: 30000, production: ctx.cfg.production });
     vote.attestation_ref = attestationRefOf(candidate.provider);
     vote.policy_hash = candidate.provider.attestedPolicy?.policyHash ?? null;

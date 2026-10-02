@@ -1,3 +1,4 @@
+import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
 import { rememberRoutePlan, rememberRouteResult, routeReceiptFields, routeResponseHeaders } from "../router/explain.ts"; // V84
 import { agentReservation } from "../agents/enforce.ts";
 import { blindReceipt } from "../blind/set.ts";
@@ -91,6 +92,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     if (!sel.ordered.length) {
       const refusal = strict ? disclosureRefusal(disc, [r.model.id], sel.excluded, () => plan(basePrefs).ordered.length > 0) : null;
       if (refusal) throw refusal;
+      refuseCreditOutage(ctx.cfg.rush.enabled, sel.excluded); // ON3
       fail(404, "No providers match this request.", "no_providers", { excluded: sel.excluded });
     }
     const mode = key ? "prepaid" : pass ? "blind" : "per_call";
@@ -117,7 +119,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const attempts: Attempt[] = [];
     try {
       for (const cand of sel.ordered.slice(0, ctx.cfg.routing.maxAttempts)) {
-        const res = await callUpstream({
+        const res = await callUpstream({ health: ctx.health, // ON3
     appSecret: ctx.cfg.appSecret,
           candidate: cand,
           path: "/embeddings",
@@ -225,6 +227,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     }
     await release(ctx.db, id);
     if (pass) await unclaimToken(ctx, pass); // nothing was served: the token is not spent
+    refuseCreditExhaustion(attempts); // ON3
     fail(502, "All providers for this request failed. Nothing was charged.", "providers_unavailable", { attempts });
   };
   app.post("/api/v1/embeddings", handler);

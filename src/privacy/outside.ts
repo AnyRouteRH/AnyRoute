@@ -1,3 +1,4 @@
+import { rushStores } from "./rush.ts"; // ON3
 import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { statementStores } from "./statements.ts"; // V87
 import { insightsStores } from "./insights.ts"; // V88: read-only aggregates.
@@ -715,6 +716,7 @@ export const EXTERNAL: ExternalDoc = {
     evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify({ t: new Date().toISOString(), level, msg, ...fields }")],
   },
   otherStores: [
+    ...rushStores, // ON3
     ...webhookStores, // V86.
     ...activityStores,
     ...statementStores, // V87

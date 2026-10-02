@@ -201,7 +201,7 @@ function offerFor(ctx: Ctx, c: CandidateRow): Candidate {
 
 function chatVia(ctx: Ctx, offer: Candidate): NonNullable<Deps["chat"]> {
   return async (prompt, maxTokens) => {
-    const r = await callUpstream({
+    const r = await callUpstream({ health: ctx.health, // ON3
       appSecret: ctx.cfg.appSecret,
       candidate: offer,
       path: "/chat/completions",

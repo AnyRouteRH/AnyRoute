@@ -1,3 +1,4 @@
+import { creditFailure, creditErrorText, insufficientCredits, upstreamMonitoring } from "../rush/monitor.ts"; import type { HealthTracker } from "../services/health.ts"; // ON3
 import { captureNetworkReceipt } from "../network/receipt-link.ts";
 import { openProviderHeaders } from "./headers.ts";
 import { providerFetch } from "./network.ts";
@@ -14,6 +15,7 @@ export type ErrorKind =
   | "timeout"
   | "connection"
   | "rate_limited"
+  | "insufficient_credits" // ON3
   | "provider_auth"
   | "rejected"
   | "empty200"
@@ -85,11 +87,12 @@ export function sanitizeUpstream(msg: string) {
     .slice(0, 200);
 }
 
-async function errorMessage(res: Response) {
+async function errorMessage(res: Response, monitor = false) {
   try {
     const text = await res.text();
     try {
       const j = JSON.parse(text);
+      if (monitor && insufficientCredits(res.status, creditErrorText(j?.error ?? j))) return "Insufficient credits"; // ON3: classify explicit codes without retaining upstream text.
       return sanitizeUpstream(String(j?.error?.message ?? j?.message ?? text));
     } catch {
       return sanitizeUpstream(text);
@@ -146,6 +149,7 @@ export async function* parseSse(body: ReadableStream<Uint8Array>, signal: AbortS
 
 export async function callUpstream(opts: {
   candidate: Candidate;
+  health?: HealthTracker; // ON3
   path: "/chat/completions" | "/completions" | "/embeddings" | "/rerank";
   body: Record<string, unknown>;
   stream: boolean;
@@ -206,7 +210,8 @@ export async function callUpstream(opts: {
   }
   if (!res.ok) {
     clearTimeout(firstTimer);
-    const message = await errorMessage(res);
+    const message = await errorMessage(res, upstreamMonitoring(opts.health));
+    if (await creditFailure(opts.health, c, opts.apiKey, res.status, message)) return fail("insufficient_credits", "Provider temporarily unavailable.", res.status); // ON3
     return fail(classifyStatus(res.status), message, res.status);
   }
 
@@ -220,6 +225,7 @@ export async function callUpstream(opts: {
         json = JSON.parse(new TextDecoder().decode(bytes));
         exchange = { receiptId: res.headers.get("x-receipt-id"), requestBody, responseBody: () => bytes, drain: async () => {} };
       } else json = await res.json();
+      if (json?.error && await creditFailure(opts.health, c, opts.apiKey, res.status, creditErrorText(json.error))) return fail("insufficient_credits", "Provider temporarily unavailable.", res.status); // ON3
       clearTimeout(firstTimer);
       cleanup();
       return captureNetworkReceipt({ ok: true, kind: "json", status: res.status, json, latencyMs: elapsed(), ...(exchange ? { exchange } : {}) }, res, c);
@@ -255,6 +261,7 @@ export async function callUpstream(opts: {
   }
   clearTimeout(firstTimer);
   if (first.done) return fail("empty200", "Provider stream ended without any event.");
+  if (first.value?.error && await creditFailure(opts.health, c, opts.apiKey, res.status, creditErrorText(first.value.error))) { ctl.abort(); await events.return(undefined).catch(() => undefined); return fail("insufficient_credits", "Provider temporarily unavailable.", res.status); } // ON3
   const latencyMs = elapsed();
   const wrapped = (async function* () {
     try {
