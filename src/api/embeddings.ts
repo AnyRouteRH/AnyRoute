@@ -1,3 +1,4 @@
+import { rememberRoutePlan, rememberRouteResult, routeReceiptFields, routeResponseHeaders } from "../router/explain.ts"; // V84
 import { agentReservation } from "../agents/enforce.ts";
 import { blindReceipt } from "../blind/set.ts";
 import type { Hono } from "hono";
@@ -86,6 +87,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         rand: ctx.rand,
       });
     const sel = plan({ ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) });
+    rememberRoutePlan(ctx.cfg.routeExplain, sel, sel.ordered, sel.excluded, { ...basePrefs, lane: disc.lane }, r.modifiers, [], new Map()); // V84
     if (!sel.ordered.length) {
       const refusal = strict ? disclosureRefusal(disc, [r.model.id], sel.excluded, () => plan(basePrefs).ordered.length > 0) : null;
       if (refusal) throw refusal;
@@ -146,7 +148,9 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         const refused = !!ua && requiresAttestedUpstream(body, disc) && !ua.attested;
         const served = toolkit.servedWith(ctx, cand, ua);
         if (ua) await recordGpuAttested(ctx.db, r.model.id, cand.providerId, ua).catch((e) => log.error("recording gpu attestation failed", { error: (e as Error).message }));
+        const routeResult = rememberRouteResult({ candidate: cand, model: r.model, attempts }, [{ model: r.model, ordered: sel.ordered }]); // V84
         const payload = {
+          ...routeReceiptFields(ctx.cfg.routeExplain, routeResult), // V84
           v: 1,
           id,
           issued: new Date().toISOString(),
@@ -200,7 +204,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         if (pass) await confirmToken(ctx, pass, id);
         const usageJson = { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}), ...(batchLine ? { batch_discount: picoToUsd(cost.batchDiscount) } : {}) } };
         const receiptJson = { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload };
-        const headers = { ...generationHeaders(id, disc.lane, servedPolicyHash(ctx, cand)), "x-anyroute-disclosure": served.class, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) };
+        const headers = { ...routeResponseHeaders(ctx.cfg.routeExplain, routeResult), ...generationHeaders(id, disc.lane, servedPolicyHash(ctx, cand)), "x-anyroute-disclosure": served.class, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) };
         // The gateway had already done (and billed) the work: the vectors are withheld, and the receipt records why.
         if (refused) return c.json({ ...unattestedUpstream(ua!).toJSON(), id, usage: usageJson, receipt: receiptJson }, 502, headers);
         return c.json({

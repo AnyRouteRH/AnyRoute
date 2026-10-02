@@ -95,14 +95,14 @@ export const requestTables: Record<string, TableDoc> = {
       receipt_key_id: "Which receipt signing key signed it.",
       receipt: {
         purpose:
-          "The signed v1 receipt payload: model, provider, token counts, cost, timing, mode, lane, disclosure class, payer (a key hash or a wallet address), the two SHA-256 digests and a summary of the provider's attestation. Blind payment adds a single nullifier and issuer key id, or token_count, nullifiers and token_key_ids for a set; no buyer or credential bytes. The ciphertext chat adapter also signs end_to_end_encrypted and e2ee: version, suite, gateway_attested, complete, billing_basis, input_byte_bound, max_tokens, request_bytes, response_bytes and gateway_receipt with id, keyset digest, response-hash, request-hash and upstream verification state plus upstream session id and GPU claim. Request-hash verification remains false in the router. No public keys, replay nonces, credentials or content are retained. Fixed fields chosen by the router.",
+          "The signed v1 receipt payload: model, provider, token counts, cost, timing, mode, lane, disclosure class, payer (a key hash or a wallet address), the two SHA-256 digests and a summary of the provider's attestation. Blind payment adds a single nullifier and issuer key id, or token_count, nullifiers and token_key_ids for a set; no buyer or credential bytes. The ciphertext chat adapter also signs end_to_end_encrypted and e2ee: version, suite, gateway_attested, complete, billing_basis, input_byte_bound, max_tokens, request_bytes, response_bytes and gateway_receipt with id, keyset digest, response-hash, request-hash and upstream verification state plus upstream session id and GPU claim. Request-hash verification remains false in the router. No public keys, replay nonces, credentials or content are retained. When ROUTE_EXPLAIN_ENABLED is true, route stores version, serving provider id, selection reason, eligible count, aggregate skip and fallback error-class counts, lane, required parameter names from a fixed allowlist and whether the provider is a network host. No other provider ids, weights, URLs, messages or content are added. Fixed fields chosen by the router.",
         review: JSON_FIELDS("Every field is set by the router's receipt code from numbers, ids and hashes; it never copies request or answer text into the payload."),
       },
       receipt_leaf: "This receipt's leaf hash in the anchoring tree.",
       anchor_index: "Which anchor (Merkle root) this receipt was included in, once anchored.",
       leaf_index: "The receipt's position in that anchor tree.",
       receipt_v2: {
-        purpose: "The v2 receipt claims as JSON: model, provider, lane, hashed request and response, power-of-two token-count buckets and cost units. Null for receipts made before v2.",
+        purpose: "The v2 receipt claims as JSON: model, provider, lane, hashed request and response, power-of-two token-count buckets and cost units. The optional route claim carries the same versioned selection summary as v1, without other provider ids, raw errors or weights. Null for receipts made before v2.",
         review: JSON_FIELDS("Built by buildClaimsV2 from ids, hashes and buckets; the claims carry no payer, address, IP or content."),
       },
       receipt_cose: "The v2 receipt as signed COSE_Sign1 bytes, base64.",

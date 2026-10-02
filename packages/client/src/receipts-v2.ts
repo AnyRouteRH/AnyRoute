@@ -1,3 +1,4 @@
+import { validRouteExplanation } from "./route-explanation.js"; // V84
 import { base64ToBytes, bytesToHex, concatBytes, fromUtf8, hexToBytes, utf8 } from "./bytes.js";
 import { defaultEd25519Verify, UnsupportedCrypto, type Ed25519Verifier } from "./ed25519.js";
 import { keccak256, sha256 } from "./hash.js";
@@ -202,6 +203,7 @@ export async function verifyReceiptV2(cose: Uint8Array | string, opts: VerifyRec
     checks,
     anchor,
   });
+  if (d.claims.route !== undefined) checks.push(validRouteExplanation(d.claims.route, d.claims.node?.provider) ? pass("route", "Versioned routing summary covered by COSE; selection is not independently checked.") : fail("route", "Invalid route explanation.")); // V84
   checks.push(d.alg === COSE_ALG_EDDSA ? pass("alg", "EdDSA (COSE -8)") : fail("alg", `unsupported COSE algorithm ${String(d.alg)}`));
   checks.push(d.claims?.v === 2 && typeof d.claims.rid === "string" ? pass("claims", `v2 claims for ${d.claims.rid}`) : fail("claims", "The payload is not a v2 claim set."));
 

@@ -1,3 +1,4 @@
+import { validRouteExplanation } from "./route-explanation.js"; // V84
 // Verify page: pure helpers (no React), shared by components/Verify.jsx and its tests.
 // Two jobs. Describe what the router's attestation record for a provider does and does not establish, in plain words,
 // keeping "unverified" unverified. And check a pasted receipt in the browser against the router's published keys.
@@ -298,6 +299,7 @@ async function verifyReceiptV1(receipt, { keys, publicKeyHex, ed25519 = ed25519V
     checks.push(fail("shape", "A receipt needs payload, sig and key_id."));
     return done("no_proof");
   }
+  if (receipt.payload.route !== undefined) checks.push(validRouteExplanation(receipt.payload.route, receipt.payload.provider) ? pass("route", "Route explanation v1 is a router-signed summary, not independent proof of selection.") : fail("route", "Invalid route explanation.")); // V84
   checks.push(receipt.alg === undefined || receipt.alg === "Ed25519" ? pass("alg", "Ed25519") : fail("alg", `Unsupported algorithm ${String(receipt.alg)}.`));
 
   let raw = null;
@@ -454,6 +456,7 @@ export async function verifyReceiptV2(coseB64, { keys, publicKeyHex, ed25519 = e
   } catch (e) {
     return { valid: false, keyId: "", claims: null, checks: [fail("v2_shape", `The v2 receipt is not a readable COSE_Sign1 (${e.message}).`)] };
   }
+  if (d.claims.route !== undefined) checks.push(validRouteExplanation(d.claims.route, d.claims.node?.provider) ? pass("v2_route", "Route explanation v1 is covered by the COSE signature; routing itself is not independently checked.") : fail("v2_route", "Invalid route explanation.")); // V84
   checks.push(d.alg === -8 ? pass("v2_alg", "v2: COSE_Sign1 with EdDSA.") : fail("v2_alg", `v2: unsupported COSE algorithm ${String(d.alg)}.`));
   let raw = null;
   try {

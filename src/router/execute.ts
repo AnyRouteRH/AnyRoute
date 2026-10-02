@@ -1,3 +1,4 @@
+import { rememberRouteResult } from "./explain.ts"; // V84
 import { forwardNetworkReceipt } from "../network/receipt-link.ts";
 import type { Candidate, ModelRow } from "../catalog/catalog.ts";
 import { callUpstream, type ErrorKind, upstreamBody, type UpstreamFailure } from "../providers/upstream.ts";
@@ -121,7 +122,7 @@ export async function route(opts: {
           continue;
         }
         attempts.push({ provider: c.providerId, model: target.model.id, ok: true, status: r.status, latency_ms: Math.round(r.latencyMs) });
-        return forwardNetworkReceipt({ ok: true, kind: "json", candidate: c, model: target.model, json: r.json, latencyMs: r.latencyMs, attempts, dropped, ...(r.exchange ? { exchange: r.exchange } : {}) }, r);
+        return rememberRouteResult<RouteSuccess>(forwardNetworkReceipt({ ok: true, kind: "json", candidate: c, model: target.model, json: r.json, latencyMs: r.latencyMs, attempts, dropped, ...(r.exchange ? { exchange: r.exchange } : {}) }, r), opts.targets);
       }
       // Stream: buffer until something meaningful arrives.
       const buffered: any[] = [r.first];
@@ -155,7 +156,7 @@ export async function route(opts: {
       }
       const ttft = r.latencyMs + (performance.now() - started);
       attempts.push({ provider: c.providerId, model: target.model.id, ok: true, status: r.status, latency_ms: Math.round(ttft) });
-      return forwardNetworkReceipt({ ok: true, kind: "stream", candidate: c, model: target.model, buffered, rest: r.events, latencyMs: ttft, attempts, abort: r.abort, dropped, ...(r.exchange ? { exchange: r.exchange } : {}) }, r);
+      return rememberRouteResult<RouteSuccess>(forwardNetworkReceipt({ ok: true, kind: "stream", candidate: c, model: target.model, buffered, rest: r.events, latencyMs: ttft, attempts, abort: r.abort, dropped, ...(r.exchange ? { exchange: r.exchange } : {}) }, r), opts.targets);
     }
   }
     if (pass === 0 && attempts.length < opts.maxAttempts) {

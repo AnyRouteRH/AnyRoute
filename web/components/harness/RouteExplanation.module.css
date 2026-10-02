@@ -1,0 +1,6 @@
+.explanation { flex: 1 1 100%; min-width: 0; font-size: inherit; }
+.explanation summary { cursor: pointer; width: fit-content; padding-block: 4px; }
+.explanation summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.explanation p { margin: 8px 0; max-width: 68ch; font: 400 12px/1.6 var(--sans); overflow-wrap: anywhere; }
+.limit { opacity: .8; }
+.limit a { color: inherit; text-decoration: underline; }

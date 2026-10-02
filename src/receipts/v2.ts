@@ -1,3 +1,4 @@
+import type { RouteExplanation } from "../router/explain.ts"; // V84
 import { createHash } from "node:crypto";
 import { keccak256, type Hex } from "viem";
 import { CborTag, cborDecode, cborEncode, cborToJson, type CborValue } from "./cbor.ts";
@@ -13,6 +14,7 @@ const HDR_ALG = 1;
 const HDR_KID = 4;
 
 export type ClaimsV2 = {
+  route?: RouteExplanation; // V84: versioned additive claim.
   v: 2;
   rid: string;
   iat: number;
@@ -126,6 +128,7 @@ export const receiptLeafV2 = (cose: Uint8Array): Hex => keccak256(keccak256(cose
 
 /** The claims the router signs for one settled generation. Nothing here names a payer, an address or content. */
 export function buildClaimsV2(i: {
+  route?: RouteExplanation; // V84
   rid: string;
   issuedAt: Date;
   router: string;
@@ -156,6 +159,7 @@ export function buildClaimsV2(i: {
   const credit: ClaimsV2["credit"] = { mode: i.mode, cost_units: Number((i.chargedPico + 999_999n) / 1_000_000n) };
   if (i.keyset) credit.keyset = i.keyset;
   return {
+    ...(i.route ? { route: i.route } : {}), // V84: omit entirely when disabled.
     v: 2,
     rid: i.rid,
     iat: Math.floor(i.issuedAt.getTime() / 1000),

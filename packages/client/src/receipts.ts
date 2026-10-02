@@ -1,3 +1,4 @@
+import { validRouteExplanation } from "./route-explanation.js"; // V84
 import { base64ToBytes, bytesToHex, concatBytes, equalBytes, hexToBytes, utf8 } from "./bytes.js";
 import { canonicalJson } from "./canonical.js";
 import { defaultEd25519Verify, UnsupportedCrypto, type Ed25519Verifier } from "./ed25519.js";
@@ -113,6 +114,8 @@ export async function verifyReceipt(receipt: ReceiptEnvelope, opts: VerifyReceip
     return done("no_proof");
   }
   checks.push(receipt.alg === undefined || receipt.alg === "Ed25519" ? pass("alg", "Ed25519") : fail("alg", `unsupported algorithm ${String(receipt.alg)}`));
+
+  if (receipt.payload.route !== undefined) checks.push(validRouteExplanation(receipt.payload.route, receipt.payload.provider) ? pass("route", "Versioned routing summary; the signature covers it, not an independent selection check.") : fail("route", "Invalid route explanation.")); // V84
 
   // Which public key does this receipt claim, and is it one we were given?
   let raw: Uint8Array | null = null;

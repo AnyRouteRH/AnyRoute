@@ -1,4 +1,5 @@
 "use client";
+import RouteExplanation from "./harness/RouteExplanation"; // V84
 import ProofBadge from "./ProofBadge"; // U76: shared evidence labels.
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, clearKey, loadKey, saveKey, validKey } from "../lib/api";
@@ -481,6 +482,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
           {facts.provider && <span>{facts.provider}</span>}
           {/* U76: keep provider, usage, cost and receipt inspection beside the shared proof marks. */}
           <ProofBadge evidence={{ source: "receipt", data: msg.receipt }} dark />
+          <RouteExplanation receipt={msg.receipt} /> {/* V84: receipt-only explanation. */}
           {facts.disclosure && <span title="Disclosure recorded in the receipt">{facts.disclosure}</span>}
           {facts.receiptId && (
             <a href={receiptHref(facts.receiptId)} target="_blank" rel="noopener noreferrer" title={facts.receiptId}>

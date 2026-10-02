@@ -1,3 +1,4 @@
+import { inheritRoutePlan, routeResponseHeaders } from "../router/explain.ts"; // V84
 import { agentReservation, enforceAgentCouncil } from "../agents/enforce.ts";
 import { randomBytes } from "node:crypto";
 import type { Context } from "hono";
@@ -503,7 +504,7 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
       ...extras,
     };
     // The policy hash header speaks for every call of the council, so it is sent only when they all share one.
-    return c.json(out, 200, { ...generationHeaders(judgeFin.id, disc.lane, sharedPolicyHash(fins.map((f) => f.policyHash))), "x-anyroute-disclosure": judgeFin.disclosure, ...tk.paymentHeaders(bill) });
+    return c.json(out, 200, { ...routeResponseHeaders(ctx.cfg.routeExplain, judged.r), ...generationHeaders(judgeFin.id, disc.lane, sharedPolicyHash(fins.map((f) => f.policyHash))), "x-anyroute-disclosure": judgeFin.disclosure, ...tk.paymentHeaders(bill) });
   } finally {
     await Promise.all([...open].map((id) => release(ctx.db, id)));
   }
@@ -560,7 +561,7 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
     );
   const modeForPrice: Mode = billing?.mode ?? "per_call";
   const legs: Leg[] = [0, 1].map((i) => {
-    const targetsOf = [{ model: target.model, ordered: eligible.filter((_, j) => j % 2 === i) }];
+    const targetsOf = [{ model: target.model, ordered: inheritRoutePlan(target.ordered, eligible.filter((_, j) => j % 2 === i)) }];
     return { label: labelFor(i), model: target.model, requested: resolved[0].requested, body, targets: targetsOf, promptTokens, holdId: genId(), hold: holdFor(ctx, targetsOf, body, promptTokens, modeForPrice, byok) };
   });
   const total = legs[0].hold + legs[1].hold;
@@ -665,7 +666,7 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
     };
     // The header speaks for both calls, so it shows the weaker of the two; each receipt carries its own call's class.
     const served = weakestServed([finA, finB].map((f) => ({ class: f.disclosure, simulated: f.simulated })));
-    return c.json(out, 200, { ...generationHeaders(finA.id, disc.lane, sharedPolicyHash([finA.policyHash, finB.policyHash])), "x-anyroute-disclosure": served.class, ...tk.paymentHeaders(bill) });
+    return c.json(out, 200, { ...routeResponseHeaders(ctx.cfg.routeExplain, a.r), ...generationHeaders(finA.id, disc.lane, sharedPolicyHash([finA.policyHash, finB.policyHash])), "x-anyroute-disclosure": served.class, ...tk.paymentHeaders(bill) });
   } finally {
     await Promise.all([...open].map((id) => release(ctx.db, id)));
   }

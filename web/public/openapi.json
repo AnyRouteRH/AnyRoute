@@ -1880,6 +1880,7 @@
           "200": {
             "description": "Completion JSON, or SSE events followed by data: [DONE] when stream is true.",
             "headers": {
+              "X-Anyroute-Route": {"$ref":"#/components/headers/RouteExplanation"},
               "X-Anyroute-Disclosure": {
                 "$ref": "#/components/headers/Disclosure"
               },
@@ -2005,6 +2006,7 @@
           "200": {
             "description": "Embedding response with usage and signed receipt.",
             "headers": {
+              "X-Anyroute-Route": {"$ref":"#/components/headers/RouteExplanation"},
               "X-Anyroute-Disclosure": {
                 "$ref": "#/components/headers/Disclosure"
               },
@@ -13703,6 +13705,7 @@
       }
     },
     "headers": {
+      "RouteExplanation": {"description":"V84: compact JSON RouteExplanation, on chat/text completions and embeddings when ROUTE_EXPLAIN_ENABLED is true (default false; switched on at anyroute.tech). The signed receipt route claim has the same fields. Streams wait for the serving provider before sending this header and also deliver the claim in the final receipt. Cache and encrypted-chat paths omit it.","schema":{"type":"string"}},
       "Disclosure": {
         "description": "The disclosure class the answering provider was served under: attested (retention declared attested and a fresh TEE attestation), policy (a documented no-retention policy, no legal hold) or vendor-forwarded (anything else). On a stream it is sent only when every provider the request can reach shares one class; the signed receipt always carries it.",
         "schema": {
@@ -17136,6 +17139,7 @@
           }
         }
       },
+      "RouteExplanation": {"type":"object","additionalProperties":false,"description":"Versioned additive router statement, not an independent selection proof. eligible counts final-plan candidate offers before attempt limits for the serving model; skipped counts its exclusions. Fallback error classes cover earlier attempts, including earlier models, without raw errors or provider identities. No URLs, keys, addresses, content or weights. Both receipt signatures cover route.","required":["v","provider","reason","eligible","skipped","lane","parameters","network_host"],"properties":{"v":{"type":"integer","const":1},"provider":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,96}$"},"reason":{"type":"string","enum":["lowest_price","lowest_latency","highest_throughput","weighted_choice","provider_order","preferred_performance","byok_priority","only_eligible","only_parameter_support","fallback"]},"eligible":{"type":"integer","minimum":1},"skipped":{"type":"object","additionalProperties":false,"properties":{"health":{"type":"integer","minimum":1},"lane":{"type":"integer","minimum":1},"disclosure":{"type":"integer","minimum":1},"attestation":{"type":"integer","minimum":1},"parameters":{"type":"integer","minimum":1},"price":{"type":"integer","minimum":1},"context":{"type":"integer","minimum":1},"preferences":{"type":"integer","minimum":1},"availability":{"type":"integer","minimum":1},"other":{"type":"integer","minimum":1}}},"lane":{"type":"string","enum":["public","attested","unlinkable"]},"parameters":{"type":"array","uniqueItems":true,"items":{"type":"string","enum":["tools","tool_choice","response_format","temperature","seed","max_tokens","stop","top_p","top_k","reasoning","include_reasoning","modalities","audio"]}},"network_host":{"type":"boolean"},"fallback":{"type":"object","additionalProperties":false,"properties":{"http_5xx":{"type":"integer","minimum":1},"timeout":{"type":"integer","minimum":1},"connection":{"type":"integer","minimum":1},"rate_limited":{"type":"integer","minimum":1},"provider_auth":{"type":"integer","minimum":1},"rejected":{"type":"integer","minimum":1},"empty200":{"type":"integer","minimum":1},"unreadable":{"type":"integer","minimum":1},"interrupted":{"type":"integer","minimum":1},"other":{"type":"integer","minimum":1}}}}},
       "Receipt": {
         "type": "object",
         "properties": {
@@ -17145,7 +17149,8 @@
           "payload": {
             "type": "object",
             "additionalProperties": true,
-            "description": "Signed fields. Among them, disclosure (attested, policy or vendor-forwarded) and lane (public, attested or unlinkable) record how the call was served; attestation_simulated is true when the attestation behind an attested call is a development report. attestation_ref (see AttestationRef) is present on calls made under an attested council or attested dual verification. For a call paid with a blind token, payer is null and nullifier (the SHA-256 of the spent token) and token_key_id are present; nothing names an account. Receipts issued before these fields existed do not carry them."
+            "properties": {"route":{"$ref":"#/components/schemas/RouteExplanation"}},
+            "description": "Signed fields. Optional route is a versioned additive claim when ROUTE_EXPLAIN_ENABLED is true (default false). Among them, disclosure (attested, policy or vendor-forwarded) and lane (public, attested or unlinkable) record how the call was served; attestation_simulated is true when the attestation behind an attested call is a development report. attestation_ref (see AttestationRef) is present on calls made under an attested council or attested dual verification. For a call paid with a blind token, payer is null and nullifier (the SHA-256 of the spent token) and token_key_id are present; nothing names an account. Receipts issued before these fields existed do not carry them."
           },
           "sig": {
             "type": "string"
@@ -17224,6 +17229,7 @@
       "ReceiptClaimsV2": {
         "type": "object",
         "properties": {
+          "route": {"$ref":"#/components/schemas/RouteExplanation"},
           "v": {
             "type": "integer",
             "const": 2

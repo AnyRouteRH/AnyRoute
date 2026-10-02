@@ -79,6 +79,7 @@ const schema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   TRUST_PROXY: bool.default(false), // true behind exactly one trusted reverse proxy that appends X-Forwarded-For
 
+  ROUTE_EXPLAIN_ENABLED: bool.default(false), // V84: route explanations.
   // Receipts
   RECEIPT_SIGNING_KEY: opt,
   RECEIPT_KEY_ROTATION_DAYS: num(7),
@@ -574,6 +575,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   return {
     env: e.ANYROUTE_ENV,
     production,
+    routeExplain: e.ROUTE_EXPLAIN_ENABLED, // V84
     hostDashboard: { enabled: e.HOST_DASHBOARD_ENABLED },
     agreements: agreementSettings(e, production),
     sanctions: sanctionsSettings(e, production),

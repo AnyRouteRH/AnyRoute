@@ -1,3 +1,4 @@
+import { explainedStream, rememberRoutePlan, routeReceiptFields, routeResponseHeaders } from "../router/explain.ts"; // V84
 import { linkNetworkReceipt } from "../network/receipt-link.ts";
 import { agentReservation, enforceAgentCached } from "../agents/enforce.ts";
 import { blindReceipt } from "../blind/set.ts";
@@ -172,6 +173,7 @@ function selectTargets(
     // BYOK providers go first unless the caller pinned an order.
     if (!p.order?.length && byok.size) ordered = [...ordered.filter((x) => byok.has(x.providerId)), ...ordered.filter((x) => !byok.has(x.providerId))];
     for (const e of sel.excluded) notes.push({ model: r.model.id, ...e });
+    rememberRoutePlan(ctx.cfg.routeExplain, sel, ordered, notes, p, r.modifiers, params, byok); // V84
     return { ordered, notes };
   };
   for (const r of resolved) {
@@ -433,7 +435,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   const plannedPolicy = sharedPolicyHash(attemptable.map(({ cand }) => servedPolicyHash(ctx, cand)));
   const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens, tier, disc, planned, plannedPolicy };
 
-  if (stream) return streamResponse({ ...common, run: () => route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: true, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, production: ctx.cfg.production, caller: sha256(billing.accountId).slice(0, 16) }), abort });
+  if (stream) return explainedStream(ctx.cfg.routeExplain, () => route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: true, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, production: ctx.cfg.production, caller: sha256(billing.accountId).slice(0, 16) }), (run, routeHeaders) => streamResponse({ ...common, run, routeHeaders, abort })); // V84
 
   let result: Awaited<ReturnType<typeof route>>;
   try {
@@ -456,7 +458,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   const fin = await finalize({ ...common, r, usage, responseText, finishReason: json.choices?.[0]?.finish_reason ?? null, nativeFinish: json.choices?.[0]?.native_finish_reason ?? json.choices?.[0]?.finish_reason ?? null, generationMs: Date.now() - t0, cancelled: false, upstreamAttestation });
   if (upstreamAttestation && requiresAttestedUpstream(body, disc) && !upstreamAttestation.attested) {
     const err = unattestedUpstream(upstreamAttestation);
-    return c.json({ ...err.toJSON(), id: fin.id, usage: fin.usageJson, receipt: fin.receiptJson }, 502, { ...generationHeaders(fin.id, disc.lane, fin.policyHash), "x-anyroute-disclosure": fin.disclosure, ...paymentHeaders(billing) });
+    return c.json({ ...err.toJSON(), id: fin.id, usage: fin.usageJson, receipt: fin.receiptJson }, 502, { ...generationHeaders(fin.id, disc.lane, fin.policyHash), ...routeResponseHeaders(ctx.cfg.routeExplain, r), "x-anyroute-disclosure": fin.disclosure, ...paymentHeaders(billing) });
   }
   const out = {
     ...json,
@@ -469,7 +471,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
     ...(fin.extras(redactions) ?? {}),
   };
   if (cacheMode && !stream) await ctx.cache.put(cacheMode, cacheScope, body, out, fin.upstream, (body.cache as { ttl?: number } | undefined)?.ttl ?? ctx.cfg.gateway.cacheTtlS);
-  return c.json(out, 200, { ...generationHeaders(fin.id, disc.lane, fin.policyHash), "x-anyroute-disclosure": fin.disclosure, ...paymentHeaders(billing) });
+  return c.json(out, 200, { ...generationHeaders(fin.id, disc.lane, fin.policyHash), ...routeResponseHeaders(ctx.cfg.routeExplain, r), "x-anyroute-disclosure": fin.disclosure, ...paymentHeaders(billing) });
 }
 
 function allFailed(attempts: Attempt[], last?: { status?: number; errorKind: string; message: string }): ApiError {
@@ -649,6 +651,7 @@ async function finalize(p: FinalizeInput) {
     response_sha256: sha256(p.responseText),
     ...(ua ? { upstream_attestation: compactUpstream(ua) } : {}),
     ...(batchLine ? { batch: { id: batchLine.batchId, line: batchLine.idx } } : {}),
+    ...routeReceiptFields(ctx.cfg.routeExplain, r), // V84: signed optional extension.
     ...(p.extra?.payload ?? {}),
   };
   const signed = ctx.signer.sign(payload);
@@ -656,6 +659,7 @@ async function finalize(p: FinalizeInput) {
   // Receipt v2 alongside v1: the same facts minus payer and exact counts, as a COSE_Sign1 under the same key.
   const policyHash = servedPolicyHash(ctx, r.candidate);
   const claimsV2 = buildClaimsV2({
+    ...routeReceiptFields(ctx.cfg.routeExplain, r), // V84
     rid: id,
     issuedAt: new Date(payload.issued),
     router: ctx.cfg.publicUrl,
@@ -837,7 +841,7 @@ async function finalize(p: FinalizeInput) {
   };
 }
 
-function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort: AbortController }): Response {
+function streamResponse(p: Common & { run: () => ReturnType<typeof route>; routeHeaders?: Record<string, string>; abort: AbortController }): Response {
   const { ctx, kind } = p;
   const enc = new TextEncoder();
   const created = Math.floor(Date.now() / 1000);
@@ -965,7 +969,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; abort
   });
   return new Response(body, {
     status: 200,
-    headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-accel-buffering": "no", ...generationHeaders(p.holdId, p.disc.lane, p.plannedPolicy), ...(p.planned ? { "x-anyroute-disclosure": p.planned } : {}), ...paymentHeaders(p.billing) },
+    headers: { ...p.routeHeaders, /* V84 */ "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-accel-buffering": "no", ...generationHeaders(p.holdId, p.disc.lane, p.plannedPolicy), ...(p.planned ? { "x-anyroute-disclosure": p.planned } : {}), ...paymentHeaders(p.billing) },
   });
 }
 
