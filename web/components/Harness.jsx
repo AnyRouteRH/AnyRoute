@@ -1078,7 +1078,9 @@ export default function Harness() {
     return -1;
   };
   const promptCost = focusModel ? (estimateTokens(system + draft + lanes[0].messages.map((m) => m.text || "").join(" ")) * focusModel.inPrice) / 1e6 : 0;
-  const mod = isMac() ? "⌘" : "Ctrl";
+  // The page is pre-rendered without a browser: pick the key label after mount so hydration matches.
+  const [mod, setMod] = useState("Ctrl");
+  useEffect(() => setMod(isMac() ? "⌘" : "Ctrl"), []);
 
   return (
     <div className={s.harness} data-harness-app data-compare={compare || undefined}>
@@ -1307,7 +1309,7 @@ export default function Harness() {
           <VoiceFeedback voice={voice} />
           <p className={s.hints}>
             <span>
-              <kbd>{mod} K</kbd> switch model
+              <kbd>{mod} ⇧ K</kbd> switch model · <kbd>{mod} K</kbd> search chats
             </span>
             {focusModel && draft.trim() && <span className={s.est}>Prompt ≈ {formatUsd(promptCost)}</span>}
           </p>
