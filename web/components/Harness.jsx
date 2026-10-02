@@ -1204,7 +1204,7 @@ export default function Harness() {
               </h1>
               <p className={s.lede}>Choose a model at the top, then type below. Every reply shows what it cost, with a signed receipt.</p>
               <p className={s.counts} aria-label="Live catalogue">
-                {raw ? `${counts.models.toLocaleString("en-US")} models from ${counts.makers} makers, live` : "Loading the live catalogue"}
+                {raw ? `${counts.models.toLocaleString("en-US")} chat models from ${counts.makers} makers, live` : "Loading the live catalogue"}
               </p>
               <ul className={s.examples} aria-label="Example prompts">
                 {EXAMPLES.map((ex) => (
