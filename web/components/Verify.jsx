@@ -1,4 +1,5 @@
 'use client';
+import ProofBadge from './ProofBadge';
 import {useEffect,useState} from 'react';
 import {CopyButton,Button,Code} from './UI';
 import {API_BASE} from '../lib/api';
@@ -32,7 +33,7 @@ function Lookup({providerId,note}){return <div className={styles.section}>
 
 /** "What we saw": the router's plain-English label for one answer, looked up by receipt id. */
 function Saw({receiptId,asked,load,view}){return <section className={styles.section} aria-labelledby="v-saw"><h2 id="v-saw">What we saw</h2>
-  <p className={styles.lead}>A plain-English reading of a receipt: output and usage, who could read the request, who saw your address, how it was paid, what was kept and what hardware answered. The router works it out from the signed receipt, and on every lane it reads the prompt in memory to route it. Enter the id from the <span className="mono">X-Receipt-Id</span> header.</p>
+  <p className={styles.lead}>A plain-English reading of a receipt: output and usage, who could read the request, who saw your address, how it was paid, what was kept and what hardware answered. The router works it out from the signed receipt, and on ordinary chat paths it reads the prompt in memory to route it. The encrypted-chat path forwards ciphertext. Enter the id from the <span className="mono">X-Receipt-Id</span> header.</p>
   <form className={styles.lookup} action="/verify/" method="get">
     <div className="field"><label htmlFor="receipt-id">Receipt id</label><input id="receipt-id" name="r" defaultValue={receiptId} placeholder="gen-…" autoComplete="off" spellCheck="false" maxLength={128}/></div>
     <Button type="submit">Show what we saw</Button>
@@ -55,7 +56,7 @@ function Attestation({view}){
   const r=view.rows;const m=view.measurement;const log=view.transparencyLog;const reg=view.registry;
   return <>
     <div className={styles.verdict} data-tone={view.verdict.tone} role="status">
-      <div className={styles.verdictHead}><h2>{view.verdict.label}</h2>{view.provider&&<span className={styles.who}>{view.provider}</span>}</div>
+      <div className={styles.verdictHead}><ProofBadge evidence={{ source: "attestation", data: { status: view.status, provider: view.provider } }} />{view.provider&&<span className={styles.who}>{view.provider}</span>}</div>
       <p>{view.verdict.text}</p>
     </div>
     <section className={styles.section} aria-labelledby="v-record"><h2 id="v-record">What the router recorded</h2>

@@ -1,4 +1,5 @@
 import PageFrame from "../../components/PageFrame";
+import ProofGuide from "../../components/ProofGuide";
 import Verify from "../../components/Verify";
 
 export const metadata = { title: "Verify a provider — Anyroute", description: "What the router has and has not verified about a provider’s attestation, and a receipt checker that runs in your browser." };
@@ -17,6 +18,7 @@ export default function VerifyPage() {
           <p>What the router has verified about a provider’s hardware attestation, what it has not, and a receipt checker that runs in your browser against the keys the router publishes. Anything unverified stays marked unverified.</p>
         </div>
         <Verify />
+        <ProofGuide />
       </main>
     </PageFrame>
   );

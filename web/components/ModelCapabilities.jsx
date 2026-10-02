@@ -1,10 +1,11 @@
 import { MODEL_CAPABILITIES, modelCapabilities } from "../lib/model-capabilities.js";
+import ProofBadge from "./ProofBadge";
 import s from "./ModelCapabilities.module.css";
 
-export function CapabilityChips({ model, dark = false }) {
+export function CapabilityChips({ model, dark = false, linked = true }) {
   const keys = modelCapabilities(model);
   return <span className={s.chips} data-dark={dark || undefined}>
-    {keys.length ? MODEL_CAPABILITIES.filter(tag => keys.includes(tag.key)).map(tag => <span key={tag.key} className={s.chip} title={tag.explanation} aria-label={`${tag.label}: ${tag.explanation}`}>{tag.label}</span>) : <span className={s.chip}>No tags declared</span>}
+    {keys.length ? MODEL_CAPABILITIES.filter(tag => keys.includes(tag.key)).map(tag => tag.key === "attested" ? <ProofBadge key={tag.key} evidence={{ source: "model", data: model }} dark={dark} linked={linked} /> : <span key={tag.key} className={s.chip} title={tag.explanation} aria-label={`${tag.label}: ${tag.explanation}`}>{tag.label}</span>) : <span className={s.chip}>No tags declared</span>}
   </span>;
 }
 

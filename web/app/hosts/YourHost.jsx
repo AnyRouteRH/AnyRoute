@@ -1,4 +1,5 @@
 'use client';
+import ProofBadge from "../../components/ProofBadge";
 import NetworkPayoutCopy from "../../components/NetworkPayoutCopy";
 import { useEffect, useState } from 'react';
 import { hostId } from '../../lib/hosts';
@@ -25,7 +26,7 @@ export default function YourHost() {
   if (!id) return null;
   return <section className={s.record} aria-label="Your host admission status"><h2>Your host</h2><code>{id}</code>
     {message && <p role="status">{message}</p>}
-    {status && <><p>Admission: <strong>{status.status}</strong>. Hardware check: {status.attested ? 'Fresh verification recorded' : 'No fresh verification recorded'}.</p>
+    {status && <><p>Admission: <strong>{status.status}</strong>. <ProofBadge evidence={{ source: "admission", data: status, providerId: id }} /></p>
       {status.reasons?.length > 0 && <ul>{status.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
       <p>Probation until: {status.probation_until ? new Date(status.probation_until).toLocaleString() : 'Not recorded'}. Routing weight: {status.weight}.</p></>}
     <p>Probation hosts receive a reduced share of eligible traffic while attested and healthy. <NetworkPayoutCopy closed="Payouts to network hosts are not switched on yet." /> <a href="/docs/#network-host-signup">Host signup requirements</a>.</p>

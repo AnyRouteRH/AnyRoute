@@ -1,11 +1,13 @@
 "use client";
+import { proofBadges } from "../../lib/proof-badge.js";
+import ProofBadge from "../ProofBadge";
 // Private mode for the Harness: one switch under the header bar, a privacy label under each reply, and history that
 // stays in this browser, encrypted. The logic lives in lib/private-mode.js and lib/private-history.js; this file is
 // the interface. The Harness itself only reads `usePrivateMode()` and mounts <PrivateMode /> and <ReplyPrivacy />.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "../../lib/api";
 import { receiptHref } from "../../lib/arena";
-import { PROXY_HREF, TOKENS_HREF, createPrivateStore, fetchPrivacyLabel, laneIsProven, receiptLane } from "../../lib/private-mode";
+import { PROXY_HREF, TOKENS_HREF, createPrivateStore, fetchPrivacyLabel, receiptLane } from "../../lib/private-mode";
 import { HistoryError, MIN_PASSPHRASE, browserStorage, createHistory, memoryStorage, titleOf } from "../../lib/private-history";
 import { restoreLanes, snapshotLanes } from "../../lib/harness-image-history";
 import { Button, Modal } from "../UI";
@@ -83,17 +85,18 @@ function Label({ id, receipt, open }) {
   const signed = receiptLane(receipt);
   const label = result?.label || null;
   const lane = label?.lane || signed.lane;
-  const proven = laneIsProven(lane);
+  const proven = proofBadges({ source: "receipt", data: receipt }).some(mark => mark.hardware);
   const pending = !result;
   return (
     <details className={s.label} open={open || undefined} data-proven={proven || undefined}>
       <summary>
         Privacy label
-        {pending ? <small>reading…</small> : proven ? <mark>Proven hardware</mark> : <em>{lane ? "Not proven hardware" : "Lane not recorded"}</em>}
+        {pending && <small>reading…</small>}
         {!pending && lane && <small>{lane} lane</small>}
       </summary>
       <div className={s.labelBody}>
-        {lane && !proven && <p className={s.bad}>This reply was not served on proven hardware. It ran on the {lane} lane.</p>}
+        <ProofBadge evidence={{ source: "receipt", data: receipt }} dark explain />
+        {lane && !proven && <p className={s.bad}>This receipt does not establish hardware proof. Recorded lane: {lane}.</p>}
         {label ? (
           <>
             {label.summary.length > 0 && (

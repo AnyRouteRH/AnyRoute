@@ -1,0 +1,13 @@
+.group { display: inline-flex; flex-wrap: wrap; gap: 6px 10px; max-width: 100%; vertical-align: middle; }
+.item { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: 100%; min-width: 0; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 6px; border: 1px solid var(--line); background: var(--paper-2); color: var(--muted); font: 500 10px/1.4 var(--mono); }
+.badge svg { flex: none; }
+.badge[data-tone="proof"] { background: var(--signal-tint); color: var(--signal-deep); border-color: var(--signal-deep); }
+.check { font: 400 10px/1.5 var(--mono); color: var(--muted); text-underline-offset: 3px; padding-block: 3px; }
+.explanation { flex-basis: 100%; color: var(--muted); font: 400 12px/1.5 var(--sans); overflow-wrap: anywhere; }
+.group[data-dark] .badge { background: var(--ink-3); color: var(--muted-dark); border-color: var(--line-dark); }
+.group[data-dark] .badge[data-tone="proof"] { color: var(--signal); border-color: var(--signal-deep); }
+.group[data-dark] .check, .group[data-dark] .explanation { color: var(--muted-dark); }
+.group[data-dark] .check:focus-visible { outline-color: var(--signal); }
+
+.guide { margin-top: clamp(28px, 4vw, 44px); }

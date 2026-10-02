@@ -1,5 +1,6 @@
 "use client";
 import AccountActivity from "./account/AccountActivity";
+import ProofBadge from "./ProofBadge"; // U76: account receipt marks.
 import AccountShell from "./account/AccountShell";
 import AccountAnchors from "./account/AccountAnchors.js";
 import AccountHome from "./account/AccountHome";
@@ -165,7 +166,7 @@ function ReceiptTable({ receipts, onInspect, emptyAction, live, emptyTitle, empt
                 <small>{new Date(r.time).toLocaleString("en-GB")}</small>
               </td>
               <td data-label="Route">
-                <span className={"route-tag" + (r.private ? " private" : "")}>{r.private ? "Private" : "Standard"}</span>
+                <ProofBadge evidence={{ source: "generation", data: r }} /> {/* U76: private alone is not hardware evidence. */}
                 <small>{r.provider}</small>
               </td>
               <td className="num" data-label="Tokens">

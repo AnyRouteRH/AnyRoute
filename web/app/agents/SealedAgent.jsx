@@ -1,11 +1,11 @@
 'use client';
+import ProofBadge from '../../components/ProofBadge';
 import { useEffect, useState } from 'react';
 import { sealedLabel } from '../../lib/agent-sealed';
-export function SealedBadge({ sealed }) {
+export function SealedBadge({ sealed, linked = true }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(timer); }, []);
-  const label = sealedLabel(sealed, now);
-  return label ? <span className="badge" style={{overflowWrap:'anywhere'}}>{label}</span> : null;
+  return sealed ? <><ProofBadge evidence={{ source: "sealed", data: sealed }} now={now} linked={linked} /><span className="help-text" style={{overflowWrap:'anywhere'}}>Image {sealed.agent_image_digest || 'not recorded'}</span></> : null;
 }
 export default function SealedAgent({ agent, request }) {
   const [url, setUrl] = useState(''), [image, setImage] = useState(''), [compose, setCompose] = useState('');

@@ -1,11 +1,12 @@
 "use client";
+import ProofBadge from "./ProofBadge"; // U76: shared evidence labels.
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, clearKey, loadKey, saveKey, streamChat, validKey } from "../lib/api";
 import { hasWallet, walletApiKey } from "../lib/wallet";
 import { formatMs, formatUsd, receiptHref, estimateTokens } from "../lib/arena";
 import { retryAfterMs } from "../lib/batch";
 import {
-  DISCLOSURE_LABEL, SORTS, TOOL_PRESETS,
+  SORTS, TOOL_PRESETS,
   applyChunk, blankReply, buildRequest, capCounts, catalogueCounts, defaultSettings, filterCatalog,
   formatContext, formatPrice, groupByMaker, ignoredSettings, normalizeModel, parseTools, parseSchema, pcm16ToWav, replyFacts,
   routeAsModel, sampleToolResult, supportFor,
@@ -198,7 +199,7 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
                 <li key={m.id} className={s.row} data-active={m.id === activeId || undefined}>
                   <button type="button" className={s.pick} onClick={() => onPick(m.id)} aria-current={m.id === activeId || undefined} title={m.id}>
                     <span className={s.rowName}>
-                      {m.attested && <i className={s.att} title="Attested route available" />}
+                      {/* U76: hardware badge comes from CapabilityChips below. */}
                       {m.name}
                     </span>
                     <span className={s.rowMeta}>
@@ -206,8 +207,8 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
                       {formatContext(m.context)} · {formatPrice(m.inPrice)}
                       {m.outPrice ? " / " + formatPrice(m.outPrice) : ""}
                     </span>
-                    <CapTags model={m} />
                   </button>
+                  <CapTags model={m} /> {/* U76: check links sit outside the model button. */}
                   {!m.route && (
                     <button type="button" className={s.fav} aria-pressed={favs.includes(m.id)} onClick={() => toggleFav(m.id)} aria-label={(favs.includes(m.id) ? "Remove " : "Add ") + m.name + (favs.includes(m.id) ? " from favourites" : " to favourites")}>
                       <Star on={favs.includes(m.id)} />
@@ -258,7 +259,7 @@ function Palette({ models, onPick, onClose, title, onBrowse }) {
           {list.map((m, i) => (
             <li key={m.id} id={"pal-" + i} role="option" aria-selected={i === active} data-active={i === active || undefined} onMouseMove={() => setActive(i)} onClick={() => onPick(m.id)}>
               <span className={s.palName}>
-                {m.attested && <i className={s.att} />}
+                {/* U76: hardware badge comes from CapabilityChips below. */}
                 {m.name}
                 <small>{m.makerLabel}</small>
               </span>
@@ -473,11 +474,9 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
           <span title="Charged for this call">{facts.cost === null ? "cost pending" : formatUsd(facts.cost)}</span>
           {Number.isFinite(msg.ms) && <span title={msg.ttft != null ? `First token after ${formatMs(msg.ttft)}` : undefined}>{formatMs(msg.ms)}</span>}
           {facts.provider && <span>{facts.provider}</span>}
-          {facts.disclosure && (
-            <span className={facts.disclosure === "attested" ? s.attBadge : s.discl} title="Provider disclosure class, from the signed receipt">
-              {DISCLOSURE_LABEL[facts.disclosure] || facts.disclosure}
-            </span>
-          )}
+          {/* U76: keep provider, usage, cost and receipt inspection beside the shared proof marks. */}
+          <ProofBadge evidence={{ source: "receipt", data: msg.receipt }} dark />
+          {facts.disclosure && <span title="Disclosure recorded in the receipt">{facts.disclosure}</span>}
           {facts.receiptId && (
             <a href={receiptHref(facts.receiptId)} target="_blank" rel="noopener noreferrer" title={facts.receiptId}>
               Receipt ↗

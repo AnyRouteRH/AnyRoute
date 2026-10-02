@@ -1,4 +1,5 @@
 'use client';
+import ProofBadge from "../../components/ProofBadge";
 import NetworkHostPayout from "../../components/NetworkHostPayout";
 import HostBond from "./HostBond";
 import { useEffect, useRef, useState } from 'react';
@@ -10,7 +11,7 @@ const When = ({ value }) => <time dateTime={value}>{value ? new Date(value).toLo
 export function HostRecord({ host }) {
   const v = describeHost(host);
   return <article className={s.record}>
-    <div className={s.head}><div><h2>{v.name}</h2><code>{v.id}</code></div><Chip tone={v.hardware.tone}>{v.hardware.label}</Chip></div>
+    <div className={s.head}><div><h2>{v.name}</h2><code>{v.id}</code></div><ProofBadge evidence={{ source: "host", data: host }} /></div>
     <p><Chip>{v.status}</Chip> {v.probation ? <>Probation until <When value={v.shadow_until}/>.</> : 'No active probation recorded.'} Hardware: {v.tee_kind || 'Not established'}.</p>
     <p>Last successful hardware check: <When value={v.attestation?.last_verified_at}/>. <a href={v.verifyHref}>Inspect verification and its limits →</a></p>
     <div className={s.grid}>
@@ -64,6 +65,6 @@ export default function Hosts() {
     {id && <a href="/hosts/">← All hosts</a>}
     {state === 'loading' && <p role="status">Reading host records…</p>}
     {message && <p role="alert" className={s.notice}>{message}</p>}
-    {state === 'ready' && data && (id ? <><HostRecord host={data}/><button className={s.button} onClick={signIn} disabled={signing}>{signing ? 'Waiting for wallet…' : 'Operator: sign to view exact invoices'}</button><p>The wallet signs access to this host’s record. It authorizes no payment. Exact values and payout settings are visible only to the registered operator.</p></> : <div className={s.grid}>{data.length ? data.map(host => { const v = describeHost(host); return <a className={s.listCard} href={v.href} key={v.id}><h2>{v.name}</h2><Chip tone={v.hardware.tone}>{v.hardware.label}</Chip><p>{v.tee_kind} · {v.status}{v.probation && ' · Probation'}</p><p>{v.models.length} models · Inspect host →</p></a>; }) : <p>No hosts with a hardware verification record are listed.</p>}</div>)}
+    {state === 'ready' && data && (id ? <><HostRecord host={data}/><button className={s.button} onClick={signIn} disabled={signing}>{signing ? 'Waiting for wallet…' : 'Operator: sign to view exact invoices'}</button><p>The wallet signs access to this host’s record. It authorizes no payment. Exact values and payout settings are visible only to the registered operator.</p></> : <div className={s.grid}>{data.length ? data.map(host => { const v = describeHost(host); return <article className={s.listCard} key={v.id}><h2><a href={v.href}>{v.name}</a></h2><ProofBadge evidence={{ source: "host", data: host }} /><p>{v.tee_kind} · {v.status}{v.probation && ' · Probation'}</p><p>{v.models.length} models · <a href={v.href}>Inspect host →</a></p></article>; }) : <p>No hosts with a hardware verification record are listed.</p>}</div>)}
   </div>;
 }
