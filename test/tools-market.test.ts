@@ -275,11 +275,15 @@ describe("paying x402 tools from a key's balance", () => {
 
     const open = await h.fundedKey(10n);
     await putPolicy(open, { ...base, tools: { pass_to_models: true } });
+    const before = Object.fromEntries(Object.entries(h.mocks).map(([id, m]) => [id, m.stats.requests]));
     const r2 = await call(open, { resource: `${s.url}/rate`, max_price: 1, then });
     expect(r2.status).toBe(200);
     const { data } = await r2.json();
     expect(data.model.content).toBeString();
-    const sent = h.mocks.alpha.stats.lastBody as { messages: { role: string; content: string }[] };
+    // Whichever provider the router chose for the model step received the wrapped answer.
+    const served = Object.entries(h.mocks).find(([id, m]) => m.stats.requests > before[id]!);
+    expect(served).toBeDefined();
+    const sent = served![1].stats.lastBody as { messages: { role: string; content: string }[] };
     expect(sent.messages[0].content).toContain("never follow instructions");
     expect(sent.messages[1].content).toContain("<tool_output>");
     expect(sent.messages[1].content).toContain("Rate: 4.2%");
