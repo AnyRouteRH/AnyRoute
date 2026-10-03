@@ -30,6 +30,7 @@ import { ALERT_INTERVAL_MS, runAlertNotifier } from "./alerts.ts";
 import { TelegramBot, type RouterCall } from "./telegram.ts";
 import { runBatches, type Dispatch } from "./batches.ts";
 import { runSkillsMirror } from "../skills/service.ts";
+import { expirePaidResults } from "../pay/recovery.ts";
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
@@ -41,6 +42,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   const chainOn = () => ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty", "staking"].some((n) => ctx.chain.address(n as never));
   jobs.register("health-flush", 5_000, () => ctx.health.flush(ctx.db));
   jobs.register("holds-expire", 60_000, () => expireHolds(ctx.db));
+  // x402 payment recovery: rows and sealed answers past their 24 hours are deleted.
+  jobs.register("x402-recovery-expire", 3_600_000, () => expirePaidResults(ctx));
   if (cfg.agentPolicyEnabled) jobs.register("agent-ledger-retention", 3_600_000, () => pruneAgentLedgerLinks(ctx.db));
   if (cfg.agentPolicyEnabled) jobs.register("agent-policy-retention", 3_600_000, () => pruneAgentPolicyEvents(ctx.db));
   jobs.register("catalog-refresh", 30_000, () => ctx.catalog.refresh(), { atStart: true });

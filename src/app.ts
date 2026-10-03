@@ -2,6 +2,7 @@ import { initializeUpstreamMonitor } from "./rush/monitor.ts"; // ON3
 import { firstCallRoutes, firstCallCsp } from "./developers/first-call.ts"; // ON2
 import { inferenceScopeMiddleware, keyDefaultsRoutes } from "./provisioning/scope.ts"; // ZK6
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
+import { paymentRecovery } from "./pay/recovery.ts";
 import { statementRoutes } from "./api/statements.ts"; // V87
 import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
 import { webhookRoutes } from "./webhooks/routes.ts"; // V86: signed destinations.
@@ -152,7 +153,7 @@ export async function createApp(opts: AppOptions = {}) {
   const csp = webBuilt ? siteCsp(webDir) : "frame-ancestors 'none'; object-src 'none'; base-uri 'none'";
   const app = new Hono();
   // The OpenAI-style /v1/* aliases get the same CORS as /api/*, so a browser can read the receipt, lane and policy headers on either.
-  const apiCors = cors({ origin: "*", allowHeaders: ["x-agent-approval", "authorization", "content-type", "x-e2ee-version", "x-client-pub-key", "x-model-pub-key", "x-e2ee-nonce", "x-e2ee-timestamp", "x-pay-with", "x-payment", "payment-signature", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "x-anyroute-lane-downgrade", "http-referer", "x-title", "traceparent", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"], exposeHeaders: [...EXPOSED_RESPONSE_HEADERS, ...(cfg.routeExplain ? ["x-anyroute-route"] : []), /* V84 */ ...(cfg.structuredOutputCheckEnabled ? ["x-anyroute-json-check"] : []), /* V83 */ "x-e2ee-applied", "x-e2ee-version", "x-e2ee-algo", "x-e2ee-receipt-id"] });
+  const apiCors = cors({ origin: "*", allowHeaders: ["x-agent-approval", "authorization", "content-type", "x-e2ee-version", "x-client-pub-key", "x-model-pub-key", "x-e2ee-nonce", "x-e2ee-timestamp", "x-pay-with", "x-payment", "payment-signature", "payment-recovery", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "x-anyroute-lane-downgrade", "http-referer", "x-title", "traceparent", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"], exposeHeaders: [...EXPOSED_RESPONSE_HEADERS, ...(cfg.routeExplain ? ["x-anyroute-route"] : []), /* V84 */ ...(cfg.structuredOutputCheckEnabled ? ["x-anyroute-json-check"] : []), /* V83 */ "x-e2ee-applied", "x-e2ee-version", "x-e2ee-algo", "x-e2ee-receipt-id"] });
   app.use("/api/*", apiCors);
   app.use("/v1/*", apiCors);
   app.use("/ollama/*", apiCors);
@@ -178,6 +179,7 @@ export async function createApp(opts: AppOptions = {}) {
   app.use("*", inferenceScopeMiddleware(ctx)); // ZK6: deny by default before account middleware.
   app.use("*", agentLedgerMiddleware(ctx));
   app.use("*", agentApprovalMiddleware(ctx));
+  paymentRecovery(app, ctx); // a lost x402 answer is sent again, never paid twice; outside every other route middleware
   structuredOutputMiddleware(app, ctx); // V83: ordinary chat routes bill each call.
   firstCallRoutes(app, cfg.developerFirstCallEnabled, cfg.siteUrl); // ON2: the public site address, not the router host
   chatRoutes(app, ctx);

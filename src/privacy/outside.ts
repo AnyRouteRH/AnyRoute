@@ -13,6 +13,7 @@ import type { Evidence, ExternalDoc, RedisFamily, Touchpoint } from "./types.ts"
 import { networkJoinStores } from "./network-join.ts";
 import { networkStatsStores } from "./network-stats.ts";
 import { juryBodyReaders, agreementContractStores } from "./agreements.ts";
+import { x402RecoveryFamily, x402RecoveryReader } from "./x402-recovery.ts";
 
 // Everything the router keeps, or touches, outside Postgres: Redis keys (with their lifetimes and whether they contain a network
 // address), the application log, telemetry, backups and the places in the code that read a request's body or a caller's address.
@@ -267,6 +268,7 @@ const redisFamilies: RedisFamily[] = [
     ttl: "Recurring job schedules stay while the router runs; only the most recent 100 completed and 100 failed jobs are kept.",
     evidence: [ev("src/services/jobs.ts", "removeOnComplete: 100, removeOnFail: 100"), ev("src/services/jobs.ts", "upsertJobScheduler(j.name, { every: j.everyMs }, { name: j.name")],
   },
+  x402RecoveryFamily,
 ];
 
 const addressReaders: Touchpoint[] = [
@@ -392,6 +394,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   structuredOutputReader, // V83
   webhookBodyReader, // V86.
   profileBodyReader,
+  x402RecoveryReader,
   ...sealedBodyReaders,
   telegramLinkReader,
   ...juryBodyReaders,
@@ -683,7 +686,7 @@ const noLog = (item: string, file: string, contains: string): { item: string; ev
 export const EXTERNAL: ExternalDoc = {
   redis: {
     summary:
-      "Redis holds rate-limit counters, the opt-in response cache, replay markers and the job queue. It is optional in development and required in production. Every key expires; the rate-limit keys below are the only place a caller's network address is used, and only for calls without an API key.",
+      "Redis holds rate-limit counters, the opt-in response cache, the sealed answers of x402 calls kept 24 hours for payment recovery, replay markers and the job queue. It is optional in development and required in production. Every key expires; the rate-limit keys below are the only place a caller's network address is used, and only for calls without an API key.",
     families: redisFamilies,
     memoryFallback: {
       purpose: "Without Redis (development) the same rate-limit counters live in the router process's memory and are removed once their window started more than five minutes ago (checked every minute). Nothing is written to disk.",

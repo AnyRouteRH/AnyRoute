@@ -260,14 +260,14 @@ describe("Redis", () => {
     expect([...prefixes].sort()).toEqual(["cache:", "rl:", "walletauth:"]);
     for (const p of prefixes) expect(families.some((f) => f.key.startsWith(p)), p).toBe(true);
     const users = files.filter((f) => /["']ioredis["']|["']bullmq["']/.test(read(f)));
-    expect(users).toEqual(["src/api/auth.ts", "src/app.ts", "src/gateway/cache.ts", "src/lib/ratelimit.ts", "src/services/batches.ts", "src/services/jobs.ts"]);
+    expect(users).toEqual(["src/api/auth.ts", "src/app.ts", "src/gateway/cache.ts", "src/lib/ratelimit.ts", "src/pay/recovery.ts", "src/services/batches.ts", "src/services/jobs.ts"]);
     // The Batch API writes its sealed requests and answers under keys it builds from the batch id (services/batches.ts).
     expect(families.filter((f) => f.requestText === "request-and-answer-text").map((f) => f.key)).toEqual(["batch:<batch id>:in and batch:<batch id>:out"]);
     expect(families.some((f) => f.key.startsWith("bull:anyroute-jobs-"))).toBe(true);
   });
 
-  test("only the response cache is marked as holding answer text, and it is the only key that is not a counter or a marker", () => {
-    expect(families.filter((f) => f.requestText === "answer-text").map((f) => f.key)).toEqual(["cache:<sha256>"]);
+  test("only the response cache and x402 payment recovery are marked as holding answer text, and they are the only keys that are not a counter or a marker", () => {
+    expect(families.filter((f) => f.requestText === "answer-text").map((f) => f.key)).toEqual(["cache:<sha256>", "x402paid:<sha256>"]);
   });
 
   test("the stated lifetime of a rate-limit key is what the limiter sets", () => {

@@ -19,6 +19,7 @@ import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAll
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
 import { X402_VERSIONS, x402Enabled } from "../pay/x402.ts";
+import { RECOVERY_TTL_MS, recoveryMessage } from "../pay/recovery.ts";
 import { PRIVATE_LANES, PUBLIC_LANE_ROWS, privateLaneStats } from "../services/private-stats.ts";
 import { labelForReceipt } from "../privacy/resolve.ts";
 
@@ -346,6 +347,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
             versions: X402_VERSIONS,
             networks: [ctx.cfg.x402.network, `eip155:${ctx.cfg.chain.id}`],
             headers: { payment: ["X-PAYMENT", "PAYMENT-SIGNATURE"], required: "PAYMENT-REQUIRED", response: ["X-PAYMENT-RESPONSE", "PAYMENT-RESPONSE"] },
+            // Payment recovery: a lost paid answer is sent again for the payer's signature of `message`, never paid twice.
+            recovery: { available: x402Enabled(ctx), header: "PAYMENT-RECOVERY", message: recoveryMessage(ctx.cfg.chain.id, "<payer>", "<nonce>"), ttl_s: RECOVERY_TTL_MS / 1000 },
           },
         },
         // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.

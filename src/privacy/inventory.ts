@@ -9,6 +9,7 @@ import { agentLedgerTables } from "./tables/agent-ledger.ts";
 import { agentTables } from "./tables/agents.ts";
 import { approvalTables } from "./tables/agent-approvals.ts";
 import { sanctionsTables } from "./tables/sanctions.ts";
+import { x402RecoveryTables } from "./x402-recovery.ts";
 import { canonicalJson, sha256 } from "../lib/util.ts";
 import { columnFlags, informationSchemaType } from "./rules.ts";
 import { schemaTables, type SchemaTable } from "./schema.ts";
@@ -33,7 +34,7 @@ import { CATEGORIES, CATEGORY_INFO, type AboutRequest, type ColumnDoc, type Exte
 
 export const INVENTORY_FORMAT = "anyroute.data-inventory/1";
 
-export const TABLE_DOCS: Record<string, TableDoc> = { ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables };
+export const TABLE_DOCS: Record<string, TableDoc> = { ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables, ...x402RecoveryTables };
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);
 export { EXTERNAL };
@@ -169,7 +170,8 @@ export function summarize(tables: TableOut[], ext: ExternalDoc): Summary {
   const headers = verdict("request-header");
   const settings = cols.filter((c) => c.col.review?.verdict === "config" && (c.table.category === "keys" || c.table.category === "operations") && !c.col.flags?.includes("name:network"));
   const hashes = verdict("digest-only");
-  const sealed = ext.redis.families.filter((f) => f.requestText === "answer-text");
+  const sealed = ext.redis.families.filter((f) => f.requestText === "answer-text" && f.key.startsWith("cache:"));
+  const recovery = ext.redis.families.filter((f) => f.requestText === "answer-text" && f.key.startsWith("x402paid:"));
   const addressKeys = ext.redis.families.filter((f) => f.holds === "address");
   const longest = Math.max(0, ...addressKeys.map((f) => (f.windowSeconds ?? 0) + 1));
   const shortest = Math.min(...addressKeys.map((f) => (f.windowSeconds ?? 0) + 1));
@@ -198,6 +200,11 @@ export function summarize(tables: TableOut[], ext: ExternalDoc): Summary {
     caveats.push({
       title: "The response cache keeps answers when you ask it to",
       text: `A request that turns the response cache on has its answer kept, sealed with AES-256-GCM, in Redis and in the router's memory. ${f.ttl} Requests that do not ask for caching leave nothing here, and a call paid with a blind token, a call on the attested lane or with any disclosure ceiling, a restricted model variant and a streamed answer are never cached. A semantic cache also keeps a 1,024-number hashed word vector of the prompt in memory.`,
+    });
+  for (const f of recovery)
+    caveats.push({
+      title: "A call paid with x402 keeps its answer for 24 hours, so a lost answer is never paid for twice",
+      text: `Where x402 is switched on, the answer to a call paid with x402 is kept, sealed with AES-256-GCM, in Redis (or the router's memory without Redis), never in the database, so the payer can have it sent again with PAYMENT-RECOVERY if it was lost on the way. ${f.ttl} For that time the database keeps only the payer, the authorization nonce, two hashes and the name of the Redis key.`,
     });
   for (const f of ext.redis.families.filter((x) => x.requestText === "request-and-answer-text"))
     caveats.push({

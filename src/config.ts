@@ -504,6 +504,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
       allowed.push("upstream-monitor"); // ON3
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
+      allowed.push("x402-recovery-expire"); // x402 payment recovery retention
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");

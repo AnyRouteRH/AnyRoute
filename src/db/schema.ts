@@ -436,6 +436,21 @@ export const quotes = pgTable(
   (t) => [index("quotes_tx_idx").on(t.txHash)], // one tx may pay several quotes (4337 bundles)
 );
 
+// x402 payment recovery (src/pay/recovery.ts): one row per answered x402 payment, kept 24 hours. Hashes and the name of
+// the Redis key that holds the sealed answer; the answer itself is never in Postgres.
+export const x402PaidResults = pgTable(
+  "x402_paid_results",
+  {
+    payer: text("payer").notNull(), // lowercase wallet address
+    nonce: text("nonce").notNull(), // EIP-3009 authorization nonce, bytes32 hex
+    requestSha256: text("request_sha256").notNull(),
+    responseSha256: text("response_sha256").notNull(),
+    bodyRef: text("body_ref").notNull(), // x402paid:<sha256(payer:nonce)>
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.payer, t.nonce] }), index("x402_paid_results_created_idx").on(t.createdAt)],
+);
+
 export const paywithSessions = pgTable("paywith_sessions", {
   keyHash: text("key_hash").primaryKey(), // chain key hash
   wallet: text("wallet").notNull(),

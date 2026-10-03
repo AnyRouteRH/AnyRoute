@@ -430,7 +430,9 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
 
   // ---- 7. Route ---------------------------------------------------------------------------------
   const abort = new AbortController();
-  c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });
+  // A non-streamed call paid with x402 runs to its end even if the caller goes away, so a lost answer can be sent again
+  // (src/pay/recovery.ts). Every other call stops when its caller disconnects.
+  if (stream || !(billing.mode === "per_call" && billing.paymentResponse)) c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });
   const keyFor = (cand: Candidate) => providerKey(cand, ctx.cfg.appSecret, byok.get(cand.providerId));
   const path = kind === "chat" ? ("/chat/completions" as const) : ("/completions" as const);
   const meta = { guard, middle, paywithNote, cacheMode, excluded, route: savedRoute, preset: presetMeta, character };

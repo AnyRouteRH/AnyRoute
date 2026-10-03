@@ -79,7 +79,7 @@ test('the Redis section lists every family with a lifetime, marks the ones that 
  const address=fam.filter(f=>f.holds==='address');
  assert.ok(address.length>=9);
  for(const f of address)assert.match(f.ttl,/^(61|3,601) seconds/,f.key);
- assert.deepEqual(fam.filter(f=>f.request_text==='answer-text').map(f=>f.key),['cache:<sha256>']);
+ assert.deepEqual(fam.filter(f=>f.request_text==='answer-text').map(f=>f.key),['cache:<sha256>','x402paid:<sha256>']);
  assert.match(JSON.stringify(doc.summary.facts),/between 61 seconds and 3,601 seconds/);
 });
 

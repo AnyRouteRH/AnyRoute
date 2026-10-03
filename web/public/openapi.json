@@ -1838,7 +1838,7 @@
         ],
         "operationId": "createChatCompletion",
         "summary": "Create a chat completion",
-        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request. When the router has x402 enabled, the 402 body is also an x402 v1 payment requirement (x402Version, accepts) and the PAYMENT-REQUIRED header carries the same requirement as x402 v2: sign the exact-scheme USDG authorization and retry with X-PAYMENT (v1) or PAYMENT-SIGNATURE (v2); the paid response carries the settlement in X-PAYMENT-RESPONSE and PAYMENT-RESPONSE. Two opt-in modes run several billed calls for one request and are off unless the router enables them: model anyroute/council (a panel of models plus a judge; see the council field) and verify \"dual\" (the same request to two providers; see the verification field). Both are non-streaming only. Where the router enables blind tokens, Authorization: PrivateToken token=<base64url> pays with one token instead of a key (see the Blind tokens tag): the call is charged to a pooled account, the signed receipt carries the token's nullifier and no payer, and the token is spent only if the call is served. A token pays for at most its value, so a request whose worst case costs more is refused with 402 token_value_too_low; council mode and verify are refused with 400 blind_unsupported. A refused, unknown, expired or already spent token is a 401 that carries WWW-Authenticate: PrivateToken challenge=\"...\". Disclosure ceilings and lanes apply to token calls exactly as to key calls. Lane unlinkable, where the router enables Oblivious HTTP, is served only for a request that arrives through the gateway (POST /api/v1/ohttp/gateway) by way of an independent relay, paid with a blind token and never a key, and only by attested providers; where the router serves the lane over Tor (data.lanes.unlinkable.via in GET /api/v1/status includes onion), a request that arrives through its onion service (data.onion.url) and is paid with a blind token qualifies in the same way, streamed or not, and a clearnet request cannot claim to have come that way; otherwise it is refused with 403 lane_requires_anonymous_auth for an API key or a wallet (unless provider.lane_downgrade is attested, which serves it on lane attested instead), 403 unlinkable_requires_relay or unlinkable_requires_independent_relay, 401 unlinkable_requires_token with the token challenge when no token is presented, or 503 no_attested_endpoint when no attested endpoint can serve the model. A request that arrives through an independent relay, is paid with a blind token and names no lane is served on lane unlinkable. On lanes attested and unlinkable the router never falls back to an endpoint without a fresh, verified attestation: it answers 503 no_attested_endpoint instead. Within a lane endpoints are weighted uptime x quality x attested_bonus / price^2 (attested_bonus 1.25 on public, 1 elsewhere). On attested and unlinkable the router still terminates TLS and sees the prompt; end-to-end encryption through the router is planned. Through the gateway, streaming needs chunked Oblivious HTTP (message/ohttp-chunked-req), where the router enables it; stream true in a message/ohttp-req is refused with 400 stream_unsupported.",
+        "description": "Supports standard JSON responses and Server-Sent Events when stream is true. A model must support requested capabilities such as tools or response_format. Auth may use a bearer key, wallet authentication, or the per-call payment flow. A 402 response can contain a quote; follow its payment instructions before retrying the exact request. When the router has x402 enabled, the 402 body is also an x402 v1 payment requirement (x402Version, accepts) and the PAYMENT-REQUIRED header carries the same requirement as x402 v2: sign the exact-scheme USDG authorization and retry with X-PAYMENT (v1) or PAYMENT-SIGNATURE (v2); the paid response carries the settlement in X-PAYMENT-RESPONSE and PAYMENT-RESPONSE. If that answer is lost, the same request with the same payment and a PAYMENT-RECOVERY signature gets the kept answer again, byte for byte, without a second payment. Two opt-in modes run several billed calls for one request and are off unless the router enables them: model anyroute/council (a panel of models plus a judge; see the council field) and verify \"dual\" (the same request to two providers; see the verification field). Both are non-streaming only. Where the router enables blind tokens, Authorization: PrivateToken token=<base64url> pays with one token instead of a key (see the Blind tokens tag): the call is charged to a pooled account, the signed receipt carries the token's nullifier and no payer, and the token is spent only if the call is served. A token pays for at most its value, so a request whose worst case costs more is refused with 402 token_value_too_low; council mode and verify are refused with 400 blind_unsupported. A refused, unknown, expired or already spent token is a 401 that carries WWW-Authenticate: PrivateToken challenge=\"...\". Disclosure ceilings and lanes apply to token calls exactly as to key calls. Lane unlinkable, where the router enables Oblivious HTTP, is served only for a request that arrives through the gateway (POST /api/v1/ohttp/gateway) by way of an independent relay, paid with a blind token and never a key, and only by attested providers; where the router serves the lane over Tor (data.lanes.unlinkable.via in GET /api/v1/status includes onion), a request that arrives through its onion service (data.onion.url) and is paid with a blind token qualifies in the same way, streamed or not, and a clearnet request cannot claim to have come that way; otherwise it is refused with 403 lane_requires_anonymous_auth for an API key or a wallet (unless provider.lane_downgrade is attested, which serves it on lane attested instead), 403 unlinkable_requires_relay or unlinkable_requires_independent_relay, 401 unlinkable_requires_token with the token challenge when no token is presented, or 503 no_attested_endpoint when no attested endpoint can serve the model. A request that arrives through an independent relay, is paid with a blind token and names no lane is served on lane unlinkable. On lanes attested and unlinkable the router never falls back to an endpoint without a fresh, verified attestation: it answers 503 no_attested_endpoint instead. Within a lane endpoints are weighted uptime x quality x attested_bonus / price^2 (attested_bonus 1.25 on public, 1 elsewhere). On attested and unlinkable the router still terminates TLS and sees the prompt; end-to-end encryption through the router is planned. Through the gateway, streaming needs chunked Oblivious HTTP (message/ohttp-chunked-req), where the router enables it; stream true in a message/ohttp-req is refused with 400 stream_unsupported.",
         "security": [
           {
             "BearerAuth": []
@@ -1863,6 +1863,9 @@
           },
           {
             "$ref": "#/components/parameters/PaymentSignature"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentRecovery"
           },
           {
             "$ref": "#/components/parameters/PayWith"
@@ -2002,6 +2005,9 @@
           },
           {
             "$ref": "#/components/parameters/PaymentSignature"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentRecovery"
           },
           {
             "$ref": "#/components/parameters/DisclosureMax"
@@ -2369,7 +2375,7 @@
         ],
         "operationId": "getStatus",
         "summary": "Read public router configuration",
-        "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). data.lanes reports each privacy lane (public, attested, unlinkable) with available, models and endpoints (how many can serve it right now) and the attested_bonus its selection weight uses; data.lanes.unlinkable.via lists the transports that carry that lane here: ohttp (an independent Oblivious HTTP relay), onion (Tor, through the onion service), both, or none when it is not available. data.per_call.x402 reports whether x402 is configured, the network names a payment may carry (versions 1 and 2) and the headers the router reads and writes. It is not an uptime guarantee.",
+        "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). data.lanes reports each privacy lane (public, attested, unlinkable) with available, models and endpoints (how many can serve it right now) and the attested_bonus its selection weight uses; data.lanes.unlinkable.via lists the transports that carry that lane here: ohttp (an independent Oblivious HTTP relay), onion (Tor, through the onion service), both, or none when it is not available. data.per_call.x402 reports whether x402 is configured, the network names a payment may carry (versions 1 and 2), the headers the router reads and writes, and recovery: whether PAYMENT-RECOVERY is available, the message the payer signs and how long answers are kept (ttl_s). It is not an uptime guarantee.",
         "responses": {
           "200": {
             "description": "Current public status snapshot.",
@@ -6067,6 +6073,9 @@
             "$ref": "#/components/parameters/PaymentSignature"
           },
           {
+            "$ref": "#/components/parameters/PaymentRecovery"
+          },
+          {
             "$ref": "#/components/parameters/PayWith"
           },
           {
@@ -8024,6 +8033,9 @@
           },
           {
             "$ref": "#/components/parameters/PaymentSignature"
+          },
+          {
+            "$ref": "#/components/parameters/PaymentRecovery"
           },
           {
             "$ref": "#/components/parameters/DisclosureMax"
@@ -13664,6 +13676,16 @@
           "type": "string"
         },
         "description": "x402 v2 payment for this exact request: base64 JSON PaymentPayload {x402Version: 2, resource, accepted, payload: {signature, authorization}} for the requirement in PAYMENT-REQUIRED. Read like X-Payment; do not replay blindly."
+      },
+      "PaymentRecovery": {
+        "name": "PAYMENT-RECOVERY",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{128,130}$"
+        },
+        "description": "x402 payment recovery, where the router has x402 enabled: the payer's EIP-191 (personal_sign) signature of anyroute:x402-recovery:4663:<payer>:<nonce> (lowercase hex). Sent with the same X-Payment or PAYMENT-SIGNATURE and the identical request after a paid answer was lost, it returns the answer kept for that payer and nonce byte for byte, with the same settlement headers, and never relays the payment again. Kept 24 hours. Refusals: 401 invalid_payment_recovery (not the payer's signature), 409 payment_request_mismatch (a different request), 404 payment_recovery_not_found with metadata.settled (nothing kept)."
       },
       "PayWith": {
         "name": "X-Pay-With",

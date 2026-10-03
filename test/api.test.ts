@@ -140,7 +140,9 @@ describe("API parity (OpenRouter shapes)", () => {
     const r = await h.ctx.db.execute(sql`SELECT table_name, column_name, data_type, udt_name FROM information_schema.columns WHERE table_schema = 'public'`);
     const cols = ((r as any).rows ?? r) as { table_name: string; column_name: string }[];
     // Hashes (…_sha256) and prices (price_…) are allowed; anything that could hold text is not.
-    const bad = cols.filter((c) => /(^|_)(prompt|content|messages?|completion|output|response|input|answer|text|body)($|_)/.test(c.column_name) && !/_sha256$|^price_|^max_out$|^tokens_|_tokens$/.test(c.column_name));
+    // x402_paid_results.body_ref names the Redis key of a sealed x402 answer (a fixed prefix and a hash), never the answer.
+    const reference = (c: { table_name: string; column_name: string }) => c.table_name === "x402_paid_results" && c.column_name === "body_ref";
+    const bad = cols.filter((c) => /(^|_)(prompt|content|messages?|completion|output|response|input|answer|text|body)($|_)/.test(c.column_name) && !/_sha256$|^price_|^max_out$|^tokens_|_tokens$/.test(c.column_name) && !reference(c));
     expect(bad.map((c) => `${c.table_name}.${c.column_name}`).sort()).toEqual(["agreement_evidence.content"]);
     // The data inventory (src/privacy) goes further, on the database as the migrations built it: every column has an entry; every column
     // whose name or type suggests request content or a network address (prompt, content, messages, body, text, ip, address, user_agent,

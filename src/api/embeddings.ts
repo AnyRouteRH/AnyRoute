@@ -127,7 +127,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
           body: upstreamBody(cand, body, false).body,
           stream: false,
           apiKey: providerKey(cand, ctx.cfg.appSecret),
-          signal: c.req.raw.signal ?? new AbortController().signal,
+          signal: (paid?.paymentResponse ? undefined : c.req.raw.signal) ?? new AbortController().signal, // an x402-paid call finishes for recovery
           timeoutMs: ctx.cfg.routing.providerTimeoutMs,
           firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs,
           production: ctx.cfg.production,
