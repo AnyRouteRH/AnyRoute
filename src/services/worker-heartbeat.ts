@@ -1,4 +1,5 @@
-import { renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { JobSnapshot } from "./jobs.ts";
 import { log } from "../lib/util.ts";
 
@@ -50,9 +51,13 @@ export class WorkerHeartbeat {
       this.healthy = healthy;
     }
     if (!healthy) return false;
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    writeFileSync(tmp, `${Math.floor(now / 1000)}\n`, { mode: 0o644 });
-    renameSync(tmp, this.file);
+    // A private unpredictable directory prevents another user from planting a symlink.
+    const directory = mkdtempSync(join(dirname(this.file), ".anyroute-heartbeat-"));
+    try {
+      const tmp = join(directory, "heartbeat");
+      writeFileSync(tmp, `${Math.floor(now / 1000)}\n`, { mode: 0o644, flag: "wx" });
+      renameSync(tmp, this.file);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
     return true;
   }
 

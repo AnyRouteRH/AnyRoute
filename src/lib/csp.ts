@@ -14,7 +14,7 @@ export function siteCsp(root: string) {
       if (entry.isDirectory()) visit(path);
       else if (entry.name.endsWith(".html")) {
         const html = readFileSync(path, "utf8");
-        for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+        for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
           if (!/\bsrc\s*=/.test(match[1]) && match[2]) hashes.add(`'sha256-${createHash("sha256").update(match[2]).digest("base64")}'`);
         }
       }

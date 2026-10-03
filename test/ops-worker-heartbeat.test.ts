@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { JobSnapshot } from "../src/services/jobs.ts";
@@ -87,4 +87,21 @@ describe("worker heartbeat file and container healthcheck", () => {
     expect(worker).toContain("heartbeat.start()");
     expect(worker).toContain("heartbeat.stop()");
   });
+});
+
+
+test("heartbeat publication does not follow planted temporary or target symlinks", () => {
+  const dir = mkdtempSync(join(tmpdir(), "anyroute-heartbeat-symlink-"));
+  try {
+    const file = join(dir, "heartbeat"), victim = join(dir, "protected");
+    writeFileSync(victim, "unchanged");
+    symlinkSync(victim, `${file}.${process.pid}.tmp`);
+    symlinkSync(victim, file);
+    const beat = new WorkerHeartbeat(() => [job("probe", 5_000, T0)], file, {}, T0);
+    expect(beat.tick(T0)).toBe(true);
+    expect(readFileSync(victim, "utf8")).toBe("unchanged");
+    expect(readFileSync(file, "utf8")).toBe(`${Math.floor(T0 / 1000)}\n`);
+    expect(readdirSync(dir).some(name => name.startsWith(".anyroute-heartbeat-"))).toBe(false);
+    beat.stop();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

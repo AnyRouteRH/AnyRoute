@@ -612,6 +612,8 @@ describe("who may use the proxy", () => {
     const { url } = await proxyFor(dir, { localKey: "local-secret-value" });
     expect((await chat(url)).status).toBe(401);
     expect((await chat(url, undefined, { authorization: "Bearer wrong" })).status).toBe(401);
+    expect((await fetch(`${url}/health`, { headers: { authorization: "Bearer" + "\t".repeat(6_000) } })).status).toBe(401);
+    expect((await fetch(`${url}/health`, { headers: { authorization: "Bearer\t\tlocal-secret-value" } })).status).toBe(200);
     expect((await chat(url, undefined, { authorization: "Bearer local-secret-value" })).status).toBe(200);
     expect(JSON.stringify(chatCalls().at(-1))).not.toContain("local-secret-value");
   });

@@ -1,4 +1,4 @@
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, lt, sql } from "drizzle-orm";
 import { getAddress, type Hex } from "viem";
 import type { Ctx } from "../context.ts";
 import { ApiError, fail, isApiError } from "../lib/errors.ts";
@@ -94,7 +94,7 @@ export async function upsertListing(ctx: Ctx, l: Listing) {
   if (existing) {
     if (existing.payTo !== l.payTo) fail(409, "Another payTo already lists this resource.", "resource_taken");
     if (existing.signedAt >= signedAt) fail(409, "A newer signed listing for this resource is already stored; sign again with a later issuedAt.", "stale_listing");
-    const [row] = await ctx.db.update(facilitatorSellers).set(values).where(and(eq(facilitatorSellers.id, existing.id), sql`${facilitatorSellers.signedAt} < ${signedAt}`)).returning();
+    const [row] = await ctx.db.update(facilitatorSellers).set(values).where(and(eq(facilitatorSellers.id, existing.id), lt(facilitatorSellers.signedAt, signedAt))).returning();
     if (!row) fail(409, "A newer signed listing for this resource is already stored; sign again with a later issuedAt.", "stale_listing");
     return { row, created: false };
   }

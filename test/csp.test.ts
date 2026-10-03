@@ -31,3 +31,12 @@ test("site CSP hashes each inline script of the export and nothing else", () => 
   expect(script).not.toContain("'unsafe-inline'");
   expect(script).not.toContain("'unsafe-eval'");
 });
+
+
+test("script hashes respect whitespace and case in closing tags", () => {
+  const dir = mkdtempSync(join(tmpdir(), "anyroute-csp-closing-"));
+  try {
+    writeFileSync(join(dir, "index.html"), '<script>self.a=1</script ><script>self.b=2</SCRIPT\t>');
+    expect(directives(siteCsp(dir)).get("script-src")!.sort()).toEqual(["'self'", hash("self.a=1"), hash("self.b=2")].sort());
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

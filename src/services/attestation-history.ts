@@ -52,7 +52,7 @@ const REASON_PATTERNS: [RegExp, string][] = [
   [/^report has no TEE quote/i, "no_quote"],
   [/^unparseable .*quote/i, "quote_unparseable"],
   // aci/1 gateways (providers/aci.ts)
-  [/^report_data does not bind|the quote's report_data is not the report's|quote_report_data disagrees/i, "nonce_not_bound"],
+  [/^(?:report_data does not bind|the quote's report_data is not the report's|quote_report_data disagrees)/i, "nonce_not_bound"],
   [/workload_keyset|app_compose is not the measured compose|keyset lists no|keyset has no/i, "bindings_invalid"],
   [/GPU|NRAS/i, "gpu_evidence_failed"],
   [/nonce (mismatch|is not bound)|not bound to our nonce/i, "nonce_not_bound"],

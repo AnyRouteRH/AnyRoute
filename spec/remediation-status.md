@@ -60,6 +60,8 @@ The initial deep run exposed four capacity handler arithmetic failures. After re
 
 ## Open work and limits
 
+The first integrated release run exposed a PostgreSQL timestamp-serialization error in newer facilitator listing updates. The comparison now uses the schema-aware Drizzle operator, retaining the atomic stale-signature check; the full facilitator suite passes against PostgreSQL. Follow-up CodeQL findings led to heartbeat symlink protection and parsing regressions. See [automated analysis review](codeql-review.md) for source-bound findings and remaining independent review obligations.
+
 Solidity coverage was stopped after two materially different attempts: the normal layout failed dependency resolution; an isolated dependency layout compiled and reached 886 passing tests but failed two permit/signature tests under the coverage compiler configuration. Production-compiler tests pass. Failed-run Solidity LCOV was excluded. The next step is a compatible instrumented compiler/Foundry configuration, followed by a complete source-denominator measurement; the Go block-to-line approximation also needs resolution for a strict line metric. See `spec/core-coverage.md`.
 
 The original audit's missing contract specialties, independent off-chain/TEE/agent/RWA lanes and fresh checker remain unperformed. Complete these on a reviewed frozen candidate before rescoring. Complete the negative-test census and live proof/governance work above. Mutation/formal measurements and portfolio policy evidence remain follow-ups. Pending-slash exit liveness still depends on privileged adjudication; the runbook adds escalation, not permissionless expiry.
