@@ -54,6 +54,14 @@ export async function postAgreementRuling(ctx: Ctx, transport = rulingTransport(
   // The keys match the oracle's jury on chain: tell the public API (GET /api/v1/status agreements.rulings).
   await recordJuryHeartbeat(ctx);
   const scope = agreementScope(ctx.cfg);
+  // Key publication has its own database transaction. Finish it before taking the
+  // agreement lock, including after a restart when the receipt-key cache is empty.
+  const keyRows = await ctx.db.select({ keyId: agreementJury.keyId }).from(agreementJury)
+    .where(and(eq(agreementJury.scope, scope), eq(agreementJury.status, "dry_run")));
+  const pendingKeys = await ctx.db.select({ keyId: agreementJury.keyId }).from(agreementJury)
+    .where(and(eq(agreementJury.scope, scope), eq(agreementJury.status, "submitted")));
+  const publishedKeys = new Set([...keyRows, ...pendingKeys].map(row => row.keyId));
+  for (const keyId of publishedKeys) await publishJuryStatementKey(ctx, keyId);
   const intent = await ctx.db.transaction(async tx => {
     const cursor = await lockAgreementCursor(tx, scope, cfg.startBlock);
     if (Date.now() - cursor.checkedAt.getTime() > 120000 || !cursor.blockHash || (await ctx.chain.blockHashAt(cursor.block))?.toLowerCase() !== cursor.blockHash) return null;
@@ -71,9 +79,10 @@ export async function postAgreementRuling(ctx: Ctx, transport = rulingTransport(
       }
       if (!a || a.dispute !== row.dispute || a.state !== "disputed") { if (row.status === "submitted") return null; continue; }
       const statement = row.statement as { verdict: Verdict | null; votes: Vote[]; tally_bitmap: string; evidence_root: string; scope: string; dispute: string };
+      // A concurrently added key is picked up next tick; never read uncached keys under this lock.
+      if (!publishedKeys.has(row.keyId)) return null;
       if (statement.votes.length !== cfg.size || statement.votes.some(v => !v.verdict || v.verdict.verdict === "abstain" || !v.receipt_id || v.failure)) continue;
       if (statement.scope !== scope || statement.dispute !== row.dispute || statement.evidence_root !== row.root || !await ctx.signer.verify(row.statement, row.signature, row.keyId)) throw new Error("Invalid signed jury statement.");
-      await publishJuryStatementKey(ctx, row.keyId);
       const prepared = row.postingRaw ? { raw: decrypt(ctx.cfg.appSecret, row.postingRaw) as Hex, hash: row.postingTx as Hex } : await transport.prepare(row.agreementId, row.root as Hex, statement.votes);
       if (!row.postingRaw) await tx.update(agreementJury).set({ status: "submitted", postingRaw: encrypt(ctx.cfg.appSecret, prepared.raw), postingTx: prepared.hash }).where(and(eq(agreementJury.scope, scope), eq(agreementJury.agreementId, row.agreementId), eq(agreementJury.dispute, row.dispute)));
       return { ...prepared, id: row.agreementId, dispute: row.dispute };

@@ -123,3 +123,5 @@ Existing MIT-licensed contracts and third-party licenses remain in effect; see [
 ![Anyroute static header](.github/assets/github-header.png)
 
 </details>
+
+Audit readiness: [scope](spec/audit-scope.md), [invariants and tests](spec/invariants-tests.md), [deployment build proofs](spec/deployment-builds.md), and [authority/incident policy](SECURITY.md).

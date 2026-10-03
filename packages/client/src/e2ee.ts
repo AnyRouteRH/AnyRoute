@@ -36,7 +36,10 @@ export function e2eeAad(ctx: E2eeContext, field: string, id?: string) {
   return utf8(canonicalJson({ algo: E2EE_SUITE, model: ctx.model, field, nonce: ctx.nonce, ts: ctx.ts, purpose: id === undefined ? "aci.e2ee.request.v2" : "aci.e2ee.response.v2", ...(id === undefined ? {} : { id }) }));
 }
 export async function e2eeKeyPair() {
-  return crypto.subtle.generateKey({ name: "X25519" }, true, ["deriveBits"]) as Promise<CryptoKeyPair>;
+  // The generic WebCrypto overload also permits symmetric keys; require an asymmetric result.
+  const pair = await crypto.subtle.generateKey({ name: "X25519" }, true, ["deriveBits"]) as CryptoKey | CryptoKeyPair;
+  if (!("publicKey" in pair) || !("privateKey" in pair)) throw new Error("X25519 key pair unavailable");
+  return pair;
 }
 export async function e2eePublicKey(pair: CryptoKeyPair) { return bytesToHex(new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey))); }
 async function aesKey(privateKey: CryptoKey, publicHex: string) {

@@ -20,3 +20,15 @@ web/*
 !web/pnpm-workspace.yaml
 !web/scripts/build-pwa.mjs
 !web/next.config.mjs
+
+.audit-grade
+.solidity-auditor
+.security-tools
+.claude
+release-evidence
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.egg-info
+packages/*/dist
+sdks/*/dist

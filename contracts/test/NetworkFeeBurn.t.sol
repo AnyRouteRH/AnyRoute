@@ -6,12 +6,38 @@ import {NetworkFeeBurn, INetworkBuybackConfig} from "../src/NetworkFeeBurn.sol";
 import {AnyrToken} from "../src/AnyrToken.sol";
 import {AnyrStaking} from "../src/AnyrStaking.sol";
 import {IBuybackPriceOracle} from "../src/interfaces/IBuybackPriceOracle.sol";
+import {IBuybackAdapter} from "../src/interfaces/IBuybackAdapter.sol";
 import {MockUSDG} from "../src/mocks/MockUSDG.sol";
 import {MockBuybackAdapter} from "../src/mocks/MockBuybackAdapter.sol";
 contract NetworkFloor is IBuybackPriceOracle {
     uint256 public floor = 1; uint256 public updated; bool public refused;
     function configure(uint256 f, uint256 t, bool r) external { floor = f; updated = t; refused = r; }
     function minimumOutput(address, address, uint256) external view returns (uint256, uint256) { require(!refused, "refused"); return (floor, updated); }
+}
+/// @dev The adapter is also the authorized keeper: role checks cannot mask a broken mutex.
+contract ReentrantNetworkAdapter is IBuybackAdapter, INetworkBuybackConfig {
+    IERC20 public usdg;
+    IERC20 public anyr;
+    IBuybackPriceOracle public buybackPriceOracle;
+    NetworkFeeBurn public target;
+    bool public attacked;
+    constructor(IERC20 input, IERC20 output, IBuybackPriceOracle floor) { usdg = input; anyr = output; buybackPriceOracle = floor; }
+    function keeper() external view returns (address) { return address(this); }
+    function adapter() external view returns (IBuybackAdapter) { return this; }
+    function maxDailyBuyback() external pure returns (uint256) { return 100e6; }
+    function configure(NetworkFeeBurn burn_) external { target = burn_; }
+    function run(bytes32 operation) external { target.swap(operation, 1e6, 1e18); }
+    function swapExactIn(address, address, uint256, uint256, address recipient) external returns (uint256) {
+        if (attacked) {
+            (bool swapOk, bytes memory swapError) = address(target).call(abi.encodeCall(target.swap, (keccak256("recursive"), 1e6, 1e18)));
+            (bool burnOk, bytes memory burnError) = address(target).call(abi.encodeCall(target.burn, (keccak256("prior"))));
+            bytes4 mutex = bytes4(keccak256("ReentrancyGuardReentrantCall()"));
+            require(!swapOk && bytes4(swapError) == mutex && !burnOk && bytes4(burnError) == mutex, "mutex bypassed");
+        }
+        attacked = true;
+        anyr.transfer(recipient, 1e18);
+        return 1e18;
+    }
 }
 contract NetworkFeeBurnTest is Test {
     NetworkFeeBurn burn; AnyrStaking staking; AnyrToken anyr; MockUSDG usdg; MockBuybackAdapter adapter; NetworkFloor oracle;
@@ -50,5 +76,16 @@ contract NetworkFeeBurnTest is Test {
         oracle.configure(1, block.timestamp - 901, false); vm.expectRevert(NetworkFeeBurn.Refused.selector); vm.prank(keeper); burn.swap(id, 1e6, 1);
         oracle.configure(0, block.timestamp, false); vm.expectRevert(NetworkFeeBurn.Refused.selector); vm.prank(keeper); burn.swap(id, 1e6, 1);
         oracle.configure(1, block.timestamp + 1, false); vm.expectRevert(NetworkFeeBurn.Refused.selector); vm.prank(keeper); burn.swap(id, 1e6, 1);
+    }
+    function test_adapterKeeperCannotReenterSwapOrBurn() public {
+        ReentrantNetworkAdapter attack = new ReentrantNetworkAdapter(usdg, anyr, oracle);
+        NetworkFeeBurn guarded = new NetworkFeeBurn(attack);
+        attack.configure(guarded);
+        usdg.mint(address(guarded), 10e6); anyr.transfer(address(attack), 10e18);
+        attack.run(keccak256("prior")); attack.run(keccak256("second"));
+        assertEq(anyr.balanceOf(address(guarded)), 2e18);
+        assertEq(anyr.balanceOf(guarded.DEAD()), 0);
+        assertEq(usdg.balanceOf(address(guarded)), 8e6);
+        assertEq(guarded.used(), 2e6);
     }
 }

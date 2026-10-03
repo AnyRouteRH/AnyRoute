@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { makeRpcReader, entryPointAbi, governanceAbi, verifyDeployment, type ChainReader, type DeploymentManifest } from "../scripts/deployment-verification";
+import { makeRpcReader, entryPointAbi, governanceAbi, verifyDeployment as verifyWithBuild, type ChainReader, type DeploymentManifest } from "../scripts/deployment-verification";
 import { encodeFunctionResult, toFunctionSelector, type Address, type Hex } from "viem";
 import { AnyrStakingAbi, PayWithStockAbi, StockOracleAbi } from "../src/chain/abis";
 
@@ -67,11 +67,11 @@ function fixture(overrides: Record<string, unknown> = {}): ChainReader {
 }
 
 describe("deployment verification", () => {
-  test("accepts complete production evidence while labeling unavailable source proof", async () => {
+  test("accepts complete production evidence with compiler-bound runtime proof", async () => {
     const result = await verifyDeployment(manifest, fixture(), "fixture-revision", singleton);
     expect(result.ok).toBe(true);
     expect(result.observed).toEqual({ chainId: 4663, blockNumber: "123", blockHash: hash });
-    expect(result.checks.find((c) => c.id === "contracts.source_equivalence")?.status).toBe("info");
+    expect(result.checks.find((c) => c.id === "contracts.source_equivalence")?.status).toBe("pass");
     expect(result.checks.find((c) => c.id === "buybacks.oracle")?.status).toBe("info");
     expect(result.checks.find((c) => c.id === "timelock.self_admin")?.status).toBe("pass");
     expect(result.checks.find((c) => c.id === "timelock.ownerSafe_not_admin")?.status).toBe("pass");
@@ -198,3 +198,15 @@ describe("deployment verification", () => {
 function tupleFieldValue(value: unknown, name: string): unknown {
   return value && typeof value === "object" ? (value as Record<string, unknown>)[name] : undefined;
 }
+
+function verifyDeployment(...[m, reader, revision, safe]: Parameters<typeof verifyWithBuild>) {
+  return verifyWithBuild(m, reader, revision, safe, { sourceRevision: revision, contracts: Object.fromEntries(Object.keys(m.contracts).map(name => [name, { object: "0x6001" as Hex, immutableReferences: {}, immutableValues: {} }])) });
+}
+
+test("runtime proof is mandatory and rejects mismatching compiled code", async () => {
+  expect((await verifyWithBuild(manifest, fixture(), "fixture-revision", singleton)).ok).toBe(false);
+  const build = { sourceRevision: "fixture-revision", contracts: Object.fromEntries(Object.keys(manifest.contracts).map(name => [name, { object: "0x6002" as Hex, immutableReferences: {}, immutableValues: {} }])) };
+  const result = await verifyWithBuild(manifest, fixture(), "fixture-revision", singleton, build);
+  expect(result.ok).toBe(false);
+  expect(result.checks.find(c => c.id === "contracts.source_equivalence")?.status).toBe("fail");
+});

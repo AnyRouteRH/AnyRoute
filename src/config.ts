@@ -1,4 +1,5 @@
 import { identityEnv, identitySettings } from "./identity/config.ts"; // v6 I: receipt-backed identity and reputation.
+import { accountRuntimeSchema } from "./paymaster/account-policy.ts";
 import { rushEnv, rushSettings } from "./rush/config.ts"; // ON3
 import { toolsEnv, toolsSettings } from "./tools/config.ts"; // v6 T: paid tool market.
 import { zkapiPageEnv } from "./zkapi/page-config.ts"; // ZK10: opt-in static-page origins.
@@ -145,6 +146,7 @@ const schema = z.object({
   SETTLEMENT_PRIVATE_KEY: pk,
   ANCHORER_PRIVATE_KEY: pk,
   PAYMASTER_SIGNER_KEY: pk,
+  PAYMASTER_ACCOUNT_RUNTIMES: z.string().default("[]").transform(raw => accountRuntimeSchema.parse(JSON.parse(raw))),
   SLASHER_PRIVATE_KEY: pk,
   KEEPER_PRIVATE_KEY: pk,
   // Local development only: POST /api/v1/dev/faucet mints mock USDG and deposits it to the caller's key,
@@ -688,6 +690,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       settlementKey: e.SETTLEMENT_PRIVATE_KEY as `0x${string}` | undefined,
       anchorerKey: e.ANCHORER_PRIVATE_KEY as `0x${string}` | undefined,
       paymasterSignerKey: e.PAYMASTER_SIGNER_KEY as `0x${string}` | undefined,
+      paymasterAccountRuntimes: e.PAYMASTER_ACCOUNT_RUNTIMES,
       slasherKey: e.SLASHER_PRIVATE_KEY as `0x${string}` | undefined,
       keeperKey: e.KEEPER_PRIVATE_KEY as `0x${string}` | undefined,
       ipxKeeperKey: e.IPX_KEEPER_PRIVATE_KEY as `0x${string}` | undefined,
@@ -1478,6 +1481,9 @@ function contractPathGuards(e: Env, production: boolean, escrowMode: boolean) {
   const observedBlock = String(report.observed?.blockNumber);
   if (Number(report.observed?.chainId) !== e.CHAIN_ID || !/^\d+$/.test(observedBlock) || BigInt(observedBlock) < BigInt(String(manifest.blockNumber)))
     refuseReport("was not read from this chain after the deployment block.");
+  const proof = checks.find((c) => c.id === "contracts.source_equivalence");
+  if (proof?.status !== "pass" || proof.evidence?.sourceRevision !== report.verifierRevision || !Array.isArray(proof.evidence?.mismatches) || proof.evidence.mismatches.length)
+    refuseReport("does not prove the audited runtime build and immutable values.");
   // Bind the report to this manifest: the verifier found runtime bytecode at every manifest address.
   const bytecode = checks.find((c) => c.id === "contracts.bytecode_present");
   const found: Record<string, { address?: unknown; present?: unknown }> = bytecode?.status === "pass" && bytecode.evidence && typeof bytecode.evidence === "object" ? bytecode.evidence : {};

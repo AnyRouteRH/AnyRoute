@@ -835,8 +835,6 @@ contract AnyrStakingInvariantTest is StakingBase {
         targetContract(address(handler));
     }
 
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_principalAndRewardsBacked() public view {
         assertEq(

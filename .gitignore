@@ -16,3 +16,20 @@ web/out/
 web/.next/
 /release-evidence/
 integrations/*/dist/
+
+# Local package output and isolated audit tooling
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+packages/*/dist/
+sdks/*/dist/
+.security-tools/
+.audit-grade/runs/
+.audit-grade/remediation/
+.solidity-auditor/runs/
+
+/cache/
+**/*.egg-info/
+packages/client-py/build/
+
+**/.coverage

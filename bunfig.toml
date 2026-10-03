@@ -2,3 +2,6 @@
 # The per-test timeout is set in test/setup.ts: Bun reads none from this file.
 preload = ["./test/setup.ts"]
 root = "./test"
+
+[install]
+minimumReleaseAge = 604800

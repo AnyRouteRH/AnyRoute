@@ -3,6 +3,7 @@ import {
   AnyrPaymasterAbi, AnyrStakingAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi,
   ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi, UniswapV3AdapterAbi, UniswapV4AdapterAbi,
 } from "../src/chain/abis";
+import { runtimeMatches, type DeploymentBuild } from "./runtime-proof.ts";
 
 export type DeploymentManifest = {
   schema: string; chainId: number | string; mode: string; blockNumber: number | string;
@@ -94,7 +95,7 @@ export function makeRpcReader(rpcUrl: string): ChainReader {
   };
 }
 
-export async function verifyDeployment(manifest: DeploymentManifest, reader: ChainReader, verifierRevision: string, expectedSafeSingleton: Address): Promise<{ ok: boolean; verifierRevision: string; manifest: { schema: string; mode: string; chainId: number; blockNumber: number }; observed: { chainId: number; blockNumber: string; blockHash: Hex }; checks: Check[] }> {
+export async function verifyDeployment(manifest: DeploymentManifest, reader: ChainReader, verifierRevision: string, expectedSafeSingleton: Address, build?: DeploymentBuild): Promise<{ ok: boolean; verifierRevision: string; manifest: { schema: string; mode: string; chainId: number; blockNumber: number }; observed: { chainId: number; blockNumber: string; blockHash: Hex }; checks: Check[] }> {
   const checks: Check[] = [];
   const add = (id: string, pass: boolean, evidence: unknown, detail?: string) => checks.push({ id, status: pass ? "pass" : "fail", evidence, ...(detail ? { detail } : {}) });
   const info = (id: string, evidence: unknown, detail: string) => checks.push({ id, status: "info", evidence, detail });
@@ -110,7 +111,11 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
   const codeMap = new Map(codeResults.map(([n, a, code]) => [n, { address: a, present: !!code && code !== "0x", bytes: code ? Math.max(0, (code.length - 2) / 2) : 0 }]));
   const absent = [...requiredContracts.filter((name) => !manifest.contracts[name] || manifest.contracts[name] === zero), ...codeResults.filter(([, , code]) => !code || code === "0x").map(([name]) => name)];
   add("contracts.bytecode_present", absent.length === 0, Object.fromEntries(codeMap), absent.length ? `No runtime bytecode for: ${absent.join(", ")}` : "Presence only; this does not establish source equivalence.");
-  info("contracts.source_equivalence", "not checked", "Runtime bytecode is reported for presence and size only; immutable masking or verified-source comparison is not performed.");
+  const mismatches = codeResults.filter(([name, , code]) => !build?.contracts[name] || !runtimeMatches(code, build.contracts[name])).map(([name]) => name);
+  const sameRevision = !!build && build.sourceRevision === verifierRevision;
+  add("contracts.source_equivalence", sameRevision && absent.length === 0 && mismatches.length === 0,
+    { sourceRevision: build?.sourceRevision ?? null, mismatches },
+    "Requires local compiler artifacts, exact reviewed immutable values and reviewed full hashes for external infrastructure; missing proof fails.");
 
   const call = async (id: string, address: Address | undefined, sig: string, args: readonly unknown[] = []): Promise<unknown> => {
     if (!address || address === zero) { add(id, false, address ?? null, "Manifest address missing or zero."); return undefined; }

@@ -72,7 +72,7 @@ contract CapacityHandler is Test {
         uint256 bond = required == 0 ? 1 : required;
         usdg.mint(p, bond);
         vm.prank(p);
-        try cc.post(bytes32(uint256(uint160(p)) + who), uint128(tpd), uint32(dayCount), bond) {
+        try cc.post(keccak256(abi.encode(p, who)), uint128(tpd), uint32(dayCount), bond) {
             ++ghostPosts;
         } catch {}
     }
@@ -166,6 +166,8 @@ contract CapacityHandler is Test {
     /// `ready`), or `sel` itself when there is none.
     function _pick(uint256 sel, ICapacityCommit.Status status, bool ready) internal view returns (uint256) {
         uint256 n = cc.commitCount();
+        // Reduce the untrusted fuzz seed before adding the bounded iteration offset.
+        sel %= n;
         for (uint256 k; k < n; ++k) {
             uint256 id = ((sel + k) % n) + 1;
             ICapacityCommit.Commit memory c = cc.commitOf(id);
@@ -225,16 +227,12 @@ contract CapacityCommitInvariantTest is Test {
     }
 
     /// @dev The headline rule: APIU supply never exceeds the open committed capacity.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 96
     function invariant_supplyNeverExceedsOpenCapacity() public view {
         assertLe(apiu.totalSupply(), cc.openCapacityApiu());
     }
 
     /// @dev Open capacity is exactly the caps of the commitments that are not closed, and each cap is
     /// at most the committed token-units expressed in APIU.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 96
     function invariant_openCapacityIsTheSumOfOpenCaps() public view {
         uint256 sum;
         uint256 n = cc.commitCount();
@@ -250,8 +248,6 @@ contract CapacityCommitInvariantTest is Test {
     }
 
     /// @dev Supply is what was minted through CapacityCommit minus what was redeemed.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 96
     function invariant_supplyIsMintedMinusRedeemed() public view {
         assertEq(apiu.totalSupply(), h.ghostMinted() - h.ghostRedeemed());
         uint256 minted;
@@ -263,8 +259,6 @@ contract CapacityCommitInvariantTest is Test {
     }
 
     /// @dev The contract holds exactly the bonds that have not been released or slashed.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 96
     function invariant_bondCustody() public view {
         uint256 held;
         uint256 n = cc.commitCount();

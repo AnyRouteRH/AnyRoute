@@ -1,0 +1,95 @@
+{
+  "schema": "anyroute.remediation-evidence/v1",
+  "date": "2026-10-02",
+  "auditedBase": "8e93eafb261ce007147ebd275202fb45c95e006b",
+  "integratedPublicMain": "ffe2919d09bc6ad8649fe9184c74bbad894fafae",
+  "applicationAndTestRevision": "16e67db1b7bdfea4872d567f368b3512169ff1a1",
+  "subsequentChanges": [
+    "documentation and source scope list"
+  ],
+  "checks": {
+    "postgresRedis": {
+      "pass": 2401,
+      "skip": 20,
+      "fail": 0
+    },
+    "pglite": {
+      "pass": 2398,
+      "skip": 23,
+      "fail": 0
+    },
+    "deepInvariants": {
+      "pass": 21,
+      "fail": 0,
+      "actualCallsPerFunction": 131072,
+      "handlerReverts": 0
+    },
+    "priorStatelessContracts": {
+      "pass": 910,
+      "fail": 0,
+      "note": "contract source unchanged; additional EntryPoint lifecycle test passed separately"
+    },
+    "javascriptAdvisories": {
+      "packages": 6,
+      "findings": 0
+    },
+    "pythonAdvisories": {
+      "packages": 2,
+      "auditedDependenciesPerPackage": 16,
+      "findings": 0
+    },
+    "goReachableAdvisories": {
+      "exit": 0
+    },
+    "rootTypecheck": {
+      "exit": 0
+    },
+    "workflowLint": {
+      "exit": 0
+    },
+    "frozenInstall": {
+      "exit": 0
+    },
+    "drizzleSchemaGeneration": {
+      "exit": 0
+    },
+    "apiAndBackupImages": {
+      "exit": 0
+    },
+    "apiWorkerContainerSmoke": {
+      "exit": 0
+    },
+    "encryptedRecoveryDrill": {
+      "exit": 0,
+      "environment": "disposable PostgreSQL fixture and pinned backup container"
+    }
+  },
+  "diagnosticCoverage": {
+    "scopedFiles": 603,
+    "measuredFiles": 509,
+    "measuredLines": 56251,
+    "coveredMeasuredLines": 51792,
+    "unmeasuredFiles": 94,
+    "complete": false,
+    "goLineMeasureApproximate": true
+  },
+  "publication": "See the public main commit history for publication confirmation",
+  "remoteCI": "See the matching GitHub workflow revision for remote execution results",
+  "grade": "historical provisional 6.0 unchanged; no new independent audit",
+  "economics": "preserved",
+  "open": [
+    "independent security review and checker",
+    "complete strict coverage",
+    "external mutator negative-test census",
+    "fresh live build/image/TEE/KMS verification and governance acceptance",
+    "operator monitoring and sponsorship inventories"
+  ],
+  "contractAndSiblingVerificationRevision": "333f983dc05699005a78fb01f6039773fe00808b",
+  "reuse": "Contract and sibling package files are unchanged between the verification revisions",
+  "publicationIntegration": {
+    "privateSourceRevision": "2d7837cb669fb15034dd2ffedecf978f62b0a473",
+    "currentScopeFiles": 661,
+    "verification": "Existing counts are historical snapshot evidence; inspect current release checks for the integrated candidate.",
+    "pipeline": "private main release checks followed by the organization-bot mirror"
+  }
+}

@@ -143,6 +143,8 @@ contract CapacityCommit is ICapacityCommit, Ownable2Step, ReentrancyGuardTransie
             }
         }
         uint256 units = uint256(tokensPerDay) * durationDays;
+        // Delivery accounting stores uint128: reject commitments that cannot be represented.
+        if (units > type(uint128).max) revert InvalidCommit();
         uint256 required = Math.mulDiv(units, bondPerMillionUnits, UNITS_PER_APIU, Math.Rounding.Ceil);
         if (bond < required) revert BondTooLow(required);
 
@@ -230,7 +232,7 @@ contract CapacityCommit is ICapacityCommit, Ownable2Step, ReentrancyGuardTransie
         if (toTs <= c.startTs || fromTs >= c.endTs) revert AnchorOutsideTerm(id);
         if (deliveryRecorded[id][anchorIndex]) revert AlreadyRecorded(id, anchorIndex);
         deliveryRecorded[id][anchorIndex] = true;
-        delivered = Math.min(uint256(c.deliveredUnits) + units, _totalUnits(c));
+        delivered = uint256(c.deliveredUnits) + Math.min(units, _totalUnits(c) - c.deliveredUnits);
         c.deliveredUnits = uint128(delivered);
     }
 

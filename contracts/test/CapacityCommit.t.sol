@@ -412,6 +412,21 @@ contract CapacityCommitTest is CapacityCommitBase {
         assertEq(cc.commitOf(id).deliveredUnits, 10_000_000);
     }
 
+    function test_postRejectsUnrepresentableDeliveryCapacity() public {
+        vm.expectRevert(ICapacityCommit.InvalidCommit.selector);
+        vm.prank(prov);
+        cc.post(PID, type(uint128).max, 2, BOND);
+    }
+
+    function test_recordDeliveryHugeReportSaturatesWithoutOverflow() public {
+        uint256 id = _post();
+        vm.warp(T0 + 1 days);
+        _deliver(id, 1, T0, T0 + 1 days);
+        vm.warp(T0 + 2 days);
+        _deliver(id, type(uint256).max, T0 + 1 days, T0 + 2 days);
+        assertEq(cc.commitOf(id).deliveredUnits, UNITS);
+    }
+
     function test_recordDelivery_clampsToCommittedTotal() public {
         uint256 id = _post();
         vm.warp(T0 + 1 days);

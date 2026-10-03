@@ -1,0 +1,21 @@
+name: Core code holding funds, keys or authentication decisions
+paths:
+  - src
+  - scripts
+  - sidecar/src
+  - relay/src
+  - packages/client/src
+  - packages/private/src
+  - packages/client-py/src
+  - sdks/typescript/src
+  - sdks/python/src
+  - sdks/go
+paths-ignore:
+  - '**/test/**'
+  - '**/tests/**'
+  - '**/*_test.go'
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - web
+queries:
+  - uses: security-extended

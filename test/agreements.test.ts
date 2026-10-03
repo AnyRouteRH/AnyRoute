@@ -1,3 +1,4 @@
+import { ReceiptSigner } from "../src/receipts/signer.ts";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -140,15 +141,19 @@ test("attested jury adapter verifies signed answer digest and rejects public or 
   const changed=async()=>new Response(JSON.stringify({choices:[{message:{content:text.replace('pay','refund')}}],receipt:{payload,key_id:signed.keyId,sig:signed.sig}}),{headers:{'x-anyroute-lane':'attested','x-receipt-id':'jury-receipt'}});
   expect((await callJuryModel(h.ctx,changed,'jury/a',{})).failure).toBe('invalid_receipt');
 });
-// Posting publishes the jury key through the key log's own connection while it holds the index lock, and the
-// broadcast double reads the committed intent from outside that transaction: both need a second connection, which
-// the in-process database (a single connection) cannot give. Against it the test deadlocks the whole file.
-test.skipIf(!process.env.TEST_PG_URL)("posting persists before broadcast, retries identical bytes, never posts panel and checks stale/reorg state", async () => {
+// Key publication precedes the agreement lock; the broadcast double uses the transaction passed to it.
+test("posting persists before broadcast, retries identical bytes, never posts panel and checks stale/reorg state", async () => {
   await jury(); h.ctx.cfg.agreements.rulings=true; h.ctx.cfg.agreements.signerKeys=[hex(3)];
+  // Restart with a fresh cache after rotating: the statement still uses the old key.
+  await h.ctx.signer.rotateIfDue(true);
+  h.ctx.signer = new ReceiptSigner(h.ctx.db, h.ctx.cfg.appSecret, h.ctx.cfg.receipts.rotationDays);
+  await h.ctx.signer.init();
   h.ctx.chain.blockHashAt=async block=>chain.hash(block);
   let preparations=0,broadcasts=0;
-  const transport:RulingTransport={guard:async()=>{},prepare:async()=>{preparations++;return{raw:'0x1234',hash:hex(999)};},broadcast:async(raw)=>{broadcasts++;expect(raw).toBe('0x1234');expect((await h.ctx.db.select().from(agreementJury))[0].postingRaw).not.toBeNull();if(broadcasts===1)throw Error('fixture interruption');return'posted';}};
+  const transport:RulingTransport={guard:async()=>{},prepare:async()=>{preparations++;return{raw:'0x1234',hash:hex(999)};},broadcast:async(raw)=>{broadcasts++;expect(raw).toBe('0x1234');if(broadcasts===1)throw Error('fixture interruption');return'posted';}};
   await expect(postAgreementRuling(h.ctx,transport)).rejects.toThrow('fixture interruption'); expect(preparations).toBe(1);
+  // The broadcast transaction rolled back; the signed intent must already be durable.
+  expect((await h.ctx.db.select().from(agreementJury))[0].postingRaw).not.toBeNull();
   expect(await postAgreementRuling(h.ctx,transport)).toMatchObject({status:'posted'}); expect(preparations).toBe(1);expect(broadcasts).toBe(2);
   hashes.set(4n,hex(400)); expect(await postAgreementRuling(h.ctx,transport)).toEqual({skipped:'nothing canonical and ready'});
 });

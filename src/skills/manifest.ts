@@ -12,7 +12,7 @@ export class ManifestError extends Error {}
 const clean = (v: unknown, max: number) => (typeof v === "string" || typeof v === "number" ? String(v).replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 export function parseFrontmatter(text: string): Record<string, unknown> {
-  const body = text.replace(/^﻿/, "");
+  const body = text.replace(/^\uFEFF/, "");
   const m = body.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/);
   if (!m) throw new ManifestError("SKILL.md must start with a YAML frontmatter block between --- lines.");
   let doc: unknown;

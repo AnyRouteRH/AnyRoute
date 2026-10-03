@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.24"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [project]
@@ -18,13 +18,13 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "httpx>=0.27",
-  "cryptography>=42",
+  "httpx==0.28.1",
+  "cryptography==50.0.1",
 ]
 
 [project.optional-dependencies]
 test = [
-  "pytest>=8",
+  "pytest==9.1.1", "coverage==7.10.6",
   "anyio>=4",
 ]
 
@@ -36,3 +36,7 @@ include = ["src/anyroute", "tests", "README.md", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+exclude-newer = "2026-09-25T00:00:00Z"
+build-constraint-dependencies = ["setuptools==84.0.0", "hatchling==1.32.4"]

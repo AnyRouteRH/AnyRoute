@@ -96,10 +96,10 @@ test("session must pass both own and parent rules; parent spend includes child c
   expect(me.policies[0].inherited).toBe(true);
   expect((await h.request("/api/v1/agents", { headers: session.auth })).status).toBe(403);
 });
-// Two apps can share only a real server: each pglite://memory app opens its own private database.
-test.skipIf(!process.env.TEST_PG_URL)("principal kill is immediately visible on a second app sharing the database; policy update never clears it", async () => {
+// Both app instances use the same caller-owned database, including in-process PGlite.
+test("principal kill is immediately visible on a second app sharing the database; policy update never clears it", async () => {
   const k = await h.fundedKey(); await put(k, base);
-  const other = await createApp({ env: { ANYROUTE_ENV: "test", DATABASE_URL: h.ctx.cfg.databaseUrl, REDIS_URL: process.env.TEST_REDIS_URL ?? "", AGENT_POLICY_ENABLED: "true", APP_SECRET: h.ctx.cfg.appSecret, LOG_LEVEL: "error", WORKERS: "false", ALLOW_DEV_ATTESTATION: "true" }, chain: h.chain, startJobs: false });
+  const other = await createApp({ database: { db: h.ctx.db, kind: h.ctx.dbKind }, env: { ANYROUTE_ENV: "test", DATABASE_URL: h.ctx.cfg.databaseUrl, REDIS_URL: process.env.TEST_REDIS_URL ?? "", AGENT_POLICY_ENABLED: "true", APP_SECRET: h.ctx.cfg.appSecret, LOG_LEVEL: "error", WORKERS: "false", ALLOW_DEV_ATTESTATION: "true" }, chain: h.chain, startJobs: false });
   try {
     expect((await h.request(path(k) + "/kill", { method: "POST", headers: k.auth, json: { reason: "principal stop" } })).status).toBe(200);
     await put(k, base);

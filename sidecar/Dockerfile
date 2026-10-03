@@ -19,7 +19,7 @@ ARG BUN_IMAGE=oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188a
 FROM ${BUN_IMAGE} AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production --ignore-scripts
+RUN bun install --frozen-lockfile --production --ignore-scripts --minimum-release-age 604800
 
 FROM ${BUN_IMAGE} AS stage
 ARG SOURCE_DATE_EPOCH=0

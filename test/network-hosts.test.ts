@@ -145,9 +145,12 @@ describe("wallet-authenticated host admission with the existing attestor", () =>
     expect((await h.request("/api/v1/network/hosts/missing/status")).status).toBe(404);
   });
   test("limits signup independently by wallet and network address", async () => {
+    // Keep every attempt in the same window even when the suite reaches a minute boundary.
+    const now = () => 1_700_000_030_000;
+    await h.ctx.limiter.close(); h.ctx.limiter = new MemoryRateLimiter(now);
     for (let i = 0; i < 3; i++) expect((await apply({ endpoint: "http://127.0.0.1:1", name: `Host ${i}` })).status).toBe(i === 0 ? 201 : 200);
     expect((await apply({ endpoint: "http://127.0.0.1:1", name: "Fourth" })).status).toBe(429);
-    await h.ctx.limiter.close(); h.ctx.limiter = new MemoryRateLimiter();
+    await h.ctx.limiter.close(); h.ctx.limiter = new MemoryRateLimiter(now);
     for (let i = 0; i < 10; i++) { wallet = privateKeyToAccount(generatePrivateKey()); expect((await apply({ endpoint: "http://127.0.0.1:1" })).status).toBe(201); }
     wallet = privateKeyToAccount(generatePrivateKey()); expect((await apply()).status).toBe(429);
   });

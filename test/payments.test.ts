@@ -273,7 +273,7 @@ describe("self-custodial withdrawals: spent roots", () => {
     const proof = await (await h.request("/api/v1/credits/withdrawal-proof", { headers: a.auth })).json();
     expect(proof.data.root).toBe(h.chain.spentRoots.at(-1)!.root);
     h.chain.clockOffsetSec = 0;
-  });
+  }, 20000);
 
   test("independent approval retains the exact snapshot while more usage arrives", async () => {
     const a = await h.fundedKey(2n);

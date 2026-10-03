@@ -1950,8 +1950,6 @@ contract CreditsInvariantTest is CreditsInvariantBase {
         _setUp(false);
     }
 
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_balanceIdentity() public view {
         (int256 sum,) = handler.sumTerms();
@@ -1961,8 +1959,6 @@ contract CreditsInvariantTest is CreditsInvariantBase {
         assertEq(lhs, int256(usdg.balanceOf(address(credits))));
     }
 
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_solventAndBounded() public view {
         _assertBoundedAndIdentity();
@@ -1980,15 +1976,11 @@ contract CreditsOmissionInvariantTest is CreditsInvariantBase {
         _setUp(true);
     }
 
-    /// forge-config: default.invariant.runs = 256
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_exitsBoundedAndIdentity() public view {
         _assertBoundedAndIdentity();
     }
 
-    /// forge-config: default.invariant.runs = 256
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_settlementBearsOmissions() public view {
         assertGe(usdg.balanceOf(address(credits)) + handler.settlementLoss(), handler.fairOwed());
@@ -1996,8 +1988,6 @@ contract CreditsOmissionInvariantTest is CreditsInvariantBase {
 
     /// Without a top-up the pool is exactly deposits - withdrawals - sweeps, and a top-up never exceeds
     /// the usage settlement lost: the contract itself never pays out of thin air.
-    /// forge-config: default.invariant.runs = 256
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_topUpsBoundedByLoss() public view {
         assertLe(handler.madeGood(), handler.settlementLoss());

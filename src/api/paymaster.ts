@@ -1,3 +1,4 @@
+import { reviewedAccount } from "../paymaster/account-policy.ts";
 import type { Hono } from "hono";
 import {
   concat,
@@ -151,6 +152,7 @@ export function paymasterRoutes(app: Hono, ctx: Ctx) {
     if (!op?.sender || !op.callData) return error(-32602, "Missing user operation.");
     if (String(entryPoint).toLowerCase() !== ENTRY_POINT_V07.toLowerCase()) return error(-32602, "Only EntryPoint v0.7 is supported.");
     if (Number(chainIdHex) !== ctx.cfg.chain.id) return error(-32602, `Wrong chain; this paymaster serves chain ${ctx.cfg.chain.id}.`);
+    if (!await reviewedAccount(op, ctx.cfg.chain.paymasterAccountRuntimes, ctx.chain.client)) return error(-32602, "Not sponsored: account runtime is not approved for immutable execution semantics.");
     const policy = sponsorable(ctx, op.callData);
     if (!policy.ok) return error(-32602, `Not sponsored: ${policy.reason}`);
     const pmVerif = BigInt(op.paymasterVerificationGasLimit ?? "0x1d4c0"); // 120k default

@@ -40,7 +40,7 @@ import { resolve } from "node:path";
 import { cors } from "hono/cors";
 import { ZodError } from "zod";
 import { loadConfig } from "./config.ts";
-import { openDatabase } from "./db/client.ts";
+import { openDatabase, type DbHandle } from "./db/client.ts";
 import { Catalog } from "./catalog/catalog.ts";
 import { HealthTracker } from "./services/health.ts";
 import { ReceiptSigner } from "./receipts/signer.ts";
@@ -112,13 +112,16 @@ export type AppOptions = {
   rand?: () => number;
   chain?: ChainService;
   startJobs?: boolean;
+  /** Already initialized, caller-owned database for embedding or sharing an in-memory test store. */
+  database?: Pick<DbHandle, "db" | "kind">;
 };
 
 export async function createApp(opts: AppOptions = {}) {
   const cfg = loadConfig(opts.env ?? {});
   await guardHostSlasher(cfg);
   setLogLevel(cfg.logLevel);
-  const handle = await openDatabase(cfg.databaseUrl, { migrate: cfg.autoMigrate });
+  const ownedDatabase = opts.database ? undefined : await openDatabase(cfg.databaseUrl, { migrate: cfg.autoMigrate });
+  const handle = opts.database ?? ownedDatabase!;
   const redis = cfg.redisUrl ? new (await import("ioredis")).Redis(cfg.redisUrl, { maxRetriesPerRequest: 2, lazyConnect: false }) : undefined;
   const limiter: RateLimiter = redis ? new RedisRateLimiter(redis) : new MemoryRateLimiter();
   const signer = new ReceiptSigner(handle.db, cfg.appSecret, cfg.receipts.rotationDays, cfg.receipts.signingKey);
@@ -317,7 +320,7 @@ export async function createApp(opts: AppOptions = {}) {
     await ctx.tracing.close();
     await limiter.close();
     redis?.disconnect();
-    await handle.close();
+    await ownedDatabase?.close();
   };
   return { app, ctx, close, fetch: app.fetch };
 }

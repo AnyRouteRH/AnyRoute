@@ -70,7 +70,7 @@ function chainMatching(m: DeploymentManifest, buybackOracle: Address = a(0)): Ch
 
 /** The verifier's own JSON output for a manifest, as scripts/verify-deployment.ts prints it. */
 async function verifierReport(m: DeploymentManifest, buybackOracle?: Address) {
-  const report = await verifyDeployment(m, chainMatching(m, buybackOracle), VERIFIER_REVISION, SAFE_SINGLETON);
+  const report = await verifyDeployment(m, chainMatching(m, buybackOracle), VERIFIER_REVISION, SAFE_SINGLETON, { sourceRevision: VERIFIER_REVISION, contracts: Object.fromEntries(Object.keys(m.contracts).map(name => [name, { object: "0x6001" as Hex, immutableReferences: {}, immutableValues: {} }])) });
   expect(report.ok).toBe(true);
   return JSON.stringify(report, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
 }
@@ -141,6 +141,8 @@ describe("H-02: production contract mode starts only against a verified deployme
       [variant({ ok: false }), /passing/],
       [variant({ checks: [...r.checks, { id: "fixture", status: "fail", evidence: null }] }), /passing/],
       [variant({ checks: [] }), /passing/],
+      [variant({ checks: r.checks.map((c: any) => c.id === "contracts.source_equivalence" ? { ...c, status: "info" } : c) }), /runtime build/],
+      [variant({ checks: r.checks.filter((c: any) => c.id !== "contracts.source_equivalence") }), /runtime build/],
       [variant({ verifierRevision: "fixture-revision" }), /revision/],
       [variant({ manifest: { ...r.manifest, blockNumber: 99 } }), /different manifest/],
       [variant({ observed: { ...r.observed, chainId: 1 } }), /this chain/],

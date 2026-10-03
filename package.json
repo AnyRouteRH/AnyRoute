@@ -59,5 +59,8 @@
     "openai": "7.23.0",
     "typescript": "7.0.2"
   },
+  "overrides": {
+    "esbuild": "0.28.2"
+  },
   "license": "PolyForm-Noncommercial-1.0.0"
 }

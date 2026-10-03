@@ -1,0 +1,350 @@
+{
+  "auditedCommit": "8e93eafb261ce007147ebd275202fb45c95e006b",
+  "chainId": 4663,
+  "blockNumber": "78583983",
+  "blockHash": "0x6f483bb6eacda0dd533cdb58ae3d880928e5c2c99f10a3a96eae15077a986073",
+  "readOnly": true,
+  "contracts": [
+    {
+      "name": "agreement",
+      "address": "0xefd8d05f45b8a92aa3b3ef3a7db4c9d3a21f7c96",
+      "sourceChecks": [
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC1363.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC165.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/token/ERC20/IERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/Panic.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/StorageSlot.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/introspection/IERC165.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/math/Math.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/math/SafeCast.sol",
+          "matches": true
+        },
+        {
+          "path": "src/agents/AgreementEscrow.sol",
+          "matches": true,
+          "sha256": "7efcea33d9ccb3c6d9f4e70cb455fcbe2faa422e09043fc6d600e1e968573ef1"
+        }
+      ],
+      "sourcify": "exact_match",
+      "compiler": {
+        "language": "Solidity",
+        "compiler": "solc",
+        "compilerVersion": "0.8.26+commit.8a97fa7a",
+        "compilerSettings": {
+          "viaIR": false,
+          "metadata": {
+            "appendCBOR": true,
+            "bytecodeHash": "ipfs",
+            "useLiteralContent": false
+          },
+          "libraries": {},
+          "optimizer": {
+            "runs": 20000,
+            "enabled": true
+          },
+          "evmVersion": "cancun",
+          "remappings": [
+            "forge-std/=lib/forge-std/src/",
+            "@openzeppelin/contracts/=../node_modules/@openzeppelin/contracts/",
+            "@uniswap/v4-core/=../node_modules/@uniswap/v4-core/",
+            "account-abstraction/=../node_modules/@account-abstraction/contracts/",
+            "@account-abstraction/=../node_modules/@account-abstraction/",
+            "base64-sol/=../node_modules/base64-sol/",
+            "ds-test/=../node_modules/@uniswap/v4-core/lib/solmate/lib/ds-test/",
+            "erc4626-tests/=../node_modules/@uniswap/v4-core/lib/openzeppelin-contracts/lib/erc4626-tests/",
+            "openzeppelin-contracts/=../node_modules/@uniswap/v4-core/lib/openzeppelin-contracts/",
+            "solmate/=../node_modules/@uniswap/v4-core/lib/solmate/"
+          ]
+        },
+        "name": "AgreementEscrow",
+        "fullyQualifiedName": "src/agents/AgreementEscrow.sol:AgreementEscrow"
+      },
+      "liveMatchesSourcify": true,
+      "normalizedAuditedBytecodeMatchesLive": true,
+      "immutablesMasked": 16,
+      "owner": null,
+      "ownerCodeBytes": null,
+      "deployer": null
+    },
+    {
+      "name": "dispute",
+      "address": "0xcdeddcea1e039e72868bb8af3206af2647afda5a",
+      "sourceChecks": [
+        {
+          "path": "../node_modules/@openzeppelin/contracts/access/Ownable.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/access/Ownable2Step.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC1363.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC165.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC5267.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/token/ERC20/IERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/Bytes.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/Context.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/Panic.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/ShortStrings.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/StorageSlot.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/Strings.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/cryptography/ECDSA.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/cryptography/EIP712.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/introspection/IERC165.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/math/Math.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/math/SafeCast.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/math/SignedMath.sol",
+          "matches": true
+        },
+        {
+          "path": "src/agents/AgreementEscrow.sol",
+          "matches": true,
+          "sha256": "7efcea33d9ccb3c6d9f4e70cb455fcbe2faa422e09043fc6d600e1e968573ef1"
+        },
+        {
+          "path": "src/agents/DisputeOracle.sol",
+          "matches": true,
+          "sha256": "6d54a8d553871c92ed74d34498d97398a552278e3bb9eee10938905f248bf17a"
+        }
+      ],
+      "sourcify": "exact_match",
+      "compiler": {
+        "language": "Solidity",
+        "compiler": "solc",
+        "compilerVersion": "0.8.26+commit.8a97fa7a",
+        "compilerSettings": {
+          "viaIR": false,
+          "metadata": {
+            "appendCBOR": true,
+            "bytecodeHash": "ipfs",
+            "useLiteralContent": false
+          },
+          "libraries": {},
+          "optimizer": {
+            "runs": 20000,
+            "enabled": true
+          },
+          "evmVersion": "cancun",
+          "remappings": [
+            "forge-std/=lib/forge-std/src/",
+            "@openzeppelin/contracts/=../node_modules/@openzeppelin/contracts/",
+            "@uniswap/v4-core/=../node_modules/@uniswap/v4-core/",
+            "account-abstraction/=../node_modules/@account-abstraction/contracts/",
+            "@account-abstraction/=../node_modules/@account-abstraction/",
+            "base64-sol/=../node_modules/base64-sol/",
+            "ds-test/=../node_modules/@uniswap/v4-core/lib/solmate/lib/ds-test/",
+            "erc4626-tests/=../node_modules/@uniswap/v4-core/lib/openzeppelin-contracts/lib/erc4626-tests/",
+            "openzeppelin-contracts/=../node_modules/@uniswap/v4-core/lib/openzeppelin-contracts/",
+            "solmate/=../node_modules/@uniswap/v4-core/lib/solmate/"
+          ]
+        },
+        "name": "DisputeOracle",
+        "fullyQualifiedName": "src/agents/DisputeOracle.sol:DisputeOracle"
+      },
+      "liveMatchesSourcify": true,
+      "normalizedAuditedBytecodeMatchesLive": true,
+      "immutablesMasked": 7,
+      "owner": "0xc891956a4a1db756d33fe7607076f94a0b035c10",
+      "ownerCodeBytes": 0,
+      "deployer": "0xc891956a4A1Db756d33fe7607076f94A0B035c10"
+    },
+    {
+      "name": "hostbond",
+      "address": "0x2921d34fd86d3323a5369a270a82814a74250518",
+      "sourceChecks": [
+        {
+          "path": "../node_modules/@openzeppelin/contracts/access/Ownable.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/access/Ownable2Step.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC1363.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC165.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/interfaces/IERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/token/ERC20/IERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/Context.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/TransientSlot.sol",
+          "matches": true
+        },
+        {
+          "path": "../node_modules/@openzeppelin/contracts/utils/introspection/IERC165.sol",
+          "matches": true
+        },
+        {
+          "path": "src/seal/HostBond.sol",
+          "matches": true,
+          "sha256": "d5e3d946f1ba425d516bb41fd10ac5c8b26646ccfc03d5811bff01575802fb70"
+        }
+      ],
+      "sourcify": "exact_match",
+      "compiler": {
+        "language": "Solidity",
+        "compiler": "solc",
+        "compilerVersion": "0.8.26+commit.8a97fa7a",
+        "compilerSettings": {
+          "viaIR": false,
+          "metadata": {
+            "appendCBOR": true,
+            "bytecodeHash": "ipfs",
+            "useLiteralContent": false
+          },
+          "libraries": {},
+          "optimizer": {
+            "runs": 20000,
+            "enabled": true
+          },
+          "evmVersion": "cancun",
+          "remappings": [
+            "forge-std/=lib/forge-std/src/",
+            "@openzeppelin/contracts/=../node_modules/@openzeppelin/contracts/",
+            "@uniswap/v4-core/=../node_modules/@uniswap/v4-core/",
+            "account-abstraction/=../node_modules/@account-abstraction/contracts/",
+            "@account-abstraction/=../node_modules/@account-abstraction/",
+            "base64-sol/=../node_modules/base64-sol/",
+            "ds-test/=../node_modules/@uniswap/v4-core/lib/solmate/lib/ds-test/",
+            "erc4626-tests/=../node_modules/@uniswap/v4-core/lib/openzeppelin-contracts/lib/erc4626-tests/",
+            "openzeppelin-contracts/=../node_modules/@uniswap/v4-core/lib/openzeppelin-contracts/",
+            "solmate/=../node_modules/@uniswap/v4-core/lib/solmate/"
+          ]
+        },
+        "name": "HostBond",
+        "fullyQualifiedName": "src/seal/HostBond.sol:HostBond"
+      },
+      "liveMatchesSourcify": true,
+      "normalizedAuditedBytecodeMatchesLive": true,
+      "immutablesMasked": 4,
+      "owner": "0xc891956a4a1db756d33fe7607076f94a0b035c10",
+      "ownerCodeBytes": 0,
+      "deployer": "0xc891956a4A1Db756d33fe7607076f94A0B035c10"
+    }
+  ],
+  "schema": "anyroute.historical-live-check/v1",
+  "limitations": [
+    "Historical snapshot; no fresh live check performed by remediation",
+    "Declared immutable offsets were masked; immutable values were not proven",
+    "Two owned app contracts had EOA ownership; governance handoff not completed",
+    "Images, TEE and KMS not covered"
+  ]
+}

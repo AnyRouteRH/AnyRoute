@@ -4,10 +4,11 @@ set -euo pipefail
 # Fixture images use the same reviewed digests as .github/workflows/release-checks.yml.
 # Overrides are accepted only when they are also pinned by digest; mutable tags are rejected.
 postgres_image=${POSTGRES_IMAGE:-postgres:16.6@sha256:557fea37a744d5f4c8faab304b0a90858b53ab119735a88c131fd19dab802f36}
-redis_image=${REDIS_IMAGE:-redis:8.0.2@sha256:b43d2dcbbdb1f9e1582e3a0f37e53bf79038522ccffb56a25858969d7a9b6c11}
+redis_image=${REDIS_IMAGE:-redis:8.0.4@sha256:a377481f6820efffb07a879de1703a0f6086e188b9aa89f5801563631166090b}
 for ref in "$postgres_image" "$redis_image"; do
   [[ $ref =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] || { echo "Refusing mutable fixture image reference: $ref" >&2; exit 2; }
 done
+api_image=${API_IMAGE:-anyroute:ci}
 run="anyroute-smoke-$$"
 cleanup() { docker rm -f "$run-api" "$run-worker" "$run-pg" "$run-redis" >/dev/null 2>&1 || true; docker network rm "$run" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -16,7 +17,7 @@ docker run -d --name "$run-pg" --network "$run" -e POSTGRES_PASSWORD=fixture-onl
 docker run -d --name "$run-redis" --network "$run" "$redis_image" redis-server --requirepass fixture-only-ci-password >/dev/null
 for _ in {1..40}; do docker exec "$run-pg" pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
 db="postgres://postgres:fixture-only-ci-password@$run-pg:5432/postgres"
-docker run --rm --network "$run" -e DATABASE_URL="$db" anyroute:ci bun scripts/migrate.ts
+docker run --rm --network "$run" -e DATABASE_URL="$db" "$api_image" bun scripts/migrate.ts
 fixture_env=(
   -e ANYROUTE_ENV=production -e AUTO_MIGRATE=false
   -e PUBLIC_BASE_URL=https://router.example -e DATABASE_URL="$db"
@@ -31,7 +32,7 @@ fixture_env=(
 )
 docker run -d --name "$run-api" --network "$run" -p 127.0.0.1::8787 "${fixture_env[@]}" \
   -e RUNTIME_ROLE=api -e WORKERS=false \
-  -e ROUTER_PRIVATE_KEY="0x$(printf '3%.0s' {1..64})" anyroute:ci >/dev/null
+  -e ROUTER_PRIVATE_KEY="0x$(printf '3%.0s' {1..64})" "$api_image" >/dev/null
 port=$(docker port "$run-api" 8787/tcp | sed 's/.*://')
 for _ in {1..40}; do curl -fsS "http://127.0.0.1:$port/health" >/dev/null && break; sleep 1; done
 curl -fsS "http://127.0.0.1:$port/health" >/dev/null
@@ -42,7 +43,7 @@ curl -fsS "http://127.0.0.1:$port/docs/" >/dev/null
 docker run -d --name "$run-worker" --network "$run" "${fixture_env[@]}" \
   -e RUNTIME_ROLE=worker -e WORKERS=true -e WORKER_JOBS=health-flush,holds-expire,catalog-refresh \
   --health-cmd 'sh scripts/worker-healthcheck.sh' --health-interval 2s --health-retries 3 --health-start-period 30s \
-  anyroute:ci bun src/worker.ts >/dev/null
+  "$api_image" bun src/worker.ts >/dev/null
 worker_health=starting
 for _ in {1..60}; do
   worker_health=$(docker inspect --format '{{.State.Health.Status}}' "$run-worker")

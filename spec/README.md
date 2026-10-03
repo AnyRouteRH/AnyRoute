@@ -118,3 +118,5 @@ The specification is versioned as a whole with semantic versioning; see [CHANGEL
 The documents in this folder are licensed under the [Apache License, Version 2.0](LICENSE), so anyone can implement SEAL. This applies to `spec/` only; the rest of the repository keeps its own license (see the root [LICENSE](../LICENSE) and [NOTICE](../NOTICE)).
 
 Copyright 2026 Anyroute contributors.
+
+The [invariant/test map](invariants-tests.md) connects lifecycle and accounting guarantees to executable regression tests and distinguishes off-chain assumptions from enforced invariants.

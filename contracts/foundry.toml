@@ -9,6 +9,7 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 20000
 via_ir = false
+bytecode_hash = "ipfs"
 fs_permissions = [{ access = "read-write", path = "./deployments" }, { access = "read", path = "./out" }, { access = "read", path = "../config" }]
 remappings = [
   "forge-std/=lib/forge-std/src/",
@@ -25,3 +26,14 @@ runs = 512
 
 [fmt]
 line_length = 110
+
+# Explicit deeper profile; no source-level run/depth overrides may weaken this gate.
+[profile.default.invariant]
+runs = 256
+depth = 128
+fail_on_revert = true
+
+[profile.audit.invariant]
+runs = 1024
+depth = 128
+fail_on_revert = true

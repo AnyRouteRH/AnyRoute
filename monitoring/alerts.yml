@@ -38,3 +38,39 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: AnyRoute scrape succeeded without readiness evidence
+  - name: anyroute-chain
+    rules:
+      # Activate the anyroute-chain scrape target only after its public policy is reviewed.
+      - alert: AnyRouteChainMonitorFailed
+        expr: up{job="anyroute-chain"} == 0 or anyroute_chain_monitor_ok{job="anyroute-chain"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: Finalized-chain incident monitoring is unavailable
+      - alert: AnyRouteAuthorityChanged
+        expr: anyroute_chain_authority_changed{job="anyroute-chain"} == 1 or anyroute_chain_owner_mismatch{job="anyroute-chain"} == 1
+        labels: { severity: critical }
+        annotations:
+          summary: Contract authority changed or differs from the reviewed owner policy
+      - alert: AnyRoutePauseChanged
+        expr: anyroute_chain_pause_changed{job="anyroute-chain"} == 1
+        labels: { severity: warning }
+        annotations:
+          summary: A contract pause policy changed; verify the incident and preserve exits
+      - alert: AnyRouteLargeOutflow
+        expr: anyroute_chain_outflow_over_limit{job="anyroute-chain"} == 1
+        labels: { severity: critical }
+        annotations:
+          summary: Token outflow exceeds the reviewed observation-window threshold
+      - alert: AnyRouteKeeperUnderfunded
+        expr: anyroute_chain_keeper_underfunded{job="anyroute-chain"} == 1
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: A chain keeper has less native gas funding than the reviewed minimum
+      - alert: AnyRouteChainMetricsMissing
+        expr: up{job="anyroute-chain"} == 1 unless on(job, instance) anyroute_chain_monitor_ok{job="anyroute-chain"}
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: Chain scrape succeeded without finalized-chain monitoring evidence

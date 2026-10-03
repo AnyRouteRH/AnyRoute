@@ -64,3 +64,18 @@ Alertmanager (Compose) reads the same URL from the file named by `ALERT_WEBHOOK_
 | any other name | A check added in a later release. | Its name is in `/ready`. Check the worker and API logs. |
 
 Resolve incidents from private logs and the admin interface. Never paste credentials or customer data into an alert channel.
+
+## Finalized-chain incident checks
+
+`scripts/chain-monitor.ts` reads a reviewed public policy and public RPC. It makes no signing or transaction calls. It checks owner baselines, authority/pause event topics, external token outflow over a bounded finalized-block window and native keeper balances. Read failure, wrong chain or a changed snapshot hash produces `anyroute_chain_monitor_ok 0`; no healthy defaults are emitted.
+
+Prepare a policy containing `chainId`, `windowBlocks` (1–2,000), `contracts` (name/address and expected owner for owned contracts), `keepers` (name/address/minimumWei), `tokens` (name/address/maximumOutflowUnits), and exact ABI `authorityEvents`/`pauseEvents` signature arrays. Ownership transfer topics are always watched. Obtain other signatures from the verified deployment ABIs. All amounts are integer base units; thresholds are operational alert policies, not new contract spending caps. Configure every live fund module and token, including separately deployed app contracts. Public policy files contain no keys or endpoint credentials.
+
+```sh
+bun scripts/chain-monitor.ts monitoring/reviewed-chain-policy.json https://public-rpc.example
+bun scripts/chain-monitor.ts monitoring/reviewed-chain-policy.json https://public-rpc.example --serve
+```
+
+The optional server binds `127.0.0.1:9797` and exposes `/metrics`. An authorized operator must add it as a Prometheus `anyroute-chain` scrape target and arrange process supervision. This remediation installs no service and does not activate a live scrape target. A bounded window is not an archival event indexer: set the window longer than the normal poll gap, and reconcile missed periods after outages. Owner baselines detect persistent owner drift; other authority-event alerts depend on retained window coverage.
+
+`monitoring/alerts.yml` includes authority, pause, large-outflow, keeper-balance, failed-read and missing-metric rules. Existing readiness/probe checks cover stale prices/oracles, roots and workers. `test/chain-monitor.test.ts` exercises a synthetic incident and exact threshold boundaries; Prometheus rule tests exercise firing/recovery. Before relying on production alerts, review the complete address/topic inventory and thresholds, prove delivery to the operations on-call role, and exercise the [security runbook](SECURITY.md). Pending-slash adjudication remains an independent governance responsibility.

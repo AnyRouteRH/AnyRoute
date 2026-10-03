@@ -344,32 +344,24 @@ contract PayWithStockInvariantTest is Test {
     }
 
     /// @dev Tokens leave the wallet only through charges it authorized, exactly as much as they spent.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_walletLossEqualsAuthorizedSpend() public view {
         assertEq(1_000_000e18 - nvda.balanceOf(handler.wallet()), handler.pulled());
     }
 
     /// @dev No replayed, revoked, forged, tampered, foreign or oversized charge ever succeeds.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_noUnauthorizedCharge() public view {
         assertEq(handler.forgedSuccesses(), 0);
     }
 
     /// @dev No charge spends more than its signed maximum / the allowance's per-charge limit.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_chargesWithinTheirBounds() public view {
         assertEq(handler.boundViolations(), 0);
     }
 
     /// @dev Every allowance's charges together stay within its signed total.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_allowanceTotals() public view {
         uint256 n = handler.grantedCount();
@@ -382,8 +374,6 @@ contract PayWithStockInvariantTest is Test {
     }
 
     /// @dev The daily cap holds and nothing is left in the contract; credits match what was paid for.
-    /// forge-config: default.invariant.runs = 128
-    /// forge-config: default.invariant.depth = 64
     /// forge-config: default.invariant.fail-on-revert = true
     function invariant_capCustodyAndCredits() public view {
         (,,, uint256 spentToday, uint64 dayStart,,) = pws.sessions(handler.KEY());

@@ -36,6 +36,9 @@ contract NetworkFeeBurn is ReentrancyGuardTransient {
         uint256 cap = staking.maxDailyBuyback();
         return spent >= cap ? 0 : cap - spent;
     }
+    // Slither 0.11.6 does not recognize the EIP-1153 mutex. Both entry points share it;
+    // test_adapterKeeperCannotReenterSwapOrBurn checks an adapter that is also keeper.
+    // slither-disable-start reentrancy-balance
     function swap(bytes32 id, uint256 amount, uint256 minimum) external nonReentrant {
         if (msg.sender != staking.keeper() || amount == 0 || minimum == 0 || operations[id].usdgIn != 0 || amount > remainingToday()) revert Refused();
         IERC20 input = staking.usdg(); IERC20 output = staking.anyr();
@@ -54,6 +57,7 @@ contract NetworkFeeBurn is ReentrancyGuardTransient {
         operations[id] = Operation(amount, received, false);
         emit Swapped(id, amount, received);
     }
+    // slither-disable-end reentrancy-balance
     function burn(bytes32 id) external nonReentrant {
         if (msg.sender != staking.keeper()) revert Refused();
         Operation storage op = operations[id];

@@ -12,12 +12,12 @@ export class MemoryRateLimiter implements RateLimiter {
     const cutoff = Date.now() - 5 * 60_000;
     for (const [k, w] of this.windows) if (w.start < cutoff) this.windows.delete(k);
   }, 60_000);
-  constructor() {
+  constructor(private readonly now: () => number = () => Date.now()) {
     this.sweep.unref?.();
   }
   async take(key: string, amount: number, limit: number, windowMs: number) {
     if (!limit || limit <= 0) return { ok: true, retryAfterMs: 0, remaining: Infinity };
-    const now = Date.now();
+    const now = this.now();
     const start = now - (now % windowMs);
     const w = this.windows.get(key);
     const cur = w && w.start === start ? w : { start, used: 0 };

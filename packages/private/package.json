@@ -19,9 +19,10 @@
     "access": "public"
   },
   "scripts": {
-    "build": "bun scripts/build.ts",
+    "build": "cd ../.. && bun packages/private/scripts/build.ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run typecheck && npm run build"
+    "prepublishOnly": "npm run typecheck && npm run build",
+    "test": "cd ../.. && bun test test/private-proxy.test.ts test/private-proxy-build.test.ts test/claude-unlinkable.test.ts"
   },
   "devDependencies": {
     "@cloudflare/blindrsa-ts": "0.4.6",
