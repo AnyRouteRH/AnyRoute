@@ -1,4 +1,5 @@
 import { initializeUpstreamMonitor } from "./rush/monitor.ts"; // ON3
+import { facilitatorRoutes } from "./facilitator/routes.ts"; // v6 F: hosted x402 facilitator
 import { firstCallRoutes, firstCallCsp } from "./developers/first-call.ts"; // ON2
 import { inferenceScopeMiddleware, keyDefaultsRoutes } from "./provisioning/scope.ts"; // ZK6
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
@@ -157,6 +158,7 @@ export async function createApp(opts: AppOptions = {}) {
   app.use("/api/*", apiCors);
   app.use("/v1/*", apiCors);
   app.use("/ollama/*", apiCors);
+  app.use("/facilitator/*", apiCors); // v6 F
   if (webBuilt && cfg.zkapiPageOrigins.length) app.use("*", zkapiHosting(csp, cfg.zkapiPageOrigins)); // ZK10: narrowly scoped static policies.
   app.use("*", async (c, next) => {
     await next();
@@ -243,6 +245,7 @@ export async function createApp(opts: AppOptions = {}) {
   responsesRoutes(app, ctx);
   ragRoutes(app, ctx);
   paymasterRoutes(app, ctx);
+  facilitatorRoutes(app, ctx); // v6 F: answers 503 facilitator_disabled until FACILITATOR_ENABLED
   adminRoutes(app, ctx);
   // The website (web/out, a static Next.js export) is served at / when it has been built; otherwise
   // a small built-in page lists models and rankings.

@@ -72,7 +72,7 @@ const usdg3009Abi = [
   { type: "function", name: "transferWithAuthorization", stateMutability: "nonpayable", inputs: [{ name: "from", type: "address" }, { name: "to", type: "address" }, { name: "value", type: "uint256" }, { name: "validAfter", type: "uint256" }, { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" }, { name: "signature", type: "bytes" }], outputs: [] },
 ] as const;
 
-type Role = "router" | "settlement" | "anchorer" | "slasher" | "keeper" | "ipx" | "faucet";
+export type Role = "router" | "settlement" | "anchorer" | "slasher" | "keeper" | "ipx" | "faucet" | "facilitator";
 
 export class ChainService {
   readonly chain: Chain;
@@ -97,6 +97,7 @@ export class ChainService {
       keeper: cfg.chain.keeperKey,
       ipx: cfg.chain.ipxKeeperKey,
       faucet: cfg.chain.faucetKey,
+      facilitator: cfg.facilitator.relayKey, // v6 F: pays relay gas and nothing else
     };
     for (const [role, key] of Object.entries(keys) as [Role, Hex | undefined][]) {
       if (key) this.wallets.set(role, createWalletClient({ account: privateKeyToAccount(key), chain: this.chain, transport: http(cfg.chain.rpcUrl) }));
@@ -305,19 +306,20 @@ export class ChainService {
     return (await this.client.readContract({ address: this.cfg.chain.usdg, abi: usdg3009Abi, functionName: "authorizationState", args: [authorizer, nonce] })) as boolean;
   }
 
-  private relayTail: Promise<unknown> = Promise.resolve();
+  private relayTails = new Map<Role, Promise<unknown>>();
   /** x402 settlement: relay the payer's signed USDG transferWithAuthorization straight to `to` (no contract in
-   *  between; the router role only pays gas). Relays run one at a time per process so the router key's nonce
-   *  never races. Resolves once the transfer of exactly `value` is mined with CHAIN_CONFIRMATIONS on top. */
-  async transferWithAuthorization(a: { from: Hex; to: Hex; value: bigint; validAfter: bigint; validBefore: bigint; nonce: Hex; signature: Hex }): Promise<{ hash: Hex; blockNumber: bigint }> {
+   *  between; the relaying role, the router or the facilitator's relay key, only pays gas). Relays run one at a time
+   *  per process and role so a key's nonce never races. Resolves once the transfer of exactly `value` is mined with
+   *  CHAIN_CONFIRMATIONS on top, with the gas it used. */
+  async transferWithAuthorization(a: { from: Hex; to: Hex; value: bigint; validAfter: bigint; validBefore: bigint; nonce: Hex; signature: Hex }, role: "router" | "facilitator" = "router"): Promise<{ hash: Hex; blockNumber: bigint; gasUsed?: bigint; effectiveGasPrice?: bigint }> {
     const head = [a.from, a.to, a.value, a.validAfter, a.validBefore, a.nonce] as const;
     let args: unknown[] = [...head, a.signature];
     if (size(a.signature) === 65) {
       const { r, s, yParity } = parseSignature(a.signature);
       args = [...head, 27 + (yParity ?? 0), r, s];
     }
-    const run = this.relayTail.then(() => this.send("router", this.cfg.chain.usdg, usdg3009Abi as unknown as Abi, "transferWithAuthorization", args));
-    this.relayTail = run.catch(() => undefined);
+    const run = (this.relayTails.get(role) ?? Promise.resolve()).then(() => this.send(role, this.cfg.chain.usdg, usdg3009Abi as unknown as Abi, "transferWithAuthorization", args));
+    this.relayTails.set(role, run.catch(() => undefined));
     const { hash, receipt } = await run;
     const moved = receipt.logs.some((l) => {
       if (l.address.toLowerCase() !== this.cfg.chain.usdg.toLowerCase()) return false;
@@ -330,7 +332,17 @@ export class ChainService {
     });
     if (!moved) fail(502, `Transaction ${hash} did not transfer the authorized USDG.`, "chain_reverted");
     if (this.cfg.chain.confirmations > 1) await this.client.waitForTransactionReceipt({ hash, confirmations: this.cfg.chain.confirmations, timeout: 30_000 });
-    return { hash, blockNumber: receipt.blockNumber };
+    return { hash, blockNumber: receipt.blockNumber, gasUsed: receipt.gasUsed, effectiveGasPrice: receipt.effectiveGasPrice };
+  }
+
+  /** Native-gas balance of an address, in wei (the facilitator's relay floor). */
+  async nativeBalance(of: Hex): Promise<bigint> {
+    return this.client.getBalance({ address: of });
+  }
+
+  /** The chain's current gas price, in wei. */
+  async gasPrice(): Promise<bigint> {
+    return this.client.getGasPrice();
   }
 
   // ---- Pay with Stock Tokens ------------------------------------------------------------

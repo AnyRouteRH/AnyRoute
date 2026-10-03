@@ -9,6 +9,7 @@ import { networkPayoutEnv, networkPayoutSettings } from "./network/payout-config
 import { hostBondEnv, hostBondSettings } from "./network/bond-config.ts";
 import { networkHostsEnv, networkHostsSettings } from "./network/host-config.ts";
 import { sanctionsEnv, sanctionsSettings } from "./network/config.ts";
+import { facilitatorEnv, facilitatorSettings } from "./facilitator/config.ts"; // v6 F: hosted x402 facilitator
 import { e2eeSettings } from "./e2ee/config.ts";
 import { networkWeightEnv, networkWeightSettings } from "./network/weight-config.ts";
 import { createHash, createHmac, createPrivateKey, createPublicKey, type KeyObject } from "node:crypto";
@@ -68,6 +69,7 @@ const schema = z.object({
   ...networkWeightEnv,
   ...agreementEnv,
   ...sanctionsEnv,
+  ...facilitatorEnv, // v6 F
   ...networkHostsEnv,
   ...networkStatsEnv,
   INFERENCE_KEYS_ENABLED: bool.default(false), // ZK6: minting restricted keys; stored scopes are always enforced.
@@ -597,6 +599,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     hostDashboard: { enabled: e.HOST_DASHBOARD_ENABLED },
     agreements: agreementSettings(e, production),
     sanctions: sanctionsSettings(e, production),
+    facilitator: facilitatorSettings(e, production), // v6 F
     e2ee: e2eeSettings(e.E2EE_PASSTHROUGH_ENABLED, e.PROVIDERS_FILE, production, { baseUrl: e.E2EE_GATEWAY_BASE_URL, attestationUrl: e.E2EE_GATEWAY_ATTESTATION_URL }),
     networkHosts: networkHostsSettings(e, production),
     inferenceKeysEnabled: e.INFERENCE_KEYS_ENABLED, // ZK6

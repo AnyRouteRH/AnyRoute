@@ -4,7 +4,7 @@ import type { Db } from "../db/client.ts";
 import { receiptKeys } from "../db/schema.ts";
 import { canonicalJson, decrypt, encrypt, sha256 } from "../lib/util.ts";
 import { keyPublished } from "../tlog/hooks.ts";
-import { coseSign1, decodeCoseSign1, decodeClaims, encodeClaims, receiptLeafV2, COSE_ALG_EDDSA, type ClaimsV2 } from "./v2.ts";
+import { coseSign1, decodeCoseSign1, decodeClaims, encodeClaims, receiptLeafV2, COSE_ALG_EDDSA, type ClaimsV2, type KindClaims } from "./v2.ts";
 
 // Ed25519 receipt signing with weekly rotation. Every key ever used stays in receipt_keys
 // (public half forever) so old receipts keep verifying; the public keys are also registered
@@ -102,7 +102,7 @@ export class ReceiptSigner {
   }
 
   /** Receipt v2: COSE_Sign1 over the CBOR claims, EdDSA with the same active key; kid is the key id's 8 bytes. */
-  signCose(claims: ClaimsV2): { keyId: string; cose: Buffer; leaf: `0x${string}` } {
+  signCose(claims: ClaimsV2 | KindClaims): { keyId: string; cose: Buffer; leaf: `0x${string}` } {
     if (!this.active?.privateKey) throw new Error("receipt signer not initialized");
     const key = this.active.privateKey;
     const cose = Buffer.from(coseSign1(encodeClaims(claims), Buffer.from(this.active.id, "hex"), (tbs) => edSign(null, tbs, key)));

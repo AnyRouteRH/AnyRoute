@@ -120,7 +120,11 @@ export function decodeCoseSign1(bytes: Uint8Array): DecodedCose {
 
 // ---- claims -----------------------------------------------------------------------------------------------------
 
-export const encodeClaims = (claims: ClaimsV2) => cborEncode(claims as unknown as CborValue);
+/** Claims of a receipt for something other than a generation, in the same envelope and under the same key, told apart
+ *  by `kind` (for example "facilitator.settle"). Their leaves join the same hourly anchor. */
+export type KindClaims = { v: 2; kind: string; rid: string; iat: number; iss: string; [k: string]: CborValue | undefined };
+
+export const encodeClaims = (claims: ClaimsV2 | KindClaims) => cborEncode(claims as unknown as CborValue);
 export const decodeClaims = (payload: Uint8Array) => cborToJson(cborDecode(payload)) as ClaimsV2;
 
 /** Anchor leaf of a v2 receipt: keccak256(keccak256(COSE_Sign1 bytes)), same double hash as v1. */

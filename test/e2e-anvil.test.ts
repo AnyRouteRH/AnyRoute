@@ -5,8 +5,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { $ } from "bun";
 import { eq } from "drizzle-orm";
 import { createPublicClient, createWalletClient, decodeFunctionData, http, parseUnits, type Hex, keccak256, toBytes } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { resolve } from "node:path";
+import { EIP3009_TYPES } from "../src/facilitator/verify.ts";
 import { readFileSync, mkdirSync } from "node:fs";
 import { createApp } from "../src/app.ts";
 import { runRegistry } from "../src/services/registry.ts";
@@ -37,6 +38,8 @@ const PK = {
   userC: "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
 } as const;
 const LLAMA = "meta-llama/llama-3.3-70b-instruct";
+// The hosted facilitator's relay key: its own key with no other role, funded with gas only (anvil_setBalance below).
+const FAC_RELAY = generatePrivateKey();
 
 describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
   let anvil: ReturnType<typeof Bun.spawn> | null = null;
@@ -112,8 +115,11 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
         NEW_KEYS_PER_HOUR: "1000",
         DEV_FAUCET: "true",
         DEV_FAUCET_PRIVATE_KEY: "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e", // anvil #6
+        FACILITATOR_ENABLED: "true",
+        FACILITATOR_RELAY_PRIVATE_KEY: FAC_RELAY,
       },
     });
+    await pub.request({ method: "anvil_setBalance" as never, params: [privateKeyToAccount(FAC_RELAY).address, "0xde0b6b3a7640000"] as never }); // 1 ETH of gas
     await app.ctx.db.insert(providers).values({ id: "alpha", name: "Alpha", baseUrl: mock.url, status: "live", dataPolicy: { training: false, retains_prompts: false, zdr: true } });
     await runRegistry(app.ctx);
     // Test wallets approve Credits once so every test stands alone.
@@ -192,6 +198,45 @@ describe.skipIf(!RUN)("E2E on anvil with the real contracts", () => {
     const reuse = await req("/api/v1/chat/completions", { method: "POST", headers: { "x-payment": tx }, json: { ...body, stream: true } });
     expect(reuse.status).toBe(409);
     void sse;
+  }, 60_000);
+
+  test("facilitator: a payer pays a third-party seller straight on chain; the facilitator's relay key pays the gas", async () => {
+    const usdg = dep.contracts.usdg as Hex;
+    const payer = privateKeyToAccount(PK.userB);
+    const seller = privateKeyToAccount(generatePrivateKey()).address;
+    const relay = privateKeyToAccount(FAC_RELAY).address;
+    const supported = await (await req("/facilitator/supported")).json();
+    expect(supported.signers["eip155:4663"]).toEqual([relay]);
+    const { name, version } = supported.policy.asset; // the mock's domain, read from the chain
+    const balance = (who: Hex) => pub.readContract({ address: usdg, abi: erc20Abi, functionName: "balanceOf", args: [who] }) as Promise<bigint>;
+    const block = await pub.getBlock();
+    const auth = { from: payer.address, to: seller, value: 250_000n, validAfter: 0n, validBefore: block.timestamp + 600n, nonce: keccak256(toBytes(`facilitator-e2e-${Date.now()}`)) };
+    const signature = await payer.signTypedData({ domain: { name, version, chainId: 4663, verifyingContract: usdg }, types: EIP3009_TYPES, primaryType: "TransferWithAuthorization", message: auth });
+    const requirements = { scheme: "exact", network: "eip155:4663", amount: "250000", asset: usdg, payTo: seller, maxTimeoutSeconds: 300, extra: { name, version } };
+    const body = { paymentPayload: { x402Version: 2, resource: { url: "https://seller.example/data" }, accepted: requirements, payload: { signature, authorization: { ...auth, value: "250000", validAfter: "0", validBefore: auth.validBefore.toString() } } }, paymentRequirements: requirements };
+    expect(await (await req("/facilitator/verify", { method: "POST", json: body })).json()).toEqual({ isValid: true, payer: payer.address });
+    const [payerBefore, sellerBefore, relayGasBefore, payerGasBefore] = [await balance(payer.address), await balance(seller), await pub.getBalance({ address: relay }), await pub.getBalance({ address: payer.address })];
+    const settled = await (await req("/facilitator/settle", { method: "POST", json: body })).json();
+    expect(settled).toMatchObject({ success: true, network: "eip155:4663", payer: payer.address });
+    const receipt = await pub.getTransactionReceipt({ hash: settled.transaction });
+    expect(receipt.status).toBe("success");
+    expect(receipt.from.toLowerCase()).toBe(relay.toLowerCase()); // the relay key sent it and paid for it
+    expect(await balance(seller)).toBe(sellerBefore + 250_000n); // payer -> seller, nothing in between
+    expect(await balance(payer.address)).toBe(payerBefore - 250_000n);
+    expect(await pub.getBalance({ address: relay })).toBeLessThan(relayGasBefore);
+    expect(await pub.getBalance({ address: payer.address })).toBe(payerGasBefore);
+    // The authorization is spent on chain and here: a replay settles nothing.
+    expect((await (await req("/facilitator/settle", { method: "POST", json: body })).json()).errorReason).toBe("invalid_exact_evm_payload_authorization_nonce_used");
+    // The receipt joins the next anchor and its proof checks against the root posted on chain.
+    await Bun.sleep(1100);
+    await pub.request({ method: "evm_mine" as never, params: [] as never });
+    const anchor = await runAnchor(app.ctx);
+    expect(anchor.status).toBe("confirmed");
+    const r = (await (await req(`/facilitator/receipts/${settled.receipt.id}`)).json()).data;
+    expect(r.claims).toMatchObject({ kind: "facilitator.settle", tx: settled.transaction, value: "250000" });
+    const v = (await (await req("/api/v1/receipts/verify", { method: "POST", json: { cose: r.cose, anchor: { root: r.anchor.root, proof: r.anchor.proof, index: r.anchor.index } } })).json()).data;
+    expect(v).toMatchObject({ signature_valid: true, inclusion_valid: true });
+    expect(v.onchain_root.toLowerCase()).toBe(r.anchor.root.toLowerCase());
   }, 60_000);
 
   const openNvdaSession = async (k: Awaited<ReturnType<typeof newKey>>) => {

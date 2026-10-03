@@ -14,6 +14,7 @@ import { networkJoinStores } from "./network-join.ts";
 import { networkStatsStores } from "./network-stats.ts";
 import { juryBodyReaders, agreementContractStores } from "./agreements.ts";
 import { x402RecoveryFamily, x402RecoveryReader } from "./x402-recovery.ts";
+import { facilitatorAddressReader, facilitatorBodyReader, facilitatorRedisFamilies } from "./facilitator.ts"; // v6 F
 
 // Everything the router keeps, or touches, outside Postgres: Redis keys (with their lifetimes and whether they contain a network
 // address), the application log, telemetry, backups and the places in the code that read a request's body or a caller's address.
@@ -47,6 +48,7 @@ const ADDRESS_NOTE = "The caller's network address is part of the key. Over Tor 
 const redisFamilies: RedisFamily[] = [
   limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate issuance attempts: five per minute per account, shared across standalone and profile issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym or claims.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
   telegramLinkRate,
+  ...facilitatorRedisFamilies, // v6 F
   limit({ prefix: "network-host-wallet:", shape: "network-host-wallet:<operator wallet>", purpose: "Wallet-authenticated host signup and credential updates, three per minute per wallet. Links attempts by the public operator wallet.", holds: "wallet", seconds: 60, evidence: [ev("src/api/network-hosts.ts", "await ctx.limiter.take(`network-host-wallet:${auth.wallet}`")] }),
   limit({ prefix: "network-host-address:", shape: "network-host-address:<caller address or onion>", purpose: "Host signup and credential attempts, ten per minute per network address, with the existing scaled shared onion bucket. The raw address is temporarily part of the Redis key.", holds: "address", seconds: 60, evidence: [ev("src/api/network-hosts.ts", "await ctx.limiter.take(`network-host-address:${from.id}`")] }),
   limit({ prefix: "network-waitlist:", shape: "network-waitlist:<minute-keyed address digest or onion>", purpose: "Waitlist POST and DELETE requests, ten per minute per address; onion requests share the existing scaled onion bucket. A secret-keyed HMAC rotates every minute; no raw IP or user agent is stored. The digest still links requests within that minute.", holds: "digest", seconds: 60, evidence: [ev("src/network/waitlist.ts", "await ctx.limiter.take(`network-waitlist:${bucket}`")] }),
@@ -272,6 +274,7 @@ const redisFamilies: RedisFamily[] = [
 ];
 
 const addressReaders: Touchpoint[] = [
+  facilitatorAddressReader, // v6 F
   { file: "src/api/network-hosts.ts", reads: "The caller address bucket on host signup and credential writes.", then: "Counts attempts through the existing per-address limiter; trusted proxy and onion rules apply.", kept: "Raw address in the limiter key for 61 seconds in Redis, or until the memory limiter sweeps; never in the host row or application log.", evidence: [ev("src/api/network-hosts.ts", "const from = addressBucket(c, ctx.cfg);")] },
   { file: "src/network/waitlist.ts", reads: "Address bucket for a waitlist POST or DELETE; onion requests use the shared onion bucket.", then: "A secret-keyed HMAC of the address and current minute is passed to the existing limiter; onion stays the word onion.", kept: "Only a minute-specific keyed digest and counter: 61 seconds in Redis, or up to six minutes without Redis until the memory limiter sweeps old windows. No raw IP or user agent, and no address-derived value in the waitlist table.", evidence: [ev("src/network/waitlist.ts", "const from = addressBucket(c, ctx.cfg);")] },
   { file: "src/api/e2ee.ts", reads: "The address only for encrypted calls without a key outside the Oblivious HTTP gateway; over Tor the fixed onion bucket is used.", then: "Uses the existing blind-ip rate-limit family.", kept: "Only the counter key, for 61 seconds; no address in a generation, receipt or log.", evidence: [ev("src/api/e2ee.ts", "const from = addressBucket(c, ctx.cfg);")] },
@@ -393,6 +396,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   provisioningBodyReader, inferenceModelReader, // ZK6
   structuredOutputReader, // V83
   webhookBodyReader, // V86.
+  facilitatorBodyReader, // v6 F
   profileBodyReader,
   x402RecoveryReader,
   ...sealedBodyReaders,

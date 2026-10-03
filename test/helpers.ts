@@ -87,8 +87,17 @@ export class FakeChain extends ChainService {
   /** x402: USDG balances, used EIP-3009 nonces and the authorizations relayed by transferWithAuthorization. */
   usdgBalances = new Map<string, bigint>();
   usedAuthorizations = new Set<string>();
-  x402Relays: { from: Hex; to: Hex; value: bigint; nonce: Hex; hash: Hex }[] = [];
+  x402Relays: { from: Hex; to: Hex; value: bigint; nonce: Hex; hash: Hex; role: "router" | "facilitator" }[] = [];
   failX402Relay = false;
+  /** Native gas of every relaying key (the facilitator's balance floor reads it), and the gas a relay reports. */
+  relayBalanceWei = 10n ** 18n;
+  relayGas = { gasUsed: 80_000n, effectiveGasPrice: 10_000_000n }; // 0.01 gwei
+  override async nativeBalance() {
+    return this.relayBalanceWei;
+  }
+  override async gasPrice() {
+    return this.relayGas.effectiveGasPrice;
+  }
   override async usdgDomain() {
     return { name: "Global Dollar", version: "1" };
   }
@@ -98,15 +107,15 @@ export class FakeChain extends ChainService {
   override async authorizationUsed(authorizer: Hex, nonce: Hex) {
     return this.usedAuthorizations.has(`${authorizer}:${nonce}`.toLowerCase());
   }
-  override async transferWithAuthorization(a: { from: Hex; to: Hex; value: bigint; validAfter: bigint; validBefore: bigint; nonce: Hex; signature: Hex }) {
+  override async transferWithAuthorization(a: { from: Hex; to: Hex; value: bigint; validAfter: bigint; validBefore: bigint; nonce: Hex; signature: Hex }, role: "router" | "facilitator" = "router") {
     if (this.failX402Relay) throw new Error("execution reverted: transfer amount exceeds balance");
     const id = `${a.from}:${a.nonce}`.toLowerCase();
     if (this.usedAuthorizations.has(id)) throw new Error("AuthorizationUsed()");
     this.usedAuthorizations.add(id);
     const hash = fakeTx();
     this.usdgBalances.set(a.from.toLowerCase(), (await this.usdgBalance(a.from)) - a.value);
-    this.x402Relays.push({ from: a.from, to: a.to, value: a.value, nonce: a.nonce, hash });
-    return { hash, blockNumber: 1n };
+    this.x402Relays.push({ from: a.from, to: a.to, value: a.value, nonce: a.nonce, hash, role });
+    return { hash, blockNumber: 1n, ...this.relayGas };
   }
   override async quoteRaw(_token: Hex, usdgOwed: bigint) {
     if (!this.fair18) return null;

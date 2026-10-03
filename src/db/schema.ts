@@ -1290,3 +1290,4 @@ export { agentProfiles } from "../agents/profile-schema.ts";
 export * from "../agreements/schema.ts";
 
 export { webhookDestinations, webhookDeliveries } from "../webhooks/schema.ts"; // V86: signed destinations.
+export { facilitatorSellers, facilitatorSettlements, sellerGasFloats } from "../facilitator/schema.ts"; // v6 F: hosted x402 facilitator

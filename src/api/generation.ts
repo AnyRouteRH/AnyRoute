@@ -2,7 +2,7 @@ import type { Hono } from "hono";
 import { and, asc, desc, eq, lt } from "drizzle-orm";
 import type { Hex } from "viem";
 import type { Ctx } from "../context.ts";
-import { agentSessions, anchors, blindNullifiers, generations, paywithDebts, paywithSwaps } from "../db/schema.ts";
+import { agentSessions, anchors, blindNullifiers, facilitatorSettlements, generations, paywithDebts, paywithSwaps } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
 import { picoToUsd } from "../lib/money.ts";
 import { MerkleTree, receiptLeaf } from "../receipts/merkle.ts";
@@ -23,6 +23,9 @@ async function anchorTree(ctx: Ctx, anchorIndex: number) {
     if (r.leafIndex != null) leaves[r.leafIndex] = r.leaf as Hex;
     if (r.leafIndexV2 != null && r.leafV2) leaves[r.leafIndexV2] = r.leafV2 as Hex;
   }
+  // v6 F: facilitator settlement receipts rooted in the same anchor.
+  const settled = await ctx.db.select({ leaf: facilitatorSettlements.receiptLeaf, leafIndex: facilitatorSettlements.leafIndex }).from(facilitatorSettlements).where(eq(facilitatorSettlements.anchorIndex, anchorIndex));
+  for (const s of settled) if (s.leafIndex != null && s.leaf) leaves[s.leafIndex] = s.leaf as Hex;
   return new MerkleTree(leaves);
 }
 
