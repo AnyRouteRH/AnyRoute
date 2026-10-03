@@ -46,10 +46,11 @@ export const CAPABILITIES: Capability[] = [
   { id: "paywith", label: "Stock Token pay-with sessions", field: "paywith.configured", on: field("paywith.configured"), mention: /\bpay[- ]with (?:a )?Stock Tokens?\b|\bStock Token pay-with\b|\bPayWithStock\b/i },
   { id: "escrow", label: "Stock Token escrow deposits", field: "escrow.enabled", on: field("escrow.enabled"), mention: /\bescrow deposits?\b|\bStock Token escrow\b/i },
   {
-    id: "agreements", label: "agent agreements (API, MCP tools, indexing)", field: "jobs[agreement-indexer] (AGENT_AGREEMENTS_ENABLED with both contract addresses)", on: job("agreement-indexer"),
+    // Routers from before the agreements status section show it only through the registered agreement-indexer job.
+    id: "agreements", label: "agent agreements (API, MCP tools, indexing)", field: "agreements.enabled", on: (s) => (s.agreements && typeof s.agreements === "object" ? field("agreements.enabled")(s) : job("agreement-indexer")(s)),
     mention: /\bagent agreements?\b|\bagreements? between agents\b|\bagreements? (?:contracts?|service|API|endpoints?|tools?|events?|tab)\b|\bagreements (?:are|is)\b|\bagreement system\b|\bAgreementEscrow\b/i,
   },
-  { id: "rulings", label: "automatic agreement jury rulings", field: "config AGENT_AGREEMENTS_RULINGS_ENABLED (not in status)", on: flag("AGENT_AGREEMENTS_RULINGS_ENABLED"), mention: /\brulings?\b|\bruled\b|\bjury\b/i },
+  { id: "rulings", label: "automatic agreement jury rulings", field: "agreements.rulings.enabled (a fresh heartbeat from the isolated jury worker)", on: field("agreements.rulings.enabled"), mention: /\brulings?\b|\bruled\b|\bjury\b/i },
   { id: "hosts", label: "network open to hosts", field: "network.hosts_open", on: field("network.hosts_open"), mention: /\bopen for (?:early )?hosts\b|\bnetwork is open\b/i },
   { id: "payouts", label: "network host payouts", field: "network.payouts_open", on: field("network.payouts_open"), mention: /\bpayouts?\b(?!\s+(?:address|information|wallet))/i },
   { id: "fee-burn", label: "network-fee purchase and burn of $ANYR", field: "jobs[network-fee-burn]", on: job("network-fee-burn"), mention: /\bfee[- ]burn\b|\bbuy[- ]and[- ]burn\b|\bpurchase and burn\b/i },

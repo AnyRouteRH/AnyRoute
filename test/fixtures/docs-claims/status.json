@@ -1,5 +1,5 @@
 {
-  "_about": "Production as GET /api/v1/status reported it at anyroute.tech on 2026-10-03 (release 7e652dd), trimmed to the fields scripts/docs-claims-check.ts reads. config holds flags that status does not expose. When a flag changes in production, update this file and the docs in the same change; bun scripts/docs-claims-check.ts --live <router> shows the drift.",
+  "_about": "Production as GET /api/v1/status reported it at anyroute.tech on 2026-10-03 (release 7e652dd), trimmed to the fields scripts/docs-claims-check.ts reads. The agreements section is what the router reports from the release that adds it, given the production configuration on 2026-10-03: agreements on, and the isolated agreement-jury worker posting rulings. config holds flags that status does not expose. When production changes, update this file and the docs in the same change; bun scripts/docs-claims-check.ts --live <router> shows the drift.",
   "data": {
     "release": {
       "commit": "7e652dd074cda57a109b936c0d248c22576ca9a3"
@@ -30,6 +30,17 @@
       "configured": false,
       "x402": {
         "configured": false
+      }
+    },
+    "agreements": {
+      "enabled": true,
+      "escrow": "0xefd8d05f45b8a92aa3b3ef3a7db4c9d3a21f7c96",
+      "oracle": "0xcdeddcea1e039e72868bb8af3206af2647afda5a",
+      "start_block": "77319694",
+      "finality": "finalized",
+      "rulings": {
+        "enabled": true,
+        "source": "jury-worker-heartbeat"
       }
     },
     "holders": {
@@ -86,7 +97,6 @@
     }
   },
   "config": {
-    "AGENT_AGREEMENTS_RULINGS_ENABLED": false,
     "NETWORK_SLASHING_ENABLED": false
   }
 }

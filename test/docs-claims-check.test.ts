@@ -6,7 +6,7 @@ import { CAPABILITIES, FIXTURE, check, clauses, drift, judge, liveSnapshot, type
 
 const root = resolve(import.meta.dir, "..");
 const fixture = JSON.parse(readFileSync(resolve(root, FIXTURE), "utf8")) as Snapshot;
-const off: Snapshot = { data: { per_call: { configured: false, x402: { configured: false } }, jobs: [{ name: "agreement-indexer" }] }, config: { AGENT_AGREEMENTS_RULINGS_ENABLED: false } };
+const off: Snapshot = { data: { per_call: { configured: false, x402: { configured: false } }, agreements: { enabled: true, rulings: { enabled: false } } } };
 const at = (text: string, implicit = false) => judge({ file: "doc.md", line: 1, text, implicit }, off);
 
 describe("docs claims check", () => {
@@ -33,6 +33,16 @@ describe("docs claims check", () => {
   test("a capability table row or changelog entry lists a feature as on without saying live", () => {
     expect(at("Chat and embeddings, including x402 per-call payments.", true).map((f) => f.capability.id)).toEqual(["x402", "per-call"]);
     expect(at("Chat and embeddings, including x402 per-call payments.", false)).toEqual([]);
+  });
+
+  test("agreements and rulings follow the status agreements section, with the job list as the older signal", () => {
+    const claim = { file: "doc.md", line: 1, text: "Automatic jury rulings are switched on.", implicit: false };
+    const live = { ...claim, text: "Agreements between agents are live." };
+    const older: Snapshot = { data: { jobs: [{ name: "agreement-indexer" }] } };
+    expect(judge(claim, { data: { agreements: { enabled: true, rulings: { enabled: true, source: "jury-worker-heartbeat" } } } })).toEqual([]);
+    expect(judge(claim, older).map((f) => [f.capability.id, f.value])).toEqual([["rulings", undefined]]);
+    expect(judge(live, older)).toEqual([]);
+    expect(judge(live, { data: { agreements: { enabled: false }, jobs: [{ name: "agreement-indexer" }] } }).map((f) => f.capability.id)).toEqual(["agreements"]);
   });
 
   test("calling an on feature off is a warning, not a failure", () => {

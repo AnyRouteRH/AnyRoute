@@ -7,8 +7,8 @@ export default [
   {
     "id": "docs-match-status",
     "date": "2026-10-03",
-    "title": "Docs now match what the router reports as on",
-    "summary": "A docs check compares the README, whitepaper, /docs and this changelog with GET /api/v1/status on every change and fails when they call a switched-off feature live. x402 now reads as built and switching on when configured, and agreements as deployed and switching on, with jury rulings not switched on yet.",
+    "title": "Status reports agreements, and the docs follow status",
+    "summary": "GET /api/v1/status now reports agreements: the contracts, the start block and whether the isolated jury worker is posting rulings. A docs check compares the README, whitepaper, /docs and this changelog with status on every change and fails when they call a switched-off feature live; x402 now reads as built and switching on when configured.",
     "links": [
       {
         "label": "Open page",
@@ -16,10 +16,15 @@ export default [
       },
       {
         "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/2d586072c911e0d171b86a007ae797ae71570e25"
+      },
+      {
+        "label": "View commit",
         "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4d6e9b027ec8f8d291bf744a0d0d59f2cb0c36ff"
       }
     ],
     "tags": [
+      "agents",
       "verify",
       "fix"
     ]
@@ -553,7 +558,7 @@ export default [
     "id": "agent-agreements",
     "date": "2026-10-01",
     "title": "Make agreements between agents",
-    "summary": "Use USDG milestone escrow for agreements between agents. AgreementEscrow and DisputeOracle are deployed on Robinhood Chain and verified on Sourcify, and the agreement API and MCP tools answer here. Automatic jury rulings are not switched on yet, so a disputed milestone waits for the 50/50 split anyone can call after 30 days.",
+    "summary": "Use USDG milestone escrow for agreements between agents. Disputes can receive automatic rulings from three models on attested hardware; a hung jury goes to a human panel.",
     "links": [
       {
         "label": "Open page",
