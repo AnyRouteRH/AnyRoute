@@ -1,5 +1,6 @@
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
 import FacilitatorDocs from "../../components/FacilitatorDocs"; // v6 F: hosted x402 facilitator.
+import ToolsMarketDocs from "../../components/ToolsMarketDocs"; // v6 T: paid x402 tools.
 import ZkapiDocs from "../../components/ZkapiDocs"; // ZK9: Sepolia browser payment.
 import GetUsdgDocs from "../../components/GetUsdgDocs"; // ON1
 import FirstCallDocs from "../../components/FirstCallDocs"; // ON2
@@ -849,6 +850,7 @@ export default function Docs() {
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />
           <WebhookDocs/> {/* V86. */}
+          <ToolsMarketDocs /> {/* v6 T */}
           <AgentAlertDocs />
           <AgentApprovalDocs />
           <AgentCertificateDocs /><AgentProfileDocs /><SealedAgentDocs />

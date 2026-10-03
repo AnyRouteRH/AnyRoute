@@ -31,7 +31,7 @@ export const billingTables: Record<string, TableDoc> = {
       account_id: "The account the line applies to.",
       key_hash: "The key hash the line came from, when there is one.",
       amount: "The signed amount in pico-USD: positive adds to the balance, negative takes from it.",
-      kind: "What the line is: deposit, credit, usage, refund, paywith, change, adjustment, withdrawal_lock, withdrawal, blind_purchase and similar.",
+      kind: "What the line is: deposit, credit, usage, refund, paywith, change, adjustment, withdrawal_lock, withdrawal, blind_purchase, tool_call (a paid x402 tool) and similar.",
       ref: "A unique idempotency reference, such as usage:<generation id> or escrow:<transaction>:<log index>, so a line can never be posted twice.",
       generation_id: { purpose: "For a usage line, the generation it paid for.", request: "yes" },
       description: {
@@ -53,7 +53,7 @@ export const billingTables: Record<string, TableDoc> = {
       key_hash: "The key hash that made the call, when there is one.",
       amount: "The reserved amount in pico-USD; it cannot change after creation.",
       status: "held, settled or released.",
-      kind: "What the hold was for; usage for a call.",
+      kind: "What the hold was for; usage for a call, tool_call for a paid x402 tool.",
       result: {
         purpose: "How the hold ended: the amount charged and any uncovered amount, as strings in pico-USD, and expired: true when the hold timed out.",
         review: JSON_FIELDS("Written only by settle() and release() in ledger.ts as { charged, uncovered, expired } amounts."),

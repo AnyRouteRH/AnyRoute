@@ -1,7 +1,17 @@
 {
   "openapi": "3.1.0",
-  "x-agreements-jury": { "internal_flag": "AGREEMENT_JURY_INTERNAL_ENABLED", "default": false, "description": "AnyRoute runs a full distinct-model jury on fresh attested candidates. Enable internal transport to use stored provider credentials when AGREEMENT_JURY_API_KEY is unset; a set key retains billed chat routing. Dry-run stores would-be rulings on an ordinary worker without chain signer keys or a key log. Posting requires signer keys, TLOG_ENABLED, isolated agreement-jury worker and AGENT_AGREEMENTS_RULINGS_ENABLED. Auto selects three sorted currently selectable models; insufficient models remain awaiting jury. Votes retain router-signed operational receipts and provider attestation or checked gateway receipt references. Operator cost is a list-price estimate in the jury statement; no customer billing rows. Router reads evidence in memory. Complete hung tallies permit external panel fallback; failed or abstaining votes remain unresolved." },
-  "x-agreements-contracts": { "status": "not deployed at anyroute.tech yet", "flag": "AGENT_AGREEMENTS_ENABLED", "default": false, "documentation": "/docs/#agreements", "privacy": "Public milestone state, votes and signer-order tallies; signatures do not prove model execution or hardware attestation. The optional service stores readable party evidence and model reasons." },
+  "x-agreements-jury": {
+    "internal_flag": "AGREEMENT_JURY_INTERNAL_ENABLED",
+    "default": false,
+    "description": "AnyRoute runs a full distinct-model jury on fresh attested candidates. Enable internal transport to use stored provider credentials when AGREEMENT_JURY_API_KEY is unset; a set key retains billed chat routing. Dry-run stores would-be rulings on an ordinary worker without chain signer keys or a key log. Posting requires signer keys, TLOG_ENABLED, isolated agreement-jury worker and AGENT_AGREEMENTS_RULINGS_ENABLED. Auto selects three sorted currently selectable models; insufficient models remain awaiting jury. Votes retain router-signed operational receipts and provider attestation or checked gateway receipt references. Operator cost is a list-price estimate in the jury statement; no customer billing rows. Router reads evidence in memory. Complete hung tallies permit external panel fallback; failed or abstaining votes remain unresolved."
+  },
+  "x-agreements-contracts": {
+    "status": "not deployed at anyroute.tech yet",
+    "flag": "AGENT_AGREEMENTS_ENABLED",
+    "default": false,
+    "documentation": "/docs/#agreements",
+    "privacy": "Public milestone state, votes and signer-order tallies; signatures do not prove model execution or hardware attestation. The optional service stores readable party evidence and model reasons."
+  },
   "info": {
     "title": "Anyroute API",
     "version": "1.0.0",
@@ -30,8 +40,14 @@
     {}
   ],
   "tags": [
-    {"name":"Facilitator","description":"Hosted x402 facilitator for USDG on Robinhood Chain (eip155:4663), x402 v1 and v2, scheme exact. Settlement is transferWithAuthorization from the payer straight to payTo; the relay key only pays gas. FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator."},
-    { "name": "Webhooks", "description": "Optional signed account event notices; WEBHOOK_SIGNING_ENABLED defaults to false." },
+    {
+      "name": "Facilitator",
+      "description": "Hosted x402 facilitator for USDG on Robinhood Chain (eip155:4663), x402 v1 and v2, scheme exact. Settlement is transferWithAuthorization from the payer straight to payTo; the relay key only pays gas. FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator."
+    },
+    {
+      "name": "Webhooks",
+      "description": "Optional signed account event notices; WEBHOOK_SIGNING_ENABLED defaults to false."
+    },
     {
       "name": "Agent rulebook",
       "description": "Deterministic router enforcement for requests through AnyRoute only; AGENT_POLICY_ENABLED defaults to false. No on-chain enforcement."
@@ -159,28 +175,1394 @@
     {
       "name": "Skills",
       "description": "Secured Skills Hub for agent skills (a folder with SKILL.md and its scripts and resources): import from a git repository or an archive, a static scan for data exfiltration, prompt injection, obfuscation, dangerous shell commands, untrusted package indexes and binaries, a sha256 content hash of a canonical tar, gated downloads and paid installs (90% to the author, 10% network fee) with a signed receipt. Scanned, not guaranteed."
+    },
+    {
+      "name": "Paid tools",
+      "description": "Pay any x402 tool priced in USDG on Robinhood Chain from an Anyroute balance: rulebook price limits, holds, signed tool.call receipts, a listing catalog with daily known-answer canaries, and MCP tools anyroute_tools_search and anyroute_tools_call. Off unless TOOLS_MARKET_ENABLED."
     }
   ],
   "paths": {
-    "/facilitator/supported": {"get":{"tags":["Facilitator"],"operationId":"facilitatorSupported","summary":"List supported kinds, signers and policy","description":"FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. kinds lists x402Version 1 and 2 with scheme exact on eip155:4663 (and the router's v1 name for the chain). policy states custody none, the fee (0 bps during the launch waiver), the minimum settle, gas floats, the relay balance floor, rate limits, the SellerListing EIP-712 types and the screening policy: listings are screened against the OFAC SDN list when SANCTIONS_SCREENING_ENABLED is on; payers and settlements are not screened.","responses":{"200":{"description":"Supported kinds and policy.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorSupported"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"},"503":{"description":"facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."}}}},
-    "/facilitator/verify": {"post":{"tags":["Facilitator"],"operationId":"facilitatorVerify","summary":"Verify an x402 exact payment without moving funds","description":"FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. Checks scheme, network, asset (USDG), the recipient, the amount (v1 maxAmountRequired, v2 amount and what the payer accepted), validBefore at least 6 seconds ahead, validAfter, the payer's EIP-712 signature (ECDSA or ERC-1271) over USDG's domain, the nonce unused on chain and in the facilitator's own record, the balance, the minimum settle (payment_below_facilitator_minimum unless the seller's gas float covers it) and, when FACILITATOR_FEE_BPS is above 0, the fee authorization (facilitator_fee_required, invalid_facilitator_fee).","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorPaymentRequest"}}}},"responses":{"200":{"description":"isValid with the payer, or isValid false with an invalidReason.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorVerifyResponse"}}}},"503":{"description":"facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."},"4XX":{"description":"400 for a body it cannot read (invalidReason/errorReason invalid_payload, invalid_payment_requirements or invalid_x402_version) and 429 rate_limited with Retry-After (per caller address, per payer and per payTo), in the same x402 shape.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorVerifyResponse"}}}}}}},
-    "/facilitator/settle": {"post":{"tags":["Facilitator"],"operationId":"facilitatorSettle","summary":"Verify and settle an x402 exact payment","description":"FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. Runs every verify check, claims (payer, nonce) and relays transferWithAuthorization from the payer straight to payTo with the facilitator's relay key, which pays the gas. A replay answers success false with invalid_exact_evm_payload_authorization_nonce_used; a relay that fails answers unexpected_settle_error and the unused authorization may be settled again. With a fee, the second authorization is relayed to the treasury after the payment. Each settle gets a signed receipt (kind facilitator.settle) that joins the hourly anchor.","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorPaymentRequest"}}}},"responses":{"200":{"description":"success with the transaction, or success false with an errorReason.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorSettleResponse"}}}},"503":{"description":"facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."},"4XX":{"description":"400 for a body it cannot read (invalidReason/errorReason invalid_payload, invalid_payment_requirements or invalid_x402_version) and 429 rate_limited with Retry-After (per caller address, per payer and per payTo), in the same x402 shape.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorSettleResponse"}}}}}}},
-    "/facilitator/discovery/resources": {"get":{"tags":["Facilitator"],"operationId":"facilitatorDiscovery","summary":"List sellers who opted in, in the x402 discovery item shape","description":"FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. Listed sellers newest first. accepts is built from the seller's price hint; the seller's own 402 response stays authoritative. A type other than http or another network returns no items.","parameters":[{"name":"type","in":"query","schema":{"type":"string","enum":["http"]}},{"name":"network","in":"query","schema":{"type":"string","example":"eip155:4663"}},{"name":"tag","in":"query","schema":{"type":"string","pattern":"^[a-z0-9][a-z0-9-]{0,31}$"}},{"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":100,"default":20}},{"name":"offset","in":"query","schema":{"type":"integer","minimum":0,"default":0}},{"name":"x402Version","in":"query","schema":{"type":"integer","enum":[1,2],"default":2}}],"responses":{"200":{"description":"Discovery items with pagination.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorDiscovery"}}}},"400":{"$ref":"#/components/responses/BadRequest"},"429":{"$ref":"#/components/responses/TooManyRequests"},"503":{"description":"facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."}}}},
-    "/facilitator/sellers": {"post":{"tags":["Facilitator"],"operationId":"facilitatorListSeller","summary":"Create or update a listing signed by the payTo key","description":"FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. The body is the EIP-712 SellerListing message (types in GET /facilitator/supported policy.listing) and its signature by the payTo key (ECDSA or ERC-1271). issuedAt must be within 600 seconds of now; a later signature replaces an earlier one; the first payTo to list a resource owns it (409 resource_taken). A listed payTo on the OFAC SDN list is refused with 403 sanctioned_address. FACILITATOR_LISTINGS_PER_HOUR per payTo.","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorListingRequest"}}}},"responses":{"200":{"description":"Listing updated.","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"$ref":"#/components/schemas/FacilitatorListing"}}}}}},"201":{"description":"Listing created.","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"$ref":"#/components/schemas/FacilitatorListing"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"409":{"description":"resource_taken or stale_listing","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"},"503":{"description":"facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."}}}},
-    "/facilitator/sellers/{id}": {"get":{"tags":["Facilitator"],"operationId":"facilitatorSeller","summary":"Read a listing and its gas float","description":"FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator.","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","pattern":"^fsl_[0-9a-f]{24}$"}}],"responses":{"200":{"description":"The listing.","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"allOf":[{"$ref":"#/components/schemas/FacilitatorListing"},{"type":"object","properties":{"gasFloat":{"type":["object","null"],"properties":{"balance":{"type":"string"},"funded":{"type":"string"},"debited":{"type":"string"}}}}}]}}}}}},"404":{"$ref":"#/components/responses/NotFound"},"429":{"$ref":"#/components/responses/TooManyRequests"},"503":{"description":"facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."}}}},
-    "/facilitator/sellers/{id}/gas-float": {"post":{"tags":["Facilitator"],"operationId":"facilitatorFundGasFloat","summary":"Top up a seller's gas float","description":"FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. Needs FACILITATOR_ETH_USDG and FACILITATOR_TREASURY (503 gas_floats_unavailable otherwise). The body carries an exact paymentPayload to FACILITATOR_TREASURY of at least the minimum settle, from any wallet; it is verified and relayed like any settle and its value is credited to the float. Settles below the minimum are then debited at measured gas times FACILITATOR_GAS_BUFFER_BPS.","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","pattern":"^fsl_[0-9a-f]{24}$"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["paymentPayload"],"properties":{"paymentPayload":{"type":"object"}}}}}},"responses":{"200":{"description":"Settle result.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorSettleResponse"}}}},"404":{"$ref":"#/components/responses/NotFound"},"503":{"description":"facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."},"4XX":{"description":"400 for a body it cannot read (invalidReason/errorReason invalid_payload, invalid_payment_requirements or invalid_x402_version) and 429 rate_limited with Retry-After (per caller address, per payer and per payTo), in the same x402 shape.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorSettleResponse"}}}}}}},
-    "/facilitator/receipts/{id}": {"get":{"tags":["Facilitator"],"operationId":"facilitatorReceipt","summary":"Read a settlement receipt and its anchor proof","description":"FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. The COSE_Sign1 receipt (kind facilitator.settle: network, asset, tx, value, pay_to, purpose, x402_version, fee; no payer) signed with the router's receipt key, and the anchor proof once its hour is rooted (null before). ?format=cose returns the raw COSE bytes. Check it with POST /api/v1/receipts/verify.","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","pattern":"^fst_[0-9a-f]{24}$"}},{"name":"format","in":"query","schema":{"type":"string","enum":["cose"]}}],"responses":{"200":{"description":"The receipt.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/FacilitatorReceipt"}}}},"404":{"$ref":"#/components/responses/NotFound"},"429":{"$ref":"#/components/responses/TooManyRequests"},"503":{"description":"facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."}}}},
-    "/api/v1/statements/{yyyy-mm}": {"get":{"operationId":"getMonthlyStatement","tags":["Statements"],"summary":"Download a signed monthly statement","description":"V87: STATEMENTS_ENABLED defaults false; disabled route returns 404. Management and owner/admin keys see the account; ordinary and session keys see only their own attributed movements labelled scope=key. Exact USDG decimal strings reconcile to the ledger in one snapshot: opening + deposits + refunds - usage - separate fees + other changes = closing. Usage groups reconcile to usage. UTC month; usage by settlement time, calls by generation time. Current month is so_far. Months before account creation and future months return 404. Holds, external payments and embedded usage fees are not added to totals. Canonical payload JSON is signed with the existing receipt Ed25519 key and key_id; verify with published receipt keys. Print the account-shell HTML view for PDF. No new storage.","security":[{"BearerAuth":[]}],"parameters":[{"name":"yyyy-mm","in":"path","required":true,"schema":{"type":"string","pattern":"^[0-9]{4}-(0[1-9]|1[0-2])$"}},{"name":"format","in":"query","schema":{"type":"string","enum":["json"],"default":"json"}}],"responses":{"200":{"description":"Signed statement with Cache-Control: no-store","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"type":"object","required":["payload","alg","key_id","sig"],"properties":{"alg":{"type":"string","enum":["Ed25519"]},"key_id":{"type":"string"},"sig":{"type":"string","description":"Base64 signature of canonical payload JSON"},"payload":{"type":"object","description":"anyroute.statement.v1: month, currency, UTC bounds, generated_at, account_created_at, scope, key_hash, opening_balance, deposits, refunds, usage, fees, other_changes, closing_balance, calls, usage_by_model, usage_by_key_agent, usage_by_lane, movements_by_kind, reconciliation, limits. Money and calls are decimal strings. Group ids can be null."}}}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"$ref":"#/components/responses/NotFound"}}}},
-    "/api/v1/refunds": {"get":{"operationId":"listRefunds","tags":["Receipts"],"summary":"List make-good refunds","description":"V6 R: MAKEGOOD_ENABLED defaults to false; the route returns 404 while it is off (GET /api/v1/status reports makegood.enabled). Deterministic refunds decided from facts recorded when a call is served or fails: upstream_failure (a per-call payment for a request no provider served, 100%, on-chain), fallback_price (failover to a pricier provider, the price difference), truncated_stream (billed output tokens never delivered), structured_output (the JSON repair answer still does not parse, 100% of the repair call) and unattested_lane (100% plus a host strike). Capped by what the ledger charged; at most one refund per call or payment. Management and owner/admin keys see the account, other keys their own calls; a per-call wallet payer can read its refunds with X-Wallet-Auth signed over the empty body. Each issued refund has a signed v1 receipt of kind refund at GET /api/v1/receipts/{id} naming original_receipt_id. Cache-Control: no-store.","security":[{"BearerAuth":[]}],"parameters":[{"name":"limit","in":"query","required":false,"description":"1 to 100, default 50","schema":{"type":"integer"}}],"responses":{"200":{"description":"Refunds, newest first","content":{"application/json":{"schema":{"type":"object","required":["data"],"properties":{"data":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"rule":{"type":"string","enum":["upstream_failure","fallback_price","truncated_stream","structured_output","unattested_lane"]},"status":{"type":"string","enum":["pending","issued"]},"amount":{"type":"string","description":"Refund in USD, exact decimal"},"charged":{"type":"string"},"currency":{"type":"string"},"generation_id":{"type":["string","null"]},"receipt_id":{"type":["string","null"]},"receipt_url":{"type":["string","null"]},"provider":{"type":["string","null"]},"strike":{"type":"boolean"},"evidence":{"type":"object"},"settlement":{"type":["string","null"],"enum":["credit","onchain",null]},"onchain":{"type":["object","null"],"properties":{"usdg_units":{"type":"string"},"status":{"type":"string","enum":["owed","batched","paid"]}}},"detected_at":{"type":"string"},"issued_at":{"type":["string","null"]}}}}}}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"404":{"$ref":"#/components/responses/NotFound"}}}},
-    "/api/v1/webhooks": {"get":{"tags":["Webhooks"],"summary":"List owned destinations without secrets","description":"WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"List owned destinations without secrets"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Limit or state conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"}}},"post":{"tags":["Webhooks"],"summary":"Create a destination and reveal its signing secret once","description":"WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.","security":[{"BearerAuth":[]}],"responses":{"201":{"description":"Create a destination and reveal its signing secret once"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Limit or state conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"webhook_url":{"type":"string","format":"uri"},"events":{"type":"array","minItems":1,"items":{"type":"string","enum":["spend.alert","agent.alert","approval.requested","approval.decided","deposit.credited","agreement.funded","agreement.disputed","agreement.ruled","host.status_changed","refund.issued"]}}},"required":["webhook_url","events"],"additionalProperties":false}}}}}},
-    "/api/v1/webhooks/{id}": {"patch":{"tags":["Webhooks"],"summary":"Update event subscriptions","description":"WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Update event subscriptions"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Limit or state conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"events":{"type":"array","minItems":1,"items":{"type":"string","enum":["spend.alert","agent.alert","approval.requested","approval.decided","deposit.credited","agreement.funded","agreement.disputed","agreement.ruled","host.status_changed","refund.issued"]}}},"required":["events"],"additionalProperties":false}}}}},"delete":{"tags":["Webhooks"],"summary":"Remove an independent destination","description":"WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Remove an independent destination"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Limit or state conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/webhooks/{id}/rotate": {"post":{"tags":["Webhooks"],"summary":"Rotate and reveal a replacement signing secret once","description":"WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Rotate and reveal a replacement signing secret once"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Limit or state conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/webhooks/{id}/revoke": {"post":{"tags":["Webhooks"],"summary":"Erase signing secret and stop future delivery","description":"WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Erase signing secret and stop future delivery"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Limit or state conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/webhooks/{id}/deliveries": {"get":{"tags":["Webhooks"],"summary":"Read the last 100 attempt metadata entries","description":"WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Read the last 100 attempt metadata entries"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Limit or state conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/webhooks/{id}/test": {"post":{"tags":["Webhooks"],"summary":"Queue an endpoint check event","description":"WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.","security":[{"BearerAuth":[]}],"responses":{"202":{"description":"Queue an endpoint check event"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Limit or state conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}},"429":{"$ref":"#/components/responses/TooManyRequests"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
-    "/api/v1/activity": {"get": {"operationId": "listActivity", "summary": "List account activity", "description": "Calls (with receipt ids and verify links), agent approvals and rule decisions, alerts, deposits and balance changes, and agreement events, newest first, in one item shape with exact USDG amounts. A key sees its own activity; management, owner and admin keys see the account within their team boundaries. format=csv returns this page as CSV with X-Next-Cursor when another page exists.", "security": [{"BearerAuth": []}], "parameters": [{"name": "kind", "in": "query", "required": false, "description": "call, approval, alert, deposit, agreement, policy or balance", "schema": {"type": "string"}}, {"name": "key", "in": "query", "required": false, "description": "64-hex key hash to filter by", "schema": {"type": "string"}}, {"name": "model", "in": "query", "required": false, "description": "Model id", "schema": {"type": "string"}}, {"name": "from", "in": "query", "required": false, "description": "ISO 8601 timestamp with timezone, inclusive", "schema": {"type": "string"}}, {"name": "to", "in": "query", "required": false, "description": "ISO 8601 timestamp with timezone, exclusive", "schema": {"type": "string"}}, {"name": "limit", "in": "query", "required": false, "description": "1 to 100, default 50", "schema": {"type": "integer"}}, {"name": "cursor", "in": "query", "required": false, "description": "next_cursor from the previous page", "schema": {"type": "string"}}, {"name": "format", "in": "query", "required": false, "description": "json (default) or csv", "schema": {"type": "string"}}], "responses": {"200": {"description": "OK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}},
-    "/api/v1/inbox": {"get": {"operationId": "listInbox", "summary": "List items that need attention", "description": "Pending approvals with their expiry, alerts, deposits, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items.", "security": [{"BearerAuth": []}], "parameters": [{"name": "since", "in": "query", "required": false, "description": "ISO 8601 seen time, not in the future", "schema": {"type": "string"}}], "responses": {"200": {"description": "OK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}},
-    "/api/v1/inbox/seen": {"post": {"operationId": "markInboxSeen", "summary": "Return a seen time for the displayed inbox", "description": "Validates the key and returns the seen time to keep in the browser. Nothing is stored on the server.", "security": [{"BearerAuth": []}], "parameters": [{"name": "through", "in": "query", "required": true, "description": "ISO 8601 time of the displayed snapshot, not in the future", "schema": {"type": "string"}}], "responses": {"200": {"description": "OK"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}},
+    "/facilitator/supported": {
+      "get": {
+        "tags": [
+          "Facilitator"
+        ],
+        "operationId": "facilitatorSupported",
+        "summary": "List supported kinds, signers and policy",
+        "description": "FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. kinds lists x402Version 1 and 2 with scheme exact on eip155:4663 (and the router's v1 name for the chain). policy states custody none, the fee (0 bps during the launch waiver), the minimum settle, gas floats, the relay balance floor, rate limits, the SellerListing EIP-712 types and the screening policy: listings are screened against the OFAC SDN list when SANCTIONS_SCREENING_ENABLED is on; payers and settlements are not screened.",
+        "responses": {
+          "200": {
+            "description": "Supported kinds and policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorSupported"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."
+          }
+        }
+      }
+    },
+    "/facilitator/verify": {
+      "post": {
+        "tags": [
+          "Facilitator"
+        ],
+        "operationId": "facilitatorVerify",
+        "summary": "Verify an x402 exact payment without moving funds",
+        "description": "FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. Checks scheme, network, asset (USDG), the recipient, the amount (v1 maxAmountRequired, v2 amount and what the payer accepted), validBefore at least 6 seconds ahead, validAfter, the payer's EIP-712 signature (ECDSA or ERC-1271) over USDG's domain, the nonce unused on chain and in the facilitator's own record, the balance, the minimum settle (payment_below_facilitator_minimum unless the seller's gas float covers it) and, when FACILITATOR_FEE_BPS is above 0, the fee authorization (facilitator_fee_required, invalid_facilitator_fee).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FacilitatorPaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "isValid with the payer, or isValid false with an invalidReason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorVerifyResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."
+          },
+          "4XX": {
+            "description": "400 for a body it cannot read (invalidReason/errorReason invalid_payload, invalid_payment_requirements or invalid_x402_version) and 429 rate_limited with Retry-After (per caller address, per payer and per payTo), in the same x402 shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorVerifyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/facilitator/settle": {
+      "post": {
+        "tags": [
+          "Facilitator"
+        ],
+        "operationId": "facilitatorSettle",
+        "summary": "Verify and settle an x402 exact payment",
+        "description": "FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. Runs every verify check, claims (payer, nonce) and relays transferWithAuthorization from the payer straight to payTo with the facilitator's relay key, which pays the gas. A replay answers success false with invalid_exact_evm_payload_authorization_nonce_used; a relay that fails answers unexpected_settle_error and the unused authorization may be settled again. With a fee, the second authorization is relayed to the treasury after the payment. Each settle gets a signed receipt (kind facilitator.settle) that joins the hourly anchor.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FacilitatorPaymentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success with the transaction, or success false with an errorReason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorSettleResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."
+          },
+          "4XX": {
+            "description": "400 for a body it cannot read (invalidReason/errorReason invalid_payload, invalid_payment_requirements or invalid_x402_version) and 429 rate_limited with Retry-After (per caller address, per payer and per payTo), in the same x402 shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorSettleResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/facilitator/discovery/resources": {
+      "get": {
+        "tags": [
+          "Facilitator"
+        ],
+        "operationId": "facilitatorDiscovery",
+        "summary": "List sellers who opted in, in the x402 discovery item shape",
+        "description": "FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. Listed sellers newest first. accepts is built from the seller's price hint; the seller's own 402 response stays authoritative. A type other than http or another network returns no items.",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "http"
+              ]
+            }
+          },
+          {
+            "name": "network",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "eip155:4663"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "x402Version",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1,
+                2
+              ],
+              "default": 2
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Discovery items with pagination.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorDiscovery"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."
+          }
+        }
+      }
+    },
+    "/facilitator/sellers": {
+      "post": {
+        "tags": [
+          "Facilitator"
+        ],
+        "operationId": "facilitatorListSeller",
+        "summary": "Create or update a listing signed by the payTo key",
+        "description": "FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. The body is the EIP-712 SellerListing message (types in GET /facilitator/supported policy.listing) and its signature by the payTo key (ECDSA or ERC-1271). issuedAt must be within 600 seconds of now; a later signature replaces an earlier one; the first payTo to list a resource owns it (409 resource_taken). A listed payTo on the OFAC SDN list is refused with 403 sanctioned_address. FACILITATOR_LISTINGS_PER_HOUR per payTo.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FacilitatorListingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Listing updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/FacilitatorListing"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Listing created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/FacilitatorListing"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "resource_taken or stale_listing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."
+          }
+        }
+      }
+    },
+    "/facilitator/sellers/{id}": {
+      "get": {
+        "tags": [
+          "Facilitator"
+        ],
+        "operationId": "facilitatorSeller",
+        "summary": "Read a listing and its gas float",
+        "description": "FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^fsl_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/FacilitatorListing"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "gasFloat": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "properties": {
+                                "balance": {
+                                  "type": "string"
+                                },
+                                "funded": {
+                                  "type": "string"
+                                },
+                                "debited": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."
+          }
+        }
+      }
+    },
+    "/facilitator/sellers/{id}/gas-float": {
+      "post": {
+        "tags": [
+          "Facilitator"
+        ],
+        "operationId": "facilitatorFundGasFloat",
+        "summary": "Top up a seller's gas float",
+        "description": "FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. Needs FACILITATOR_ETH_USDG and FACILITATOR_TREASURY (503 gas_floats_unavailable otherwise). The body carries an exact paymentPayload to FACILITATOR_TREASURY of at least the minimum settle, from any wallet; it is verified and relayed like any settle and its value is credited to the float. Settles below the minimum are then debited at measured gas times FACILITATOR_GAS_BUFFER_BPS.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^fsl_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "paymentPayload"
+                ],
+                "properties": {
+                  "paymentPayload": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settle result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorSettleResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "description": "facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."
+          },
+          "4XX": {
+            "description": "400 for a body it cannot read (invalidReason/errorReason invalid_payload, invalid_payment_requirements or invalid_x402_version) and 429 rate_limited with Retry-After (per caller address, per payer and per payTo), in the same x402 shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorSettleResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/facilitator/receipts/{id}": {
+      "get": {
+        "tags": [
+          "Facilitator"
+        ],
+        "operationId": "facilitatorReceipt",
+        "summary": "Read a settlement receipt and its anchor proof",
+        "description": "FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator. The COSE_Sign1 receipt (kind facilitator.settle: network, asset, tx, value, pay_to, purpose, x402_version, fee; no payer) signed with the router's receipt key, and the anchor proof once its hour is rooted (null before). ?format=cose returns the raw COSE bytes. Check it with POST /api/v1/receipts/verify.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^fst_[0-9a-f]{24}$"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cose"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "facilitator_disabled (ApiError), or for verify and settle facilitator_unavailable in the x402 shape when the relay key is below FACILITATOR_RELAY_FLOOR_WEI; Retry-After is set. Nothing is queued."
+          }
+        }
+      }
+    },
+    "/api/v1/statements/{yyyy-mm}": {
+      "get": {
+        "operationId": "getMonthlyStatement",
+        "tags": [
+          "Statements"
+        ],
+        "summary": "Download a signed monthly statement",
+        "description": "V87: STATEMENTS_ENABLED defaults false; disabled route returns 404. Management and owner/admin keys see the account; ordinary and session keys see only their own attributed movements labelled scope=key. Exact USDG decimal strings reconcile to the ledger in one snapshot: opening + deposits + refunds - usage - separate fees + other changes = closing. Usage groups reconcile to usage. UTC month; usage by settlement time, calls by generation time. Current month is so_far. Months before account creation and future months return 404. Holds, external payments and embedded usage fees are not added to totals. Canonical payload JSON is signed with the existing receipt Ed25519 key and key_id; verify with published receipt keys. Print the account-shell HTML view for PDF. No new storage.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "yyyy-mm",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json"
+              ],
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signed statement with Cache-Control: no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "payload",
+                        "alg",
+                        "key_id",
+                        "sig"
+                      ],
+                      "properties": {
+                        "alg": {
+                          "type": "string",
+                          "enum": [
+                            "Ed25519"
+                          ]
+                        },
+                        "key_id": {
+                          "type": "string"
+                        },
+                        "sig": {
+                          "type": "string",
+                          "description": "Base64 signature of canonical payload JSON"
+                        },
+                        "payload": {
+                          "type": "object",
+                          "description": "anyroute.statement.v1: month, currency, UTC bounds, generated_at, account_created_at, scope, key_hash, opening_balance, deposits, refunds, usage, fees, other_changes, closing_balance, calls, usage_by_model, usage_by_key_agent, usage_by_lane, movements_by_kind, reconciliation, limits. Money and calls are decimal strings. Group ids can be null."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/refunds": {
+      "get": {
+        "operationId": "listRefunds",
+        "tags": [
+          "Receipts"
+        ],
+        "summary": "List make-good refunds",
+        "description": "V6 R: MAKEGOOD_ENABLED defaults to false; the route returns 404 while it is off (GET /api/v1/status reports makegood.enabled). Deterministic refunds decided from facts recorded when a call is served or fails: upstream_failure (a per-call payment for a request no provider served, 100%, on-chain), fallback_price (failover to a pricier provider, the price difference), truncated_stream (billed output tokens never delivered), structured_output (the JSON repair answer still does not parse, 100% of the repair call) and unattested_lane (100% plus a host strike). Capped by what the ledger charged; at most one refund per call or payment. Management and owner/admin keys see the account, other keys their own calls; a per-call wallet payer can read its refunds with X-Wallet-Auth signed over the empty body. Each issued refund has a signed v1 receipt of kind refund at GET /api/v1/receipts/{id} naming original_receipt_id. Cache-Control: no-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "1 to 100, default 50",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Refunds, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "rule": {
+                            "type": "string",
+                            "enum": [
+                              "upstream_failure",
+                              "fallback_price",
+                              "truncated_stream",
+                              "structured_output",
+                              "unattested_lane"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "issued"
+                            ]
+                          },
+                          "amount": {
+                            "type": "string",
+                            "description": "Refund in USD, exact decimal"
+                          },
+                          "charged": {
+                            "type": "string"
+                          },
+                          "currency": {
+                            "type": "string"
+                          },
+                          "generation_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "receipt_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "receipt_url": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "provider": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "strike": {
+                            "type": "boolean"
+                          },
+                          "evidence": {
+                            "type": "object"
+                          },
+                          "settlement": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "credit",
+                              "onchain",
+                              null
+                            ]
+                          },
+                          "onchain": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "usdg_units": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "owed",
+                                  "batched",
+                                  "paid"
+                                ]
+                              }
+                            }
+                          },
+                          "detected_at": {
+                            "type": "string"
+                          },
+                          "issued_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks": {
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "List owned destinations without secrets",
+        "description": "WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List owned destinations without secrets"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Limit or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Create a destination and reveal its signing secret once",
+        "description": "WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Create a destination and reveal its signing secret once"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Limit or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "webhook_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "events": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "spend.alert",
+                        "agent.alert",
+                        "approval.requested",
+                        "approval.decided",
+                        "deposit.credited",
+                        "agreement.funded",
+                        "agreement.disputed",
+                        "agreement.ruled",
+                        "host.status_changed",
+                        "refund.issued"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "webhook_url",
+                  "events"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}": {
+      "patch": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Update event subscriptions",
+        "description": "WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Update event subscriptions"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Limit or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "events": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "spend.alert",
+                        "agent.alert",
+                        "approval.requested",
+                        "approval.decided",
+                        "deposit.credited",
+                        "agreement.funded",
+                        "agreement.disputed",
+                        "agreement.ruled",
+                        "host.status_changed",
+                        "refund.issued"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "events"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Remove an independent destination",
+        "description": "WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Remove an independent destination"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Limit or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/webhooks/{id}/rotate": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Rotate and reveal a replacement signing secret once",
+        "description": "WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rotate and reveal a replacement signing secret once"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Limit or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/webhooks/{id}/revoke": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Erase signing secret and stop future delivery",
+        "description": "WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Erase signing secret and stop future delivery"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Limit or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/webhooks/{id}/deliveries": {
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Read the last 100 attempt metadata entries",
+        "description": "WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read the last 100 attempt metadata entries"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Limit or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/webhooks/{id}/test": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Queue an endpoint check event",
+        "description": "WEBHOOK_SIGNING_ENABLED defaults to false; switched on at anyroute.tech. Requires owner/admin access outside agent sessions. Account-wide destinations require a management key; other callers manage only linked destinations scoped to their own key. Secrets appear only on creation or rotation. All responses use Cache-Control: no-store. See /docs/#signed-webhooks for exact-byte HMAC verification, five-minute timestamp tolerance, signed event_id binding and durable duplicate suppression. Delivery can repeat after a crash. Activity discovery has bounded source-retention limits. Approval and operated host status writers queue references atomically. Direct database writes do not create those notices.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queue an endpoint check event"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Limit or state conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/activity": {
+      "get": {
+        "operationId": "listActivity",
+        "summary": "List account activity",
+        "description": "Calls (with receipt ids and verify links), agent approvals and rule decisions, alerts, deposits and balance changes, and agreement events, newest first, in one item shape with exact USDG amounts. A key sees its own activity; management, owner and admin keys see the account within their team boundaries. format=csv returns this page as CSV with X-Next-Cursor when another page exists.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "description": "call, approval, alert, deposit, agreement, policy or balance",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "description": "64-hex key hash to filter by",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "description": "Model id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "ISO 8601 timestamp with timezone, inclusive",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "description": "ISO 8601 timestamp with timezone, exclusive",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "1 to 100, default 50",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "next_cursor from the previous page",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "json (default) or csv",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/inbox": {
+      "get": {
+        "operationId": "listInbox",
+        "summary": "List items that need attention",
+        "description": "Pending approvals with their expiry, alerts, deposits, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "ISO 8601 seen time, not in the future",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/seen": {
+      "post": {
+        "operationId": "markInboxSeen",
+        "summary": "Return a seen time for the displayed inbox",
+        "description": "Validates the key and returns the seen time to keep in the browser. Nothing is stored on the server.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "through",
+            "in": "query",
+            "required": true,
+            "description": "ISO 8601 time of the displayed snapshot, not in the future",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/api/v1/network/stats": {
       "get": {
         "operationId": "networkStats",
@@ -231,7 +1613,283 @@
         }
       }
     },
-    "/api/v1/agreements":{"get":{"tags":["Agreements"],"summary":"List wallet-linked party agreements; cursor and next_cursor paginate 50 rows.","description":"AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Agreement result"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Evidence window, limit or retention constraint"},"413":{"description":"Evidence exceeds cap"}},"parameters":[{"name":"cursor","in":"query","schema":{"type":"string"}}]}},"/api/v1/agreements/prepare":{"post":{"tags":["Agreements"],"summary":"Check inherited agreement rulebooks and return unsigned USDG escrow calldata; payer signs its own transaction.","description":"AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Agreement result"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Evidence window, limit or retention constraint"},"413":{"description":"Evidence exceeds cap"}},"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"required":["payee","milestone_amounts_usdg_units","terms_hash","deadline"],"properties":{"payee":{"type":"string","pattern":"^0x[0-9a-fA-F]{40}$"},"milestone_amounts_usdg_units":{"type":"array","minItems":1,"maxItems":64,"items":{"type":"string","pattern":"^[1-9][0-9]{0,77}$"}},"terms_hash":{"type":"string","pattern":"^0x[0-9a-fA-F]{64}$"},"deadline":{"type":"string","pattern":"^[1-9][0-9]{0,77}$","description":"Future Unix timestamp in seconds; escrow reviewWindow is immutable."}}}}}}}},"/api/v1/agreements/{id}":{"get":{"tags":["Agreements"],"summary":"Read canonical agreement milestone, both parties evidence and router-signed jury statement with per-model verdicts and receipt links.","description":"AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Agreement result"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Evidence window, limit or retention constraint"},"413":{"description":"Evidence exceeds cap"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","pattern":"^(0|[1-9][0-9]{0,77})[.](0|[1-9][0-9]?)$"}}]}},"/api/v1/agreements/{id}/evidence":{"post":{"tags":["Agreements"],"summary":"Upload capped JSON or JSON-encoded text; stored hash plus APP_SECRET-encrypted content, readable by both parties and the router.","description":"AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Agreement result"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Evidence window, limit or retention constraint"},"413":{"description":"Evidence exceeds cap"},"201":{"description":"Evidence hash and dispute identity"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","pattern":"^(0|[1-9][0-9]{0,77})[.](0|[1-9][0-9]?)$"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{}}}}},"delete":{"tags":["Agreements"],"summary":"Delete own evidence after canonical resolution plus retention with a fresh index.","description":"AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.","security":[{"BearerAuth":[]}],"responses":{"200":{"description":"Agreement result"},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Evidence window, limit or retention constraint"},"413":{"description":"Evidence exceeds cap"}},"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","pattern":"^(0|[1-9][0-9]{0,77})[.](0|[1-9][0-9]?)$"}}]}},
+    "/api/v1/agreements": {
+      "get": {
+        "tags": [
+          "Agreements"
+        ],
+        "summary": "List wallet-linked party agreements; cursor and next_cursor paginate 50 rows.",
+        "description": "AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agreement result"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Evidence window, limit or retention constraint"
+          },
+          "413": {
+            "description": "Evidence exceeds cap"
+          }
+        },
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agreements/prepare": {
+      "post": {
+        "tags": [
+          "Agreements"
+        ],
+        "summary": "Check inherited agreement rulebooks and return unsigned USDG escrow calldata; payer signs its own transaction.",
+        "description": "AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agreement result"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Evidence window, limit or retention constraint"
+          },
+          "413": {
+            "description": "Evidence exceeds cap"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "payee",
+                  "milestone_amounts_usdg_units",
+                  "terms_hash",
+                  "deadline"
+                ],
+                "properties": {
+                  "payee": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{40}$"
+                  },
+                  "milestone_amounts_usdg_units": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[1-9][0-9]{0,77}$"
+                    }
+                  },
+                  "terms_hash": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{64}$"
+                  },
+                  "deadline": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,77}$",
+                    "description": "Future Unix timestamp in seconds; escrow reviewWindow is immutable."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agreements/{id}": {
+      "get": {
+        "tags": [
+          "Agreements"
+        ],
+        "summary": "Read canonical agreement milestone, both parties evidence and router-signed jury statement with per-model verdicts and receipt links.",
+        "description": "AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agreement result"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Evidence window, limit or retention constraint"
+          },
+          "413": {
+            "description": "Evidence exceeds cap"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,77})[.](0|[1-9][0-9]?)$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/agreements/{id}/evidence": {
+      "post": {
+        "tags": [
+          "Agreements"
+        ],
+        "summary": "Upload capped JSON or JSON-encoded text; stored hash plus APP_SECRET-encrypted content, readable by both parties and the router.",
+        "description": "AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agreement result"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Evidence window, limit or retention constraint"
+          },
+          "413": {
+            "description": "Evidence exceeds cap"
+          },
+          "201": {
+            "description": "Evidence hash and dispute identity"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,77})[.](0|[1-9][0-9]?)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Agreements"
+        ],
+        "summary": "Delete own evidence after canonical resolution plus retention with a fresh index.",
+        "description": "AGENT_AGREEMENTS_ENABLED defaults false; unset escrow/oracle addresses keep this off. Router-run jury uses attested models only; A complete signed hung tally enables a panel; failed or abstaining votes remain unresolved until a valid tally or expiry. Oracle signer keys certify authorization, not model execution. Rulings default to dry run. Contracts are not deployed at anyroute.tech yet. Router reads evidence in memory.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agreement result"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Evidence window, limit or retention constraint"
+          },
+          "413": {
+            "description": "Evidence exceeds cap"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,77})[.](0|[1-9][0-9]?)$"
+            }
+          }
+        ]
+      }
+    },
     "/api/v1/network/burns": {
       "get": {
         "summary": "Network fee swaps and burns",
@@ -1904,8 +3562,21 @@
           "200": {
             "description": "Completion JSON, or SSE events followed by data: [DONE] when stream is true.",
             "headers": {
-              "X-Anyroute-Route": {"$ref":"#/components/headers/RouteExplanation"},
-              "X-Anyroute-Json-Check": {"description":"V83: valid or invalid for JSON responses; pending for streams, or pending; repair-unsupported when repair was requested. Final stream validation is in receipt.structured_output, not a changed header.","schema":{"type":"string","enum":["valid","invalid","pending","pending; repair-unsupported"]}},
+              "X-Anyroute-Route": {
+                "$ref": "#/components/headers/RouteExplanation"
+              },
+              "X-Anyroute-Json-Check": {
+                "description": "V83: valid or invalid for JSON responses; pending for streams, or pending; repair-unsupported when repair was requested. Final stream validation is in receipt.structured_output, not a changed header.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "valid",
+                    "invalid",
+                    "pending",
+                    "pending; repair-unsupported"
+                  ]
+                }
+              },
               "X-Anyroute-Disclosure": {
                 "$ref": "#/components/headers/Disclosure"
               },
@@ -2043,7 +3714,9 @@
           "200": {
             "description": "Embedding response with usage and signed receipt.",
             "headers": {
-              "X-Anyroute-Route": {"$ref":"#/components/headers/RouteExplanation"},
+              "X-Anyroute-Route": {
+                "$ref": "#/components/headers/RouteExplanation"
+              },
               "X-Anyroute-Disclosure": {
                 "$ref": "#/components/headers/Disclosure"
               },
@@ -13617,6 +15290,478 @@
           }
         }
       }
+    },
+    "/api/v1/tools/call": {
+      "post": {
+        "tags": [
+          "Paid tools"
+        ],
+        "operationId": "callPaidTool",
+        "summary": "Pay an x402 tool from the key's balance",
+        "description": "TOOLS_MARKET_ENABLED defaults to false and is not switched on at anyroute.tech yet; every route answers 404 while it is off. See /docs/#paid-tools. The router fetches the resource unpaid and reads its 402 (x402 v1 JSON body with accepts, or the v2 PAYMENT-REQUIRED header). It pays only scheme exact in USDG on Robinhood Chain. A quote above max_price (the seller's price plus the router's take, TOOLS_TAKE_BPS), above TOOLS_MAX_PRICE_USD or outside the key's rulebook (tools.allow, tools.deny, tools.max_price_per_call, tools.daily_budget, caps, approval) is refused before anything is held or paid. Otherwise it holds price plus take, signs an EIP-3009 TransferWithAuthorization from the router's buyer wallet to the seller's payTo and retries with X-PAYMENT or PAYMENT-SIGNATURE. A 2xx JSON or plain-text answer of at most 2 MB is charged once and returned as untrusted data with a signed tool.call receipt (COSE_Sign1; check it with POST /api/v1/receipts/verify). Any other answer is not charged: the hold is released once the authorization expires unused, or the call is charged if the seller collected it anyway. then hands the answer to a model and needs tools.pass_to_models in the rulebook.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolCallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The tool's answer, the charge and the tool.call receipt",
+            "headers": {
+              "X-Anyroute-Tool-Call": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "The call id."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ToolCall"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "tool_price_above_max, tool_price_above_router_max, tool_delisted or tool_pay_to_mismatch; nothing was charged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "tool_not_payable or tool_content_type_refused; nothing was charged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "502": {
+            "description": "tool_seller_failed, tool_response_refused or tool_unreachable; not charged unless the seller later collects the authorization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "tools_buyer_unconfigured or tools_daily_limit; nothing was charged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "tool_timeout before any payment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tools": {
+      "get": {
+        "tags": [
+          "Paid tools"
+        ],
+        "operationId": "listPaidTools",
+        "summary": "Listed tools with their canary state",
+        "description": "TOOLS_MARKET_ENABLED defaults to false and is not switched on at anyroute.tech yet; every route answers 404 while it is off. See /docs/#paid-tools. Public. Each listing has a daily paid probe with a known answer; three failures in a row delist it. include_delisted=true also returns delisted listings.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "include_delisted",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ToolListing"
+                      }
+                    },
+                    "call": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/tools/search": {
+      "get": {
+        "tags": [
+          "Paid tools"
+        ],
+        "operationId": "searchPaidTools",
+        "summary": "Search listings, facilitator sellers and the public catalog",
+        "description": "TOOLS_MARKET_ENABLED defaults to false and is not switched on at anyroute.tech yet; every route answers 404 while it is off. See /docs/#paid-tools. Public. The public catalog (TOOLS_PUBLIC_CATALOG_URL) is fetched through the egress guard and cached; facilitator sellers carry no canary.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          },
+          {
+            "name": "public",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ToolListing"
+                      }
+                    },
+                    "public_catalog": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/tools/calls": {
+      "get": {
+        "tags": [
+          "Paid tools"
+        ],
+        "operationId": "listPaidToolCalls",
+        "summary": "This key's paid tool calls",
+        "description": "TOOLS_MARKET_ENABLED defaults to false and is not switched on at anyroute.tech yet; every route answers 404 while it is off. See /docs/#paid-tools. The 50 newest calls of the calling key, with status (paying, ok, failed, released, charged_after_failure) and receipts.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Calls",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/tools/calls/{id}": {
+      "get": {
+        "tags": [
+          "Paid tools"
+        ],
+        "operationId": "getPaidToolCall",
+        "summary": "One paid tool call of this key",
+        "description": "TOOLS_MARKET_ENABLED defaults to false and is not switched on at anyroute.tech yet; every route answers 404 while it is off. See /docs/#paid-tools.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^tc_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/tools/listings": {
+      "post": {
+        "tags": [
+          "Paid tools"
+        ],
+        "operationId": "createToolListing",
+        "summary": "List an x402 tool with a known-answer canary",
+        "description": "TOOLS_MARKET_ENABLED defaults to false and is not switched on at anyroute.tech yet; every route answers 404 while it is off. See /docs/#paid-tools. Owner or admin key. The router asks the address unpaid: it must answer 402 with an offer this router can pay. The listing records that offer's payTo and price, and calls are refused if the payTo later changes. skill_id makes it the paid invocation of a Skills Hub skill the account published. 20 listings per account per hour.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolListingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ToolListing"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "tool_already_listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "tool_not_payable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/tools/listings/{id}": {
+      "delete": {
+        "tags": [
+          "Paid tools"
+        ],
+        "operationId": "removeToolListing",
+        "summary": "Remove a listing",
+        "description": "TOOLS_MARKET_ENABLED defaults to false and is not switched on at anyroute.tech yet; every route answers 404 while it is off. See /docs/#paid-tools. The listing account only.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^tl_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/tools/{id}": {
+      "get": {
+        "tags": [
+          "Paid tools"
+        ],
+        "operationId": "getToolListing",
+        "summary": "One listing and its last ten canary runs",
+        "description": "TOOLS_MARKET_ENABLED defaults to false and is not switched on at anyroute.tech yet; every route answers 404 while it is off. See /docs/#paid-tools.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^tl_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The listing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ToolListing"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13779,7 +15924,12 @@
       }
     },
     "headers": {
-      "RouteExplanation": {"description":"V84: compact JSON RouteExplanation, on chat/text completions and embeddings when ROUTE_EXPLAIN_ENABLED is true (default false; switched on at anyroute.tech). The signed receipt route claim has the same fields. Streams wait for the serving provider before sending this header and also deliver the claim in the final receipt. Cache and encrypted-chat paths omit it.","schema":{"type":"string"}},
+      "RouteExplanation": {
+        "description": "V84: compact JSON RouteExplanation, on chat/text completions and embeddings when ROUTE_EXPLAIN_ENABLED is true (default false; switched on at anyroute.tech). The signed receipt route claim has the same fields. Streams wait for the serving provider before sending this header and also deliver the claim in the final receipt. Cache and encrypted-chat paths omit it.",
+        "schema": {
+          "type": "string"
+        }
+      },
       "Disclosure": {
         "description": "The disclosure class the answering provider was served under: attested (retention declared attested and a fresh TEE attestation), policy (a documented no-retention policy, no legal hold) or vendor-forwarded (anything else). On a stream it is sent only when every provider the request can reach shares one class; the signed receipt always carries it.",
         "schema": {
@@ -14003,14 +16153,441 @@
       }
     },
     "schemas": {
-      "FacilitatorPaymentRequest": {"type":"object","required":["paymentPayload","paymentRequirements"],"description":"The x402 facilitator request. v1: paymentPayload {x402Version 1, scheme, network, payload}; paymentRequirements with maxAmountRequired and resource. v2: paymentPayload {x402Version 2, resource, accepted, payload}; paymentRequirements with amount. Optional fee: paymentRequirements.extra.facilitatorFee {amount, payTo} and paymentPayload.payload.facilitatorFee {signature, authorization}.","properties":{"x402Version":{"type":"integer","enum":[1,2]},"paymentPayload":{"type":"object","properties":{"x402Version":{"type":"integer","enum":[1,2]},"scheme":{"type":"string"},"network":{"type":"string"},"accepted":{"type":"object"},"resource":{"type":"object"},"payload":{"type":"object","required":["signature","authorization"],"properties":{"signature":{"type":"string"},"authorization":{"type":"object","required":["from","to","value","validAfter","validBefore","nonce"],"properties":{"from":{"type":"string"},"to":{"type":"string"},"value":{"type":"string"},"validAfter":{"type":"string"},"validBefore":{"type":"string"},"nonce":{"type":"string"}}}}}}},"paymentRequirements":{"type":"object","required":["scheme","network","payTo","asset"],"properties":{"scheme":{"type":"string","enum":["exact"]},"network":{"type":"string","example":"eip155:4663"},"maxAmountRequired":{"type":"string"},"amount":{"type":"string"},"resource":{"type":"string"},"payTo":{"type":"string"},"asset":{"type":"string"},"maxTimeoutSeconds":{"type":"integer"},"extra":{"type":"object"}}}}},
-      "FacilitatorVerifyResponse": {"type":"object","required":["isValid","payer"],"properties":{"isValid":{"type":"boolean"},"invalidReason":{"type":"string"},"invalidMessage":{"type":"string"},"payer":{"type":"string"}}},
-      "FacilitatorSettleResponse": {"type":"object","required":["success","transaction","network","payer"],"properties":{"success":{"type":"boolean"},"errorReason":{"type":"string"},"errorMessage":{"type":"string"},"transaction":{"type":"string","description":"Relay transaction hash; empty when nothing was settled."},"network":{"type":"string"},"payer":{"type":"string"},"receipt":{"type":"object","properties":{"id":{"type":"string"},"url":{"type":"string"}}}}},
-      "FacilitatorSupported": {"type":"object","required":["kinds","signers","policy"],"properties":{"kinds":{"type":"array","items":{"type":"object","properties":{"x402Version":{"type":"integer"},"scheme":{"type":"string"},"network":{"type":"string"}}}},"extensions":{"type":"array","items":{"type":"string"}},"signers":{"type":"object","additionalProperties":{"type":"array","items":{"type":"string"}}},"policy":{"type":"object"}}},
-      "FacilitatorDiscovery": {"type":"object","required":["x402Version","items","pagination"],"properties":{"x402Version":{"type":"integer"},"items":{"type":"array","items":{"type":"object","properties":{"resource":{"type":"string"},"type":{"type":"string"},"x402Version":{"type":"integer"},"accepts":{"type":"array","items":{"type":"object"}},"lastUpdated":{"type":"string","format":"date-time"},"metadata":{"type":"object"}}}},"pagination":{"type":"object","properties":{"limit":{"type":"integer"},"offset":{"type":"integer"},"total":{"type":"integer"}}}}},
-      "FacilitatorListingRequest": {"type":"object","required":["payTo","resource","issuedAt","signature"],"properties":{"payTo":{"type":"string"},"resource":{"type":"string","format":"uri"},"priceHint":{"type":"string","description":"USDG base units; 0 for none."},"outputSchema":{"type":"string","description":"The exact JSON text that was signed, or empty."},"tags":{"type":"array","maxItems":10,"items":{"type":"string"}},"listed":{"type":"boolean","default":true},"issuedAt":{"type":"integer","description":"Unix seconds."},"signature":{"type":"string"}}},
-      "FacilitatorListing": {"type":"object","properties":{"id":{"type":"string"},"payTo":{"type":"string"},"resource":{"type":"string"},"priceHint":{"type":["string","null"]},"outputSchema":{"type":["object","null"]},"tags":{"type":"array","items":{"type":"string"}},"listed":{"type":"boolean"},"signedAt":{"type":"string","format":"date-time"},"updatedAt":{"type":"string","format":"date-time"}}},
-      "FacilitatorReceipt": {"type":"object","required":["data"],"properties":{"data":{"type":"object","properties":{"id":{"type":"string"},"kind":{"type":"string","enum":["facilitator.settle"]},"status":{"type":"string"},"transaction":{"type":["string","null"]},"alg":{"type":"string"},"kid":{"type":["string","null"]},"cose":{"type":"string"},"claims":{"type":"object"},"leaf":{"type":["string","null"]},"anchor":{"type":["object","null"]}}}}},
+      "FacilitatorPaymentRequest": {
+        "type": "object",
+        "required": [
+          "paymentPayload",
+          "paymentRequirements"
+        ],
+        "description": "The x402 facilitator request. v1: paymentPayload {x402Version 1, scheme, network, payload}; paymentRequirements with maxAmountRequired and resource. v2: paymentPayload {x402Version 2, resource, accepted, payload}; paymentRequirements with amount. Optional fee: paymentRequirements.extra.facilitatorFee {amount, payTo} and paymentPayload.payload.facilitatorFee {signature, authorization}.",
+        "properties": {
+          "x402Version": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "paymentPayload": {
+            "type": "object",
+            "properties": {
+              "x402Version": {
+                "type": "integer",
+                "enum": [
+                  1,
+                  2
+                ]
+              },
+              "scheme": {
+                "type": "string"
+              },
+              "network": {
+                "type": "string"
+              },
+              "accepted": {
+                "type": "object"
+              },
+              "resource": {
+                "type": "object"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "signature",
+                  "authorization"
+                ],
+                "properties": {
+                  "signature": {
+                    "type": "string"
+                  },
+                  "authorization": {
+                    "type": "object",
+                    "required": [
+                      "from",
+                      "to",
+                      "value",
+                      "validAfter",
+                      "validBefore",
+                      "nonce"
+                    ],
+                    "properties": {
+                      "from": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      },
+                      "validAfter": {
+                        "type": "string"
+                      },
+                      "validBefore": {
+                        "type": "string"
+                      },
+                      "nonce": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "paymentRequirements": {
+            "type": "object",
+            "required": [
+              "scheme",
+              "network",
+              "payTo",
+              "asset"
+            ],
+            "properties": {
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "exact"
+                ]
+              },
+              "network": {
+                "type": "string",
+                "example": "eip155:4663"
+              },
+              "maxAmountRequired": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "string"
+              },
+              "resource": {
+                "type": "string"
+              },
+              "payTo": {
+                "type": "string"
+              },
+              "asset": {
+                "type": "string"
+              },
+              "maxTimeoutSeconds": {
+                "type": "integer"
+              },
+              "extra": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "FacilitatorVerifyResponse": {
+        "type": "object",
+        "required": [
+          "isValid",
+          "payer"
+        ],
+        "properties": {
+          "isValid": {
+            "type": "boolean"
+          },
+          "invalidReason": {
+            "type": "string"
+          },
+          "invalidMessage": {
+            "type": "string"
+          },
+          "payer": {
+            "type": "string"
+          }
+        }
+      },
+      "FacilitatorSettleResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "transaction",
+          "network",
+          "payer"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "errorReason": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "transaction": {
+            "type": "string",
+            "description": "Relay transaction hash; empty when nothing was settled."
+          },
+          "network": {
+            "type": "string"
+          },
+          "payer": {
+            "type": "string"
+          },
+          "receipt": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "FacilitatorSupported": {
+        "type": "object",
+        "required": [
+          "kinds",
+          "signers",
+          "policy"
+        ],
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x402Version": {
+                  "type": "integer"
+                },
+                "scheme": {
+                  "type": "string"
+                },
+                "network": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "signers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "policy": {
+            "type": "object"
+          }
+        }
+      },
+      "FacilitatorDiscovery": {
+        "type": "object",
+        "required": [
+          "x402Version",
+          "items",
+          "pagination"
+        ],
+        "properties": {
+          "x402Version": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resource": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "x402Version": {
+                  "type": "integer"
+                },
+                "accepts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "lastUpdated": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "metadata": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer"
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "FacilitatorListingRequest": {
+        "type": "object",
+        "required": [
+          "payTo",
+          "resource",
+          "issuedAt",
+          "signature"
+        ],
+        "properties": {
+          "payTo": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string",
+            "format": "uri"
+          },
+          "priceHint": {
+            "type": "string",
+            "description": "USDG base units; 0 for none."
+          },
+          "outputSchema": {
+            "type": "string",
+            "description": "The exact JSON text that was signed, or empty."
+          },
+          "tags": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string"
+            }
+          },
+          "listed": {
+            "type": "boolean",
+            "default": true
+          },
+          "issuedAt": {
+            "type": "integer",
+            "description": "Unix seconds."
+          },
+          "signature": {
+            "type": "string"
+          }
+        }
+      },
+      "FacilitatorListing": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "payTo": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "priceHint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outputSchema": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "listed": {
+            "type": "boolean"
+          },
+          "signedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FacilitatorReceipt": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "facilitator.settle"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "transaction": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "alg": {
+                "type": "string"
+              },
+              "kid": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "cose": {
+                "type": "string"
+              },
+              "claims": {
+                "type": "object"
+              },
+              "leaf": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "anchor": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      },
       "NetworkStats": {
         "type": "object",
         "required": [
@@ -15317,8 +17894,30 @@
           "supported_parameters"
         ],
         "properties": {
-          "capabilities": { "type": "array", "items": { "type": "string", "enum": ["vision", "imageOut", "audio", "tools", "longContext", "attested", "network", "encrypted"] }, "description": "Shared catalogue tags; longContext means at least 128,000 tokens. network requires a live fresh-attested network-host offer for an admitted model. encrypted requires the separate enabled gateway path, exact model ID and fresh evidence; ordinary chat remains readable by the router." },
-          "provider_names": { "type": "array", "items": { "type": "string" }, "description": "Names of providers with live servable offers for this model." },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vision",
+                "imageOut",
+                "audio",
+                "tools",
+                "longContext",
+                "attested",
+                "network",
+                "encrypted"
+              ]
+            },
+            "description": "Shared catalogue tags; longContext means at least 128,000 tokens. network requires a live fresh-attested network-host offer for an admitted model. encrypted requires the separate enabled gateway path, exact model ID and fresh evidence; ordinary chat remains readable by the router."
+          },
+          "provider_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of providers with live servable offers for this model."
+          },
           "id": {
             "type": "string"
           },
@@ -15564,9 +18163,116 @@
           }
         }
       },
-      "StructuredOutputOptions": {"type":"object","properties":{"json_check":{"type":"string","enum":["validate","repair"],"description":"V83: Requires STRUCTURED_OUTPUT_CHECK_ENABLED (default false; switched on at anyroute.tech). validate checks the final JSON; repair permits one correction by the same routed model/provider. Both calls are billed normally. Streaming repair validates only. Requires json_object or json_schema and n=1; no council or dual verification. Non-streaming repair requires a bearer API key and bypasses the response cache. Explicit request settings override preset defaults."}}},
-      "StructuredOutputIssue": {"type":"object","required":["path","reason"],"properties":{"path":{"type":"string","description":"JSON Pointer path; empty string is the root."},"reason":{"type":"string"}}},
-      "StructuredOutputResult": {"type":"object","description":"V83: Unsigned response metadata; not written to generation receipts or returned by receipt lookup. Existing batch outputs may retain it with the answer. Original signed payload/sig/v2 stay intact. Top-level usage is for the returned call only; total_cost includes both served calls even if the correction is invalid. Checks do not establish factual accuracy. Supported schema assertions: type (including arrays), nullable, properties, required, additionalProperties, items, enum, const, anyOf, minLength/maxLength, minimum/maximum/exclusiveMinimum/exclusiveMaximum, minItems/maxItems, minProperties/maxProperties, and existing local #/ references via $defs/definitions. Unknown assertions are refused before billing. Limits: 1 MiB answer, 4096 schema nodes, 100000 validation steps, 64 levels, 16 reported errors. Oversized/non-text answers cannot be repaired.","required":["mode","valid","errors","retry_attempted","calls","total_cost"],"properties":{"mode":{"type":"string","enum":["validate","repair"]},"valid":{"type":"boolean"},"errors":{"type":"array","items":{"$ref":"#/components/schemas/StructuredOutputIssue"}},"initial_errors":{"type":"array","items":{"$ref":"#/components/schemas/StructuredOutputIssue"}},"retry_attempted":{"type":"boolean"},"retry_error":{"type":"object","description":"Correction did not return a usable answer. The first charge remains, and a signed correction charge is included even if its attestation was refused after settlement. status when known, reason."},"repair_supported":{"type":"boolean","description":"false for streaming repair; no second call is made."},"note":{"type":"string"},"calls":{"type":"array","minItems":1,"maxItems":2,"items":{"type":"object","required":["attempt","cost","receipt"],"properties":{"attempt":{"type":"integer","minimum":1,"maximum":2},"cost":{"type":"string","description":"Exact USDG charge for this call."},"receipt":{"$ref":"#/components/schemas/Receipt"}}}},"total_cost":{"type":"string","description":"Sum of the served calls' USDG charges."}}},
+      "StructuredOutputOptions": {
+        "type": "object",
+        "properties": {
+          "json_check": {
+            "type": "string",
+            "enum": [
+              "validate",
+              "repair"
+            ],
+            "description": "V83: Requires STRUCTURED_OUTPUT_CHECK_ENABLED (default false; switched on at anyroute.tech). validate checks the final JSON; repair permits one correction by the same routed model/provider. Both calls are billed normally. Streaming repair validates only. Requires json_object or json_schema and n=1; no council or dual verification. Non-streaming repair requires a bearer API key and bypasses the response cache. Explicit request settings override preset defaults."
+          }
+        }
+      },
+      "StructuredOutputIssue": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "JSON Pointer path; empty string is the root."
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "StructuredOutputResult": {
+        "type": "object",
+        "description": "V83: Unsigned response metadata; not written to generation receipts or returned by receipt lookup. Existing batch outputs may retain it with the answer. Original signed payload/sig/v2 stay intact. Top-level usage is for the returned call only; total_cost includes both served calls even if the correction is invalid. Checks do not establish factual accuracy. Supported schema assertions: type (including arrays), nullable, properties, required, additionalProperties, items, enum, const, anyOf, minLength/maxLength, minimum/maximum/exclusiveMinimum/exclusiveMaximum, minItems/maxItems, minProperties/maxProperties, and existing local #/ references via $defs/definitions. Unknown assertions are refused before billing. Limits: 1 MiB answer, 4096 schema nodes, 100000 validation steps, 64 levels, 16 reported errors. Oversized/non-text answers cannot be repaired.",
+        "required": [
+          "mode",
+          "valid",
+          "errors",
+          "retry_attempted",
+          "calls",
+          "total_cost"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "validate",
+              "repair"
+            ]
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StructuredOutputIssue"
+            }
+          },
+          "initial_errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StructuredOutputIssue"
+            }
+          },
+          "retry_attempted": {
+            "type": "boolean"
+          },
+          "retry_error": {
+            "type": "object",
+            "description": "Correction did not return a usable answer. The first charge remains, and a signed correction charge is included even if its attestation was refused after settlement. status when known, reason."
+          },
+          "repair_supported": {
+            "type": "boolean",
+            "description": "false for streaming repair; no second call is made."
+          },
+          "note": {
+            "type": "string"
+          },
+          "calls": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": [
+                "attempt",
+                "cost",
+                "receipt"
+              ],
+              "properties": {
+                "attempt": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2
+                },
+                "cost": {
+                  "type": "string",
+                  "description": "Exact USDG charge for this call."
+                },
+                "receipt": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "total_cost": {
+            "type": "string",
+            "description": "Sum of the served calls' USDG charges."
+          }
+        }
+      },
       "ChatRequest": {
         "type": "object",
         "required": [
@@ -15585,7 +18291,9 @@
           }
         ],
         "properties": {
-          "anyroute": {"$ref":"#/components/schemas/StructuredOutputOptions"},
+          "anyroute": {
+            "$ref": "#/components/schemas/StructuredOutputOptions"
+          },
           "model": {
             "type": "string",
             "description": "Public model ID, optionally with routing suffixes: :nitro sorts providers by throughput (fastest first) and :floor by price (cheapest first), the same as provider.sort throughput and price and winning over it; both only order the providers the other preferences and the lane allow. :free and :private also apply. The reserved ID anyroute/council selects council mode when the router enables it. @route/<slug> calls a saved route and @preset/<name> (or @preset/<name>@<version> to pin one version) calls a preset of the key's account. @character/<id> calls a character: the card is the prompt and models[0], or the character's default model, answers."
@@ -17237,18 +19945,192 @@
           }
         }
       },
-      "RouteExplanation": {"type":"object","additionalProperties":false,"description":"Versioned additive router statement, not an independent selection proof. eligible counts final-plan candidate offers before attempt limits for the serving model; skipped counts its exclusions. Fallback error classes cover earlier attempts, including earlier models, without raw errors or provider identities. No URLs, keys, addresses, content or weights. Both receipt signatures cover route.","required":["v","provider","reason","eligible","skipped","lane","parameters","network_host"],"properties":{"v":{"type":"integer","const":1},"provider":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,96}$"},"reason":{"type":"string","enum":["lowest_price","lowest_latency","highest_throughput","weighted_choice","provider_order","preferred_performance","byok_priority","only_eligible","only_parameter_support","fallback"]},"eligible":{"type":"integer","minimum":1},"skipped":{"type":"object","additionalProperties":false,"properties":{"health":{"type":"integer","minimum":1},"lane":{"type":"integer","minimum":1},"disclosure":{"type":"integer","minimum":1},"attestation":{"type":"integer","minimum":1},"parameters":{"type":"integer","minimum":1},"price":{"type":"integer","minimum":1},"context":{"type":"integer","minimum":1},"preferences":{"type":"integer","minimum":1},"availability":{"type":"integer","minimum":1},"other":{"type":"integer","minimum":1}}},"lane":{"type":"string","enum":["public","attested","unlinkable"]},"parameters":{"type":"array","uniqueItems":true,"items":{"type":"string","enum":["tools","tool_choice","response_format","temperature","seed","max_tokens","stop","top_p","top_k","reasoning","include_reasoning","modalities","audio"]}},"network_host":{"type":"boolean"},"fallback":{"type":"object","additionalProperties":false,"properties":{"http_5xx":{"type":"integer","minimum":1},"timeout":{"type":"integer","minimum":1},"connection":{"type":"integer","minimum":1},"rate_limited":{"type":"integer","minimum":1},"provider_auth":{"type":"integer","minimum":1},"rejected":{"type":"integer","minimum":1},"empty200":{"type":"integer","minimum":1},"unreadable":{"type":"integer","minimum":1},"interrupted":{"type":"integer","minimum":1},"other":{"type":"integer","minimum":1}}}}},
+      "RouteExplanation": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Versioned additive router statement, not an independent selection proof. eligible counts final-plan candidate offers before attempt limits for the serving model; skipped counts its exclusions. Fallback error classes cover earlier attempts, including earlier models, without raw errors or provider identities. No URLs, keys, addresses, content or weights. Both receipt signatures cover route.",
+        "required": [
+          "v",
+          "provider",
+          "reason",
+          "eligible",
+          "skipped",
+          "lane",
+          "parameters",
+          "network_host"
+        ],
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "provider": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,96}$"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "lowest_price",
+              "lowest_latency",
+              "highest_throughput",
+              "weighted_choice",
+              "provider_order",
+              "preferred_performance",
+              "byok_priority",
+              "only_eligible",
+              "only_parameter_support",
+              "fallback"
+            ]
+          },
+          "eligible": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "skipped": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "health": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "lane": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "disclosure": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "attestation": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "parameters": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "price": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "context": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "preferences": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "availability": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "other": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "lane": {
+            "type": "string",
+            "enum": [
+              "public",
+              "attested",
+              "unlinkable"
+            ]
+          },
+          "parameters": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "tools",
+                "tool_choice",
+                "response_format",
+                "temperature",
+                "seed",
+                "max_tokens",
+                "stop",
+                "top_p",
+                "top_k",
+                "reasoning",
+                "include_reasoning",
+                "modalities",
+                "audio"
+              ]
+            }
+          },
+          "network_host": {
+            "type": "boolean"
+          },
+          "fallback": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "http_5xx": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "timeout": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "connection": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "rate_limited": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "provider_auth": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "rejected": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "empty200": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "unreadable": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "interrupted": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "other": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      },
       "Receipt": {
         "type": "object",
         "properties": {
-          "structured_output": {"$ref":"#/components/schemas/StructuredOutputResult"},
+          "structured_output": {
+            "$ref": "#/components/schemas/StructuredOutputResult"
+          },
           "id": {
             "type": "string"
           },
           "payload": {
             "type": "object",
             "additionalProperties": true,
-            "properties": {"route":{"$ref":"#/components/schemas/RouteExplanation"}},
+            "properties": {
+              "route": {
+                "$ref": "#/components/schemas/RouteExplanation"
+              }
+            },
             "description": "Signed fields. Optional route is a versioned additive claim when ROUTE_EXPLAIN_ENABLED is true (default false). Among them, disclosure (attested, policy or vendor-forwarded) and lane (public, attested or unlinkable) record how the call was served; attestation_simulated is true when the attestation behind an attested call is a development report. attestation_ref (see AttestationRef) is present on calls made under an attested council or attested dual verification. For a call paid with a blind token, payer is null and nullifier (the SHA-256 of the spent token) and token_key_id are present; nothing names an account. Receipts issued before these fields existed do not carry them."
           },
           "sig": {
@@ -17328,7 +20210,9 @@
       "ReceiptClaimsV2": {
         "type": "object",
         "properties": {
-          "route": {"$ref":"#/components/schemas/RouteExplanation"},
+          "route": {
+            "$ref": "#/components/schemas/RouteExplanation"
+          },
           "v": {
             "type": "integer",
             "const": 2
@@ -22051,7 +24935,9 @@
         ],
         "description": "A preset: the routing part of a saved route plus prompt-side defaults. The whole document is at most 64 KB as JSON.",
         "properties": {
-          "anyroute": {"$ref":"#/components/schemas/StructuredOutputOptions"},
+          "anyroute": {
+            "$ref": "#/components/schemas/StructuredOutputOptions"
+          },
           "description": {
             "type": "string",
             "maxLength": 280
@@ -25111,6 +27997,347 @@
               },
               "notice": {
                 "const": "Signed by AnyRoute's router, which sees the agent's activity; not a zero-knowledge proof."
+              }
+            }
+          }
+        }
+      },
+      "ToolCallRequest": {
+        "type": "object",
+        "required": [
+          "resource",
+          "max_price"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "resource": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "The tool's https address, with its query arguments. Only the origin and path are stored."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "default": "GET"
+          },
+          "body": {
+            "description": "JSON sent to the tool as a POST body, at most 64 KiB."
+          },
+          "max_price": {
+            "oneOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              {
+                "type": "string",
+                "pattern": "^[0-9]{1,7}(\\.[0-9]{1,12})?$"
+              }
+            ],
+            "description": "The most this call may charge the key in USD: the seller's price plus the router's take."
+          },
+          "then": {
+            "type": "object",
+            "required": [
+              "model"
+            ],
+            "additionalProperties": false,
+            "description": "Hand the answer to a model in the same call; needs tools.pass_to_models.",
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "max_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8192
+              }
+            }
+          }
+        }
+      },
+      "ToolCall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "resource": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "seller": {
+            "type": "object",
+            "properties": {
+              "pay_to": {
+                "type": "string"
+              },
+              "seller_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "network": {
+                "type": "string"
+              }
+            }
+          },
+          "x402_version": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "price_usd": {
+            "type": "number"
+          },
+          "take_usd": {
+            "type": "number"
+          },
+          "charged_usd": {
+            "type": "number"
+          },
+          "settle": {
+            "type": "object",
+            "properties": {
+              "tx": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "network": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "response": {
+            "type": "object",
+            "description": "The tool's answer, untrusted: json or text, with status, content_type, bytes and sha256.",
+            "properties": {
+              "status": {
+                "type": "integer"
+              },
+              "content_type": {
+                "type": "string"
+              },
+              "bytes": {
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "untrusted": {
+                "type": "boolean"
+              },
+              "json": {},
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          "receipt": {
+            "type": "object",
+            "description": "kind tool.call: COSE_Sign1 (base64) under the receipt key, key_id, leaf and the signed claims.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "tool.call"
+                ]
+              },
+              "key_id": {
+                "type": "string"
+              },
+              "cose": {
+                "type": "string"
+              },
+              "leaf": {
+                "type": "string"
+              },
+              "claims": {
+                "type": "object"
+              }
+            }
+          },
+          "model": {
+            "type": "object",
+            "description": "Present when then was set."
+          }
+        }
+      },
+      "ToolListing": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "price_usd": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "price_units": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pay_to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "network": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "listing",
+              "skill",
+              "facilitator",
+              "public_catalog"
+            ]
+          },
+          "skill_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quality": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "passing",
+                  "failing",
+                  "delisted",
+                  "unchecked"
+                ]
+              },
+              "consecutive_failures": {
+                "type": "integer"
+              },
+              "checked_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "delisted_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "ToolListingRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "summary",
+          "resource",
+          "canary"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 280
+          },
+          "resource": {
+            "type": "string",
+            "description": "https address without a query string."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "default": "GET"
+          },
+          "skill_id": {
+            "type": "string",
+            "pattern": "^sk_[0-9a-f]{24}$"
+          },
+          "canary": {
+            "type": "object",
+            "required": [
+              "expect"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "query": {
+                "type": "string"
+              },
+              "body": {},
+              "expect": {
+                "type": "object",
+                "description": "Exactly one of contains or sha256.",
+                "properties": {
+                  "contains": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
               }
             }
           }

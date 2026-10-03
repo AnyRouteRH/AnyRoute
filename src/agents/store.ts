@@ -42,10 +42,17 @@ export async function policyState(db: Db | Tx, policy: Pick<PolicyRow, "keyHash"
     hour: sql<string>`coalesce(sum(-${ledger.amount}) filter (where ${ledger.createdAt} > ${since(3_600_000)}), 0)`,
     day: sql<string>`coalesce(sum(-${ledger.amount}) filter (where ${ledger.createdAt} > ${since(86_400_000)}), 0)`,
     week: sql<string>`coalesce(sum(-${ledger.amount}), 0)`,
-  }).from(ledger).where(sql`${ledger.keyHash} in ${scope} and ${ledger.amount} < 0 and ${ledger.kind} = 'usage' and ${ledger.createdAt} > ${since(604_800_000)} and ${ledger.createdAt} <= ${now.toISOString()}`);
-  const [open] = await db.select({ total: sql<string>`coalesce(sum(${holds.amount}), 0)` }).from(holds).where(sql`${holds.keyHash} in ${scope} and ${holds.status} = 'held' and ${holds.kind} = 'usage'`);
+  }).from(ledger).where(sql`${ledger.keyHash} in ${scope} and ${ledger.amount} < 0 and ${ledger.kind} in ('usage', 'tool_call') and ${ledger.createdAt} > ${since(604_800_000)} and ${ledger.createdAt} <= ${now.toISOString()}`);
+  const [open] = await db.select({ total: sql<string>`coalesce(sum(${holds.amount}), 0)` }).from(holds).where(sql`${holds.keyHash} in ${scope} and ${holds.status} = 'held' and ${holds.kind} in ('usage', 'tool_call')`);
   const inflight = BigInt(open.total);
-  return { ...(policy.spec?.autonomy ? { autonomy: await readAutonomy(db, policy as PolicyRow, now) } : {}), ...(policy.spec?.breakers ? { breakers: await loadBreakerState(db, policy.keyHash, now) } : {}), killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight } };
+  // v6 T: paid tool spend (charged plus open tool holds) over the rolling day, for tools.daily_budget.
+  let tools: bigint | undefined;
+  if (policy.spec?.tools?.daily_budget !== undefined) {
+    const [t] = await db.select({ charged: sql<string>`coalesce(sum(-${ledger.amount}), 0)` }).from(ledger).where(sql`${ledger.keyHash} in ${scope} and ${ledger.amount} < 0 and ${ledger.kind} = 'tool_call' and ${ledger.createdAt} > ${since(86_400_000)} and ${ledger.createdAt} <= ${now.toISOString()}`);
+    const [h] = await db.select({ held: sql<string>`coalesce(sum(${holds.amount}), 0)` }).from(holds).where(sql`${holds.keyHash} in ${scope} and ${holds.status} = 'held' and ${holds.kind} = 'tool_call'`);
+    tools = BigInt(t.charged) + BigInt(h.held);
+  }
+  return { ...(policy.spec?.autonomy ? { autonomy: await readAutonomy(db, policy as PolicyRow, now) } : {}), ...(policy.spec?.breakers ? { breakers: await loadBreakerState(db, policy.keyHash, now) } : {}), killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight }, ...(tools !== undefined ? { tools_spent_pico_day: tools } : {}) };
 }
 export async function setPolicy(db: Db, accountId: string, keyHash: string, policy: AgentPolicy, actor: string) {
   return db.transaction(async tx => {

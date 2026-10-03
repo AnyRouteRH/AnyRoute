@@ -20,6 +20,12 @@ export default [
       }
     ],
     "tags": [
+    "id": "paid-tools",
+    "title": "Pay x402 tools from your Anyroute balance",
+    "summary": "Built, and not switched on at anyroute.tech yet: with TOOLS_MARKET_ENABLED a key can pay any x402 tool priced in USDG on Robinhood Chain. The router pays the seller, charges the price plus its take with a signed tool.call receipt, applies your rulebook's tool limits and probes listed tools daily.",
+        "href": "/tools/"
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/d7d9d6cdb4b0bde2905d156e560c1410b45d4d8d"
+      "agents",
       "build",
       "verify"
     ]

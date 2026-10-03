@@ -1,4 +1,5 @@
 import { rushStores } from "./rush.ts"; // ON3
+import { toolsBodyReader, toolsRateFamilies, toolsStores } from "./tools.ts"; // v6 T: paid tool market.
 import { provisioningBodyReader, inferenceModelReader } from "./provisioning.ts"; // ZK6
 import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { statementStores } from "./statements.ts"; // V87
@@ -47,6 +48,7 @@ function limit(o: { prefix: string; shape: string; purpose: string; holds: Redis
 const ADDRESS_NOTE = "The caller's network address is part of the key. Over Tor the address is replaced by the word onion, so no address is used.";
 
 const redisFamilies: RedisFamily[] = [
+  ...toolsRateFamilies, // v6 T
   limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate issuance attempts: five per minute per account, shared across standalone and profile issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym or claims.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
   telegramLinkRate,
   ...facilitatorRedisFamilies, // v6 F
@@ -394,6 +396,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  toolsBodyReader, // v6 T
   provisioningBodyReader, inferenceModelReader, // ZK6
   structuredOutputReader, // V83
   webhookBodyReader, // V86.
@@ -727,6 +730,7 @@ export const EXTERNAL: ExternalDoc = {
   },
   otherStores: [
     ...rushStores, // ON3
+    ...toolsStores, // v6 T
     ...webhookStores, // V86.
     ...makegoodStores, // V6 R.
     ...activityStores,

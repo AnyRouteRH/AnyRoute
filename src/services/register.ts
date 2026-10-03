@@ -1,4 +1,6 @@
 import { registerRushJobs } from "../rush/monitor.ts"; // ON3
+import { reconcileToolCalls } from "../tools/call.ts"; // v6 T
+import { runToolCanaries } from "../tools/canary.ts"; // v6 T
 import { runWebhooks } from "../webhooks/worker.ts"; // V86: bounded event delivery.
 import { runMakegoodPayouts } from "./makegood.ts"; // V6 R
 import { registerAgreementJobs } from "../agreements/jobs.ts";
@@ -37,6 +39,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   const { cfg, jobs } = ctx;
   registerAgreementJobs(ctx, router);
   registerRushJobs(ctx); // ON3
+  // v6 T: close holds of failed paid tool calls once their authorization expires; probe listed tools with a known answer.
+  if (cfg.tools.enabled) { jobs.register("tools-reconcile", 60_000, () => reconcileToolCalls(ctx)); jobs.register("tools-canary", 3_600_000, () => runToolCanaries(ctx)); }
   if (cfg.hostBonds.enabled) { jobs.register("host-bond-indexer", 5_000, () => pollHostBonds(ctx), { atStart: true }); jobs.register("host-slasher", 60_000, () => runHostSlasher(ctx)); }
   if (cfg.agentPolicyEnabled) jobs.register("agent-alerts", 60_000, () => runAgentAlerts(ctx));
   if (cfg.sanctions.enabled) jobs.register("sanctions-refresh", 86_400_000, () => refreshSanctions(ctx), { atStart: true });
