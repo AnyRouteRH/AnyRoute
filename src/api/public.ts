@@ -25,6 +25,7 @@ import { X402_VERSIONS, x402Enabled } from "../pay/x402.ts";
 import { RECOVERY_TTL_MS, recoveryMessage } from "../pay/recovery.ts";
 import { facilitatorStatus } from "../facilitator/routes.ts"; // v6 F
 import { toolsStatus } from "../tools/routes.ts"; // v6 T
+import { agreementsStatus } from "../agreements/status.ts";
 import { PRIVATE_LANES, PUBLIC_LANE_ROWS, privateLaneStats } from "../services/private-stats.ts";
 import { labelForReceipt } from "../privacy/resolve.ts";
 import { commerceStatus } from "../commerce/stats.ts"; // v6 L
@@ -366,6 +367,9 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         tools: toolsStatus(ctx),
         // v6 L: the honest commerce ledger: whether it is on, which receipt kinds feed it, and whether its filters can work here.
         commerce: commerceStatus(ctx),
+        // Agent agreements: the contracts this router indexes, and whether the isolated jury worker is posting rulings
+        // (its fresh heartbeat after matching the oracle's jury on chain; the API itself never holds the signer keys).
+        agreements: await agreementsStatus(ctx),
         // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.
         holders: holdersStatus(ctx),
         telemetry: ctx.telemetry.enabled,

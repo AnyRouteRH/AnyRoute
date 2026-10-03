@@ -10,6 +10,7 @@ import { lockAgreementCursor } from "./indexer.ts";
 import { readAgreement } from "./evidence.ts";
 import { agreementScope } from "./state.ts";
 import { guardAgreementSigners, signAgreementTally } from "./tally.ts";
+import { recordJuryHeartbeat } from "./status.ts";
 import type { Vote, Verdict } from "./jury.ts";
 export type RulingTransport = { receipt?(hash: Hex): Promise<"pending" | "posted" | "reverted">; guard(): Promise<void>; prepare(id: string, root: Hex, votes: Vote[]): Promise<{ raw: Hex; hash: Hex }>; broadcast(raw: Hex, hash: Hex): Promise<"pending" | "posted" | "reverted"> };
 export function rulingTransport(ctx: Ctx): RulingTransport {
@@ -50,6 +51,8 @@ export async function postAgreementRuling(ctx: Ctx, transport = rulingTransport(
   if (!cfg.rulings || !cfg.signerKeys?.[0]) return { skipped: "dry run" };
   if (!ctx.tlog) return { skipped: "jury key log required" };
   await transport.guard();
+  // The keys match the oracle's jury on chain: tell the public API (GET /api/v1/status agreements.rulings).
+  await recordJuryHeartbeat(ctx);
   const scope = agreementScope(ctx.cfg);
   const intent = await ctx.db.transaction(async tx => {
     const cursor = await lockAgreementCursor(tx, scope, cfg.startBlock);
