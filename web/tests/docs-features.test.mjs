@@ -37,8 +37,7 @@ test('/docs feature index and side navigation link every agent, encrypted-chat a
 });
 
 test('hosted enablement keeps self-host defaults and accurately separates unavailable features', () => {
-  for (const component of Object.values(sections).filter(name => !['E2eeDocs', 'HostBondsDocs', 'NetworkPayoutDocs', 'AgreementsDocs', 'SealedAgentDocs', 'AgentIdentityDocs'].includes(name))) {
-  for (const component of Object.values(sections).filter(name => !['E2eeDocs', 'HostBondsDocs', 'NetworkPayoutDocs', 'AgreementsDocs', 'SealedAgentDocs', 'CommerceStatsDocs'].includes(name))) {
+  for (const component of Object.values(sections).filter(name => !['E2eeDocs', 'HostBondsDocs', 'NetworkPayoutDocs', 'AgreementsDocs', 'SealedAgentDocs', 'AgentIdentityDocs', 'CommerceStatsDocs'].includes(name))) {
     const docs = read(`components/${component}.jsx`);
     assert.match(docs, /default(?:s to)? false/);
     assert.match(docs, /Switched on at anyroute.tech\./);

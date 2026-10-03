@@ -51,7 +51,6 @@ const ADDRESS_NOTE = "The caller's network address is part of the key. Over Tor 
 
 const redisFamilies: RedisFamily[] = [
   ...toolsRateFamilies, // v6 T
-  limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate issuance attempts: five per minute per account, shared across standalone and profile issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym or claims.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
   limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate and track-record issuance attempts: five per minute per account, shared across standalone, profile and track-record issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym, claims or stats.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/identity/track-record.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
   feedbackLimit, // v6 I
   telegramLinkRate,
