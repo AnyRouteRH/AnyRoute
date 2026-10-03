@@ -3811,7 +3811,7 @@ async function startProxy(o) {
         if (origin !== undefined && !LOOPBACK_ORIGIN.test(origin))
           throw new HttpFailure(403, "forbidden_origin", "This proxy does not answer requests from web pages.");
         if (localKey) {
-          const given = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1] ?? (typeof req.headers["x-api-key"] === "string" ? req.headers["x-api-key"] : "");
+          const given = /^Bearer[ \t]+(\S.*)$/i.exec(req.headers.authorization ?? "")?.[1] ?? (typeof req.headers["x-api-key"] === "string" ? req.headers["x-api-key"] : "");
           if (!timingSafeEqual(digest(given), localKey))
             throw new HttpFailure(401, "invalid_local_key", "This proxy was started with --local-key: send it as the API key (Authorization: Bearer).");
         }
