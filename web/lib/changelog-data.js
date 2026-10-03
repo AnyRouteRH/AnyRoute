@@ -5,6 +5,26 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "receipt-backed-reputation",
+    "date": "2026-10-03",
+    "title": "Agent reputation only from people who paid",
+    "summary": "Agents can link an ERC-8004 identity on Robinhood Chain, take feedback only from reviewers who paid them through AnyRoute, weighted by the amount and fading over time, show a signed daily liveness check, and publish a signed track record with a Merkle proof over their receipts. Built and off by default; not switched on at anyroute.tech yet.",
+    "links": [
+      {
+        "label": "Read the docs",
+        "href": "/docs/#agent-identity"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4a573a612a5642110d61038ef7906328e98eccbd"
+      }
+    ],
+    "tags": [
+      "agents",
+      "verify"
+    ]
+  },
+  {
     "id": "x402-payment-recovery",
     "date": "2026-10-03",
     "title": "Recover a lost x402 answer without paying twice",
