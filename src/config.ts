@@ -1,3 +1,4 @@
+import { identityEnv, identitySettings } from "./identity/config.ts"; // v6 I: receipt-backed identity and reputation.
 import { rushEnv, rushSettings } from "./rush/config.ts"; // ON3
 import { zkapiPageEnv } from "./zkapi/page-config.ts"; // ZK10: opt-in static-page origins.
 import { structuredOutputEnv } from "./structured-output/options.ts"; // V83: opt-in JSON checking.
@@ -58,6 +59,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...identityEnv, // v6 I
   ...zkapiPageEnv, // ZK10
   ...rushEnv, // ON3
   DEVELOPER_FIRST_CALL_ENABLED: bool.default(false), // ON2: guidance for GETs to model endpoints.
@@ -505,6 +507,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("upstream-monitor"); // ON3
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
       allowed.push("x402-recovery-expire"); // x402 payment recovery retention
+      allowed.push("agent-liveness", "agent-identity"); // v6 I: daily signed endpoint probes; isolated ERC-8004 registrar.
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", buyback: "buyback" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
@@ -593,6 +596,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     env: e.ANYROUTE_ENV,
     production,
     developerFirstCallEnabled: e.DEVELOPER_FIRST_CALL_ENABLED, // ON2
+    identity: identitySettings(e), // v6 I
     routeExplain: e.ROUTE_EXPLAIN_ENABLED, // V84
     hostDashboard: { enabled: e.HOST_DASHBOARD_ENABLED },
     agreements: agreementSettings(e, production),

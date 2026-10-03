@@ -1,4 +1,5 @@
 import { rushStores } from "./rush.ts"; // ON3
+import { feedbackLimit, identityBodyReader, identityStores } from "./identity.ts"; // v6 I
 import { provisioningBodyReader, inferenceModelReader } from "./provisioning.ts"; // ZK6
 import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { statementStores } from "./statements.ts"; // V87
@@ -45,7 +46,8 @@ function limit(o: { prefix: string; shape: string; purpose: string; holds: Redis
 const ADDRESS_NOTE = "The caller's network address is part of the key. Over Tor the address is replaced by the word onion, so no address is used.";
 
 const redisFamilies: RedisFamily[] = [
-  limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate issuance attempts: five per minute per account, shared across standalone and profile issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym or claims.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
+  limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate and track-record issuance attempts: five per minute per account, shared across standalone, profile and track-record issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym, claims or stats.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/identity/track-record.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
+  feedbackLimit, // v6 I
   telegramLinkRate,
   limit({ prefix: "network-host-wallet:", shape: "network-host-wallet:<operator wallet>", purpose: "Wallet-authenticated host signup and credential updates, three per minute per wallet. Links attempts by the public operator wallet.", holds: "wallet", seconds: 60, evidence: [ev("src/api/network-hosts.ts", "await ctx.limiter.take(`network-host-wallet:${auth.wallet}`")] }),
   limit({ prefix: "network-host-address:", shape: "network-host-address:<caller address or onion>", purpose: "Host signup and credential attempts, ten per minute per network address, with the existing scaled shared onion bucket. The raw address is temporarily part of the Redis key.", holds: "address", seconds: 60, evidence: [ev("src/api/network-hosts.ts", "await ctx.limiter.take(`network-host-address:${from.id}`")] }),
@@ -395,6 +397,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   webhookBodyReader, // V86.
   profileBodyReader,
   x402RecoveryReader,
+  identityBodyReader, // v6 I
   ...sealedBodyReaders,
   telegramLinkReader,
   ...juryBodyReaders,
@@ -723,6 +726,7 @@ export const EXTERNAL: ExternalDoc = {
   otherStores: [
     ...rushStores, // ON3
     ...webhookStores, // V86.
+    ...identityStores, // v6 I
     ...activityStores,
     ...statementStores, // V87
     ...insightsStores, // V88: spend insights.

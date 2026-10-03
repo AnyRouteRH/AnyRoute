@@ -1290,3 +1290,4 @@ export { agentProfiles } from "../agents/profile-schema.ts";
 export * from "../agreements/schema.ts";
 
 export { webhookDestinations, webhookDeliveries } from "../webhooks/schema.ts"; // V86: signed destinations.
+export { agentIdentities, agentFeedback, agentLiveness, agentTrackRecords } from "../identity/schema.ts"; // v6 I: receipt-backed identity and reputation.

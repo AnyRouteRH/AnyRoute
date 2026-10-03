@@ -7,6 +7,7 @@ import StructuredOutputDocs from "../../components/StructuredOutputDocs"; // V83
 import StatementDocs from "../../components/StatementDocs"; // V87
 import WebhookDocs from "../../components/WebhookDocs"; // V86: optional signed event delivery.
 import AgentProfileDocs from "../../components/AgentProfileDocs";
+import AgentIdentityDocs from "../../components/AgentIdentityDocs";
 import SealedAgentDocs from "../../components/SealedAgentDocs";
 import AgreementsDocs from "../../components/AgreementsDocs";
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
@@ -846,7 +847,7 @@ export default function Docs() {
           <WebhookDocs/> {/* V86. */}
           <AgentAlertDocs />
           <AgentApprovalDocs />
-          <AgentCertificateDocs /><AgentProfileDocs /><SealedAgentDocs />
+          <AgentCertificateDocs /><AgentProfileDocs /><AgentIdentityDocs /><SealedAgentDocs />
           <h2 id="quickstart">Make your first API call.</h2> {/* ON2 */}
           <FirstCallDocs /> {/* ON2 */}
           <p>

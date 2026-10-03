@@ -10,6 +10,7 @@ import { inboxRoutes } from "./api/inbox.ts"; // U78: account inbox.
 import { activityRoutes } from "./api/activity.ts";
 import { networkStatsRoutes } from "./network/stats.ts";
 import { agentProfilesRoutes } from "./api/agent-profiles.ts";
+import { identityRoutes } from "./identity/routes.ts"; // v6 I: before the rulebook routes, which 404 without AGENT_POLICY_ENABLED.
 import { agentSealedRoutes } from "./api/agent-sealed.ts";
 import { telegramLinkingRoutes } from "./api/telegram-linking.ts";
 import { guardAgreementSigners } from "./agreements/tally.ts";
@@ -202,6 +203,7 @@ export async function createApp(opts: AppOptions = {}) {
   characterRoutes(app, ctx);
   memoryRoutes(app, ctx);
   agentProfilesRoutes(app, ctx);
+  identityRoutes(app, ctx); // v6 I
   agentSealedRoutes(app, ctx);
   agentsRoutes(app, ctx);
   agreementsRoutes(app, ctx);

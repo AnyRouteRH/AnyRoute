@@ -12,6 +12,7 @@ import { readinessMetrics } from "../services/readiness-metrics.ts";
 import { readJson } from "./common.ts";
 import { requireKey } from "./auth.ts";
 import { verifyReceipt, verifyReceiptV2, anchorProof } from "./generation.ts";
+import { identityStatus } from "../identity/status.ts"; // v6 I
 import { COSE_CONTENT_TYPE } from "../receipts/v2.ts";
 import { holdersStatus } from "../holders/tiers.ts";
 import { laneSummary } from "./models.ts";
@@ -315,6 +316,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         private_lanes: { lanes: PRIVATE_LANES, stats: "/api/v1/stats", epsilon_spent_today: privateLaneStats(ctx).budget().epsilon_spent_today },
         router: ctx.cfg.publicUrl,
         network: { hosts_open: ctx.cfg.networkHosts.enabled === true, payouts_open: ctx.cfg.networkPayouts.enabled === true, fee_bps: ctx.cfg.networkPayouts.feeBps },
+        // v6 I: ERC-8004 identity, paid feedback and liveness probes; each says whether it is switched on here.
+        identity: identityStatus(ctx),
         env: ctx.cfg.env,
         // The running build (RELEASE_COMMIT; null when unset) and whether its contracts were verified.
         release: {
