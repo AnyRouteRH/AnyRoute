@@ -1,6 +1,7 @@
 import { roleOf, type KeyRow } from "../api/auth.ts"; // V86: recheck retained principal access.
 import { and, asc, eq, lt, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
+import type { Db } from "../db/client.ts";
 import { keys, spendAlerts, agentSessions } from "../db/schema.ts";
 import { readActivity } from "../activity/read.ts";
 import { activityQuery } from "../activity/query.ts";
@@ -22,15 +23,17 @@ async function ownerActive(ctx: Ctx, key: KeyRow | undefined, d: Destination) {
 }
 async function ingest(ctx: Ctx, destination: Destination) {
   await ctx.db.transaction(async tx => {
+    // Every read inside the lock goes through the transaction: a second connection is not guaranteed (PGlite has one).
+    const scoped = { ...ctx, db: tx as unknown as Db };
     const [d] = await tx.select().from(webhookDestinations).where(eq(webhookDestinations.id, destination.id)).for("update", { skipLocked: true });
     if (!d || d.revoked) return;
     const [key] = await tx.select().from(keys).where(and(eq(keys.keyHash, d.createdBy), eq(keys.accountId, d.accountId)));
-    if (!await ownerActive(ctx, key, d)) return;
+    if (!await ownerActive(scoped, key, d)) return;
     const state = { ...d.scan };
     // One page per destination per minute, with a fixed upper bound and cursor carried across ticks.
     const to = state.to ?? new Date(Date.now() - 1000).toISOString();
     if (Date.parse(to) > Date.parse(state.from)) {
-      const page = await readActivity(ctx, key, activityQuery({ from: state.from, to, limit: "100", ...(state.cursor ? { cursor: state.cursor } : {}), ...(d.keyHash ? { key: d.keyHash } : {}) }), sql`kind in ('alert','deposit','agreement')`);
+      const page = await readActivity(scoped, key, activityQuery({ from: state.from, to, limit: "100", ...(state.cursor ? { cursor: state.cursor } : {}), ...(d.keyHash ? { key: d.keyHash } : {}) }), sql`kind in ('alert','deposit','agreement')`);
       for (const row of page.data) {
         const event = activityEvent(row);
         // Linked rules continue to own the exact spend/agent payload and retry lease.
@@ -57,7 +60,7 @@ export async function runWebhooks(ctx: Ctx, opts: SpendWatchOptions = {}) {
       const [row] = await tx.select({ delivery: webhookDeliveries, destination: webhookDestinations }).from(webhookDeliveries).innerJoin(webhookDestinations, eq(webhookDestinations.id, webhookDeliveries.destinationId)).where(and(eq(webhookDeliveries.status, "pending"), lt(webhookDeliveries.nextAttempt, new Date()), eq(webhookDestinations.revoked, false), sql`${webhookDeliveries.attempts} < 3`, sql`(${webhookDestinations.ruleId} is null or ${webhookDeliveries.event} not in ('spend.alert','agent.alert'))`)).orderBy(asc(webhookDeliveries.nextAttempt)).limit(1).for("update", { skipLocked: true });
       if (!row) return null;
       const [owner] = await tx.select().from(keys).where(eq(keys.keyHash, row.destination.createdBy));
-      if (!await ownerActive(ctx, owner, row.destination)) {
+      if (!await ownerActive({ ...ctx, db: tx as unknown as Db }, owner, row.destination)) {
         await tx.update(webhookDeliveries).set({ status: "cancelled" }).where(eq(webhookDeliveries.id, row.delivery.id)); return null;
       }
       if (row.destination.ruleId) {
