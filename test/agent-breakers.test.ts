@@ -72,7 +72,8 @@ test("request limit admits exactly N concurrent requests, then kills, resume cle
 test("recorded spend and open holds trip at exact threshold across concurrent admissions", async () => {
   const k = await h.fundedKey(); await put(k, { ...base, breakers:{max_spend_usd_per_minute:1} });
   const [key] = await h.ctx.db.select().from(keys).where(eq(keys.keyHash,k.hash));
-  await h.ctx.db.insert(ledger).values({ id:`breaker-spend-${k.hash}`,ref:`breaker-spend-${k.hash}`,accountId:key.accountId,keyHash:k.hash,kind:"usage",amount:-usdToPico(0.5) });
+  // Stamped a second ago: the database's default stamp is in microseconds and could fall after the millisecond `now` read next.
+  await h.ctx.db.insert(ledger).values({ id:`breaker-spend-${k.hash}`,ref:`breaker-spend-${k.hash}`,accountId:key.accountId,keyHash:k.hash,kind:"usage",amount:-usdToPico(0.5),createdAt:new Date(Date.now()-1000) });
   expect((await loadBreakerState(h.ctx.db,k.hash,new Date())).spent_minute_pico).toBe(usdToPico(0.5));
   const results = await Promise.allSettled([1,2].map(i => reserve(h.ctx.db,{id:`breaker-spend-hold-${k.hash}-${i}`,accountId:key.accountId,keyHash:k.hash,amount:usdToPico(0.5),agent:{models:[intent.model],lane:"public",max_output_tokens:32,body:{}}})));
   expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);

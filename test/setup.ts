@@ -1,4 +1,4 @@
-import { setDefaultTimeout } from "bun:test";
+import { beforeEach, setDefaultTimeout } from "bun:test";
 
 process.env.ANYROUTE_ENV ??= "test";
 
@@ -6,6 +6,15 @@ process.env.ANYROUTE_ENV ??= "test";
 // without this a local run got Bun's 5 s while CI passed --timeout 20000. A test that waits on a chain or the network
 // for longer says so itself.
 setDefaultTimeout(20_000);
+
+// Rate limits count in fixed windows that start on the wall-clock minute (and hour). A test that fills one and expects
+// the next request to be refused failed whenever its burst crossed the boundary. No test starts in the last seconds
+// of a minute, so every burst lands in one window; the wait costs a few seconds per full run.
+const WINDOW_GUARD_MS = 5_000;
+beforeEach(async () => {
+  const left = 60_000 - (Date.now() % 60_000);
+  if (left < WINDOW_GUARD_MS) await Bun.sleep(left + 10);
+});
 
 // With TEST_PG_URL / TEST_REDIS_URL every harness uses that server. If it is not running, each test would retry it
 // until its own timeout and the run would end in dozens of unrelated failures: stop here with one message instead.
