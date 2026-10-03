@@ -2,6 +2,7 @@ import { getAddress, type Hex } from "viem";
 import type { Context } from "hono";
 import type { Ctx } from "../context.ts";
 import { fail } from "../lib/errors.ts";
+import { checkAuthorization, EIP3009_TYPES } from "../facilitator/verify.ts";
 
 // x402, `exact` scheme on Robinhood Chain: the payer signs a USDG EIP-3009 TransferWithAuthorization
 // to X402_PAY_TO and sends it as `X-PAYMENT` (v1) or `PAYMENT-SIGNATURE` (v2); the router verifies it, relays it
@@ -23,17 +24,8 @@ export const X402_VERSIONS: readonly number[] = [1, 2];
 /** The payment a request carries: `X-PAYMENT` (x402 v1, and the CallPay retry) or `PAYMENT-SIGNATURE` (x402 v2). */
 export const paymentHeaderOf = (c: Context) => c.req.header("x-payment") ?? c.req.header("payment-signature");
 
-/** EIP-712 type of the USDG authorization (EIP-3009 TransferWithAuthorization). */
-export const X402_TYPES = {
-  TransferWithAuthorization: [
-    { name: "from", type: "address" },
-    { name: "to", type: "address" },
-    { name: "value", type: "uint256" },
-    { name: "validAfter", type: "uint256" },
-    { name: "validBefore", type: "uint256" },
-    { name: "nonce", type: "bytes32" },
-  ],
-} as const;
+/** EIP-712 type of the USDG authorization (EIP-3009 TransferWithAuthorization), shared with the hosted facilitator. */
+export const X402_TYPES = EIP3009_TYPES;
 
 export type X402Requirement = {
   scheme: "exact";
@@ -123,25 +115,12 @@ export function parseX402(j: any): X402Payment {
   };
 }
 
-/** Verify a payment against the requirement without moving funds. Returns an x402 error reason, or null when valid. */
+/** Verify a payment against the requirement without moving funds. Returns an x402 error reason, or null when valid.
+ *  The authorization itself (recipient, value, the 6-second validBefore margin, signature, nonce, balance) is checked by
+ *  the hosted facilitator's code, so the router's own payments and other sellers' are verified the same way. */
 export async function verifyX402(ctx: Ctx, p: X402Payment, req: X402Requirement): Promise<string | null> {
-  const a = p.auth;
   if (!X402_VERSIONS.includes(p.version)) return "invalid_x402_version";
   if (p.scheme !== req.scheme) return "unsupported_scheme";
   if (p.network !== req.network && p.network.toLowerCase() !== `eip155:${ctx.cfg.chain.id}`) return "invalid_network";
-  if (a.to.toLowerCase() !== req.payTo.toLowerCase()) return "invalid_exact_evm_payload_recipient_mismatch";
-  if (a.value < BigInt(req.maxAmountRequired)) return "invalid_exact_evm_payload_authorization_value";
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  if (a.validBefore < now + 6n) return "invalid_exact_evm_payload_authorization_valid_before"; // must outlive the relay
-  if (a.validAfter > now) return "invalid_exact_evm_payload_authorization_valid_after";
-  const typed = {
-    domain: { name: req.extra.name, version: req.extra.version, chainId: ctx.cfg.chain.id, verifyingContract: ctx.cfg.chain.usdg },
-    types: X402_TYPES,
-    primaryType: "TransferWithAuthorization" as const,
-    message: a,
-  };
-  if (!(await ctx.chain.verifyWalletSignature(a.from, typed, p.signature))) return "invalid_exact_evm_payload_signature";
-  if (await ctx.chain.authorizationUsed(a.from, a.nonce)) return "invalid_exact_evm_payload_authorization_nonce_used";
-  if ((await ctx.chain.usdgBalance(a.from)) < a.value) return "insufficient_funds";
-  return null;
+  return checkAuthorization(ctx, { auth: p.auth, signature: p.signature }, { payTo: req.payTo, amount: BigInt(req.maxAmountRequired), domain: { name: req.extra.name, version: req.extra.version } });
 }

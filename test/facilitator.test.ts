@@ -9,6 +9,8 @@ import { facilitatorSellers, facilitatorSettlements, sanctionsAddresses, sanctio
 import { EIP3009_TYPES } from "../src/facilitator/verify.ts";
 import { LISTING_TYPES, listingDomain } from "../src/facilitator/discovery.ts";
 import { runAnchor } from "../src/services/anchor.ts";
+import { X402_TYPES } from "../src/pay/x402.ts";
+import { xPayment, type Req } from "./support/x402-client.ts";
 
 const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" as Hex;
 const NETWORK = "eip155:4663";
@@ -347,6 +349,30 @@ describe("facilitator fee and screening", () => {
     // The same address can still pay through the facilitator: settlement screens nobody.
     const p = await payment({ payer: s, payTo: seller().address, amount: 100_000n, fee: { amount: 1_000n, payTo: TREASURY } });
     expect((await (await post("/facilitator/verify", p.v1)).json()).isValid).toBe(true);
+  });
+});
+
+describe("one code path: the router's own x402 and the facilitator", () => {
+  test("the router's x402 payment is checked by the facilitator's code and relayed with the router key; the same authorization is then spent for both", async () => {
+    const payTo = "0x00000000000000000000000000000000000d0402";
+    const h = await startRouter({ env: { ...facilitatorEnv(), X402_PAY_TO: payTo } });
+    h.chain.noCallPay = true;
+    try {
+      expect(X402_TYPES).toBe(EIP3009_TYPES);
+      const json = { model: "meta-llama/llama-3.3-70b-instruct", max_tokens: 50, messages: [{ role: "user", content: "one path" }] };
+      const req = (await (await h.request("/api/v1/chat/completions", { method: "POST", json })).json()).accepts[0] as Req;
+      const late = await xPayment(req, { validBefore: now() + 5n });
+      expect((await (await h.request("/api/v1/chat/completions", { method: "POST", headers: { "x-payment": late.header }, json })).json()).error).toBe("invalid_exact_evm_payload_authorization_valid_before");
+      const pay = await xPayment(req);
+      expect((await h.request("/api/v1/chat/completions", { method: "POST", headers: { "x-payment": pay.header }, json })).status).toBe(200);
+      expect(h.chain.x402Relays.at(-1)).toMatchObject({ nonce: pay.authorization.nonce, role: "router" });
+      // Offered to the facilitator afterwards, the spent authorization is refused there too.
+      const signature = JSON.parse(Buffer.from(pay.header, "base64").toString()).payload.signature;
+      const body = { paymentPayload: { x402Version: 1, scheme: "exact", network: NETWORK, payload: { signature, authorization: str(pay.authorization as Auth) } }, paymentRequirements: { ...req, network: NETWORK } };
+      expect((await (await h.request("/facilitator/verify", { method: "POST", json: body })).json()).invalidReason).toBe("invalid_exact_evm_payload_authorization_nonce_used");
+    } finally {
+      await h.close();
+    }
   });
 });
 

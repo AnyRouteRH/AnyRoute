@@ -10,6 +10,7 @@ import { ensureAccount, post } from "../ledger/ledger.ts";
 import { log, sleep } from "../lib/util.ts";
 import { CallPayAbi } from "../chain/abis.ts";
 import { walletAccountId } from "../api/auth.ts";
+import { relayExact } from "../facilitator/settle.ts";
 import { X402_VERSION, parseX402, paymentHeaderOf, verifyX402, x402Body, x402Enabled, x402FailureHeader, x402Requirement, x402RequiredHeaders, x402ResponseHeader, type X402Payment } from "./x402.ts";
 
 // HTTP 402 per-call payments for callers without a key (agents):
@@ -202,7 +203,7 @@ export async function redeemX402(ctx: Ctx, p: X402Payment, o: QuoteInfo) {
   if (!claimed.length) refuse("invalid_exact_evm_payload_authorization_nonce_used");
   let settled: { hash: Hex };
   try {
-    settled = await ctx.chain.transferWithAuthorization({ ...a, signature: p.signature });
+    settled = await relayExact(ctx, { auth: a, signature: p.signature }, "router"); // the facilitator's relay, with the router's key
   } catch (e) {
     await ctx.db.update(quotes).set({ status: "failed" }).where(eq(quotes.nonce, claim));
     log.warn("x402 settlement failed", { payer, error: (e as Error).message.split("\n")[0].slice(0, 200) });
