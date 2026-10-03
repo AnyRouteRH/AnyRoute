@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { encodePacked, keccak256, recoverTypedDataAddress, toBytes, type Hex } from "viem";
+import { createPublicClient, custom, encodePacked, keccak256, recoverTypedDataAddress, toBytes, toHex, type Hex, type PublicClient } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { createApp } from "../src/app.ts";
 import { ChainService, type AllowanceAuthorization, type ChargeAuthorization, type DecodedLog, type EscrowReceipt, type EscrowTransfer, type FeedReading } from "../src/chain/service.ts";
@@ -45,7 +45,23 @@ export class FakeChain extends ChainService {
   failPayCall = false;
 
   constructor(env: Record<string, unknown>) {
-    super(loadConfig(env));
+    const cfg = loadConfig(env);
+    super(cfg);
+    // Code that reads the chain client directly (not through an overridden method) must not reach the real RPC:
+    // that made results depend on the network and stalled tests on a slow link. None of the fixture contracts
+    // exist, so answer as a chain without them would: the configured chain id, no code and empty call data.
+    (this as { client: PublicClient }).client = createPublicClient({
+      chain: this.chain,
+      cacheTime: 0,
+      transport: custom({
+        async request({ method }: { method: string }) {
+          if (method === "eth_chainId") return toHex(cfg.chain.id);
+          if (method === "eth_call" || method === "eth_getCode") return "0x";
+          if (method === "eth_getTransactionReceipt" || method === "eth_getTransactionByHash") return null;
+          throw new Error(`FakeChain has no RPC for ${method}; override the ChainService method or stub ctx.chain.client.`);
+        },
+      }, { retryCount: 0 }),
+    });
   }
   /** Run without the CallPay contract, as an x402-only router does. */
   noCallPay = false;

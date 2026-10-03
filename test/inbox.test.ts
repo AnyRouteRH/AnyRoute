@@ -75,7 +75,11 @@ test("seen is browser-held, covers only the displayed snapshot, and never hides 
   const response = await h.request("/api/v1/inbox/seen?through=" + encodeURIComponent(before.as_of), { method: "POST", headers: key.auth });
   expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("no-store"); expect(await response.json()).toEqual({ seen_at: before.as_of, seen_scope: before.seen_scope });
   expect((await inbox(key)).count).toBe(2); expect((await inbox(key, before.as_of)).data.map((r: any) => r.id)).toEqual(["approval:seen-pending"]);
-  await h.ctx.db.insert(ledger).values({ id: "seen-later", accountId: account, keyHash: key.hash, kind: "deposit", amount: 3n, ref: "later", createdAt: new Date() });
+  // A snapshot covers [since, as_of): a row stamped in the same millisecond as the next read's as_of belongs to the
+  // snapshot after it. Stamp the later credit just after the seen point, and read once the clock has passed it.
+  const later = new Date(Date.parse(before.as_of) + 1);
+  await h.ctx.db.insert(ledger).values({ id: "seen-later", accountId: account, keyHash: key.hash, kind: "deposit", amount: 3n, ref: "later", createdAt: later });
+  while (Date.now() <= later.getTime()) await Bun.sleep(1);
   expect((await inbox(key, before.as_of)).count).toBe(2);
   for (const through of ["bad", new Date(Date.now() + 60_000).toISOString()]) {
     expect((await h.request("/api/v1/inbox?since=" + encodeURIComponent(through), { headers: key.auth })).status).toBe(400);
