@@ -5,6 +5,47 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "x402-payment-recovery",
+    "date": "2026-10-03",
+    "title": "Recover a lost x402 answer without paying twice",
+    "summary": "If a paid answer is lost to a timeout or a 502, 503 or 504, send the same request and payment with a PAYMENT-RECOVERY signature: the router sends the kept answer again, byte for byte, with no second charge. Answers stay sealed outside the database for 24 hours. Built, but off until an operator sets X402_PAY_TO; anyroute.tech has not.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#x402-recovery"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/140de14e5e0396efdb296e667286f149f74e4ee0"
+      }
+    ],
+    "tags": [
+      "agents",
+      "build",
+      "privacy"
+    ]
+  },
+  {
+    "id": "x402-v2-headers",
+    "date": "2026-10-03",
+    "title": "Pay per call with x402 v1 or v2 headers",
+    "summary": "Where x402 is switched on, the router reads a v2 PAYMENT-SIGNATURE as well as X-PAYMENT, sends PAYMENT-REQUIRED beside the 402 body and the settlement in PAYMENT-RESPONSE too. Built, but off until an operator sets X402_PAY_TO; anyroute.tech has not.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#x402"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/a5a0ebdf37152c95934647c0c4e0d51c9a66f64a"
+      }
+    ],
+    "tags": [
+      "agents",
+      "build"
+    ]
+  },
+  {
     "id": "signed-webhooks",
     "date": "2026-10-02",
     "title": "See every webhook signed",
