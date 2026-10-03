@@ -74,6 +74,8 @@ const schema = z.object({
   ...networkStatsEnv,
   INFERENCE_KEYS_ENABLED: bool.default(false), // ZK6: minting restricted keys; stored scopes are always enforced.
   WEBHOOK_SIGNING_ENABLED: bool.default(false), // V86: signed account webhooks.
+  MAKEGOOD_ENABLED: bool.default(false), // V6 R: deterministic make-good refunds.
+  MAKEGOOD_REFUND_PRIVATE_KEY: pk, // V6 R: treasury key for on-chain refunds to per-call payers; worker only, never logged.
   ...networkPayoutEnv,
   RUNTIME_ROLE: z.enum(["all", "api", "worker"]).default("all"),
   WORKER_JOBS: z.string().default(""),
@@ -499,10 +501,13 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     // and the keeper key (a funded chain signer) stays apart from every other signing role.
     if (e.RUNTIME_ROLE === "api" && (e.IPX_ORACLE_PRIVATE_KEY || e.IPX_KEEPER_PRIVATE_KEY)) throw new Error("Public API must not receive the IPX oracle or IPX keeper key; set IPX_ORACLE_PUBLIC_KEY instead.");
     if (e.IPX_KEEPER_PRIVATE_KEY && (escrowMode || Object.values(roleKeys).some(Boolean))) throw new Error("IPX_KEEPER_PRIVATE_KEY must be isolated from every other signing role.");
+    // V6 R: the refund treasury key moves funds, so it lives only on the worker that runs makegood-payouts, alone.
+    if (e.MAKEGOOD_REFUND_PRIVATE_KEY && (e.RUNTIME_ROLE === "api" || Object.values(roleKeys).some(Boolean) || e.IPX_KEEPER_PRIVATE_KEY)) throw new Error("MAKEGOOD_REFUND_PRIVATE_KEY must be isolated on the worker that runs makegood-payouts.");
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "buyback", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
       allowed.push("webhooks"); // V86: bounded event delivery.
+      allowed.push("makegood-payouts"); // V6 R: on-chain make-good refunds.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
       allowed.push("upstream-monitor"); // ON3
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
@@ -512,6 +517,8 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
       if (names.includes("ipx-oracle") && !(e.IPX_ORACLE_ENABLED && e.IPX_ORACLE_PRIVATE_KEY)) throw new Error("The ipx-oracle job needs IPX_ORACLE_ENABLED and IPX_ORACLE_PRIVATE_KEY.");
       if (names.includes("host-anchor") && !e.HOST_ANCHOR_ENABLED) throw new Error("The host-anchor job needs HOST_ANCHOR_ENABLED.");
+      if (names.includes("makegood-payouts") && !(e.MAKEGOOD_ENABLED && e.MAKEGOOD_REFUND_PRIVATE_KEY)) throw new Error("The makegood-payouts job needs MAKEGOOD_ENABLED and MAKEGOOD_REFUND_PRIVATE_KEY.");
+      if (e.MAKEGOOD_REFUND_PRIVATE_KEY && !names.includes("makegood-payouts")) throw new Error("MAKEGOOD_REFUND_PRIVATE_KEY belongs only on the worker that runs makegood-payouts.");
       if (!escrowMode)
         for (const [role, key] of Object.entries(roleKeys)) {
           const enabled = names.includes(keyJobs[role as keyof typeof keyJobs]) || (role === "buyback" && names.includes("network-fee-burn")) || (role === "slashing" && names.includes("host-slasher") && e.NETWORK_SLASHING_ENABLED);
@@ -608,6 +615,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     rush: rushSettings(e), // ON3
     spendInsightsEnabled: e.SPEND_INSIGHTS_ENABLED, // V88: read-only spend insights.
     webhookSigningEnabled: e.WEBHOOK_SIGNING_ENABLED, // V86: off preserves existing delivery.
+    makegood: { enabled: e.MAKEGOOD_ENABLED, refundKey: e.MAKEGOOD_REFUND_PRIVATE_KEY as `0x${string}` | undefined }, // V6 R
     networkPayouts: networkPayoutSettings(e, production),
     networkWeights: { ...networkWeightSettings(e), ...(e.NETWORK_BONDS_ENABLED ? { bonds: { ...hostBondSettings(e), scope: `${e.CHAIN_ID}:${e.HOST_BOND_ADDRESS?.toLowerCase()}` } } : {}) },
     hostBonds: hostBondSettings(e),

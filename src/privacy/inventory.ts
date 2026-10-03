@@ -1,5 +1,6 @@
 import { webhookTables } from "./webhooks.ts"; // V86: retained webhook configuration and attempt metadata.
 import { facilitatorTables } from "./facilitator.ts"; // v6 F: hosted x402 facilitator.
+import { makegoodTables } from "./makegood.ts"; // V6 R: make-good refunds.
 import { profileTables } from "./tables/agent-profiles.ts";
 import { describeSealed } from "./sealed.ts";
 import { agreementTables } from "./tables/agreements.ts";
@@ -35,7 +36,7 @@ import { CATEGORIES, CATEGORY_INFO, type AboutRequest, type ColumnDoc, type Exte
 
 export const INVENTORY_FORMAT = "anyroute.data-inventory/1";
 
-export const TABLE_DOCS: Record<string, TableDoc> = { ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables, ...x402RecoveryTables, ...facilitatorTables };
+export const TABLE_DOCS: Record<string, TableDoc> = { ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables, ...x402RecoveryTables, ...facilitatorTables, ...makegoodTables };
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);
 export { EXTERNAL };

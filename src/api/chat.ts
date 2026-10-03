@@ -1,4 +1,5 @@
 import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
+import { noteFailedPaidCall, noteServedCall } from "../services/makegood.ts"; // V6 R
 import { guardInferenceModels } from "../provisioning/inference.ts"; // ZK6
 import { explainedStream, rememberRoutePlan, routeReceiptFields, routeResponseHeaders } from "../router/explain.ts"; // V84
 import { captureStructuredOutput } from "../structured-output/chat.ts"; // V83
@@ -455,6 +456,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   }
   if (!result.ok) {
     await giveBack(ctx, billing, holdId);
+    await noteFailedPaidCall(ctx, billing, holdId, result.attempts); // V6 R
     throw allFailed(result.attempts, result.last);
   }
   const r = result as Extract<RouteSuccess, { kind: "json" }>;
@@ -595,6 +597,8 @@ export type FinalizeInput = Common & {
   upstreamAttestation?: UpstreamAttestation | null;
   /** For a stream: the head of the chunk hash chain over every event sent before the receipt (receipt v2 resp.chain). */
   chainHead?: string | null;
+  /** For a stream: output tokens delivered to the caller, estimated from the delivered text (V6 R make-good). */
+  delivered?: { completion: number; reasoning: number } | null;
 };
 
 async function finalize(p: FinalizeInput) {
@@ -749,6 +753,7 @@ async function finalize(p: FinalizeInput) {
     responseSha256: payload.response_sha256,
   });
   await linkNetworkReceipt(ctx, id, r.candidate.providerId, r);
+  await noteServedCall(ctx, { id, accountId: billing.accountId, keyHash: billing.key?.keyHash ?? null, billingMode: billing.mode, paymentTx: billing.mode === "per_call" ? (billing.paymentTx ?? null) : null, payer: billing.mode === "per_call" ? billing.payer : null, candidate: r.candidate, model: r.model, attempts: r.attempts, usage: p.usage, delivered: p.delivered, cost, charged, priceMode: billing.mode === "per_call" ? "per_call" : mode, fees, isByok, byokProviders: [...p.byok.keys()], batchDiscountBps: batchLine?.discountBps ?? null, servedClass: served.class, upstreamAttested: ua ? ua.attested : null, attestedLane: requiresAttestedUpstream(p.body, p.disc), lane: p.disc.lane, finishReason: p.finishReason, cancelled: p.cancelled, stream: p.stream }); // V6 R
   if (billing.mode === "blind") await confirmToken(ctx, billing.pass, id);
   // Creator attribution for a public character: a count and a cost per day, never on the unlinkable lane.
   if (p.meta.character?.attribute && p.disc.lane !== "unlinkable") await recordCharacterUse(ctx, p.meta.character.id, charged);
@@ -879,6 +884,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; route
       clearInterval(keepalive);
       if (!result.ok) {
         await giveBack(ctx, p.billing, p.holdId);
+        await noteFailedPaidCall(ctx, p.billing, p.holdId, result.attempts); // V6 R
         const err = allFailed(result.attempts, result.last);
         event(err.toJSON());
         send("data: [DONE]\n\n");
@@ -957,7 +963,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; route
         if (hold && !refused) for (const e of held) chained(e);
         // The refusal goes out before the receipt is signed, so the chain covers it too.
         if (refused) chained({ ...unattestedUpstream(upstreamAttestation!).toJSON(), id: p.holdId });
-        const fin = await finalize({ ...p, r, usage, responseText: text, finishReason: finish ?? (cancelled ? "cancelled" : midError ? "error" : null), nativeFinish, generationMs: Date.now() - p.t0, cancelled, upstreamAttestation, chainHead: chain.head });
+        const fin = await finalize({ ...p, r, usage, responseText: text, finishReason: finish ?? (cancelled ? "cancelled" : midError ? "error" : null), nativeFinish, generationMs: Date.now() - p.t0, cancelled, upstreamAttestation, chainHead: chain.head, delivered: { completion: Math.ceil((text.length + toolText.length) / 4) + reasoningEst, reasoning: reasoningEst } /* V6 R */ });
         event({ ...base, choices: [], usage: fin.usageJson, receipt: fin.receiptJson, ...(fin.extras(0) ?? {}) });
       } catch (e) {
         clearInterval(holdKeepalive);

@@ -1,3 +1,4 @@
+import { makegoodStatus, refundReceipt } from "../services/makegood.ts"; // V6 R
 import type { Hono } from "hono";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { encodeFunctionData, keccak256, toBytes, type Hex } from "viem";
@@ -86,6 +87,7 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
   });
   app.get("/api/v1/receipts/:id", async (c) => {
     const [g] = await ctx.db.select().from(generations).where(eq(generations.id, c.req.param("id")));
+    if (!g) { const refund = c.req.query("format") ? null : await refundReceipt(ctx, c.req.param("id")); if (refund) return c.json({ data: refund }); } // V6 R
     if (!g) fail(404, "Receipt not found.", "not_found");
     const format = c.req.query("format");
     if (format === "cose") {
@@ -364,6 +366,7 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         catalog: { models: ctx.catalog.models.size, providers: ctx.catalog.providers.size },
         // Privacy lanes: how many models and live endpoints can serve each one right now, and the selection weight.
         lanes: laneSummary(ctx),
+        makegood: await makegoodStatus(ctx), // V6 R: make-good refunds, from the refund records.
       },
     });
   });

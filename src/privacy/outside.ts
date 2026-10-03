@@ -4,6 +4,7 @@ import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { statementStores } from "./statements.ts"; // V87
 import { insightsStores } from "./insights.ts"; // V88: read-only aggregates.
 import { webhookBodyReader, webhookStores } from "./webhooks.ts"; // V86: event delivery.
+import { makegoodStores } from "./makegood.ts"; // V6 R: make-good refunds.
 import { inboxStores } from "./inbox.ts"; // U78: account inbox inventory.
 import { activityStores } from "./activity.ts";
 import { profileBodyReader } from "./profiles.ts";
@@ -727,6 +728,7 @@ export const EXTERNAL: ExternalDoc = {
   otherStores: [
     ...rushStores, // ON3
     ...webhookStores, // V86.
+    ...makegoodStores, // V6 R.
     ...activityStores,
     ...statementStores, // V87
     ...insightsStores, // V88: spend insights.

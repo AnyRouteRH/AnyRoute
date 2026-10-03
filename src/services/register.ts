@@ -1,5 +1,6 @@
 import { registerRushJobs } from "../rush/monitor.ts"; // ON3
 import { runWebhooks } from "../webhooks/worker.ts"; // V86: bounded event delivery.
+import { runMakegoodPayouts } from "./makegood.ts"; // V6 R
 import { registerAgreementJobs } from "../agreements/jobs.ts";
 import { runNetworkFeeBurn } from "../network/fee-burn.ts";
 import { pollHostBonds } from "../network/bond-indexer.ts";
@@ -69,6 +70,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   if (cfg.networkPayouts.burnEnabled) jobs.register("network-fee-burn", 3_600_000, () => runNetworkFeeBurn(ctx));
   jobs.register("chain-indexer", 5_000, async () => (chainOn() ? pollChain(ctx) : { skipped: "no contracts" }), { atStart: true });
   if (cfg.webhookSigningEnabled) jobs.register("webhooks", 60_000, () => runWebhooks(ctx)); // V86.
+  if (cfg.makegood.enabled) jobs.register("makegood-payouts", 3_600_000, () => runMakegoodPayouts(ctx)); // V6 R: refuses without its key.
   jobs.register("spend-watch", 60_000, () => runSpendWatch(ctx));
   jobs.register("escrow-indexer", 5_000, () => pollEscrow(ctx), { atStart: true });
   jobs.register("paywith-aggregator", 60_000, async () => (ctx.chain.address("payWithStock") ? runPaywithAggregator(ctx) : { skipped: "not configured" }));
