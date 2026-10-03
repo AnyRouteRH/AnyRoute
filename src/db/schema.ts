@@ -1290,3 +1290,5 @@ export { agentProfiles } from "../agents/profile-schema.ts";
 export * from "../agreements/schema.ts";
 
 export { webhookDestinations, webhookDeliveries } from "../webhooks/schema.ts"; // V86: signed destinations.
+
+export { commerceTransfers } from "../commerce/schema.ts"; // v6 L: public USDG transfer index for the commerce ledger.

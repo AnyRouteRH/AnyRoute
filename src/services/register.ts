@@ -1,5 +1,6 @@
 import { registerRushJobs } from "../rush/monitor.ts"; // ON3
 import { runWebhooks } from "../webhooks/worker.ts"; // V86: bounded event delivery.
+import { pollCommerceTransfers } from "../commerce/funding.ts"; // v6 L
 import { registerAgreementJobs } from "../agreements/jobs.ts";
 import { runNetworkFeeBurn } from "../network/fee-burn.ts";
 import { pollHostBonds } from "../network/bond-indexer.ts";
@@ -69,6 +70,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   if (cfg.networkPayouts.burnEnabled) jobs.register("network-fee-burn", 3_600_000, () => runNetworkFeeBurn(ctx));
   jobs.register("chain-indexer", 5_000, async () => (chainOn() ? pollChain(ctx) : { skipped: "no contracts" }), { atStart: true });
   if (cfg.webhookSigningEnabled) jobs.register("webhooks", 60_000, () => runWebhooks(ctx)); // V86.
+  // v6 L: copy public USDG transfers for the commerce ledger's funding-source filter (COMMERCE_FUNDING_FROM_BLOCK).
+  if (cfg.commerce.enabled && cfg.commerce.funding.fromBlock !== null) jobs.register("commerce-transfers", 60_000, () => pollCommerceTransfers(ctx));
   jobs.register("spend-watch", 60_000, () => runSpendWatch(ctx));
   jobs.register("escrow-indexer", 5_000, () => pollEscrow(ctx), { atStart: true });
   jobs.register("paywith-aggregator", 60_000, async () => (ctx.chain.address("payWithStock") ? runPaywithAggregator(ctx) : { skipped: "not configured" }));

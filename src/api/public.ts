@@ -22,6 +22,7 @@ import { X402_VERSIONS, x402Enabled } from "../pay/x402.ts";
 import { RECOVERY_TTL_MS, recoveryMessage } from "../pay/recovery.ts";
 import { PRIVATE_LANES, PUBLIC_LANE_ROWS, privateLaneStats } from "../services/private-stats.ts";
 import { labelForReceipt } from "../privacy/resolve.ts";
+import { commerceStatus } from "../commerce/stats.ts"; // v6 L
 
 export { providerApplication } from "../providers/application.ts";
 
@@ -351,6 +352,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
             recovery: { available: x402Enabled(ctx), header: "PAYMENT-RECOVERY", message: recoveryMessage(ctx.cfg.chain.id, "<payer>", "<nonce>"), ttl_s: RECOVERY_TTL_MS / 1000 },
           },
         },
+        // v6 L: the honest commerce ledger: whether it is on, which receipt kinds feed it, and whether its filters can work here.
+        commerce: commerceStatus(ctx),
         // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.
         holders: holdersStatus(ctx),
         telemetry: ctx.telemetry.enabled,

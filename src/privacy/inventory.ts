@@ -10,6 +10,7 @@ import { agentTables } from "./tables/agents.ts";
 import { approvalTables } from "./tables/agent-approvals.ts";
 import { sanctionsTables } from "./tables/sanctions.ts";
 import { x402RecoveryTables } from "./x402-recovery.ts";
+import { commerceTables } from "./tables/commerce.ts"; // v6 L
 import { canonicalJson, sha256 } from "../lib/util.ts";
 import { columnFlags, informationSchemaType } from "./rules.ts";
 import { schemaTables, type SchemaTable } from "./schema.ts";
@@ -34,7 +35,7 @@ import { CATEGORIES, CATEGORY_INFO, type AboutRequest, type ColumnDoc, type Exte
 
 export const INVENTORY_FORMAT = "anyroute.data-inventory/1";
 
-export const TABLE_DOCS: Record<string, TableDoc> = { ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables, ...x402RecoveryTables };
+export const TABLE_DOCS: Record<string, TableDoc> = { ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables, ...x402RecoveryTables, ...commerceTables };
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);
 export { EXTERNAL };

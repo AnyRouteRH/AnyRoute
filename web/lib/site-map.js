@@ -111,6 +111,7 @@ TASKS.push({ ...task('insights', 'build', 'See where your money goes', 'See spen
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 
 TASKS.push({ ...task('webhooks', 'build', 'Manage webhook destinations', 'Inspect signing availability, event subscriptions and delivery history.', '/dashboard/webhooks/', 'webhooks, events, signature'), menu: false }); // V86: search-only account tool.
+TASKS.push({ ...task('commerce', 'verify', 'Read the commerce ledger', 'See anchored settlements without self-dealing, beside the gross figures.', '/commerce/', 'commerce, settlements, volume, self-dealing, dune'), menu: false }); // v6 L: search-only.
 
 // Account sections share the task map; existing dashboard hashes remain stable.
 export const ACCOUNT_GROUPS = [

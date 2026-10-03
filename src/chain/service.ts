@@ -49,6 +49,9 @@ export const CONTRACT_ABIS: Record<ContractName, Abi> = {
 
 export type DecodedLog = { contract: ContractName; event: string; args: Record<string, unknown>; txHash: Hex; logIndex: number; blockNumber: bigint };
 export type EscrowTransfer = { token: Hex; from: Hex; value: bigint; txHash: Hex; logIndex: number; blockNumber: bigint; blockHash: Hex };
+/** A USDG Transfer log with its block time (unix seconds); addresses and hash in lowercase. */
+export type UsdgTransfer = { from: Hex; to: Hex; value: bigint; txHash: Hex; logIndex: number; blockNumber: bigint; blockTime: number; authorized: boolean; txFrom: Hex | null };
+const authorizationUsedEvent = { type: "event", name: "AuthorizationUsed", inputs: [{ name: "authorizer", type: "address", indexed: true }, { name: "nonce", type: "bytes32", indexed: true }] } as const;
 /** A transaction's receipt as the escrow watcher needs it: where it is included and its Transfer logs to escrow. */
 export type EscrowReceipt = { success: boolean; blockNumber: bigint; blockHash: Hex; transfers: { token: Hex; from: Hex; value: bigint; logIndex: number }[] };
 /** The chain head and the finality point (the `finalized` or `safe` block) with their timestamps. */
@@ -190,6 +193,31 @@ export class ChainService {
     return raw
       .filter((l) => allowed.has(l.address.toLowerCase()) && l.args.to.toLowerCase() === escrow.toLowerCase() && l.args.value > 0n)
       .map((l) => ({ token: l.address, from: l.args.from, value: l.args.value, txHash: l.transactionHash!, logIndex: l.logIndex!, blockNumber: l.blockNumber!, blockHash: l.blockHash! }));
+  }
+
+  /**
+   * Every USDG Transfer log in [from, to] with its block's time, whether an EIP-3009 authorization of the sender moved it
+   * (an AuthorizationUsed log by `from` in the same transaction) and, for those, the transaction's sender (the relayer).
+   * Commerce ledger funding index; public chain data only.
+   */
+  async usdgTransfers(from: bigint, to: bigint): Promise<UsdgTransfer[]> {
+    const token = this.cfg.chain.usdg.toLowerCase();
+    const [transfers, auths] = await Promise.all([
+      this.client.getLogs({ address: this.cfg.chain.usdg, event: transferEvent, fromBlock: from, toBlock: to, strict: true }),
+      this.client.getLogs({ address: this.cfg.chain.usdg, event: authorizationUsedEvent, fromBlock: from, toBlock: to, strict: true }),
+    ]);
+    const logs = transfers.filter((l) => l.address.toLowerCase() === token);
+    const used = new Set(auths.filter((a) => a.address.toLowerCase() === token).map((a) => `${a.transactionHash!.toLowerCase()}:${a.args.authorizer.toLowerCase()}`));
+    const isAuthorized = (l: (typeof logs)[number]) => used.has(`${l.transactionHash!.toLowerCase()}:${l.args.from.toLowerCase()}`);
+    const times = new Map<bigint, number>();
+    for (const n of new Set(logs.map((l) => l.blockNumber!))) times.set(n, Number((await this.client.getBlock({ blockNumber: n })).timestamp));
+    const senders = new Map<string, Hex>();
+    for (const hash of new Set(logs.filter(isAuthorized).map((l) => l.transactionHash!))) senders.set(hash.toLowerCase(), (await this.client.getTransaction({ hash })).from.toLowerCase() as Hex);
+    return logs.map((l) => {
+      const txHash = l.transactionHash!.toLowerCase() as Hex;
+      const authorized = isAuthorized(l);
+      return { from: l.args.from.toLowerCase() as Hex, to: l.args.to.toLowerCase() as Hex, value: l.args.value, txHash, logIndex: l.logIndex!, blockNumber: l.blockNumber!, blockTime: times.get(l.blockNumber!)!, authorized, txFrom: authorized ? (senders.get(txHash) ?? null) : null };
+    });
   }
 
   /** The latest block and the chain's finality point. Robinhood Chain (Arbitrum Nitro) reports both tags. */

@@ -11,6 +11,7 @@ Ready-to-submit listings of Anyroute in the tools people already use. Each folde
 | [`x402-bazaar/`](x402-bazaar/) | x402 Bazaar discovery | v1 and v2 (`extensions.bazaar`) discovery items for chat, completions, embeddings; tags `attested`, `tee`, `uncensored-ok` | not yet: x402 is built but not switched on at anyroute.tech; it turns on when `X402_PAY_TO` is set |
 | [`elizaos/`](elizaos/) | ElizaOS plugin registry | `@anyroute/plugin-anyroute` model provider (text, embeddings, attested lane) | after `npm publish` |
 | [`huggingface/`](huggingface/) | Hugging Face model cards | badge and "Run it on Anyroute" snippet | yes, per model-card PR |
+| [`dune/`](dune/) | Dune | DuneSQL query that recomputes the commerce ledger (`/commerce`) from public chain data | yes, once the router's addresses are filled in, where Dune indexes Robinhood Chain |
 
 Use `https://anyroute.tech/api/v1` for inference and `https://anyroute.tech/mcp` for MCP. Before submitting a listing, review its endpoint and publication status. The client SDK code is in `packages/client` and `packages/client-py`; npm and PyPI releases are not published yet.
 

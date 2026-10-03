@@ -18,14 +18,14 @@ export function tokenBucket(total: string, rows: number) {
 }
 
 /** Single flight per router, with no stale-on-error fallback or persistent cache. */
-export function statsCache<T>(read: () => Promise<T>, clock = Date.now) {
+export function statsCache<T>(read: () => Promise<T>, clock = Date.now, ttlMs = NETWORK_STATS_CACHE_MS) {
   let cached: { data: T; expires: number } | undefined;
   let pending: Promise<{ data: T; expires: number }> | undefined;
   return async () => {
     const now = clock();
     if (cached && now < cached.expires) return cached;
     if (!pending) {
-      pending = read().then(data => (cached = { data, expires: now + NETWORK_STATS_CACHE_MS })).finally(() => { pending = undefined; });
+      pending = read().then(data => (cached = { data, expires: now + ttlMs })).finally(() => { pending = undefined; });
     }
     return pending;
   };

@@ -12,6 +12,7 @@ import AgreementsDocs from "../../components/AgreementsDocs";
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import NetworkStatsDocs from "../../components/NetworkStatsDocs";
+import CommerceStatsDocs from "../../components/CommerceStatsDocs"; // v6 L
 import HostBondsDocs from "../../components/HostBondsDocs";
 import AgentLedgerDocs from "../../components/AgentLedgerDocs";
 import NetworkHostsDocs from "../../components/NetworkHostsDocs";
@@ -779,6 +780,7 @@ const endpoints = [
   ["POST /api/v1/rag · /v1/rag","Answers from documents you send with the question, ranked in memory and stored nowhere: it embeds, ranks and answers through the embeddings and chat routes, and returns the sources and every call’s receipt (prepaid key; the lane and disclosure options of chat)"],
   ["GET /api/v1/rankings · /providers · /status", "Usage rankings and creator payouts; the provider registry with each provider’s attestation status (attestation.status, tee, verifiers, last_verified_at); router configuration, including its onion address where there is one"],
   ["GET /api/v1/status/slo · /status/incidents · /status/incidents.atom · .rss", "The status page (/status): per lane and API surface, availability over 1 hour, 24 hours, 7 days and 30 days, p50 and p95 latency, error counts, the SLO target (STATUS_SLO_PUBLIC 99.5%, STATUS_SLO_ATTESTED and STATUS_SLO_UNLINKABLE 99%), the 30-day error budget and 90 daily figures, cached for 30 seconds. The public lane is summed from public-lane request outcomes; the attested and unlinkable lanes use only the noisy hourly releases of /api/v1/stats (source: dp-noised). Incidents as JSON, Atom and RSS. The operator (ADMIN_TOKEN) opens incidents with POST /status/incidents, posts updates with POST /status/incidents/:id/updates and confirms or dismisses the suggestions the router records when a lane stays below target for five minutes (an hour on the private lanes)"],
+  ["GET /api/v1/commerce/stats", "Where enabled (COMMERCE_STATS_ENABLED, default false): the commerce ledger behind /commerce. Settlements per receipt kind over 24 hours, 7 days and 30 days, gross and filtered side by side: only settlements whose receipts are anchored on ReceiptAnchor, without self-dealing (same owner, round trips within 24 hours, USDG funding links). Counts, sums and medians only, cached 60 seconds. Methodology: #commerce-stats"],
   ["GET /api/v1/skills · /skills/:id · /skills/:id/download · POST /skills/import · /skills/:id/install", "Secured Skills Hub for agent skills (a folder with SKILL.md, scripts and resources). Import from a git repository (https, at a ref, one folder) or an uploaded .tar.gz, .tar or .zip (SKILLS_MAX_BYTES, SKILLS_MAX_FILES). Each skill is normalised into one canonical tar and identified by its sha256, then scanned for data exfiltration (calls to hosts outside the allowlist, secrets or env values sent out, SSH keys, keychains, browser profiles, env dumps), prompt injection (instruction overrides, hidden or zero-width characters, instructions to send secrets), obfuscation, dangerous shell commands, untrusted package indexes and binaries. The report has a score, a level (trusted, caution or dangerous) and each finding with its rule, file, line and excerpt. Only trusted and caution skills download or install (SKILLS_DOWNLOAD_LEVELS); a dangerous or revoked one returns 403 with the report. A paid install debits the key's balance and credits the author 90% and the network fee 10% (SKILLS_FEE_BPS), once per account, with an Ed25519-signed receipt. The operator revokes with POST /skills/:id/revoke; SKILLS_SOURCES lists repositories and registry indexes the mirror job pulls. SkillRegistry records hashes and levels on chain. Scanned, not guaranteed: a clean scan is not proof a skill is safe"],
   ["POST /api/v1/providers/apply · /creators/claim · /paymaster", "Provider onboarding; royalty claims; ERC-7677 gas sponsorship"],
 ];
@@ -1740,6 +1742,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           </p>
           <HostsDocs /><NetworkHostsDocs /><HostBondsDocs />
           <NetworkStatsDocs />
+          <CommerceStatsDocs /> {/* v6 L */}
           <RouteExplanationDocs /> {/* V84 */}
           <h2 id="run-a-provider">Run a provider.</h2>
           <p>
