@@ -5,6 +5,30 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "commerce-ledger",
+    "date": "2026-10-03",
+    "title": "Read an honest commerce ledger",
+    "summary": "The commerce page counts paid settlements only once their receipts are anchored on Robinhood Chain, removes self-dealing (same owner, round trips within 24 hours, funding links) and shows every filtered figure beside the gross one. A published Dune query recomputes the on-chain part. It is built but not switched on at anyroute.tech yet.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/commerce/"
+      },
+      {
+        "label": "Read the methodology",
+        "href": "/docs/#commerce-stats"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/636176d3921b5ed92a8fb944351971d12c2ce24e"
+      }
+    ],
+    "tags": [
+      "agents",
+      "verify"
+    ]
+  },
+  {
     "id": "x402-payment-recovery",
     "date": "2026-10-03",
     "title": "Recover a lost x402 answer without paying twice",
