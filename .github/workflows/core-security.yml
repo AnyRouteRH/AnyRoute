@@ -150,6 +150,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      actions: read
       security-events: write
     strategy:
       fail-fast: false
@@ -173,7 +174,15 @@ jobs:
         if: matrix.language == 'go'
         working-directory: sdks/go
       - uses: github/codeql-action/analyze@87ef0dc97def48aa960fbf026a2563ee9dbdb470
-        with: { category: '/language:${{ matrix.language }}' }
+        with:
+          category: '/language:${{ matrix.language }}'
+          output: release-evidence/codeql
+          # The private source has no Advanced Security subscription. Keep its results
+          # as artifacts; the public mirror uploads the same analyses to Code Scanning.
+          upload: ${{ github.event.repository.private && 'never' || 'always' }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with: { name: 'codeql-${{ matrix.language }}', path: release-evidence/codeql }
   solidity:
     runs-on: ubuntu-latest
     timeout-minutes: 30
