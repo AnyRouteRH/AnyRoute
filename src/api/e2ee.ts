@@ -15,6 +15,7 @@ import { attestationFresh, selectProviders } from "../router/select.ts";
 import { requestLane } from "../ohttp/lane.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
 import { noteLane } from "../services/private-stats.ts";
+import { paymentHeaderOf } from "../pay/x402.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import { BLIND_POOL, presentBlindToken, requireValue, claimToken, unclaimToken, confirmToken } from "../blind/redeem.ts";
 import { blindReceipt } from "../blind/set.ts";
@@ -68,7 +69,7 @@ async function runEncrypted(ctx: Ctx, c: Context) {
   if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
   const pass = key ? null : await presentBlindToken(ctx, c.req.header("authorization"));
   // Content policies cannot run on ciphertext. Refuse keys with those settings rather than bypassing them.
-  if (key?.guardrails || key?.routing || key?.payWithDefault || c.req.header("x-pay-with") || c.req.header("x-wallet-auth") || c.req.header("x-payment")) fail(400, "Encrypted chat supports prepaid keys without content policies, or blind tokens.", "e2ee_unsupported_auth");
+  if (key?.guardrails || key?.routing || key?.payWithDefault || c.req.header("x-pay-with") || c.req.header("x-wallet-auth") || paymentHeaderOf(c)) fail(400, "Encrypted chat supports prepaid keys without content policies, or blind tokens.", "e2ee_unsupported_auth");
   const disc = requestLane(ctx, c, { lane: c.req.header("x-anyroute-lane") === "unlinkable" ? "unlinkable" : "attested", disclosure: "none" }, { hasKey: !!key, hasToken: !!pass, hasWallet: !!c.req.header("x-wallet-auth") });
   noteLane(c.req.raw, disc.lane);
   const tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null;

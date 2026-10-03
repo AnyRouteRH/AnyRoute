@@ -10,7 +10,7 @@ import { ensureAccount, post } from "../ledger/ledger.ts";
 import { log, sleep } from "../lib/util.ts";
 import { CallPayAbi } from "../chain/abis.ts";
 import { walletAccountId } from "../api/auth.ts";
-import { X402_VERSION, parseX402, verifyX402, x402Body, x402Enabled, x402Requirement, x402ResponseHeader, type X402Payment } from "./x402.ts";
+import { X402_VERSION, parseX402, paymentHeaderOf, verifyX402, x402Body, x402Enabled, x402FailureHeader, x402Requirement, x402RequiredHeaders, x402ResponseHeader, type X402Payment } from "./x402.ts";
 
 // HTTP 402 per-call payments for callers without a key (agents):
 //   request -> 402 {price_usdg, pay_to, nonce, expiry, chain: 4663}
@@ -19,9 +19,10 @@ import { X402_VERSION, parseX402, verifyX402, x402Body, x402Enabled, x402Require
 // The quote is bound to the request body hash. Any unused part of the payment stays as change on
 // the payer's wallet account, spendable later with X-Wallet-Auth.
 //
-// x402 (src/pay/x402.ts) is the same flow in the standard shape: the 402 body carries `accepts`, the retry
-// carries `X-PAYMENT` (a signed USDG transferWithAuthorization to X402_PAY_TO that the router relays), and
-// the served response carries `X-PAYMENT-RESPONSE`. It needs no CallPay contract, and the whole payment is
+// x402 (src/pay/x402.ts) is the same flow in the standard shape: the 402 body carries `accepts` (and the
+// `PAYMENT-REQUIRED` header the same requirement for v2), the retry carries `X-PAYMENT` or `PAYMENT-SIGNATURE`
+// (a signed USDG transferWithAuthorization to X402_PAY_TO that the router relays), and the served response
+// carries `X-PAYMENT-RESPONSE` and `PAYMENT-RESPONSE`. It needs no CallPay contract, and the whole payment is
 // credited to the payer's wallet account exactly like a CallPay payment, so the same change rules apply.
 
 const fmtUsdg = (units: bigint) => {
@@ -46,8 +47,9 @@ export async function paymentRequired(ctx: Ctx, opts: QuoteInfo): Promise<never>
   if (!callPay && !x402) fail(401, "An API key is required: per-call payment is not configured on this router.", "missing_key");
   const priceUsdg = quotePrice(ctx, opts.pricePico);
   const accepts = x402 ? [await x402Requirement(ctx, { priceUsdg, resource: opts.resource, description: opts.description })] : [];
+  const v2 = x402RequiredHeaders("PAYMENT-SIGNATURE header is required", accepts);
   if (!callPay)
-    throw new ApiError(402, `Payment required: $${fmtUsdg(priceUsdg)} USDG. Sign an x402 exact payment for one of \`accepts\` and retry this exact request with X-PAYMENT.`, "payment_required", undefined, { "x-payment-required": "usdg" }, x402Body("X-PAYMENT header is required", accepts));
+    throw new ApiError(402, `Payment required: $${fmtUsdg(priceUsdg)} USDG. Sign an x402 exact payment for one of \`accepts\` and retry this exact request with X-PAYMENT (or PAYMENT-SIGNATURE).`, "payment_required", undefined, { "x-payment-required": "usdg", ...v2 }, x402Body("X-PAYMENT header is required", accepts));
   const nonce = `0x${randomBytes(32).toString("hex")}` as Hex;
   const expiry = Math.floor(Date.now() / 1000) + ctx.cfg.fees.quoteTtlS;
   await ctx.db.insert(quotes).values({
@@ -89,7 +91,7 @@ export async function paymentRequired(ctx: Ctx, opts: QuoteInfo): Promise<never>
       retry_header: "X-Payment",
       margin_bps: ctx.cfg.fees.perCallMarginBps,
     },
-    { "x-payment-required": "usdg", "www-authenticate": `Payment realm="anyroute", chain="${ctx.cfg.chain.id}", nonce="${nonce}"` },
+    { "x-payment-required": "usdg", "www-authenticate": `Payment realm="anyroute", chain="${ctx.cfg.chain.id}", nonce="${nonce}"`, ...v2 },
   );
   // With both flows on, the legacy envelope stays and the x402 fields ride beside it.
   if (accepts.length) err.body = { ...err.toJSON(), x402Version: X402_VERSION, accepts };
@@ -114,7 +116,7 @@ export function parsePaymentHeader(v: string): PaymentHeader {
   } catch (e) {
     if (isApiError(e)) throw e;
   }
-  fail(400, "X-Payment must be a transaction hash, JSON {\"tx\": \"0x...\"}, base64 JSON {\"scheme\": \"eip3009\", ...}, or an x402 payment (base64 JSON {\"x402Version\": 1, ...}).", "invalid_payment");
+  fail(400, "X-Payment must be a transaction hash, JSON {\"tx\": \"0x...\"}, base64 JSON {\"scheme\": \"eip3009\", ...}, or an x402 payment (base64 JSON {\"x402Version\": 1 or 2, ...}).", "invalid_payment");
 }
 
 /** Gasless path: relay the signed authorization on-chain, then redeem the resulting payment. */
@@ -182,8 +184,10 @@ export async function redeemX402(ctx: Ctx, p: X402Payment, o: QuoteInfo) {
   const priceUsdg = quotePrice(ctx, o.pricePico);
   const requirement = await x402Requirement(ctx, { priceUsdg, resource: o.resource, description: o.description });
   const a = p.auth;
-  const refuse = (reason: string): never => {
-    throw new ApiError(402, reason, "payment_rejected", undefined, undefined, x402Body(reason, [requirement], { payer: a.from.toLowerCase() }));
+  // The settlement names the network the way the payer did: the v1 name, or the CAIP-2 one.
+  const network = p.network === requirement.network ? requirement.network : `eip155:${ctx.cfg.chain.id}`;
+  const refuse = (reason: string, headers: Record<string, string> = {}): never => {
+    throw new ApiError(402, reason, "payment_rejected", undefined, { ...x402RequiredHeaders(reason, [requirement]), ...headers }, x402Body(reason, [requirement], { payer: a.from.toLowerCase() }));
   };
   const reason = await verifyX402(ctx, p, requirement);
   if (reason) refuse(reason);
@@ -202,7 +206,7 @@ export async function redeemX402(ctx: Ctx, p: X402Payment, o: QuoteInfo) {
   } catch (e) {
     await ctx.db.update(quotes).set({ status: "failed" }).where(eq(quotes.nonce, claim));
     log.warn("x402 settlement failed", { payer, error: (e as Error).message.split("\n")[0].slice(0, 200) });
-    return refuse("settle_exact_failed");
+    return refuse("settle_exact_failed", x402FailureHeader({ errorReason: "settle_exact_failed", network, payer }));
   }
   const txHash = settled.hash.toLowerCase() as Hex;
   const accountId = walletAccountId(payer);
@@ -217,13 +221,13 @@ export async function redeemX402(ctx: Ctx, p: X402Payment, o: QuoteInfo) {
     log.error("x402 payment settled but not credited", { payer, txHash, value: a.value.toString(), error: (e as Error).message });
     throw e;
   }
-  return { accountId, payer, txHash, paymentResponse: x402ResponseHeader({ transaction: txHash, network: requirement.network, payer }) };
+  return { accountId, payer, txHash, paymentResponse: x402ResponseHeader({ transaction: txHash, network, payer }) };
 }
 
-/** Per-call payment for a caller with no key: answer 402 with a quote, or redeem the X-Payment header. */
+/** Per-call payment for a caller with no key: answer 402 with a quote, or redeem the X-Payment (or PAYMENT-SIGNATURE) header. */
 export async function payPerCall(ctx: Ctx, c: Context, o: Quote & { description?: string }): Promise<{ accountId: string; payer: string; txHash: string; paymentResponse?: string }> {
   const info: QuoteInfo = { ...o, resource: `${ctx.cfg.publicUrl}${new URL(c.req.url).pathname}`, description: o.description ?? `Pay-per-call inference: ${o.modelId}` };
-  const pay = c.req.header("x-payment");
+  const pay = paymentHeaderOf(c);
   if (!pay) return paymentRequired(ctx, info);
   const header = parsePaymentHeader(pay);
   if (header.kind === "x402") return redeemX402(ctx, header.payment, info);

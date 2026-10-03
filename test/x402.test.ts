@@ -2,11 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getAddress, type Hex } from "viem";
-import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { startRouter, type Harness } from "./helpers.ts";
+import { b64, unb64, v2Payment, xPayment, type Req, type V2Required } from "./support/x402-client.ts";
 import { balanceOf, verifyInvariants } from "../src/ledger/ledger.ts";
 import { quotes } from "../src/db/schema.ts";
-import { X402_TYPES } from "../src/pay/x402.ts";
 import { usdgToPico } from "../src/lib/money.ts";
 import { loadConfig } from "../src/config.ts";
 
@@ -16,29 +16,6 @@ const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
 const CHAT = "/api/v1/chat/completions";
 const acct = (a: string) => `w_${a.slice(2).toLowerCase()}`;
 const chatBody = (content: string, extra: Record<string, unknown> = {}) => ({ model: LLAMA, max_tokens: 50, messages: [{ role: "user", content }], ...extra });
-
-type Req = { scheme: string; network: string; maxAmountRequired: string; resource: string; description: string; mimeType: string; payTo: Hex; maxTimeoutSeconds: number; asset: Hex; extra: { name: string; version: string; chainId: number } };
-
-/** What an x402 client does: sign the requirement's EIP-3009 authorization and base64 it into X-PAYMENT. */
-async function xPayment(req: Req, o: { signer?: PrivateKeyAccount; from?: Hex; to?: Hex; value?: bigint; validAfter?: bigint; validBefore?: bigint; nonce?: Hex; network?: string; version?: number } = {}) {
-  const signer = o.signer ?? privateKeyToAccount(generatePrivateKey());
-  const authorization = {
-    from: o.from ?? signer.address,
-    to: o.to ?? req.payTo,
-    value: o.value ?? BigInt(req.maxAmountRequired),
-    validAfter: o.validAfter ?? 0n,
-    validBefore: o.validBefore ?? BigInt(Math.floor(Date.now() / 1000) + req.maxTimeoutSeconds),
-    nonce: o.nonce ?? (`0x${randomBytes(32).toString("hex")}` as Hex),
-  };
-  const signature = await signer.signTypedData({
-    domain: { name: req.extra.name, version: req.extra.version, chainId: req.extra.chainId, verifyingContract: req.asset },
-    types: X402_TYPES,
-    primaryType: "TransferWithAuthorization",
-    message: authorization,
-  });
-  const payload = { x402Version: o.version ?? 1, scheme: "exact", network: o.network ?? req.network, payload: { signature, authorization: { ...authorization, value: String(authorization.value), validAfter: String(authorization.validAfter), validBefore: String(authorization.validBefore) } } };
-  return { header: Buffer.from(JSON.stringify(payload)).toString("base64"), signer, authorization };
-}
 
 describe("x402 (exact scheme, USDG on Robinhood Chain)", () => {
   let h: Harness;
@@ -56,11 +33,14 @@ describe("x402 (exact scheme, USDG on Robinhood Chain)", () => {
   };
   const send = (json: unknown, header: string, path = CHAT) => h.request(path, { method: "POST", headers: { "x-payment": header }, json });
 
-  test("/status reports x402 as configured with its network name", async () => {
+  test("/status reports x402 as configured with its network names, versions and headers", async () => {
     const per = (await (await h.request("/api/v1/status")).json()).data.per_call;
     expect(per.configured).toBe(true);
     expect(per.x402.configured).toBe(true);
     expect(per.x402.network).toBe("robinhood-chain");
+    expect(per.x402.versions).toEqual([1, 2]);
+    expect(per.x402.networks).toEqual(["robinhood-chain", "eip155:4663"]);
+    expect(per.x402.headers).toEqual({ payment: ["X-PAYMENT", "PAYMENT-SIGNATURE"], required: "PAYMENT-REQUIRED", response: ["X-PAYMENT-RESPONSE", "PAYMENT-RESPONSE"] });
   });
 
   test("unpaid request -> 402 x402 body with one exact requirement priced by the per-call logic", async () => {
@@ -97,6 +77,8 @@ describe("x402 (exact scheme, USDG on Robinhood Chain)", () => {
     expect(settled).toMatchObject({ from: pay.signer.address, to: req.payTo, value: BigInt(req.maxAmountRequired), nonce: pay.authorization.nonce });
     const resp = JSON.parse(Buffer.from(r.headers.get("x-payment-response")!, "base64").toString());
     expect(resp).toEqual({ success: true, transaction: settled.hash, network: "robinhood-chain", payer: pay.signer.address.toLowerCase() });
+    // v2 clients read the same settlement from PAYMENT-RESPONSE.
+    expect(r.headers.get("payment-response")).toBe(r.headers.get("x-payment-response"));
     const j = await r.json();
     expect(j.receipt.payload.mode).toBe("per_call");
     expect(j.receipt.payload.payment_tx).toBe(settled.hash);
@@ -175,7 +157,7 @@ describe("x402 (exact scheme, USDG on Robinhood Chain)", () => {
       [await xPayment(req, { validBefore: BigInt(Math.floor(Date.now() / 1000) - 5) }), "invalid_exact_evm_payload_authorization_valid_before"],
       [await xPayment(req, { validAfter: BigInt(Math.floor(Date.now() / 1000) + 3600) }), "invalid_exact_evm_payload_authorization_valid_after"],
       [await xPayment(req, { network: "base" }), "invalid_network"],
-      [await xPayment(req, { version: 2 }), "invalid_x402_version"],
+      [await xPayment(req, { version: 3 }), "invalid_x402_version"],
     ];
     const poor = await xPayment(req);
     h.chain.usdgBalances.set(poor.signer.address.toLowerCase(), 0n);
@@ -222,6 +204,113 @@ describe("x402 (exact scheme, USDG on Robinhood Chain)", () => {
   });
 });
 
+describe("x402 v2 (PAYMENT-SIGNATURE, PAYMENT-REQUIRED, PAYMENT-RESPONSE)", () => {
+  let h: Harness;
+  beforeAll(async () => {
+    h = await startRouter({ env: { X402_PAY_TO: PAY_TO } });
+    h.chain.noCallPay = true;
+  });
+  afterAll(async () => h.close());
+
+  /** An unpaid call: the v1 body and the v2 PaymentRequired from its header. */
+  const ask = async (path = CHAT, json: unknown = chatBody("v2 " + randomBytes(4).toString("hex"))) => {
+    const r = await h.request(path, { method: "POST", json });
+    expect(r.status).toBe(402);
+    return { json, body: await r.json(), required: unb64(r.headers.get("payment-required")) as V2Required };
+  };
+  const sign = (json: unknown, header: string, path = CHAT) => h.request(path, { method: "POST", headers: { "payment-signature": header }, json });
+
+  test("the 402 keeps its v1 JSON body and carries the same requirement as a v2 PaymentRequired in PAYMENT-REQUIRED", async () => {
+    const { body, required } = await ask(CHAT, chatBody("same price"));
+    const v1 = body.accepts[0] as Req;
+    expect(body.x402Version).toBe(1);
+    expect(required).toEqual({
+      x402Version: 2,
+      error: "PAYMENT-SIGNATURE header is required",
+      resource: { url: `${h.ctx.cfg.publicUrl}${CHAT}`, description: v1.description, mimeType: "application/json" },
+      accepts: [{ scheme: "exact", network: "eip155:4663", amount: v1.maxAmountRequired, asset: USDG, payTo: getAddress(PAY_TO), maxTimeoutSeconds: 300, extra: { name: "Global Dollar", version: "1", chainId: 4663 } }],
+    });
+    // A browser can read the new headers and send PAYMENT-SIGNATURE.
+    const cors = await h.request(CHAT, { method: "POST", headers: { origin: "https://agent.example" }, json: chatBody("cors") });
+    const exposed = (cors.headers.get("access-control-expose-headers") ?? "").toLowerCase().split(/\s*,\s*/);
+    for (const name of ["payment-required", "payment-response", "x-payment-response"]) expect(exposed).toContain(name);
+    const preflight = await h.request(CHAT, { method: "OPTIONS", headers: { origin: "https://agent.example", "access-control-request-method": "POST", "access-control-request-headers": "payment-signature,content-type" } });
+    expect((preflight.headers.get("access-control-allow-headers") ?? "").toLowerCase()).toContain("payment-signature");
+  });
+
+  test("a v2 PaymentPayload in PAYMENT-SIGNATURE is verified, settled once and answered with PAYMENT-RESPONSE and X-PAYMENT-RESPONSE", async () => {
+    const { json, required } = await ask();
+    const pay = await v2Payment(required);
+    const r = await sign(json, pay.header);
+    expect(r.status).toBe(200);
+    const settled = h.chain.x402Relays.at(-1)!;
+    expect(settled).toMatchObject({ from: pay.signer.address, to: getAddress(PAY_TO), value: BigInt(required.accepts[0].amount), nonce: pay.authorization.nonce });
+    expect(r.headers.get("payment-response")).toBe(r.headers.get("x-payment-response"));
+    expect(unb64(r.headers.get("payment-response"))).toEqual({ success: true, transaction: settled.hash, network: "eip155:4663", payer: pay.signer.address.toLowerCase() });
+    const j = await r.json();
+    expect(j.receipt.payload).toMatchObject({ mode: "per_call", payment_tx: settled.hash, payer: pay.signer.address.toLowerCase() });
+    const cost = BigInt(Math.round(j.usage.cost * 1e12));
+    expect((await balanceOf(h.ctx.db, acct(pay.signer.address))).balance).toBe(usdgToPico(BigInt(required.accepts[0].amount)) - cost);
+
+    // The same authorization again, under either header, is refused with fresh v2 requirements and settles nothing.
+    const relays = h.chain.x402Relays.length;
+    for (const headers of [{ "payment-signature": pay.header }, { "x-payment": pay.header }]) {
+      const again = await h.request(CHAT, { method: "POST", headers, json });
+      expect(again.status).toBe(402);
+      expect((await again.json()).error).toBe("invalid_exact_evm_payload_authorization_nonce_used");
+      const fresh = unb64(again.headers.get("payment-required")) as V2Required;
+      expect(fresh.x402Version).toBe(2);
+      expect(fresh.error).toBe("invalid_exact_evm_payload_authorization_nonce_used");
+      expect(fresh.accepts[0].amount).toBe(required.accepts[0].amount);
+    }
+    expect(h.chain.x402Relays.length).toBe(relays);
+  });
+
+  test("a v1 payment may name eip155:4663 and a v2 payment robinhood-chain; the settlement names the network as the payer did", async () => {
+    const one = await ask();
+    const r1 = await h.request(CHAT, { method: "POST", headers: { "x-payment": (await xPayment(one.body.accepts[0], { network: "eip155:4663" })).header }, json: one.json });
+    expect(r1.status).toBe(200);
+    expect(unb64(r1.headers.get("x-payment-response")).network).toBe("eip155:4663");
+    const two = await ask();
+    const r2 = await sign(two.json, (await v2Payment(two.required, { network: "robinhood-chain" })).header);
+    expect(r2.status).toBe(200);
+    expect(unb64(r2.headers.get("payment-response")).network).toBe("robinhood-chain");
+  });
+
+  test("v2 rejections: an underpaid amount, another chain's network and a failed settlement", async () => {
+    const { json, required } = await ask();
+    const under = await v2Payment(required, { value: BigInt(required.accepts[0].amount) - 1n });
+    const r = await sign(json, under.header);
+    expect(r.status).toBe(402);
+    expect((await r.json()).error).toBe("invalid_exact_evm_payload_authorization_value");
+    expect(unb64(r.headers.get("payment-required")).error).toBe("invalid_exact_evm_payload_authorization_value");
+    const elsewhere = await v2Payment(required, { network: "eip155:8453" });
+    expect((await (await sign(json, elsewhere.header)).json()).error).toBe("invalid_network");
+    h.chain.failX402Relay = true;
+    const failing = await v2Payment(required);
+    const failed = await sign(json, failing.header);
+    h.chain.failX402Relay = false;
+    expect(failed.status).toBe(402);
+    expect(unb64(failed.headers.get("payment-response"))).toEqual({ success: false, transaction: "", errorReason: "settle_exact_failed", network: "eip155:4663", payer: failing.signer.address.toLowerCase() });
+    expect(failed.headers.get("x-payment-response")).toBeNull();
+    expect(h.chain.x402Relays.some((x) => [under, elsewhere, failing].some((p) => p.authorization.nonce === x.nonce))).toBe(false);
+  });
+
+  test("embeddings and a streamed chat pay with PAYMENT-SIGNATURE too", async () => {
+    const emb = await ask("/api/v1/embeddings", { model: "acme/embed-small", input: ["v2 vectors"] });
+    expect(emb.required.resource.url).toBe(`${h.ctx.cfg.publicUrl}/api/v1/embeddings`);
+    const e = await sign(emb.json, (await v2Payment(emb.required)).header, "/api/v1/embeddings");
+    expect(e.status).toBe(200);
+    expect(unb64(e.headers.get("payment-response")).success).toBe(true);
+    const streamed = await ask(CHAT, chatBody("v2 stream", { stream: true }));
+    const s = await sign(streamed.json, (await v2Payment(streamed.required)).header);
+    expect(s.status).toBe(200);
+    expect(s.headers.get("content-type")).toContain("text/event-stream");
+    expect(s.headers.get("payment-response")).toBe(s.headers.get("x-payment-response"));
+    await s.text();
+  });
+});
+
 describe("x402 beside the CallPay flow", () => {
   let h: Harness;
   beforeAll(async () => (h = await startRouter({ env: { X402_PAY_TO: PAY_TO } })));
@@ -239,6 +328,7 @@ describe("x402 beside the CallPay flow", () => {
     expect(b.accepts[0].maxAmountRequired).toBe(units);
     expect(b.accepts[0].payTo).toBe(getAddress(PAY_TO));
     expect(r.headers.get("x-payment-required")).toBe("usdg");
+    expect(unb64(r.headers.get("payment-required")).accepts[0].amount).toBe(units);
   });
 
   test("a CallPay tx hash still pays, and an x402 payment works on the same router", async () => {
@@ -263,6 +353,7 @@ describe("x402 off", () => {
     const b = await r.json();
     expect(b.x402Version).toBeUndefined();
     expect(b.accepts).toBeUndefined();
+    expect(r.headers.get("payment-required")).toBeNull();
     expect((await (await h.request("/api/v1/status")).json()).data.per_call.x402.configured).toBe(false);
     const req = { scheme: "exact", network: "robinhood-chain", maxAmountRequired: "1", resource: "", description: "", mimeType: "", payTo: PAY_TO as Hex, maxTimeoutSeconds: 300, asset: USDG as Hex, extra: { name: "Global Dollar", version: "1", chainId: 4663 } };
     const x = await h.request(CHAT, { method: "POST", headers: { "x-payment": (await xPayment(req)).header }, json: body });

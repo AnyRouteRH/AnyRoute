@@ -18,7 +18,7 @@ import { laneSummary } from "./models.ts";
 import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAllowance, openDebt, rawToPico, saveAllowance, signCharge, statement, typedDataJson } from "../pay/paywith.ts";
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
-import { x402Enabled } from "../pay/x402.ts";
+import { X402_VERSIONS, x402Enabled } from "../pay/x402.ts";
 import { PRIVATE_LANES, PUBLIC_LANE_ROWS, privateLaneStats } from "../services/private-stats.ts";
 import { labelForReceipt } from "../privacy/resolve.ts";
 
@@ -336,7 +336,18 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         paywith: { tokens: ctx.cfg.paywith.tokens.map((t) => t.symbol), configured: !!ctx.cfg.chain.payWithStock },
         // Escrow payments: the tokens it credits, the Stock Token haircut, and $ANYR's own terms (null when not accepted).
         escrow: { enabled: escrowEnabled(ctx), tokens: escrowEnabled(ctx) ? acceptedTokens(ctx).map((t) => t.symbol) : [], haircut_bps: ctx.cfg.escrow.haircutBps, anyr: anyrSummary(ctx) },
-        per_call: { configured: !!ctx.cfg.chain.callPay || x402Enabled(ctx), max_usd: ctx.cfg.fees.perCallMaxUsd, x402: { configured: x402Enabled(ctx), network: ctx.cfg.x402.network } },
+        per_call: {
+          configured: !!ctx.cfg.chain.callPay || x402Enabled(ctx),
+          max_usd: ctx.cfg.fees.perCallMaxUsd,
+          // x402 v1 and v2 when configured: the network names a payment may carry and the headers read and written.
+          x402: {
+            configured: x402Enabled(ctx),
+            network: ctx.cfg.x402.network,
+            versions: X402_VERSIONS,
+            networks: [ctx.cfg.x402.network, `eip155:${ctx.cfg.chain.id}`],
+            headers: { payment: ["X-PAYMENT", "PAYMENT-SIGNATURE"], required: "PAYMENT-REQUIRED", response: ["X-PAYMENT-RESPONSE", "PAYMENT-RESPONSE"] },
+          },
+        },
         // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.
         holders: holdersStatus(ctx),
         telemetry: ctx.telemetry.enabled,

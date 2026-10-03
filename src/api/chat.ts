@@ -35,6 +35,7 @@ import { resolveSavedRoute } from "../routing/saved-routes.ts";
 import { resolvePreset } from "../routing/presets.ts";
 import { recordCharacterUse, resolveCharacter, type CharacterMeta } from "../characters/registry.ts";
 import { payPerCall } from "../pay/percall.ts";
+import { paymentHeaderOf, x402ResponseHeaders } from "../pay/x402.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import type { HolderTier } from "../config.ts";
 import { COUNCIL_MODEL, applyDualDecoding, runCouncil, runDual, validateMulti } from "./council.ts";
@@ -202,7 +203,7 @@ async function giveBack(ctx: Ctx, billing: Billing, holdId: string) {
 }
 
 /** x402: the settlement receipt rides on the served response. */
-const paymentHeaders = (b: Billing): Record<string, string> => (b.mode === "per_call" && b.paymentResponse ? { "x-payment-response": b.paymentResponse } : {});
+const paymentHeaders = (b: Billing): Record<string, string> => (b.mode === "per_call" && b.paymentResponse ? x402ResponseHeaders(b.paymentResponse) : {});
 
 function chunkBase(id: string, created: number, model: ModelRow, provider: string, kind: Kind) {
   return { id, object: kind === "chat" ? "chat.completion.chunk" : "text_completion", created, model: model.id, provider };
@@ -299,7 +300,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   // Lane "unlinkable" (OHTTP_ENABLED or UNLINKABLE_VIA_ONION): only through an independent relay or the onion service, only with a blind token and no key or wallet.
   // Checked before anything is priced or spent (ohttp/lane.ts).
   const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
-  const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !!wallet || (!key && !pass && !!c.req.header("x-payment")), hasToken: !!pass });
+  const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !!wallet || (!key && !pass && !!paymentHeaderOf(c)), hasToken: !!pass });
   // Private-lane traffic (and `:private`, stored as private) is published only through noisy hourly counters.
   noteLane(c.req.raw, disc.lane !== "public" ? disc.lane : (body.provider as ProviderPrefs | undefined)?.private === true || String(body.model ?? "").includes(":private") ? "attested" : "public");
   const strict = disc.max !== "any";

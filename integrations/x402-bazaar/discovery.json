@@ -121,5 +121,465 @@
         "priceHint": "Per request: per-token input price times the input length, plus a 1% per-call margin; at most 25 USDG."
       }
     }
-  ]
+  ],
+  "v2": {
+    "x402Version": 2,
+    "items": [
+      {
+        "resource": "https://api-production-70da.up.railway.app/api/v1/chat/completions",
+        "type": "http",
+        "x402Version": 2,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:4663",
+            "amount": "25000000",
+            "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            "payTo": "<X402_PAY_TO>",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "name": "Global Dollar",
+              "version": "1",
+              "chainId": 4663
+            }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "body": {
+                  "model": "meta-llama/llama-3.3-70b-instruct",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "Hello"
+                    }
+                  ],
+                  "max_tokens": 256
+                }
+              },
+              "output": {
+                "type": "json",
+                "example": {
+                  "object": "chat.completion",
+                  "model": "meta-llama/llama-3.3-70b-instruct",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "message": {
+                        "role": "assistant",
+                        "content": "Hello! How can I help?"
+                      },
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 7,
+                    "total_tokens": 16,
+                    "cost": 0.0000031
+                  },
+                  "receipt": {
+                    "id": "gen-...",
+                    "alg": "Ed25519",
+                    "key_id": "...",
+                    "sig": "...",
+                    "payload": {}
+                  }
+                }
+              }
+            },
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "http"
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "POST"
+                      ]
+                    },
+                    "bodyType": {
+                      "type": "string",
+                      "enum": [
+                        "json"
+                      ]
+                    },
+                    "body": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string",
+                          "description": "Any id from GET /api/v1/models, e.g. meta-llama/llama-3.3-70b-instruct"
+                        },
+                        "messages": {
+                          "type": "array",
+                          "description": "OpenAI chat messages"
+                        },
+                        "max_tokens": {
+                          "type": "integer",
+                          "description": "Caps the quoted price"
+                        },
+                        "stream": {
+                          "type": "boolean"
+                        },
+                        "provider": {
+                          "type": "object",
+                          "description": "{\"lane\":\"attested\"} sends only to providers whose enclave the router verified, or refuses with nothing sent"
+                        }
+                      },
+                      "required": [
+                        "model",
+                        "messages"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "method",
+                    "bodyType",
+                    "body"
+                  ],
+                  "additionalProperties": false
+                },
+                "output": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "example": {
+                      "type": "object",
+                      "description": "OpenAI chat.completion plus usage.cost (USD) and receipt {id, sig, key_id, alg, payload}"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                }
+              },
+              "required": [
+                "input"
+              ]
+            }
+          }
+        },
+        "metadata": {
+          "name": "Anyroute chat completions",
+          "tags": [
+            "attested",
+            "tee",
+            "uncensored-ok"
+          ],
+          "category": "ai-inference",
+          "priceHint": "Per request: the model's per-token price (GET /api/v1/models) times the request's prompt and max_tokens, plus a 1% per-call margin; at most 25 USDG.",
+          "docs": "https://api-production-70da.up.railway.app/docs",
+          "models": "https://api-production-70da.up.railway.app/api/v1/models"
+        }
+      },
+      {
+        "resource": "https://api-production-70da.up.railway.app/api/v1/completions",
+        "type": "http",
+        "x402Version": 2,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:4663",
+            "amount": "25000000",
+            "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            "payTo": "<X402_PAY_TO>",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "name": "Global Dollar",
+              "version": "1",
+              "chainId": 4663
+            }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "body": {
+                  "model": "meta-llama/llama-3.3-70b-instruct",
+                  "prompt": "Once upon a time",
+                  "max_tokens": 64
+                }
+              },
+              "output": {
+                "type": "json",
+                "example": {
+                  "object": "text_completion",
+                  "model": "meta-llama/llama-3.3-70b-instruct",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "text": " there was a router.",
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 5,
+                    "total_tokens": 9,
+                    "cost": 0.0000012
+                  },
+                  "receipt": {
+                    "id": "gen-...",
+                    "alg": "Ed25519",
+                    "key_id": "...",
+                    "sig": "...",
+                    "payload": {}
+                  }
+                }
+              }
+            },
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "http"
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "POST"
+                      ]
+                    },
+                    "bodyType": {
+                      "type": "string",
+                      "enum": [
+                        "json"
+                      ]
+                    },
+                    "body": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string"
+                        },
+                        "prompt": {
+                          "type": "string"
+                        },
+                        "max_tokens": {
+                          "type": "integer",
+                          "description": "Caps the quoted price"
+                        }
+                      },
+                      "required": [
+                        "model",
+                        "prompt"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "method",
+                    "bodyType",
+                    "body"
+                  ],
+                  "additionalProperties": false
+                },
+                "output": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "example": {
+                      "type": "object",
+                      "description": "OpenAI text_completion plus usage.cost (USD) and receipt"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                }
+              },
+              "required": [
+                "input"
+              ]
+            }
+          }
+        },
+        "metadata": {
+          "name": "Anyroute text completions",
+          "tags": [
+            "attested",
+            "tee",
+            "uncensored-ok"
+          ],
+          "category": "ai-inference",
+          "priceHint": "Per request: per-token price times prompt and max_tokens, plus a 1% per-call margin; at most 25 USDG."
+        }
+      },
+      {
+        "resource": "https://api-production-70da.up.railway.app/api/v1/embeddings",
+        "type": "http",
+        "x402Version": 2,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:4663",
+            "amount": "25000000",
+            "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            "payTo": "<X402_PAY_TO>",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "name": "Global Dollar",
+              "version": "1",
+              "chainId": 4663
+            }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "body": {
+                  "model": "qwen/qwen3-embedding-8b",
+                  "input": [
+                    "pay per embedding"
+                  ]
+                }
+              },
+              "output": {
+                "type": "json",
+                "example": {
+                  "object": "list",
+                  "model": "qwen/qwen3-embedding-8b",
+                  "data": [
+                    {
+                      "object": "embedding",
+                      "index": 0,
+                      "embedding": [
+                        0.0123,
+                        -0.0456,
+                        0.0789
+                      ]
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 4,
+                    "total_tokens": 4,
+                    "cost": 0.0000002
+                  },
+                  "receipt": {
+                    "id": "gen-...",
+                    "alg": "Ed25519",
+                    "key_id": "...",
+                    "sig": "...",
+                    "payload": {}
+                  }
+                }
+              }
+            },
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "http"
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "POST"
+                      ]
+                    },
+                    "bodyType": {
+                      "type": "string",
+                      "enum": [
+                        "json"
+                      ]
+                    },
+                    "body": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string",
+                          "description": "e.g. qwen/qwen3-embedding-8b"
+                        },
+                        "input": {
+                          "type": [
+                            "string",
+                            "array"
+                          ],
+                          "description": "A string or an array of strings"
+                        }
+                      },
+                      "required": [
+                        "model",
+                        "input"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "method",
+                    "bodyType",
+                    "body"
+                  ],
+                  "additionalProperties": false
+                },
+                "output": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "example": {
+                      "type": "object",
+                      "description": "OpenAI embedding list plus usage.cost (USD) and receipt"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                }
+              },
+              "required": [
+                "input"
+              ]
+            }
+          }
+        },
+        "metadata": {
+          "name": "Anyroute embeddings",
+          "tags": [
+            "attested",
+            "tee"
+          ],
+          "category": "ai-inference",
+          "priceHint": "Per request: per-token input price times the input length, plus a 1% per-call margin; at most 25 USDG."
+        }
+      }
+    ]
+  }
 }

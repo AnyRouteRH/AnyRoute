@@ -20,6 +20,7 @@ import { servedPolicyHash } from "./disclosure.ts";
 import { requestHash, requiresAttestedUpstream, toolkit, unattestedUpstream } from "./chat.ts";
 import { compactUpstream, recordGpuAttested } from "../providers/aci.ts";
 import { payPerCall } from "../pay/percall.ts";
+import { paymentHeaderOf, x402ResponseHeaders } from "../pay/x402.ts";
 import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
@@ -68,7 +69,7 @@ export function rerankRoutes(app: Hono, ctx: Ctx) {
     if (key?.allowedModels?.length && !key.allowedModels.includes(r.model.id)) fail(403, "This key may not use that model.", "model_not_allowed");
     const est = estimateRerank(req);
     const { disclosure: _d, lane: _l, lane_downgrade: _ld, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
-    const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!c.req.header("x-payment")), hasToken: !!pass });
+    const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!paymentHeaderOf(c)), hasToken: !!pass });
     noteLane(c.req.raw, disc.lane); // the status page counts public-lane requests only (services/slo.ts)
     const strict = disc.max !== "any";
     const plan = (p: ProviderPrefs) =>
@@ -215,7 +216,7 @@ export function rerankRoutes(app: Hono, ctx: Ctx) {
           cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}) },
         };
         const receiptJson = { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload };
-        const headers = { ...generationHeaders(id, disc.lane, servedPolicyHash(ctx, cand)), "x-anyroute-disclosure": served.class, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) };
+        const headers = { ...generationHeaders(id, disc.lane, servedPolicyHash(ctx, cand)), "x-anyroute-disclosure": served.class, ...(paid?.paymentResponse ? x402ResponseHeaders(paid.paymentResponse) : {}) };
         if (refused) return c.json({ ...unattestedUpstream(ua!).toJSON(), id, usage: usageJson, receipt: receiptJson }, 502, headers);
         return c.json(
           {

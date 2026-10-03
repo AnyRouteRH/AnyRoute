@@ -21,6 +21,7 @@ import { servedPolicyHash } from "./disclosure.ts";
 import { requestHash, requiresAttestedUpstream, toolkit, unattestedUpstream } from "./chat.ts";
 import { compactUpstream, recordGpuAttested } from "../providers/aci.ts";
 import { payPerCall } from "../pay/percall.ts";
+import { paymentHeaderOf, x402ResponseHeaders } from "../pay/x402.ts";
 import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
@@ -68,7 +69,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     // Same disclosure ceiling and lane as chat (`provider.disclosure`, `provider.lane`, X-Anyroute-Disclosure-Max, X-Anyroute-Lane).
     const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
     // A per-call payment names its payer as a wallet does: it is identity-bearing for lane "unlinkable".
-    const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!c.req.header("x-payment")), hasToken: !!pass });
+    const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!paymentHeaderOf(c)), hasToken: !!pass });
     noteLane(c.req.raw, disc.lane); // the status page counts public-lane requests only (services/slo.ts)
     const strict = disc.max !== "any";
     const plan = (p: ProviderPrefs) =>
@@ -206,7 +207,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         if (pass) await confirmToken(ctx, pass, id);
         const usageJson = { prompt_tokens: usage.prompt, total_tokens: usage.prompt, cost: picoToUsd(charged), cost_details: { upstream_inference_cost: picoToUsd(cost.upstream), royalty: picoToUsd(cost.royalty), ...(key ? {} : { margin: picoToUsd(cost.margin) }), ...(tier ? { holder_discount: picoToUsd(cost.holderDiscount) } : {}), ...(batchLine ? { batch_discount: picoToUsd(cost.batchDiscount) } : {}) } };
         const receiptJson = { id, sig: signed.sig, key_id: signed.keyId, alg: "Ed25519", payload };
-        const headers = { ...routeResponseHeaders(ctx.cfg.routeExplain, routeResult), ...generationHeaders(id, disc.lane, servedPolicyHash(ctx, cand)), "x-anyroute-disclosure": served.class, ...(paid?.paymentResponse ? { "x-payment-response": paid.paymentResponse } : {}) };
+        const headers = { ...routeResponseHeaders(ctx.cfg.routeExplain, routeResult), ...generationHeaders(id, disc.lane, servedPolicyHash(ctx, cand)), "x-anyroute-disclosure": served.class, ...(paid?.paymentResponse ? x402ResponseHeaders(paid.paymentResponse) : {}) };
         // The gateway had already done (and billed) the work: the vectors are withheld, and the receipt records why.
         if (refused) return c.json({ ...unattestedUpstream(ua!).toJSON(), id, usage: usageJson, receipt: receiptJson }, 502, headers);
         return c.json({

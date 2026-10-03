@@ -30,7 +30,7 @@ const EMBEDDINGS = "/api/v1/embeddings";
 const PEEK_MS = 4_000;
 
 /** Request headers the chat route reads: credentials, payment, routing (lane, disclosure) and tracing. */
-const FORWARD = ["authorization", "x-pay-with", "x-payment", "x-wallet-auth", "x-anyroute-lane", "x-anyroute-lane-downgrade", "x-anyroute-disclosure-max", "x-anyroute-cache", "http-referer", "x-title", "traceparent", ONION_HEADER];
+const FORWARD = ["authorization", "x-pay-with", "x-payment", "payment-signature", "x-wallet-auth", "x-anyroute-lane", "x-anyroute-lane-downgrade", "x-anyroute-disclosure-max", "x-anyroute-cache", "http-referer", "x-title", "traceparent", ONION_HEADER];
 /** Response headers passed on: the receipt, lane and policy headers, the payment headers and what a client needs to retry. */
 const PASS = [...EXPOSED_RESPONSE_HEADERS, "www-authenticate"];
 

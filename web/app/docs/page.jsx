@@ -454,7 +454,11 @@ const xPayment = btoa(JSON.stringify({
 // 3. Retry the identical request with X-PAYMENT.
 const paid = await fetch(url, { method: "POST", headers: { ...headers, "X-PAYMENT": xPayment }, body });
 const completion = await paid.json(); // usage + signed receipt; receipt.payload.payment_tx is the settlement
-const settlement = JSON.parse(atob(paid.headers.get("X-PAYMENT-RESPONSE"))); // { success, transaction, network, payer }`;
+const settlement = JSON.parse(atob(paid.headers.get("X-PAYMENT-RESPONSE"))); // { success, transaction, network, payer }
+
+// x402 v2: the same requirement is in the PAYMENT-REQUIRED header (network "eip155:4663", amount). Send
+// btoa(JSON.stringify({ x402Version: 2, resource, accepted, payload: { signature, authorization } })) as
+// PAYMENT-SIGNATURE and read the same settlement from PAYMENT-RESPONSE.`;
 const laneRefusal = `POST /api/v1/chat/completions
 { "model": "<model>", "messages": [...], "provider": { "lane": "attested" } }
 
@@ -1207,8 +1211,9 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           <p>
             Per-call payment is not switched on at anyroute.tech yet: calls without a key get 401 there, and GET /api/v1/status shows per_call.configured. 
             Where the router has x402 enabled, any x402 client or agent can pay for a call in USDG on Robinhood Chain (chain id 4663) with no account and no API key. Send the request without credentials: the 402 response is an x402 v1 body
-            (x402Version, error, accepts) with one exact-scheme requirement. Sign the USDG authorization it describes, retry the identical request with an X-PAYMENT header, and the router verifies the signature, amount, recipient, time
-            window and nonce, relays the transfer (it pays the gas) and serves the call. Chat, completions and embeddings all work this way; GET /api/v1/status reports per_call.x402.configured.
+            (x402Version, error, accepts) with one exact-scheme requirement, and the same requirement as an x402 v2 PaymentRequired in the PAYMENT-REQUIRED header (base64 JSON). Sign the USDG authorization it describes, retry the identical
+            request with an X-PAYMENT header (v1) or a PAYMENT-SIGNATURE header (v2), and the router verifies the signature, amount, recipient, time window and nonce, relays the transfer (it pays the gas) and serves the call. Chat,
+            completions and embeddings all work this way; GET /api/v1/status reports per_call.x402.configured, and per_call.x402.versions, networks and headers say what it reads and writes.
           </p>
           <ul>
             <li>
@@ -1216,18 +1221,24 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
               carrying USDG’s EIP-712 name and version plus the numeric chainId.
             </li>
             <li>
-              <b>Network name.</b> x402 v1 names chains with lowercase hyphenated strings and has no Robinhood Chain entry, so the requirement says robinhood-chain (and the router also accepts the CAIP-2 name eip155:4663 in the payment). A client that
-              only knows built-in networks needs that name mapped to chain 4663, or a v2 client with an eip155 handler.
+              <b>Network name.</b> x402 v1 names chains with lowercase hyphenated strings and has no Robinhood Chain entry, so the v1 requirement says robinhood-chain; the v2 header uses the CAIP-2 name eip155:4663. A payment may name either. A v1
+              client that only knows built-in networks needs that name mapped to chain 4663, or a v2 client with an eip155 handler.
             </li>
             <li>
-              <b>Response.</b> The paid response carries X-PAYMENT-RESPONSE (base64 JSON with success, transaction, network and payer) and the signed receipt records the same transaction as payment_tx.
+              <b>x402 v2.</b> A v2 PaymentPayload carries x402Version 2, the resource, the requirement it accepted (scheme exact, network eip155:4663, amount in USDG base units, asset, payTo) and the same EIP-3009 authorization and signature
+              under payload. Send it base64-encoded in PAYMENT-SIGNATURE. The router reads X-PAYMENT and PAYMENT-SIGNATURE alike, so a v1 and a v2 client can pay the same router.
+            </li>
+            <li>
+              <b>Response.</b> The paid response carries the settlement (base64 JSON with success, transaction, network and payer) in both X-PAYMENT-RESPONSE and PAYMENT-RESPONSE, and the signed receipt records the same transaction as payment_tx.
+              Its network field names the chain the way the payment did.
             </li>
             <li>
               <b>Change.</b> The whole payment is credited to the paying wallet’s account and the call is charged from it, so anything unused stays there as credit you can spend with X-Wallet-Auth. Paying more than maxAmountRequired is allowed; nothing is refunded on-chain.
             </li>
             <li>
               <b>Rejections.</b> A payment that fails verification gets a 402 whose error is a reason such as invalid_exact_evm_payload_authorization_value (underpaid), invalid_exact_evm_payload_recipient_mismatch, invalid_exact_evm_payload_authorization_nonce_used
-              (replayed) or invalid_exact_evm_payload_signature, together with fresh requirements. Nothing moves on-chain for a rejected payment.
+              (replayed) or invalid_exact_evm_payload_signature, together with fresh requirements in the body and in PAYMENT-REQUIRED. A transfer that fails on-chain is settle_exact_failed, with PAYMENT-RESPONSE success false. Nothing moves
+              on-chain for a rejected payment.
             </li>
           </ul>
           <Code label="x402 client (JavaScript, viem)">{x402Example}</Code>
