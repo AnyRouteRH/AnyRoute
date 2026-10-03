@@ -1,5 +1,5 @@
 {
-  "_about": "Production as GET /api/v1/status reported it at anyroute.tech on 2026-10-03 (release 7e652dd), trimmed to the fields scripts/docs-claims-check.ts reads. The agreements section is what the router reports from the release that adds it, given the production configuration on 2026-10-03: agreements on, and the isolated agreement-jury worker posting rulings. config holds flags that status does not expose. When production changes, update this file and the docs in the same change; bun scripts/docs-claims-check.ts --live <router> shows the drift.",
+  "_about": "Production as GET /api/v1/status reported it at anyroute.tech on 2026-10-03 (release 7e652dd), trimmed to the fields scripts/docs-claims-check.ts reads. The agreements, facilitator, tools, commerce and makegood sections are what the router reports from the release that adds it, given the production configuration on 2026-10-03: agreements on, the isolated agreement-jury worker posting rulings, and the v6 facilitator, tool market, commerce ledger and make-good refunds off. config holds flags that status does not expose. When production changes, update this file and the docs in the same change; bun scripts/docs-claims-check.ts --live <router> shows the drift.",
   "data": {
     "release": {
       "commit": "7e652dd074cda57a109b936c0d248c22576ca9a3"
@@ -42,6 +42,19 @@
         "enabled": true,
         "source": "jury-worker-heartbeat"
       }
+    },
+    "facilitator": {
+      "enabled": false
+    },
+    "tools": {
+      "enabled": false,
+      "ready": false
+    },
+    "commerce": {
+      "enabled": false
+    },
+    "makegood": {
+      "enabled": false
     },
     "holders": {
       "enabled": true

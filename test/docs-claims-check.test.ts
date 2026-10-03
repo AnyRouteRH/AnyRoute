@@ -35,6 +35,23 @@ describe("docs claims check", () => {
     expect(at("Chat and embeddings, including x402 per-call payments.", false)).toEqual([]);
   });
 
+  test("the x402 facilitator and x402 tools answer to their own status fields", () => {
+    expect(at("The hosted x402 facilitator is live.").map((f) => [f.capability.id, f.capability.field])).toEqual([["facilitator", "facilitator.enabled"]]);
+    expect(at("Pay x402 tools from your balance.", true).map((f) => [f.capability.id, f.capability.field])).toEqual([["tools", "tools.ready"]]);
+  });
+
+  test("a changelog entry that says it is not on yet lists nothing as on", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "docs-claims-"));
+    mkdirSync(join(dir, "web/lib"), { recursive: true });
+    const entry = (id: string, summary: string) => ({ id, date: "2026-10-03", title: "Pay per call with x402", summary, links: [], tags: ["build"] });
+    writeFileSync(join(dir, "web/lib/changelog-data.js"), `export default ${JSON.stringify([
+      entry("qualified", "Built, but off until an operator sets X402_PAY_TO."),
+      entry("listed", "Agents pay in USDG."),
+    ], null, 2)};\n`);
+    const { findings } = await check(off, [{ path: "web/lib/changelog-data.js", kind: "changelog" }], dir);
+    expect([...new Set(findings.map((f) => f.clause.file))]).toEqual(["web/lib/changelog-data.js#listed"]);
+  });
+
   test("agreements and rulings follow the status agreements section, with the job list as the older signal", () => {
     const claim = { file: "doc.md", line: 1, text: "Automatic jury rulings are switched on.", implicit: false };
     const live = { ...claim, text: "Agreements between agents are live." };

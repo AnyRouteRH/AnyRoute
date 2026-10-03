@@ -16,11 +16,11 @@ export default [
       },
       {
         "label": "View commit",
-        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/2d586072c911e0d171b86a007ae797ae71570e25"
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/3ff57a887d610e9bd0d46888cbb8963e2f6adb74"
       },
       {
         "label": "View commit",
-        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4d6e9b027ec8f8d291bf744a0d0d59f2cb0c36ff"
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/66275f3cf59fcac0d78fc811b04b48698a88e911"
       }
     ],
     "tags": [

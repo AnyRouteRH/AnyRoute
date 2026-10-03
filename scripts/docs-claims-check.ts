@@ -41,7 +41,11 @@ const job = (name: string) => (s: Status) => (Array.isArray(s.jobs) ? s.jobs.som
 const flag = (name: string) => (_: Status, config: Record<string, boolean>) => (typeof config[name] === "boolean" ? config[name] : undefined);
 
 export const CAPABILITIES: Capability[] = [
-  { id: "x402", label: "x402 per-call payments", field: "per_call.x402.configured", on: field("per_call.x402.configured"), mention: /\bx402\b/i },
+  { id: "x402", label: "x402 per-call payments", field: "per_call.x402.configured", on: field("per_call.x402.configured"), mention: /\bx402\b(?! (?:facilitator|tools?)\b)/i },
+  { id: "facilitator", label: "hosted x402 facilitator", field: "facilitator.enabled", on: field("facilitator.enabled"), mention: /\bfacilitator\b/i },
+  { id: "tools", label: "paying x402 tools from a balance", field: "tools.ready", on: field("tools.ready"), mention: /\bx402 tools?\b|\btool market\b|\bpaid tools?\b/i },
+  { id: "commerce", label: "commerce ledger", field: "commerce.enabled", on: field("commerce.enabled"), mention: /\bcommerce ledger\b/i },
+  { id: "makegood", label: "make-good refunds", field: "makegood.enabled", on: field("makegood.enabled"), mention: /\bmake-good refunds?\b|\brefunds? by rule\b/i },
   { id: "per-call", label: "per-call payment (CallPay or x402)", field: "per_call.configured", on: field("per_call.configured"), mention: /\bper[- ]call (?:payments?|pay)\b|\bCallPay\b/i },
   { id: "paywith", label: "Stock Token pay-with sessions", field: "paywith.configured", on: field("paywith.configured"), mention: /\bpay[- ]with (?:a )?Stock Tokens?\b|\bStock Token pay-with\b|\bPayWithStock\b/i },
   { id: "escrow", label: "Stock Token escrow deposits", field: "escrow.enabled", on: field("escrow.enabled"), mention: /\bescrow deposits?\b|\bStock Token escrow\b/i },
@@ -76,6 +80,8 @@ export const CAPABILITIES: Capability[] = [
 const LIVE = /\blive\b(?! in (?:src|packages|web|contracts|the repository)\b)|\b(?:switched on|turned on|is on|are on|now on|enabled|available|open for)\b|\banchored on[- ]chain\b|\banchored on chain \d+\b/i;
 /** Words that qualify a clause, so it is not a claim that the feature is on now. */
 const QUALIFIED = /\bnot\b|n['’]t\b|\bnever\b|\bno\b|\bnone\b|\bwhen\b|\bwhere(?:ver)?\b|\bonce\b|\bif\b|\bunless\b|\buntil\b|\bonly\b|\bswitch(?:es|ing)? on\b|\bdefaults? (?:to )?false\b|\boff\b|\bplanned\b|\bnext\b|\b(?:is|are) built\b|\bbuilt\b(?! and live)|\bawait|\boptional\b|\bself-host|\brequires?\b|\breported as\b/i;
+/** A changelog entry that says anywhere that it is not on yet lists nothing as on; its clauses are judged as prose. */
+const ENTRY_QUALIFIED = /\bnot (?:yet )?switched on\b|\bnot switched on\b|\boff until\b|\boff by default\b|\bswitch(?:es)? on when\b|\buntil an operator\b/i;
 /** Words that say a feature is off now; with status on they are stale. */
 const OFF = /\bnot (?:yet )?(?:switched on|live|deployed|on)\b|\b(?:is|are)n['’]t (?:live|on|switched on)\b|^Next(?: are)?:?\s|\bNext are\b/i;
 
@@ -119,8 +125,9 @@ export async function extract(source: Source, root = ROOT): Promise<Clause[]> {
     const entries = (await import(pathToFileURL(abs).href)).default as { id: string; title: string; summary: string }[];
     return entries.flatMap((e) => {
       const line = raw.split("\n").findIndex((l) => l.includes(`"id": "${e.id}"`)) + 1;
-      // Every changelog entry says it shipped, so anything it names is listed as on.
-      return clauses(`${e.title}. ${e.summary}`).map((text) => ({ file: `${source.path}#${e.id}`, line, text, implicit: true }));
+      // A changelog entry says it shipped, so anything it names is listed as on, unless the entry says it is not on yet.
+      const text = `${e.title}. ${e.summary}`, implicit = !ENTRY_QUALIFIED.test(text);
+      return clauses(text).map((c) => ({ file: `${source.path}#${e.id}`, line, text: c, implicit }));
     });
   }
   const out: Clause[] = [];
