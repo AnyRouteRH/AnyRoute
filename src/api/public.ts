@@ -1,5 +1,6 @@
 import { makegoodStatus, refundReceipt } from "../services/makegood.ts"; // V6 R
 import type { Hono } from "hono";
+import { dataToolsStatus } from "../data-tools/routes.ts"; // B
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { encodeFunctionData, keccak256, toBytes, type Hex } from "viem";
 import { z } from "zod";
@@ -368,6 +369,9 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.
         holders: holdersStatus(ctx),
         telemetry: ctx.telemetry.enabled,
+        // B: per-call market-data tools and decision tags in receipts; both off unless switched on.
+        data_tools: dataToolsStatus(ctx),
+        decision_tags: { enabled: ctx.cfg.decisionTagsEnabled, header: "X-Anyroute-Decision-Tag" },
         // The onion service that reaches this router over Tor (null when none is configured). Clients that reach it hide
         // their network address from the router; requests carry no address here, so limits for unkeyed calls are shared.
         onion: ctx.cfg.onion.address ? { address: ctx.cfg.onion.address, url: `http://${ctx.cfg.onion.address}` } : null,

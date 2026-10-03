@@ -21,7 +21,8 @@ export const agentPolicySchema = z.strictObject({
   caps: z.strictObject({ per_request_usd: usd.optional(), per_hour_usd: usd.optional(), per_day_usd: usd.optional(), per_week_usd: usd.optional(), max_output_tokens: tokens.optional() }),
   tools: toolRules.optional(),
   windows: z.array(z.strictObject({ days: z.array(z.number().int().min(0).max(6)).max(64), start: time, end: time })).max(64).optional(),
-  approval: z.strictObject({ above_usd: usd }),
+  // B: above_calls_per_hour asks first once the rolling hour already holds that many admitted model calls.
+  approval: z.strictObject({ above_usd: usd, above_calls_per_hour: z.number().int().positive().max(1_000_000).optional() }),
   breakers: agentBreakersSchema.optional(),
   autonomy: autonomySchema.optional(),
   alerts: agentAlertsSchema.optional(),

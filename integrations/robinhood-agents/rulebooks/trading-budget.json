@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "models": {},
+  "lanes": [
+    "public",
+    "attested"
+  ],
+  "caps": {
+    "per_request_usd": 0.25,
+    "per_hour_usd": 1.5,
+    "per_day_usd": 5,
+    "per_week_usd": 25,
+    "max_output_tokens": 4096
+  },
+  "approval": {
+    "above_usd": 0.1
+  },
+  "breakers": {
+    "max_requests_per_minute": 30,
+    "max_denials_per_10min": 5
+  },
+  "on_breach": "deny"
+}

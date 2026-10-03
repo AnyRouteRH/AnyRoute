@@ -1,6 +1,7 @@
 const sections = [
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
+  ["trading-agents", "Trading agents"],
   ["agent-breakers", "Circuit breakers"],
   ["agent-autonomy", "Progressive autonomy"],
   ["agent-ledger", "Activity & receipts"],

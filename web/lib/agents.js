@@ -14,7 +14,7 @@ export const reasonText = reason => reason?.message || ({
   over_per_hour: 'The rolling hour cap would be exceeded.', over_per_day: 'The rolling day cap would be exceeded.',
   over_per_week: 'The rolling week cap would be exceeded.', max_tokens: 'The output token cap would be exceeded.',
   tool_not_allowed: 'A tool is outside the rulebook.', outside_window: 'The current UTC time is outside the allowed windows.',
-  approval_required: 'This request needs approval.',
+  approval_required: 'This request needs approval.', approval_calls_per_hour: 'This hour reached the call count; further calls need approval.',
 }[reason?.code] || breakerReasonText(reason?.code) || reason?.code || 'No reason supplied.');
 export const decisionText = value => ({ allow: 'Allow', deny: 'Deny', approval_required: 'Approval required', policy_set: 'Rulebook saved', killed: 'Killed', resumed: 'Resumed' }[value] || value || 'Decision not recorded');
 export const errorState = error => error?.status === 404 && error?.type === 'not_found'
@@ -66,7 +66,7 @@ export function policyForm(policy) {
     restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES],
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
     restrictWindows: p.windows !== undefined, windows: (p.windows || []).map(w => ({ ...w, days: [...w.days] })),
-    ...(p.alerts === undefined ? {} : {alerts:structuredClone(p.alerts)}), ...(p.agreements === undefined ? {} : {agreements:structuredClone(p.agreements)}), approval: p.approval?.above_usd == null ? '' : String(p.approval.above_usd), onBreach: p.on_breach || 'deny' };
+    ...(p.alerts === undefined ? {} : {alerts:structuredClone(p.alerts)}), ...(p.agreements === undefined ? {} : {agreements:structuredClone(p.agreements)}), approval: p.approval?.above_usd == null ? '' : String(p.approval.above_usd), approvalCalls: p.approval?.above_calls_per_hour == null ? '' : String(p.approval.above_calls_per_hour), onBreach: p.on_breach || 'deny' };
 }
 
 export function buildPolicy(form) {
@@ -101,6 +101,12 @@ export function buildPolicy(form) {
     } else policy.caps[k] = money(value, k.replaceAll('_', ' '));
   }
   if (String(form.approval).trim() !== '') policy.approval = { above_usd: money(form.approval, 'Approval threshold') };
+  if (String(form.approvalCalls ?? '').trim() !== '') { // B: ask first above a count of model calls in the rolling hour.
+    const n = Number(form.approvalCalls);
+    if (!Number.isInteger(n) || n <= 0 || n > 1_000_000) errors.push('Calls per hour before asking: enter a whole number from 1 to 1,000,000.');
+    if (!policy.approval) errors.push('Calls per hour before asking also needs an approval amount in USD.');
+    else policy.approval.above_calls_per_hour = n;
+  }
   if (form.restrictWindows) {
     policy.windows = form.windows.map(w => ({ days: [...w.days], start: w.start, end: w.end }));
     if (policy.windows.length > 64) errors.push('Use at most 64 time windows.');

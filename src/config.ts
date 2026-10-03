@@ -4,6 +4,8 @@ import { toolsEnv, toolsSettings } from "./tools/config.ts"; // v6 T: paid tool 
 import { zkapiPageEnv } from "./zkapi/page-config.ts"; // ZK10: opt-in static-page origins.
 import { structuredOutputEnv } from "./structured-output/options.ts"; // V83: opt-in JSON checking.
 import { insightsEnv } from "./insights/config.ts"; // V88: off by default.
+import { dataToolsEnv, dataToolsSettings } from "./data-tools/config.ts"; // B: off by default.
+import { decisionTagEnv } from "./receipts/decision-tag.ts"; // B: off by default.
 import { networkStatsEnv } from "./network/stats-config.ts";
 import { commerceEnv, commerceSettings } from "./commerce/config.ts"; // v6 L: honest commerce ledger.
 import { sealedEnv, guardSealed } from "./agents/sealed/config.ts";
@@ -69,6 +71,8 @@ const schema = z.object({
   DEVELOPER_FIRST_CALL_ENABLED: bool.default(false), // ON2: guidance for GETs to model endpoints.
   ...structuredOutputEnv, // V83
   ...insightsEnv, // V88: spend insights.
+  ...dataToolsEnv, // B: per-call market-data tools.
+  ...decisionTagEnv, // B: X-Anyroute-Decision-Tag in receipts.
   ...sealedEnv,
   ...hostBondEnv,
   ...networkWeightEnv,
@@ -626,6 +630,8 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     rush: rushSettings(e), // ON3
     tools: toolsSettings(e, production), // v6 T: off unless TOOLS_MARKET_ENABLED.
     spendInsightsEnabled: e.SPEND_INSIGHTS_ENABLED, // V88: read-only spend insights.
+    dataTools: dataToolsSettings(e), // B
+    decisionTagsEnabled: e.DECISION_TAGS_ENABLED, // B
     webhookSigningEnabled: e.WEBHOOK_SIGNING_ENABLED, // V86: off preserves existing delivery.
     makegood: { enabled: e.MAKEGOOD_ENABLED, refundKey: e.MAKEGOOD_REFUND_PRIVATE_KEY as `0x${string}` | undefined }, // V6 R
     networkPayouts: networkPayoutSettings(e, production),

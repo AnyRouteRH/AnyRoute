@@ -25,6 +25,7 @@ import { route, type Attempt, type RouteSuccess, type RouteTarget } from "../rou
 import { providerKey } from "../providers/upstream.ts";
 import { compactUpstream, recordGpuAttested, unverifiedUpstream, verifyAciExchange, type UpstreamAttestation } from "../providers/aci.ts";
 import { receiptLeaf } from "../receipts/merkle.ts";
+import { decisionTagFields, decisionTagOf } from "../receipts/decision-tag.ts"; // B: X-Anyroute-Decision-Tag
 import { buildClaimsV2, chainComment, ChunkChain, COSE_CONTENT_TYPE } from "../receipts/v2.ts";
 import { applyGuardrails, mergeGuardrails, redactOutput, type GuardrailConfig } from "../gateway/guardrails.ts";
 import { middleOut } from "../gateway/transforms.ts";
@@ -304,6 +305,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !!wallet || (!key && !pass && !!paymentHeaderOf(c)), hasToken: !!pass });
   // Private-lane traffic (and `:private`, stored as private) is published only through noisy hourly counters.
   noteLane(c.req.raw, disc.lane !== "public" ? disc.lane : (body.provider as ProviderPrefs | undefined)?.private === true || String(body.model ?? "").includes(":private") ? "attested" : "public");
+  decisionTagOf(ctx.cfg.decisionTagsEnabled, c, disc.lane); // B: a malformed tag is refused before anything is priced or spent.
   const strict = disc.max !== "any";
   const prefs: ProviderPrefs = { ...basePrefs, ...(strict ? { disclosure: disc.max } : {}), ...(disc.lane !== "public" ? { lane: disc.lane } : {}) };
 
@@ -666,6 +668,7 @@ async function finalize(p: FinalizeInput) {
     ...(ua ? { upstream_attestation: compactUpstream(ua) } : {}),
     ...(batchLine ? { batch: { id: batchLine.batchId, line: batchLine.idx } } : {}),
     ...routeReceiptFields(ctx.cfg.routeExplain, r), // V84: signed optional extension.
+    ...decisionTagFields(decisionTagOf(ctx.cfg.decisionTagsEnabled, p.c, p.disc.lane)), // B: signed optional extension.
     ...(p.extra?.payload ?? {}),
   };
   const signed = ctx.signer.sign(payload);
@@ -694,6 +697,7 @@ async function finalize(p: FinalizeInput) {
     mode,
     chargedPico: charged,
     keyset: billing.mode === "blind" && !billing.pass.tokens ? billing.pass.keyId : null,
+    decisionTag: payload.decision_tag ?? null, // B
   });
   const signedV2 = ctx.signer.signCose(claimsV2);
 
@@ -1012,6 +1016,7 @@ async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, un
     payer: p.billing.key?.chainKeyHash ?? (p.billing.mode === "per_call" ? p.billing.payer : null),
     request_sha256: p.bodySha,
     response_sha256: sha256((p.hit.response?.choices ?? []).map((ch: any) => ch?.message?.content ?? "").join("")),
+    ...decisionTagFields(decisionTagOf(ctx.cfg.decisionTagsEnabled, c, p.disc.lane)), // B
   };
   const signed = ctx.signer.sign(payload);
   const leaf = receiptLeaf(signed.bytes, signed.sigBytes);

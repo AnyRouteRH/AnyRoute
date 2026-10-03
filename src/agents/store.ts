@@ -52,7 +52,18 @@ export async function policyState(db: Db | Tx, policy: Pick<PolicyRow, "keyHash"
     const [h] = await db.select({ held: sql<string>`coalesce(sum(${holds.amount}), 0)` }).from(holds).where(sql`${holds.keyHash} in ${scope} and ${holds.status} = 'held' and ${holds.kind} = 'tool_call'`);
     tools = BigInt(t.charged) + BigInt(h.held);
   }
-  return { ...(policy.spec?.autonomy ? { autonomy: await readAutonomy(db, policy as PolicyRow, now) } : {}), ...(policy.spec?.breakers ? { breakers: await loadBreakerState(db, policy.keyHash, now) } : {}), killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight }, ...(tools !== undefined ? { tools_spent_pico_day: tools } : {}) };
+  return { ...(policy.spec?.autonomy ? { autonomy: await readAutonomy(db, policy as PolicyRow, now) } : {}), ...(policy.spec?.breakers ? { breakers: await loadBreakerState(db, policy.keyHash, now) } : {}), ...(policy.spec?.approval?.above_calls_per_hour !== undefined ? { calls_hour: await callsInHour(db, policy.keyHash, scope, now) } : {}), killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight }, ...(tools !== undefined ? { tools_spent_pico_day: tools } : {}) };
+}
+/**
+ * B: model calls this rulebook admitted in the rolling hour, from its own hash-chained events: its "allow" decisions for
+ * inference intents, plus approvals used by the keys it covers (an approved call is recorded as approval_required, then used).
+ */
+async function callsInHour(db: Db | Tx, keyHash: string, scope: ReturnType<typeof sql>, now: Date) {
+  const since = new Date(now.getTime() - 3_600_000).toISOString();
+  const [row] = await db.select({ n: sql<string>`count(*)::text` }).from(agentPolicyEvents).where(sql`${agentPolicyEvents.ts} > ${since} and ${agentPolicyEvents.ts} <= ${now.toISOString()} and (
+    (${agentPolicyEvents.keyHash} = ${keyHash} and ${agentPolicyEvents.kind} = 'decision' and ${agentPolicyEvents.decision} = 'allow' and ${agentPolicyEvents.intent}->>'kind' = 'inference')
+    or (${agentPolicyEvents.keyHash} in ${scope} and ${agentPolicyEvents.kind} = 'approval_used'))`);
+  return Number(row.n);
 }
 export async function setPolicy(db: Db, accountId: string, keyHash: string, policy: AgentPolicy, actor: string) {
   return db.transaction(async tx => {

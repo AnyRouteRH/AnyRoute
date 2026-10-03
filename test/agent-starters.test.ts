@@ -4,7 +4,7 @@ import { evaluateAgentPolicy, type AgentPolicyState } from '../src/agents/evalua
 import { STARTER_RULEBOOKS } from '../web/lib/agent-starters.js';
 import { buildPolicy, policyForm } from '../web/lib/agents.js';
 
-const state: AgentPolicyState = { killed: false, spent_pico: { hour: 0n, day: 0n, week: 0n }, breakers: { spent_minute_pico: 0n, requests_minute: 0, denials_10min: 0, distinct_models_hour: 0 } };
+const state: AgentPolicyState = { killed: false, spent_pico: { hour: 0n, day: 0n, week: 0n }, breakers: { spent_minute_pico: 0n, requests_minute: 0, denials_10min: 0, distinct_models_hour: 0 }, calls_hour: 0 };
 const now = new Date('2026-09-28T12:00:00Z');
 for (const template of STARTER_RULEBOOKS) {
   test(`${template.id}: validates against the enforced schema and stays restricted after editing`, () => {
@@ -13,7 +13,9 @@ for (const template of STARTER_RULEBOOKS) {
     expect(buildPolicy(policyForm(policy))).toEqual({ policy, errors: [] });
     const intent = agentIntentSchema.parse({ kind: 'inference', model: policy.models.allow?.[0] ?? "any/model", lane: policy.lanes![0], est_cost_pico: '0', max_output_tokens: 100, tools: [] });
     expect(evaluateAgentPolicy(policy, state, intent, now).decision).toBe('allow');
-    expect(evaluateAgentPolicy(policy, state, { ...intent, tools: ['pay'] }, now).reasons.map(reason => reason.code)).toContain('tool_not_allowed');
+    // Trading starters leave declared tools to the agent platform; every other starter denies them.
+    if (template.id.startsWith('trading-')) expect(evaluateAgentPolicy(policy, state, { ...intent, tools: ['pay'] }, now).decision).toBe('allow');
+    else expect(evaluateAgentPolicy(policy, state, { ...intent, tools: ['pay'] }, now).reasons.map(reason => reason.code)).toContain('tool_not_allowed');
     expect(evaluateAgentPolicy(policy, state, { ...intent, est_cost_pico: 1_000_000_000_000n }, now).decision).toBe('deny');
   });
 }

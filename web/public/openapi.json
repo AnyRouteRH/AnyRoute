@@ -49,6 +49,10 @@
       "description": "Optional signed account event notices; WEBHOOK_SIGNING_ENABLED defaults to false."
     },
     {
+      "name": "Data tools",
+      "description": "Read-only market data for agents, charged per call: Stock Token prices from Chainlink feeds on Robinhood Chain, corporate-action (multiplier) status and the inference price index. DATA_TOOLS_ENABLED defaults to false; every route answers 404 data_tools_disabled while it is off. A refusal (unknown symbol, stale feed, paused token, index without fills) is answered before any payment and is never charged."
+    },
+    {
       "name": "Agent rulebook",
       "description": "Deterministic router enforcement for requests through AnyRoute only; AGENT_POLICY_ENABLED defaults to false. No on-chain enforcement."
     },
@@ -3550,6 +3554,9 @@
           },
           {
             "$ref": "#/components/parameters/LaneDowngrade"
+          },
+          {
+            "$ref": "#/components/parameters/DecisionTag"
           }
         ],
         "requestBody": {
@@ -4055,6 +4062,278 @@
         }
       }
     },
+    "/api/v1/data": {
+      "get": {
+        "tags": [
+          "Data tools"
+        ],
+        "operationId": "listDataTools",
+        "summary": "List the data tools",
+        "description": "Free. The paid tools, the price per call, the Stock Token symbols with a feed, the IPX classes, and which payment methods this router accepts. Requires DATA_TOOLS_ENABLED.",
+        "responses": {
+          "200": {
+            "description": "The data tools on this router.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DataToolsIndex"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/data/stock/{symbol}": {
+      "get": {
+        "tags": [
+          "Data tools"
+        ],
+        "operationId": "getStockTokenPrice",
+        "summary": "Stock Token price",
+        "description": "The USD price of one whole Stock Token from its Chainlink feed on Robinhood Chain. The feed already includes the token's ERC-8056 uiMultiplier, so the multiplier is reported but never applied again. A feed older than ESCROW_MAX_PRICE_AGE_S (302,400 s by default), dated more than five minutes ahead, unreadable or non-positive, or a token reporting paused() or oraclePaused(), is refused with 503 before any payment. With a key the price is debited from its balance (an agent rulebook sees the tool data_tool); without one the router answers 402 with its per-call offer (x402 exact once X402_PAY_TO is set).",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9.]{1,16}$"
+            },
+            "description": "Stock Token symbol, for example NVDA. GET /api/v1/data lists the symbols with a feed."
+          },
+          {
+            "$ref": "#/components/parameters/Payment"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The data and what the call was charged. The payment response header carries the settlement of an x402 payment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "charge"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DataStockPrice"
+                    },
+                    "charge": {
+                      "$ref": "#/components/schemas/DataToolCharge"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "Refused before any payment and not charged: feed_stale, feed_unreadable, feed_invalid, token_paused, multiplier_unreadable or ipx_no_price. Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/data/stock/{symbol}/actions": {
+      "get": {
+        "tags": [
+          "Data tools"
+        ],
+        "operationId": "getStockTokenActions",
+        "summary": "Stock Token corporate-action status",
+        "description": "The token's uiMultiplier (shares per raw unit, ERC-8056), the scheduled multiplier with its effective time (pending_change while it is not yet in effect), and its paused and oraclePaused views. Paid like the price.",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9.]{1,16}$"
+            },
+            "description": "Stock Token symbol, for example NVDA. GET /api/v1/data lists the symbols with a feed."
+          },
+          {
+            "$ref": "#/components/parameters/Payment"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The data and what the call was charged. The payment response header carries the settlement of an x402 payment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "charge"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DataStockActions"
+                    },
+                    "charge": {
+                      "$ref": "#/components/schemas/DataToolCharge"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "Refused before any payment and not charged: feed_stale, feed_unreadable, feed_invalid, token_paused, multiplier_unreadable or ipx_no_price. Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/data/ipx/{class}": {
+      "get": {
+        "tags": [
+          "Data tools"
+        ],
+        "operationId": "getDataIpx",
+        "summary": "Inference price index (paid)",
+        "description": "The inference price index snapshot for a model class, as GET /api/v1/ipx/{class} computes it, sold per call. Requires IPX_ENABLED; a class with no fills in its window is refused with 503 ipx_no_price before any payment.",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "class",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Index class id, for example IPX-OPEN-70B (case-insensitive)."
+          },
+          {
+            "$ref": "#/components/parameters/Payment"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The data and what the call was charged. The payment response header carries the settlement of an x402 payment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "charge"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DataIpx"
+                    },
+                    "charge": {
+                      "$ref": "#/components/schemas/DataToolCharge"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "description": "Refused before any payment and not charged: feed_stale, feed_unreadable, feed_invalid, token_paused, multiplier_unreadable or ipx_no_price. Retry-After is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/status": {
       "get": {
         "tags": [
@@ -4062,7 +4341,7 @@
         ],
         "operationId": "getStatus",
         "summary": "Read public router configuration",
-        "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). data.lanes reports each privacy lane (public, attested, unlinkable) with available, models and endpoints (how many can serve it right now) and the attested_bonus its selection weight uses; data.lanes.unlinkable.via lists the transports that carry that lane here: ohttp (an independent Oblivious HTTP relay), onion (Tor, through the onion service), both, or none when it is not available. data.per_call.x402 reports whether x402 is configured, the network names a payment may carry (versions 1 and 2), the headers the router reads and writes, and recovery: whether PAYMENT-RECOVERY is available, the message the payer signs and how long answers are kept (ttl_s). data.identity reports AGENT_IDENTITY_ENABLED (enabled), PAID_FEEDBACK_ENABLED (paid_feedback), the registration mode, the ERC-8004 registry addresses (canonical true when they are the canonical Robinhood Chain deployments), the validator, the receipt kinds that can back feedback, the half-life and the liveness interval. It is not an uptime guarantee.",
+        "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). data.lanes reports each privacy lane (public, attested, unlinkable) with available, models and endpoints (how many can serve it right now) and the attested_bonus its selection weight uses; data.lanes.unlinkable.via lists the transports that carry that lane here: ohttp (an independent Oblivious HTTP relay), onion (Tor, through the onion service), both, or none when it is not available. data.per_call.x402 reports whether x402 is configured, the network names a payment may carry (versions 1 and 2), the headers the router reads and writes, and recovery: whether PAYMENT-RECOVERY is available, the message the payer signs and how long answers are kept (ttl_s). data.identity reports AGENT_IDENTITY_ENABLED (enabled), PAID_FEEDBACK_ENABLED (paid_feedback), the registration mode, the ERC-8004 registry addresses (canonical true when they are the canonical Robinhood Chain deployments), the validator, the receipt kinds that can back feedback, the half-life and the liveness interval. data.data_tools reports whether the market-data tools are on (enabled, price_usd, tools, symbols, payment) and data.decision_tags whether X-Anyroute-Decision-Tag is recorded in receipts. It is not an uptime guarantee.",
         "responses": {
           "200": {
             "description": "Current public status snapshot.",
@@ -7773,6 +8052,9 @@
           },
           {
             "$ref": "#/components/parameters/LaneDowngrade"
+          },
+          {
+            "$ref": "#/components/parameters/DecisionTag"
           }
         ],
         "requestBody": {
@@ -16751,6 +17033,16 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         }
+      },
+      "DecisionTag": {
+        "name": "X-Anyroute-Decision-Tag",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "pattern": "^(sha256:)?[0-9a-fA-F]{64}$"
+        },
+        "description": "Optional sha256:<64 hex>, for example the SHA-256 of the order intent this call informs. Signed into the receipt as payload.decision_tag and v2 claims.decision_tag. Refused with 400 invalid_decision_tag when malformed and 400 decision_tag_unlinkable on the unlinkable lane. Ignored while DECISION_TAGS_ENABLED is false (the default)."
       }
     },
     "headers": {
@@ -17930,6 +18222,12 @@
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "maximum": 1000000
+              },
+              "above_calls_per_hour": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "description": "Optional. Ask the principal first once the rolling hour already holds this many model calls the rulebook admitted, plus approvals used (reason approval_calls_per_hour)."
               }
             },
             "required": [
@@ -20959,9 +21257,14 @@
             "properties": {
               "route": {
                 "$ref": "#/components/schemas/RouteExplanation"
+              },
+              "decision_tag": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "description": "The caller's X-Anyroute-Decision-Tag, when DECISION_TAGS_ENABLED is true."
               }
             },
-            "description": "Signed fields. Optional route is a versioned additive claim when ROUTE_EXPLAIN_ENABLED is true (default false). Among them, disclosure (attested, policy or vendor-forwarded) and lane (public, attested or unlinkable) record how the call was served; attestation_simulated is true when the attestation behind an attested call is a development report. attestation_ref (see AttestationRef) is present on calls made under an attested council or attested dual verification. For a call paid with a blind token, payer is null and nullifier (the SHA-256 of the spent token) and token_key_id are present; nothing names an account. Receipts issued before these fields existed do not carry them."
+            "description": "Signed fields. Optional route is a versioned additive claim when ROUTE_EXPLAIN_ENABLED is true (default false). Optional decision_tag is the caller-computed digest sent as X-Anyroute-Decision-Tag (DECISION_TAGS_ENABLED, default false). Among them, disclosure (attested, policy or vendor-forwarded) and lane (public, attested or unlinkable) record how the call was served; attestation_simulated is true when the attestation behind an attested call is a development report. attestation_ref (see AttestationRef) is present on calls made under an attested council or attested dual verification. For a call paid with a blind token, payer is null and nullifier (the SHA-256 of the spent token) and token_key_id are present; nothing names an account. Receipts issued before these fields existed do not carry them."
           },
           "sig": {
             "type": "string"
@@ -21042,6 +21345,11 @@
         "properties": {
           "route": {
             "$ref": "#/components/schemas/RouteExplanation"
+          },
+          "decision_tag": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "description": "Optional: the caller's X-Anyroute-Decision-Tag (DECISION_TAGS_ENABLED)."
           },
           "v": {
             "type": "integer",
@@ -29450,6 +29758,364 @@
             "description": "Refunded over settlements, to four decimals; null when there are none"
           }
         }
+      },
+      "DataToolCharge": {
+        "type": "object",
+        "required": [
+          "usd",
+          "paid_with",
+          "payment_tx"
+        ],
+        "properties": {
+          "usd": {
+            "type": "string",
+            "description": "What this call was charged, in USD (DATA_TOOLS_PRICE_USD, default 0.001)."
+          },
+          "paid_with": {
+            "type": "string",
+            "enum": [
+              "key",
+              "per_call"
+            ]
+          },
+          "payment_tx": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The settling transaction of a per-call payment; null for a key."
+          }
+        }
+      },
+      "DataToolsIndex": {
+        "type": "object",
+        "properties": {
+          "price_usd": {
+            "type": "number"
+          },
+          "payment": {
+            "type": "object",
+            "properties": {
+              "prepaid_key": {
+                "type": "boolean"
+              },
+              "x402": {
+                "type": "boolean"
+              },
+              "callpay": {
+                "type": "boolean"
+              }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ipx_classes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "DataStockPrice": {
+        "type": "object",
+        "required": [
+          "object",
+          "symbol",
+          "token",
+          "price_usd",
+          "price_e18",
+          "source",
+          "multiplier",
+          "status",
+          "read_at"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "data.stock_price"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "chain_id": {
+            "type": "integer"
+          },
+          "price_usd": {
+            "type": "string",
+            "description": "USD per whole Stock Token, decimal string."
+          },
+          "price_e18": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "chainlink"
+              },
+              "feed": {
+                "type": "string"
+              },
+              "decimals": {
+                "type": "integer"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "age_seconds": {
+                "type": "integer"
+              },
+              "max_age_seconds": {
+                "type": "integer"
+              }
+            }
+          },
+          "multiplier": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "ui_multiplier": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Decimal, 18 decimals of precision."
+                  },
+                  "ui_multiplier_raw": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scheduled": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "ui_multiplier": {
+                        "type": "string"
+                      },
+                      "ui_multiplier_raw": {
+                        "type": "string"
+                      },
+                      "effective_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "in_effect": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "pending_change": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "included_in_price": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                }
+              }
+            ]
+          },
+          "status": {
+            "type": "object",
+            "properties": {
+              "paused": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "oracle_paused": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            }
+          },
+          "read_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DataStockActions": {
+        "allOf": [
+          {
+            "type": "object",
+            "properties": {
+              "ui_multiplier": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Decimal, 18 decimals of precision."
+              },
+              "ui_multiplier_raw": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "scheduled": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "ui_multiplier": {
+                    "type": "string"
+                  },
+                  "ui_multiplier_raw": {
+                    "type": "string"
+                  },
+                  "effective_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "in_effect": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "pending_change": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "object": {
+                "type": "string",
+                "const": "data.stock_actions"
+              },
+              "symbol": {
+                "type": "string"
+              },
+              "token": {
+                "type": "string"
+              },
+              "chain_id": {
+                "type": "integer"
+              },
+              "price_feed_includes_multiplier": {
+                "type": "boolean"
+              },
+              "status": {
+                "type": "object",
+                "properties": {
+                  "paused": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "oracle_paused": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "price_served": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "read_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        ]
+      },
+      "DataIpx": {
+        "type": "object",
+        "description": "The IPX snapshot of GET /api/v1/ipx/{class} with object data.ipx.",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "data.ipx"
+          },
+          "class": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "decimals": {
+            "type": "integer"
+          },
+          "price": {
+            "type": "string"
+          },
+          "price_e8": {
+            "type": "string"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "thin": {
+            "type": "boolean"
+          },
+          "volume_usdg_24h": {
+            "type": "string"
+          },
+          "fills_24h": {
+            "type": "integer"
+          },
+          "receipt_root": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
       }
     }
   }

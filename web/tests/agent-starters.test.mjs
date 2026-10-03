@@ -8,13 +8,15 @@ import { TASKS, menuTasks } from '../lib/site-map.js';
 const secret = 'sk-ar-v1-' + 'a'.repeat(64);
 const form = { model: 'author/model', lane: 'attested', cost: '0.123456789123', tokens: '512', tools: 'lookup, read' };
 
-test('six distinct starters show every setting and preserve all restrictions through the editor', () => {
-  assert.equal(STARTER_RULEBOOKS.length, 6);
-  assert.equal(new Set(STARTER_RULEBOOKS.map(template => template.id)).size, 6);
+test('nine distinct starters show every setting and preserve all restrictions through the editor', () => {
+  assert.equal(STARTER_RULEBOOKS.length, 9);
+  assert.equal(new Set(STARTER_RULEBOOKS.map(template => template.id)).size, 9);
   for (const template of STARTER_RULEBOOKS) {
     assert.deepEqual(buildPolicy(policyForm(template.policy)), { policy: template.policy, errors: [] });
     assert.equal(starterSettings(template.policy).length, 12);
-    assert.deepEqual(template.policy.tools, { allow: [] });
+    // Trading agents run on platforms that declare their own tools; every other starter denies declared tools.
+    if (template.id.startsWith('trading-')) assert.equal(template.policy.tools, undefined);
+    else assert.deepEqual(template.policy.tools, { allow: [] });
     assert.ok(template.policy.caps.per_request_usd > template.policy.approval.above_usd);
     assert.equal(template.policy.autonomy, undefined);
   }
@@ -23,6 +25,24 @@ test('six distinct starters show every setting and preserve all restrictions thr
   assert.deepEqual(buildPolicy(editor).policy.tools, { allow: ['lookup'] });
   editor.restrictTools = false; editor.toolAllow = '';
   assert.equal(buildPolicy(editor).policy.tools, undefined);
+});
+
+test('trading starters: a model allowlist, a daily model budget and an ask-first call count survive the editor', () => {
+  const byId = Object.fromEntries(STARTER_RULEBOOKS.map(template => [template.id, template.policy]));
+  assert.deepEqual(byId['trading-allowlist'].models, { allow: ['anthropic/*', 'openai/*', 'google/*'] });
+  assert.equal(byId['trading-budget'].caps.per_day_usd, 5);
+  assert.equal(byId['trading-ask-first'].approval.above_calls_per_hour, 60);
+  const settings = Object.fromEntries(starterSettings(byId['trading-ask-first']));
+  assert.match(settings['Ask first'], /after 60 model calls in a rolling hour/);
+  assert.match(settings.Tools, /not restricted/);
+  const form = policyForm(byId['trading-ask-first']);
+  assert.equal(form.approvalCalls, '60');
+  form.approvalCalls = '2.5';
+  assert.ok(buildPolicy(form).errors.some(error => /whole number/.test(error)));
+  form.approvalCalls = '10'; form.approval = '';
+  assert.ok(buildPolicy(form).errors.some(error => /approval amount/.test(error)));
+  form.approvalCalls = '';
+  assert.equal(buildPolicy(form).policy.approval, undefined);
 });
 
 test('apply uses only the existing scoped PUT with a fresh copy of exactly the selected policy', async () => {

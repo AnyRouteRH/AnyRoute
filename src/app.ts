@@ -71,6 +71,7 @@ import { spendRoutes } from "./api/spend.ts";
 import { holdersRoutes } from "./api/holders.ts";
 import { disclosureRoutes } from "./api/disclosure.ts";
 import { ipxRoutes } from "./api/ipx.ts";
+import { dataToolsRoutes } from "./data-tools/routes.ts"; // B: per-call market-data tools.
 import { attestationRoutes } from "./api/attestation.ts";
 import { attestationHistoryRoutes } from "./api/attestation-history.ts";
 import { measurementRoutes } from "./api/measurements.ts";
@@ -223,6 +224,7 @@ export async function createApp(opts: AppOptions = {}) {
   holdersRoutes(app, ctx);
   disclosureRoutes(app, ctx);
   ipxRoutes(app, ctx);
+  dataToolsRoutes(app, ctx); // B
   attestationHistoryRoutes(app, ctx); // before attestationRoutes: /attestation/summary must not be read as a provider id
   attestationRoutes(app, ctx);
   if (ctx.cfg.hostDashboard.enabled) hostRoutes(app, ctx);

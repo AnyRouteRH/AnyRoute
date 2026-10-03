@@ -2,9 +2,12 @@ import { breakerReasons, breakerMessages, type BreakerReasonCode, type BreakerSt
 import { autonomyMultiplier, spendingCapPico, type AutonomyState } from "./autonomy.ts";
 import type { AgentIntent, AgentPolicy } from "./policy.ts";
 import { usdToPico } from "../lib/money.ts";
-/** tools_spent_pico_day: paid tool spend over the rolling day (charged plus open tool holds), loaded when tools.daily_budget is set. */
-export type AgentPolicyState = { killed: boolean; spent_pico: { hour: bigint; day: bigint; week: bigint }; tools_spent_pico_day?: bigint; breakers?: BreakerState; autonomy?: AutonomyState };
-export type ReasonCode = BreakerReasonCode | "killed" | "model_not_allowed" | "lane_not_allowed" | "over_per_request" | "over_per_hour" | "over_per_day" | "over_per_week" | "max_tokens" | "tool_not_allowed" | "tool_over_max_price" | "tool_over_daily_budget" | "outside_window" | "approval_required";
+/**
+ * tools_spent_pico_day: paid tool spend over the rolling day (charged plus open tool holds), loaded when tools.daily_budget is set.
+ * calls_hour: model calls the rulebook admitted in the rolling hour, loaded when approval.above_calls_per_hour is set (B).
+ */
+export type AgentPolicyState = { killed: boolean; spent_pico: { hour: bigint; day: bigint; week: bigint }; tools_spent_pico_day?: bigint; breakers?: BreakerState; autonomy?: AutonomyState; calls_hour?: number };
+export type ReasonCode = BreakerReasonCode | "killed" | "model_not_allowed" | "lane_not_allowed" | "over_per_request" | "over_per_hour" | "over_per_day" | "over_per_week" | "max_tokens" | "tool_not_allowed" | "tool_over_max_price" | "tool_over_daily_budget" | "outside_window" | "approval_required" | "approval_calls_per_hour";
 export type AgentDecision = { decision: "allow" | "deny" | "approval_required"; reasons: { code: ReasonCode; message: string }[] };
 const messages: Record<ReasonCode, string> = {
   ...breakerMessages,
@@ -12,6 +15,7 @@ const messages: Record<ReasonCode, string> = {
   over_per_request: "The request exceeds its cost cap.", over_per_hour: "The rolling hour cap would be exceeded.", over_per_day: "The rolling day cap would be exceeded.", over_per_week: "The rolling week cap would be exceeded.",
   max_tokens: "The output token cap would be exceeded.", tool_not_allowed: "A declared tool is outside the rulebook.",
   tool_over_max_price: "The paid tool's price exceeds the rulebook's per-call tool price.", tool_over_daily_budget: "The rolling day paid tool budget would be exceeded.", outside_window: "The request is outside the allowed UTC windows.", approval_required: "This cost requires principal approval.",
+  approval_calls_per_hour: "The rolling hour has reached the rulebook's call count; further calls require principal approval.",
 };
 const modelMatches = (pattern: string, model: string) => pattern === model || (pattern.endsWith("/*") && model.startsWith(pattern.slice(0, -1)));
 const permitted = <T,>(rules: { allow?: string[]; deny?: string[] }, value: T, matches: (a: string, b: T) => boolean) =>
@@ -69,8 +73,15 @@ export function evaluateAgentPolicy(policy: AgentPolicy, state: AgentPolicyState
     if (!inside) add("outside_window");
   }
   if (reasons.length) return { decision: "deny", reasons };
-  if ((intent.kind === "inference" || intent.kind === "paid_tool") && policy.approval && cost > usdToPico(policy.approval.above_usd)) {
-    add("approval_required"); return { decision: "approval_required", reasons };
+  if ((intent.kind === "inference" || intent.kind === "paid_tool") && policy.approval) {
+    if (cost > usdToPico(policy.approval.above_usd)) add("approval_required");
+    // B: the call count asks first for model calls only.
+    const calls = policy.approval.above_calls_per_hour;
+    if (intent.kind === "inference" && calls !== undefined) {
+      if (state.calls_hour === undefined) throw new Error("Hourly call state is required for a rulebook with approval.above_calls_per_hour.");
+      if (state.calls_hour >= calls) add("approval_calls_per_hour");
+    }
+    if (reasons.length) return { decision: "approval_required", reasons };
   }
   return { decision: "allow", reasons };
 }

@@ -25,7 +25,11 @@ class AgentWindow(TypedDict):
     end: str
 
 
-class AgentApproval(TypedDict):
+class _AgentApprovalOptional(TypedDict, total=False):
+    above_calls_per_hour: int
+
+
+class AgentApproval(_AgentApprovalOptional):
     above_usd: float
 
 
@@ -64,7 +68,7 @@ AgentIntent = Union[AgentInferenceIntent, AgentToolIntent]
 
 
 class AgentReason(TypedDict):
-    code: Literal["killed", "model_not_allowed", "lane_not_allowed", "over_per_request", "over_per_hour", "over_per_day", "over_per_week", "max_tokens", "tool_not_allowed", "outside_window", "approval_required"]
+    code: Literal["killed", "model_not_allowed", "lane_not_allowed", "over_per_request", "over_per_hour", "over_per_day", "over_per_week", "max_tokens", "tool_not_allowed", "outside_window", "approval_required", "approval_calls_per_hour"]
     message: str
 
 
