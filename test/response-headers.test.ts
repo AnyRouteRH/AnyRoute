@@ -75,10 +75,11 @@ describe("receipt and lane headers on every response", () => {
   const chat = (body: Record<string, unknown> = {}, path = "/api/v1/chat/completions") =>
     h.request(path, { method: "POST", headers: auth, json: { model: MODELS.llama.slug, messages: [{ role: "user", content: "hi" }], max_tokens: 20, ...body } });
 
+  // Cold PGlite initialization can exceed Bun's separate five-second hook default on CI.
   beforeAll(async () => {
     h = await startRouter();
     auth = (await h.fundedKey(5n)).auth;
-  });
+  }, 20_000);
   afterAll(() => h.close());
 
   test("JSON: X-Receipt-Id and Inference-Id are the generation id, which is the signed receipt's id", async () => {
