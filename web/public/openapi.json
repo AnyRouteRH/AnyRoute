@@ -179,6 +179,10 @@
     {
       "name": "Paid tools",
       "description": "Pay any x402 tool priced in USDG on Robinhood Chain from an Anyroute balance: rulebook price limits, holds, signed tool.call receipts, a listing catalog with daily known-answer canaries, and MCP tools anyroute_tools_search and anyroute_tools_call. Off unless TOOLS_MARKET_ENABLED."
+    },
+    {
+      "name": "Agent identity",
+      "description": "ERC-8004 identity for opted-in agent profiles, paid-receipt feedback, liveness probes and portable track records. Off by default."
     }
   ],
   "paths": {
@@ -4058,7 +4062,7 @@
         ],
         "operationId": "getStatus",
         "summary": "Read public router configuration",
-        "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). data.lanes reports each privacy lane (public, attested, unlinkable) with available, models and endpoints (how many can serve it right now) and the attested_bonus its selection weight uses; data.lanes.unlinkable.via lists the transports that carry that lane here: ohttp (an independent Oblivious HTTP relay), onion (Tor, through the onion service), both, or none when it is not available. data.per_call.x402 reports whether x402 is configured, the network names a payment may carry (versions 1 and 2), the headers the router reads and writes, and recovery: whether PAYMENT-RECOVERY is available, the message the payer signs and how long answers are kept (ttl_s). It is not an uptime guarantee. data.makegood reports make-good refunds: {enabled: false} while MAKEGOOD_ENABLED is off; otherwise the rules, issued and pending counts, host_strikes and onchain (owed_refunds, owed_usdg_units, last_paid_at), counted from the refund records.",
+        "description": "Returns published runtime configuration, chain public fields, job state and catalog counts, and, where the router runs a Tor onion service, its address as data.onion.address (null otherwise). data.lanes reports each privacy lane (public, attested, unlinkable) with available, models and endpoints (how many can serve it right now) and the attested_bonus its selection weight uses; data.lanes.unlinkable.via lists the transports that carry that lane here: ohttp (an independent Oblivious HTTP relay), onion (Tor, through the onion service), both, or none when it is not available. data.per_call.x402 reports whether x402 is configured, the network names a payment may carry (versions 1 and 2), the headers the router reads and writes, and recovery: whether PAYMENT-RECOVERY is available, the message the payer signs and how long answers are kept (ttl_s). data.identity reports AGENT_IDENTITY_ENABLED (enabled), PAID_FEEDBACK_ENABLED (paid_feedback), the registration mode, the ERC-8004 registry addresses (canonical true when they are the canonical Robinhood Chain deployments), the validator, the receipt kinds that can back feedback, the half-life and the liveness interval. It is not an uptime guarantee.",
         "responses": {
           "200": {
             "description": "Current public status snapshot.",
@@ -14250,6 +14254,12 @@
                             "maxLength": 500,
                             "description": "HTTP(S) only, without embedded credentials."
                           },
+                          "endpoint": {
+                            "type": "string",
+                            "format": "uri",
+                            "maxLength": 500,
+                            "description": "Owner-declared HTTPS agent endpoint, when set."
+                          },
                           "capabilities": {
                             "type": "array",
                             "maxItems": 16,
@@ -14383,6 +14393,29 @@
                               },
                               "notice": {
                                 "type": "string"
+                              },
+                              "identity": {
+                                "description": "AGENT_IDENTITY_ENABLED only. Either {opted_out: true} or links: card, receipt_keys (/.well-known/anyroute-receipt-keys.json), receipt_key_id, registration (ERC-8004 registration file or null) and erc8004 {registry, agent_id, status}.",
+                                "type": "object"
+                              },
+                              "liveness": {
+                                "description": "AGENT_IDENTITY_ENABLED only. endpoint_declared, live (true, false or null before the first probe), probed_at, http_status and the probe receipt signed with the router's receipt key.",
+                                "type": "object"
+                              },
+                              "track_record": {
+                                "description": "AGENT_IDENTITY_ENABLED only. The newest published, unexpired track record: id, url, stats, merkle_root, expires_at; or null.",
+                                "anyOf": [
+                                  {
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reputation": {
+                                "description": "PAID_FEEDBACK_ENABLED only. {opted_in: false, url} or opted_in, score (0 to 100 or null), feedback_count, weight_usd, by_kind, half_life_days and url.",
+                                "type": "object"
                               }
                             }
                           }
@@ -14487,6 +14520,12 @@
                       "format": "uri",
                       "maxLength": 500,
                       "description": "HTTP(S) only, without embedded credentials."
+                    },
+                    "endpoint": {
+                      "type": "string",
+                      "format": "uri",
+                      "maxLength": 500,
+                      "description": "Owner-declared HTTPS agent endpoint, when set."
                     },
                     "capabilities": {
                       "type": "array",
@@ -14621,6 +14660,29 @@
                         },
                         "notice": {
                           "type": "string"
+                        },
+                        "identity": {
+                          "description": "AGENT_IDENTITY_ENABLED only. Either {opted_out: true} or links: card, receipt_keys (/.well-known/anyroute-receipt-keys.json), receipt_key_id, registration (ERC-8004 registration file or null) and erc8004 {registry, agent_id, status}.",
+                          "type": "object"
+                        },
+                        "liveness": {
+                          "description": "AGENT_IDENTITY_ENABLED only. endpoint_declared, live (true, false or null before the first probe), probed_at, http_status and the probe receipt signed with the router's receipt key.",
+                          "type": "object"
+                        },
+                        "track_record": {
+                          "description": "AGENT_IDENTITY_ENABLED only. The newest published, unexpired track record: id, url, stats, merkle_root, expires_at; or null.",
+                          "anyOf": [
+                            {
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reputation": {
+                          "description": "PAID_FEEDBACK_ENABLED only. {opted_in: false, url} or opted_in, score (0 to 100 or null), feedback_count, weight_usd, by_kind, half_life_days and url.",
+                          "type": "object"
                         }
                       }
                     }
@@ -14865,6 +14927,12 @@
                     "format": "uri",
                     "maxLength": 500,
                     "description": "HTTP(S) only, without embedded credentials."
+                  },
+                  "endpoint": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 500,
+                    "description": "Optional HTTPS agent endpoint without credentials or fragment. With AGENT_IDENTITY_ENABLED on, the agent-liveness job sends it one GET a day."
                   },
                   "capabilities": {
                     "type": "array",
@@ -15753,6 +15821,715 @@
                       "$ref": "#/components/schemas/ToolListing"
                     }
                   }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/identity": {
+      "get": {
+        "operationId": "agentIdentitySettings",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Read identity and reputation choices",
+        "description": "Either AGENT_IDENTITY_ENABLED or PAID_FEEDBACK_ENABLED must be on; otherwise 404. Owner or administrator key of the same account; session keys are refused. Returns identity_opt_out (default true only when the key's rulebook allows only the unlinkable lane), reputation_opt_in (default false) and the ERC-8004 registration progress.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Choices and registration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setAgentIdentitySettings",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Opt out of identity or in to paid reputation",
+        "description": "Either flag must be on; otherwise 404. Owner or administrator key of the same account; session keys are refused. Opting out stops the registration file and every identity link the router publishes; a transaction already on chain stays there.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "identity_opt_out": {
+                    "type": "boolean"
+                  },
+                  "reputation_opt_in": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated choices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/identity/register": {
+      "post": {
+        "operationId": "registerAgentIdentity",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Prepare or queue an ERC-8004 registration",
+        "description": "AGENT_IDENTITY_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Owner or administrator key of the same account; session keys are refused. Needs a published profile and no opt-out. Owner mode returns register(agentURI, metadata) calldata for the canonical identity registry on Robinhood Chain, which the owner's wallet sends; registrar mode queues it for the isolated agent-identity worker. The router never sends the owner's transaction.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Calldata (owner mode) or queued (registrar mode)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/identity/confirm": {
+      "post": {
+        "operationId": "confirmAgentIdentity",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Confirm the owner's registration transaction",
+        "description": "AGENT_IDENTITY_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Owner or administrator key of the same account; session keys are refused. Reads the transaction receipt and keeps the agent id from the identity registry's Registered event when its agentURI is this key's registration file. 409 while unconfirmed; 422 when it registered something else.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tx_hash"
+                ],
+                "properties": {
+                  "tx_hash": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/track-record": {
+      "post": {
+        "operationId": "issueAgentTrackRecord",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Issue a portable track record",
+        "description": "AGENT_IDENTITY_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Also needs TLOG_ENABLED. Owner or administrator key of the same account; session keys are refused. A seven-day certificate signed with the receipt key: count of this key's anchored receipts, total spend, refund rate, dispute rate of agreements its wallet is party to, and a Merkle root over those receipts' anchor leaves. No counterparty or amount per counterparty. Returns the ERC-8004 validation entry it is the payload of. publish:true shows it on the card. Shares the five-per-minute certificate limit.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "publish": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Certificate, validation entry and proof URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/identity/{id}/registration.json": {
+      "get": {
+        "operationId": "agentRegistrationFile",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Read an ERC-8004 registration file",
+        "description": "AGENT_IDENTITY_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Public. type https://eips.ethereum.org/EIPS/eip-8004#registration-v1, name, description, services (web, anyroute-card, the agent endpoint, anyroute-reputation when opted in, anyroute-receipt-keys), active, registrations and supportedTrust. 404 when the key opted out.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registration file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/track-records/verify": {
+      "post": {
+        "operationId": "verifyAgentTrackRecord",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Check a track-record certificate",
+        "description": "AGENT_IDENTITY_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Public. Checks the signature against the published receipt keys, the seven-day window and internal consistency; not the router's underlying observations.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "{valid, notice}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/track-records/{id}": {
+      "get": {
+        "operationId": "agentTrackRecord",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Read a track record and its ERC-8004 validation entry",
+        "description": "AGENT_IDENTITY_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Public. The requestURI of the validation entry. validation carries request_hash (keccak256 of the canonical payload JSON), response 100, response_hash (keccak256 of the canonical signed certificate), tag anyroute-track-record, and calldata only when a validation registry, a validator and the agent's ERC-8004 id are all known. No validation registry exists on Robinhood Chain yet.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^tr_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Certificate, validity and validation entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/track-records/{id}/proof": {
+      "get": {
+        "operationId": "agentTrackRecordProof",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Prove one counted receipt",
+        "description": "AGENT_IDENTITY_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Public. The leaf at index (ascending order), its path to the certificate's Merkle root, and its path to the hourly anchor root. 410 when the router no longer holds every counted receipt.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^tr_[0-9a-f]{24}$"
+            }
+          },
+          {
+            "name": "index",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leaf, proof, root and anchor proof",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/ApiError"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{slug}/reputation": {
+      "get": {
+        "operationId": "agentReputation",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Read paid-feedback reputation",
+        "description": "PAID_FEEDBACK_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Public. opted_in false until the owner opts in. Otherwise the weighted score (0 to 100), feedback_count, weight_usd, by_kind, half_life_days and up to 20 recent entries with a payment band and day. Weight is the amount paid, halving every PAID_FEEDBACK_HALF_LIFE_DAYS after the payment. Reviewers are never shown.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reputation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{slug}/feedback": {
+      "post": {
+        "operationId": "giveAgentFeedback",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Give feedback backed by a paid receipt",
+        "description": "PAID_FEEDBACK_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Any key of the paying account. No receipt, no feedback: the router's record of receipt_id must name the caller's account as payer and this agent as payee or agent served (model.call: a call answered by a network host the agent's account operates; agreement.release: a released milestone paid to the agent's wallet; other kinds may register). Refused: unknown or unpaid receipts, unlinkable or blind payments, another payer's receipt, a receipt already used, and any account that controls the agent. Thirty per minute per account. For an agent with an ERC-8004 identity, erc8004 carries optional giveFeedback calldata for the reviewer's own wallet.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "receipt_id",
+                  "score"
+                ],
+                "properties": {
+                  "receipt_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "receipt_kind": {
+                    "type": "string",
+                    "description": "model.call, agreement.release or another registered kind; omitted means every known kind is tried."
+                  },
+                  "score": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "tag1": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "pattern": "^[A-Za-z0-9 ._:-]+$"
+                  },
+                  "tag2": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "pattern": "^[A-Za-z0-9 ._:-]+$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recorded entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "422": {
+            "$ref": "#/components/responses/ApiError"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{slug}/feedback/{id}": {
+      "delete": {
+        "operationId": "withdrawAgentFeedback",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Withdraw one's own feedback",
+        "description": "PAID_FEEDBACK_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Only a key of the reviewing account.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{24}$"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^fb_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/feedback/{id}": {
+      "get": {
+        "operationId": "agentFeedbackEntry",
+        "tags": [
+          "Agent identity"
+        ],
+        "summary": "Read one public feedback entry",
+        "description": "PAID_FEEDBACK_ENABLED defaults false and needs AGENT_PROFILES_ENABLED; off returns 404. Public; the feedbackURI of the optional ERC-8004 entry. Score, tags, receipt kind, payment band and day; never the reviewer, the receipt id or the exact amount.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^fb_[0-9a-f]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
                 }
               }
             }

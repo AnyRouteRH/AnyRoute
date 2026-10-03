@@ -1,6 +1,8 @@
 import { registerRushJobs } from "../rush/monitor.ts"; // ON3
 import { reconcileToolCalls } from "../tools/call.ts"; // v6 T
 import { runToolCanaries } from "../tools/canary.ts"; // v6 T
+import { runAgentLiveness } from "../identity/liveness.ts"; // v6 I
+import { runAgentIdentity } from "../identity/identity.ts"; // v6 I
 import { runWebhooks } from "../webhooks/worker.ts"; // V86: bounded event delivery.
 import { runMakegoodPayouts } from "./makegood.ts"; // V6 R
 import { registerAgreementJobs } from "../agreements/jobs.ts";
@@ -43,6 +45,9 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   if (cfg.tools.enabled) { jobs.register("tools-reconcile", 60_000, () => reconcileToolCalls(ctx)); jobs.register("tools-canary", 3_600_000, () => runToolCanaries(ctx)); }
   if (cfg.hostBonds.enabled) { jobs.register("host-bond-indexer", 5_000, () => pollHostBonds(ctx), { atStart: true }); jobs.register("host-slasher", 60_000, () => runHostSlasher(ctx)); }
   if (cfg.agentPolicyEnabled) jobs.register("agent-alerts", 60_000, () => runAgentAlerts(ctx));
+  // v6 I: a signed probe of each listed agent endpoint (daily); the registrar sends queued ERC-8004 registrations.
+  if (cfg.identity.enabled && cfg.agentProfilesEnabled) jobs.register("agent-liveness", cfg.identity.livenessIntervalMs, () => runAgentLiveness(ctx));
+  if (cfg.identity.enabled && cfg.identity.mode === "registrar" && cfg.identity.registrarKey) jobs.register("agent-identity", 60_000, () => runAgentIdentity(ctx));
   if (cfg.sanctions.enabled) jobs.register("sanctions-refresh", 86_400_000, () => refreshSanctions(ctx), { atStart: true });
   const chainOn = () => ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty", "staking"].some((n) => ctx.chain.address(n as never));
   jobs.register("health-flush", 5_000, () => ctx.health.flush(ctx.db));

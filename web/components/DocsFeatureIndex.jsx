@@ -7,6 +7,7 @@ const sections = [
   ["agent-alerts", "Agent alerts"],
   ["agent-certificates", "Track-record certificates"],
   ["agent-profiles", "Public profiles & directory"],
+  ["agent-identity", "Identity, paid reputation & liveness"],
   ["agreements", "Agent agreements · live, with jury rulings"],
   ["sealed-agents", "Sealed agent hosting"],
   ["e2ee-phala", "Encrypted chat"],

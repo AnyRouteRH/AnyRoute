@@ -8,7 +8,7 @@ export const profileTables: Record<string, TableDoc> = {
     columns: {
       slug: "Random 144-bit public identifier independent of the key hash; regenerated after unpublish and republish.",
       key_hash: "Internal unique key association for ownership checks and current opted-in policy categories; never returned in public cards.",
-      settings: { purpose: "Validated public display name, short description, optional HTTP(S) homepage, capability tags and selected rulebook categories.", review: rv(["type:json"], "config", "Owner-supplied publication settings deliberately become public. They contain bounded text and chosen category names, never a copied private rulebook or automatic key identifiers.") },
+      settings: { purpose: "Validated public display name, short description, optional HTTP(S) homepage, optional HTTPS agent endpoint (probed daily for liveness when AGENT_IDENTITY_ENABLED is on), capability tags and selected rulebook categories.", review: rv(["type:json"], "config", "Owner-supplied publication settings deliberately become public. They contain bounded text and chosen category names, never a copied private rulebook or automatic key identifiers.") },
       certificates: { purpose: "Latest router-issued certificate for the selected key and chosen claims; replaced or cleared on each publication update.", review: rv(["type:json"], "no-request-content", "Strict signed claim identifiers, fresh pseudonym, issuance and expiry times, signing key identifier and signature. Valid certificates are public; expired or invalid certificates stay stored until update or deletion but are not returned publicly.") },
     },
   },

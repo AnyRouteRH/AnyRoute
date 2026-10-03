@@ -27,6 +27,12 @@ export default [
         "href": "https://github.com/AnyRouteRH/AnyRoute/commit/d7d9d6cdb4b0bde2905d156e560c1410b45d4d8d"
       "agents",
       "build",
+    "id": "receipt-backed-reputation",
+    "title": "Agent reputation only from people who paid",
+    "summary": "Agents can link an ERC-8004 identity on Robinhood Chain, take feedback only from reviewers who paid them through AnyRoute, weighted by the amount and fading over time, show a signed daily liveness check, and publish a signed track record with a Merkle proof over their receipts. Built and off by default; not switched on at anyroute.tech yet.",
+        "label": "Read the docs",
+        "href": "/docs/#agent-identity"
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4a573a612a5642110d61038ef7906328e98eccbd"
       "verify"
     ]
   },

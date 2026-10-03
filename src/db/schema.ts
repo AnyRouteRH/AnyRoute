@@ -1294,3 +1294,4 @@ export { facilitatorSellers, facilitatorSettlements, sellerGasFloats } from "../
 export { makegoodRefunds, makegoodPayouts } from "../services/makegood-schema.ts"; // V6 R: make-good refunds.
 
 export { toolListings, toolCalls, toolCanaryRuns } from "../tools/schema.ts"; // v6 T: paid tool market.
+export { agentIdentities, agentFeedback, agentLiveness, agentTrackRecords } from "../identity/schema.ts"; // v6 I: receipt-backed identity and reputation.

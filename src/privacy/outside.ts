@@ -1,5 +1,6 @@
 import { rushStores } from "./rush.ts"; // ON3
 import { toolsBodyReader, toolsRateFamilies, toolsStores } from "./tools.ts"; // v6 T: paid tool market.
+import { feedbackLimit, identityBodyReader, identityStores } from "./identity.ts"; // v6 I
 import { provisioningBodyReader, inferenceModelReader } from "./provisioning.ts"; // ZK6
 import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { statementStores } from "./statements.ts"; // V87
@@ -50,6 +51,8 @@ const ADDRESS_NOTE = "The caller's network address is part of the key. Over Tor 
 const redisFamilies: RedisFamily[] = [
   ...toolsRateFamilies, // v6 T
   limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate issuance attempts: five per minute per account, shared across standalone and profile issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym or claims.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
+  limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate and track-record issuance attempts: five per minute per account, shared across standalone, profile and track-record issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym, claims or stats.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/identity/track-record.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
+  feedbackLimit, // v6 I
   telegramLinkRate,
   ...facilitatorRedisFamilies, // v6 F
   limit({ prefix: "network-host-wallet:", shape: "network-host-wallet:<operator wallet>", purpose: "Wallet-authenticated host signup and credential updates, three per minute per wallet. Links attempts by the public operator wallet.", holds: "wallet", seconds: 60, evidence: [ev("src/api/network-hosts.ts", "await ctx.limiter.take(`network-host-wallet:${auth.wallet}`")] }),
@@ -403,6 +406,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   facilitatorBodyReader, // v6 F
   profileBodyReader,
   x402RecoveryReader,
+  identityBodyReader, // v6 I
   ...sealedBodyReaders,
   telegramLinkReader,
   ...juryBodyReaders,
@@ -733,6 +737,7 @@ export const EXTERNAL: ExternalDoc = {
     ...toolsStores, // v6 T
     ...webhookStores, // V86.
     ...makegoodStores, // V6 R.
+    ...identityStores, // v6 I
     ...activityStores,
     ...statementStores, // V87
     ...insightsStores, // V88: spend insights.
