@@ -5,6 +5,26 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "trading-agents",
+    "date": "2026-10-03",
+    "title": "Run trading agents under rulebooks, with decision receipts",
+    "summary": "Works with any OpenAI-compatible agent, including agents you run on Robinhood. Three trading starter rulebooks: fixed models, a daily model budget, and ask first after 60 calls an hour. Decision tags that sign an order intent's hash into each receipt, and per-call Stock Token prices and multiplier status, are built and stay off until a router switches them on.",
+    "links": [
+      {
+        "label": "Read the docs",
+        "href": "/docs/#trading-agents"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/50bd07c77ad4d60f9b42e9cea80df348de18db91"
+      }
+    ],
+    "tags": [
+      "agents",
+      "verify"
+    ]
+  },
+  {
     "id": "x402-facilitator",
     "date": "2026-10-03",
     "title": "Settle x402 payments for your own API on Robinhood Chain",
