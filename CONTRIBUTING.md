@@ -30,7 +30,8 @@ Run checks relevant to your change before submitting it:
 
 ```bash
 bun run typecheck
-bun test
+bun test                                 # in-process database, no services
+bun run services:up && bun run test:pg   # the same suite on local Postgres and Redis, as CI runs it
 bun run test:e2e
 bun run test:contracts --no-match-path 'test/fork/*'
 cd web && pnpm test && pnpm build
