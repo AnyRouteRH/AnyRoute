@@ -101,6 +101,7 @@ SEARCH_ONLY.add('payments'); SEARCH_ONLY.add('get-usdg'); // ON1: funding joins 
 TASKS.push(task('get-usdg', 'build', 'Get USDG', 'Read how to get USDG onto Robinhood Chain before adding funds.', '/docs/#get-usdg', 'usdg, bridge, buy, chain, funding')); // ON1
 SEARCH_ONLY.add('spec'); // V80: keep Build at nine menu tools; spec stays searchable.
 SEARCH_ONLY.add('zkapi'); // ZK9: search-only Sepolia pilot.
+SEARCH_ONLY.add('make-good'); TASKS.push(task('make-good', 'build', 'Read make-good refund rules', 'See when a failed, cut-off or rerouted call is refunded, with a signed refund receipt.', '/docs/#make-good-refunds', 'refund, make good, failover, truncated, receipt')); // V6 R
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
 TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
 TASKS.push({ ...task('rulebook-templates', 'agents', 'Start from a rulebook template', 'Review starter limits, then apply a rulebook to a selected agent.', '/agents/#rulebook-templates', 'starter, template, budget, rules'), menu: false }); // V85: search-only.

@@ -14,7 +14,7 @@ import { bondHostId, bondScope, type BondHost, type BondSlash } from "./bond-sta
 
 export type SlashBundle = {
   format: "anyroute.host-slash/1"; provider_id: string; host_id: Hex;
-  kind: "policy_rejection" | "invalid_receipt"; reason: 0 | null;
+  kind: "policy_rejection" | "invalid_receipt" | "makegood_refund"; reason: 0 | null;
   policy_version?: number; policy_sha256?: string; observed_sha256: string;
   attestation_ref: string; receipt_key?: string; rejection_sha256: string;
 };

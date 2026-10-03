@@ -47,8 +47,11 @@ export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, elig
   }
   if (!q.kind || ["deposit", "balance"].includes(q.kind)) sources.push(sql`select 'balance:' || l.id, l.created_at,
     case when l.kind = 'deposit' then 'deposit' else 'balance' end,
-    case l.kind when 'deposit' then 'Funds added' when 'refund' then 'Funds refunded' when 'credit' then 'Credit added' else 'Balance changed' end,
-    l.amount::text, null, null, null, ${label}, null, 'posted', l.kind, null
+    case when l.ref like 'makegood:%' then 'Make-good refund' when l.kind = 'refund_onchain' then 'Refund sent on-chain' else
+    case l.kind when 'deposit' then 'Funds added' when 'refund' then 'Funds refunded' when 'credit' then 'Credit added' else 'Balance changed' end end,
+    l.amount::text, case when l.ref like 'makegood%' then (select g.model_id from generations g where g.id = l.generation_id) end, null, null, ${label},
+    case when l.ref like 'makegood%' then (select m.id from makegood_refunds m where m.source_id = regexp_replace(l.ref, '^makegood(-onchain)?:', '') and m.receipt_sig is not null) end,
+    'posted', l.kind, null
     from ledger l left join keys k on k.key_hash = l.key_hash where l.account_id = ${key.accountId}
     and (${whole} or l.key_hash = ${key.keyHash}) and (${q.key ?? null}::text is null or l.key_hash = ${q.key ?? null})
     and l.kind <> 'usage'`);

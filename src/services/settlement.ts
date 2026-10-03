@@ -1,4 +1,5 @@
 import { accrueNetworkHours } from "../network/accrual.ts";
+import { runMakegood } from "./makegood.ts"; // V6 R
 import { addPendingNetworkPayouts, networkPayout } from "../network/payout.ts";
 import { skipSanctionedPayout } from "../network/sanctions.ts";
 import { and, asc, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
@@ -323,12 +324,13 @@ export async function sendMargin(ctx: Ctx) {
 }
 
 export async function runSettlement(ctx: Ctx) {
+  const makegood = await runMakegood(ctx).catch((e) => ({ error: (e as Error).message })); // V6 R: before spent roots
   const hours = await settleHours(ctx);
   const roots = await postSpentRoot(ctx);
   const royaltiesResult = await streamRoyalties(ctx).catch((e) => ({ error: (e as Error).message }));
   const margin = await sendMargin(ctx).catch((e) => ({ error: (e as Error).message }));
   const weekly = new Date().getUTCDay() === 1 && new Date().getUTCHours() === 0 ? await runPayouts(ctx) : { skipped: "weekly (Mondays 00 UTC)" };
-  return { hours, roots, royalties: royaltiesResult, margin, payouts: weekly };
+  return { makegood, hours, roots, royalties: royaltiesResult, margin, payouts: weekly };
 }
 
 export { desc };

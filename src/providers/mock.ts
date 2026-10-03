@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 // (JSON + SSE), legacy completions, embeddings, rerank, logprobs, and a TEE-style attestation endpoint.
 // Behaviours can be switched at runtime through POST /_control.
 
-export type MockBehaviour = "ok" | "empty200" | "error500" | "rate429" | "slow" | "hang" | "reject400" | "midstream_error" | "no_usage" | "auth401";
+export type MockBehaviour = "ok" | "empty200" | "error500" | "rate429" | "slow" | "hang" | "reject400" | "midstream_error" | "no_usage" | "auth401" | "truncate_after_usage";
 export type MockModel = { id: string; slug?: string; prompt: string; completion: string; request?: string; ctx?: number; quant?: string; features?: string[]; params?: string[]; creator?: string; output?: string[]; hf?: string };
 export type MockConfig = {
   name: string;
@@ -156,6 +156,12 @@ export function createMockProvider(initial: MockConfig) {
         for (const [i, p] of parts.entries()) {
           if (cfg.behaviour === "midstream_error" && i === 2) {
             send({ id, error: { message: "provider fell over mid-stream" } });
+            ctl.close();
+            return;
+          }
+          // Reports usage for the whole answer, then the connection ends before any finish_reason.
+          if (cfg.behaviour === "truncate_after_usage" && i === 2) {
+            if (usage) send({ id, object: "chat.completion.chunk", model: body.model, choices: [], usage });
             ctl.close();
             return;
           }

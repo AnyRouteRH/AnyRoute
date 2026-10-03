@@ -6,7 +6,7 @@ import { decrypt, encrypt, uid } from "../lib/util.ts";
 import { maskWebhookUrl } from "../services/spend-watch.ts";
 import { newSigningSecret } from "./signature.ts";
 import { webhookDestinations } from "./schema.ts";
-export const WEBHOOK_EVENTS = ["spend.alert", "agent.alert", "approval.requested", "approval.decided", "deposit.credited", "agreement.funded", "agreement.disputed", "agreement.ruled", "host.status_changed"] as const;
+export const WEBHOOK_EVENTS = ["spend.alert", "agent.alert", "approval.requested", "approval.decided", "deposit.credited", "agreement.funded", "agreement.disputed", "agreement.ruled", "host.status_changed", "refund.issued"] as const;
 export const MAX_DESTINATIONS = 20;
 export type Destination = typeof webhookDestinations.$inferSelect;
 export function destinationJson(ctx: Ctx, row: Destination) {
