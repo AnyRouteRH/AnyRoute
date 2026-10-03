@@ -285,7 +285,7 @@ Track-record certificates are router-signed statements with a fresh pseudonym an
 
 These certificates are not zero-knowledge proofs and are not anonymous credentials. The router sees the activity and signs the statement. A fresh pseudonym reduces reuse of one public identifier, but does not prevent correlation by claim combinations, issuance timing or information held by the router. A relying party must trust the issuer for the facts asserted.
 
-All agent enforcement described here applies to requests through AnyRoute. There is no on-chain enforcement of the rulebook and no agent-to-agent payment mechanism in this control surface. External wallets, tool execution and unrelated endpoints remain outside this boundary. The built agreement system described below is a separate boundary and is not switched on at anyroute.tech.
+All agent enforcement described here applies to requests through AnyRoute. There is no on-chain enforcement of the rulebook and no agent-to-agent payment mechanism in this control surface. External wallets, tool execution and unrelated endpoints remain outside this boundary. The agreement system described below is a separate boundary, switched on at anyroute.tech.
 
 ### 7.6 Opt-in profiles and directory
 
@@ -417,7 +417,7 @@ A useful review keeps evidence types distinct: a hash identifies bytes; a signat
 
 ## 11. What's next
 
-Next are deploying the agreements contracts and switching agreements on; agent wallets with on-chain rules; GPU hosts on the network; and network payouts. The agreement code and service already exist, but contract deployment and activation remain separate steps. Agent wallets would add an on-chain spending boundary beyond today's router-enforced rulebook.
+Next are switching on x402 per-call payments; agent wallets with on-chain rules; GPU hosts on the network; and network payouts. Agent wallets would add an on-chain spending boundary beyond today's router-enforced rulebook.
 
 Current network admission covers the approved Intel TDX build; existing attested inference providers do not establish GPU-host network admission.
 

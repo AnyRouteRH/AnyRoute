@@ -61,7 +61,7 @@ const receipt = {
     key_id: "ab214b090f5922fe",
     alg: "Ed25519",
     payload: { v: 1, model: "…", provider: "…", tokens: { prompt: 120, completion: 64 }, cost: "0.00003248", mode: "prepaid", request_sha256: "…", response_sha256: "…" },
-    anchor_hint: "Anchored on chain 4663 within the hour; GET /api/v1/generation?id=… returns the merkle proof.",
+    anchor_hint: "Rooted within the hour; GET /api/v1/receipts/gen-1790461071-M1D5SJxd7YpD5A/proof returns the merkle path.",
     paid_with: { token: "NVDA", raw_units: "<units>", fair_price: "<18-decimal USD>", swap_tx: "<tx once swapped>" },
   },
 };

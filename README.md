@@ -28,7 +28,7 @@ Choose a model. Set your routing policy. Inspect what happened.
 
 | Capability | What it gives you |
 | :--- | :--- |
-| **One API, multiple providers** | Chat, streaming and embeddings through a familiar API, including [x402 per-call payments](https://anyroute.tech/docs/#x402). |
+| **One API, multiple providers** | Chat, streaming and embeddings through a familiar API. [x402 per-call payments](https://anyroute.tech/docs/#x402) are built and switch on when the router is configured for them; `GET /api/v1/status` shows `per_call.x402.configured`. |
 | **Encrypted chat** | The client encrypts on device; the router forwards ciphertext through the attested gateway. [Client flow](https://anyroute.tech/docs/#e2ee-phala). |
 | **Agent rulebook** | Request/hour/day/week budgets; model, lane, tool and working-hour rules; kill switch stopping the next request; owner resume; single-use ask-first approvals lasting 15 minutes. [Manage agents](https://anyroute.tech/agents/) · [Rules and MCP tools](https://anyroute.tech/docs/#agent-rulebook). |
 | **Agent oversight** | Per-agent ledgers with signed receipts (CSV/JSON), alerts in the feed, spend-alert webhook or Telegram via AnyRoute’s bot, circuit breakers, progressive autonomy with caps up to 10x, and router-signed track-record certificates with fresh pseudonyms valid for seven days. [Receipts](https://anyroute.tech/docs/#agent-ledger) · [Alerts](https://anyroute.tech/docs/#agent-alerts) · [Breakers](https://anyroute.tech/docs/#agent-breakers) · [Autonomy](https://anyroute.tech/docs/#agent-autonomy) · [Certificates](https://anyroute.tech/docs/#agent-certificates). |
@@ -43,9 +43,9 @@ Choose a model. Set your routing policy. Inspect what happened.
 
 **Network hosting:** use the approved recipe at [`deploy/network/approved/tdx-qwen2.5-0.5b`](deploy/network/approved/tdx-qwen2.5-0.5b) and its one-command `join.mjs` flow. Host policy is available at `GET /api/v1/network/policy`; live bonds are indexed at `GET /api/v1/network/bonds`. The HostBond contract on Robinhood Chain is `0x2921d34fd86d3323a5369a270a82814a74250518`, with a minimum bond of 5,000 USDG for bonded hosts. Host payouts and bond slashing are not switched on yet.
 
-**Honest limits:** the router reads request text in memory on paths other than encrypted chat through the attested gateway. Receipts store hashes, token counts and cost, not prompt or answer text. Rulebooks govern only requests through AnyRoute. Certificates are router-signed and pseudonymous, not anonymous. Email alerts and SDK releases on npm/PyPI are not switched on yet; SDK code is in the repository.
+**Honest limits:** the router reads request text in memory on paths other than encrypted chat through the attested gateway. Receipts store hashes, token counts and cost, not prompt or answer text. Rulebooks govern only requests through AnyRoute. Certificates are router-signed and pseudonymous, not anonymous. Email alerts and SDK releases on npm/PyPI are not switched on yet; SDK code is in the repository. Feature states here follow `GET /api/v1/status`, and `bun run docs:claims` fails when these docs call something live that status reports as off.
 
-**Next:** deploying the agreements contracts and switching agreements on; agent wallets with on-chain rules; GPU hosts on the network; network payouts.
+**Next:** switching on x402 per-call payments; agent wallets with on-chain rules; GPU hosts on the network; network payouts.
 
 ## Run it locally
 

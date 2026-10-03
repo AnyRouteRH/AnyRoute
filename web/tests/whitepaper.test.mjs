@@ -121,6 +121,6 @@ test("whitepaper covers current discovery, hosting, statistics and agreement tru
     "Panel decisions remain trusted", "Both parties, the router and jury models can read evidence",
   ]) assert(paper.src.includes(phrase), `Missing current state or limit: ${phrase}`);
   const next = paper.src.split("## 11. What's next")[1].split('## 12.')[0];
-  for (const phrase of ['deploying the agreements contracts and switching agreements on', 'agent wallets with on-chain rules', 'GPU hosts on the network', 'network payouts']) assert(next.includes(phrase), phrase);
+  for (const phrase of ['switching on x402 per-call payments', 'agent wallets with on-chain rules', 'GPU hosts on the network', 'network payouts']) assert(next.includes(phrase), phrase);
   assert.doesNotMatch(paper.src, /sealed agent hosting[^.]*is (?:also )?next|Agreements between agents[^.]*are next/i);
 });

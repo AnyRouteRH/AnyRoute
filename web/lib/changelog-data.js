@@ -5,6 +5,31 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "docs-match-status",
+    "date": "2026-10-03",
+    "title": "Status reports agreements, and the docs follow status",
+    "summary": "GET /api/v1/status now reports agreements: the contracts, the start block and whether the isolated jury worker is posting rulings. A docs check compares the README, whitepaper, /docs and this changelog with status on every change and fails when they call a switched-off feature live; x402 now reads as built and switching on when configured.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#agreements"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/3ff57a887d610e9bd0d46888cbb8963e2f6adb74"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/66275f3cf59fcac0d78fc811b04b48698a88e911"
+      }
+    ],
+    "tags": [
+      "agents",
+      "verify",
+      "fix"
+    ]
+  },
+  {
     "id": "trading-agents",
     "date": "2026-10-03",
     "title": "Run trading agents under rulebooks, with decision receipts",

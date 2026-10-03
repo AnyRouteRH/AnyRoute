@@ -1,0 +1,115 @@
+{
+  "_about": "Production as GET /api/v1/status reported it at anyroute.tech on 2026-10-03 (release 7e652dd), trimmed to the fields scripts/docs-claims-check.ts reads. The agreements, facilitator, tools, commerce and makegood sections are what the router reports from the release that adds it, given the production configuration on 2026-10-03: agreements on, the isolated agreement-jury worker posting rulings, and the v6 facilitator, tool market, commerce ledger and make-good refunds off. config holds flags that status does not expose. When production changes, update this file and the docs in the same change; bun scripts/docs-claims-check.ts --live <router> shows the drift.",
+  "data": {
+    "release": {
+      "commit": "7e652dd074cda57a109b936c0d248c22576ca9a3"
+    },
+    "network": {
+      "hosts_open": true,
+      "payouts_open": false
+    },
+    "chain": {
+      "chain_id": 4663,
+      "contracts": {
+        "credits": null,
+        "callPay": null,
+        "payWithStock": null,
+        "providerBond": null,
+        "receiptAnchor": null,
+        "royalty": null,
+        "staking": null
+      }
+    },
+    "paywith": {
+      "configured": false
+    },
+    "escrow": {
+      "enabled": true
+    },
+    "per_call": {
+      "configured": false,
+      "x402": {
+        "configured": false
+      }
+    },
+    "agreements": {
+      "enabled": true,
+      "escrow": "0xefd8d05f45b8a92aa3b3ef3a7db4c9d3a21f7c96",
+      "oracle": "0xcdeddcea1e039e72868bb8af3206af2647afda5a",
+      "start_block": "77319694",
+      "finality": "finalized",
+      "rulings": {
+        "enabled": true,
+        "source": "jury-worker-heartbeat"
+      }
+    },
+    "facilitator": {
+      "enabled": false
+    },
+    "tools": {
+      "enabled": false,
+      "ready": false
+    },
+    "commerce": {
+      "enabled": false
+    },
+    "makegood": {
+      "enabled": false
+    },
+    "holders": {
+      "enabled": true
+    },
+    "onion": {
+      "address": "wtck5wjpvkqaonegi4cer6rt64dy56evbmroymvfomroagvtxfu2nmqd.onion"
+    },
+    "jobs": [
+      { "name": "agreement-indexer" },
+      { "name": "agreement-retention" },
+      { "name": "agreement-jury" },
+      { "name": "upstream-monitor" },
+      { "name": "host-bond-indexer" },
+      { "name": "host-slasher" },
+      { "name": "agent-alerts" },
+      { "name": "sanctions-refresh" },
+      { "name": "health-flush" },
+      { "name": "holds-expire" },
+      { "name": "agent-ledger-retention" },
+      { "name": "agent-policy-retention" },
+      { "name": "catalog-refresh" },
+      { "name": "provider-registry" },
+      { "name": "health-probes" },
+      { "name": "attestor" },
+      { "name": "measurements" },
+      { "name": "ipx-oracle" },
+      { "name": "receipts-anchor" },
+      { "name": "receipt-key-rotation" },
+      { "name": "host-anchor" },
+      { "name": "settlement" },
+      { "name": "slasher" },
+      { "name": "buyback" },
+      { "name": "chain-indexer" },
+      { "name": "webhooks" },
+      { "name": "spend-watch" },
+      { "name": "escrow-indexer" },
+      { "name": "paywith-aggregator" },
+      { "name": "blind-key-rotation" },
+      { "name": "tlog" },
+      { "name": "alert-notifier" },
+      { "name": "batches" }
+    ],
+    "lanes": {
+      "public": {
+        "available": true
+      },
+      "attested": {
+        "available": true
+      },
+      "unlinkable": {
+        "available": true
+      }
+    }
+  },
+  "config": {
+    "NETWORK_SLASHING_ENABLED": false
+  }
+}
