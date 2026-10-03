@@ -46,6 +46,26 @@ export default [
     ]
   },
   {
+    "id": "x402-facilitator",
+    "date": "2026-10-03",
+    "title": "Settle x402 payments for your own API on Robinhood Chain",
+    "summary": "A hosted x402 facilitator for USDG on Robinhood Chain: supported, verify and settle for x402 v1 and v2, signed seller listings and a discovery index. USDG goes from the payer straight to the seller; the router only pays gas. Built, but off until an operator sets FACILITATOR_ENABLED; anyroute.tech has not, and /api/v1/status says so.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/facilitator/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/150899151169e48fe2bb4920d82ff3647e7f3c64"
+      }
+    ],
+    "tags": [
+      "build",
+      "verify"
+    ]
+  },
+  {
     "id": "signed-webhooks",
     "date": "2026-10-02",
     "title": "See every webhook signed",

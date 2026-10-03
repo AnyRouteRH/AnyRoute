@@ -1,4 +1,5 @@
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
+import FacilitatorDocs from "../../components/FacilitatorDocs"; // v6 F: hosted x402 facilitator.
 import ZkapiDocs from "../../components/ZkapiDocs"; // ZK9: Sepolia browser payment.
 import GetUsdgDocs from "../../components/GetUsdgDocs"; // ON1
 import FirstCallDocs from "../../components/FirstCallDocs"; // ON2
@@ -816,6 +817,7 @@ export default function Docs() {
             <a href="#lane">Lane</a>
             <a href="#payments">Payments</a>
             <a href="#x402">x402</a>
+            <a href="#facilitator">Facilitator</a>
             <a href="#receipts">Receipts</a>
             <a href="#what-we-saw">What we saw</a>
             <a href="#council">Council</a>
@@ -840,6 +842,7 @@ export default function Docs() {
           <DocsFeatureIndex />
           <KeyProvisioningDocs /> {/* ZK6 */}
           <ZkapiDocs /> {/* ZK9 */}
+          <FacilitatorDocs /> {/* v6 F */}
           <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <StatementDocs /> {/* V87 */}
           <AgentLedgerDocs /><AgreementsDocs />
