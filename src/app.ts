@@ -1,4 +1,5 @@
 import { initializeUpstreamMonitor } from "./rush/monitor.ts"; // ON3
+import { toolsRoutes } from "./tools/routes.ts"; // v6 T: paid tool market, off by default.
 import { firstCallRoutes, firstCallCsp } from "./developers/first-call.ts"; // ON2
 import { inferenceScopeMiddleware, keyDefaultsRoutes } from "./provisioning/scope.ts"; // ZK6
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
@@ -231,6 +232,7 @@ export async function createApp(opts: AppOptions = {}) {
   networkPolicyRoutes(app, ctx);
   statusRoutes(app, ctx);
   skillsRoutes(app, ctx);
+  toolsRoutes(app, ctx); // v6 T: registers nothing unless TOOLS_MARKET_ENABLED.
   networkRoutes(app, ctx);
   publicRoutes(app, ctx);
   networkSanctionsRoutes(app, ctx);

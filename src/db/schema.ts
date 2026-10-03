@@ -1290,3 +1290,5 @@ export { agentProfiles } from "../agents/profile-schema.ts";
 export * from "../agreements/schema.ts";
 
 export { webhookDestinations, webhookDeliveries } from "../webhooks/schema.ts"; // V86: signed destinations.
+
+export { toolListings, toolCalls, toolCanaryRuns } from "../tools/schema.ts"; // v6 T: paid tool market.

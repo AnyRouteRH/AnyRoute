@@ -20,6 +20,7 @@ import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
 import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
 import { X402_VERSIONS, x402Enabled } from "../pay/x402.ts";
 import { RECOVERY_TTL_MS, recoveryMessage } from "../pay/recovery.ts";
+import { toolsStatus } from "../tools/routes.ts"; // v6 T
 import { PRIVATE_LANES, PUBLIC_LANE_ROWS, privateLaneStats } from "../services/private-stats.ts";
 import { labelForReceipt } from "../privacy/resolve.ts";
 
@@ -351,6 +352,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
             recovery: { available: x402Enabled(ctx), header: "PAYMENT-RECOVERY", message: recoveryMessage(ctx.cfg.chain.id, "<payer>", "<nonce>"), ttl_s: RECOVERY_TTL_MS / 1000 },
           },
         },
+        // v6 T: paying x402 tools from a key's balance; ready only when the market is on and a buyer wallet is set.
+        tools: toolsStatus(ctx),
         // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.
         holders: holdersStatus(ctx),
         telemetry: ctx.telemetry.enabled,

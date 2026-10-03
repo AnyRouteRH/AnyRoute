@@ -68,9 +68,10 @@ async function enforceReservation(db: Db, r: ReserveInput, reserve: (db: Db) => 
   const outcome = await db.transaction(async tx => {
     await lockAccount(tx, r.accountId);
     const rows = await policiesFor(tx, r.keyHash!);
-    // Non-inference purchases still honor kill and schedule restrictions; payment rules are reserved for a later version.
+    // A paid x402 tool is a paid_tool intent with the tools price dimension (v6 T). Other non-inference purchases still
+    // honor kill and schedule restrictions; payment rules for them are reserved for a later version.
     const agent = typeof r.agent === "function" ? r.agent() : r.agent;
-    const intents: AgentIntent[] = agent ? [...new Set(agent.models)].map(model => ({ kind: "inference", model, lane: agent.lane, est_cost_pico: r.amount, max_output_tokens: agent.max_output_tokens, tools: declaredTools(agent.body) })) : [{ kind: "mcp_tool", name: r.kind ?? "usage" }];
+    const intents: AgentIntent[] = r.tool ? [{ kind: "paid_tool", ...r.tool, price_pico: r.amount }] : agent ? [...new Set(agent.models)].map(model => ({ kind: "inference", model, lane: agent.lane, est_cost_pico: r.amount, max_output_tokens: agent.max_output_tokens, tools: declaredTools(agent.body) })) : [{ kind: "mcp_tool", name: r.kind ?? "usage" }];
     const now = new Date();
     const refusal = await recordDecisions(tx, rows, intents, r.keyHash!, now);
     const approval = await prepareApproval(db, tx, rows, intents, r.keyHash!, refusal, now);

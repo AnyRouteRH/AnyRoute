@@ -80,6 +80,8 @@ export type ReserveInput = {
   ttlMs?: number;
   /** Allow the available balance to go negative by up to this much (pay-with sessions). */
   creditLine?: Pico;
+  /** v6 T: a paid x402 tool call; the rulebook evaluates it as a paid_tool intent priced at `amount`. */
+  tool?: { resource: string; seller: string; listing?: string };
 };
 
 export const reserve = (db: Db, r: ReserveInput): Promise<Pico> => enforceAgentReservation(db, r, db => reserveUnchecked(db, r));

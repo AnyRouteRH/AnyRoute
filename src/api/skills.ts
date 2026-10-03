@@ -10,6 +10,7 @@ import { bearer, requireKey, requireRole, type Role } from "./auth.ts";
 import { readJson } from "./common.ts";
 import { requireOperator } from "./lane.ts";
 import { LEVELS } from "../skills/scanner.ts";
+import { skillInvocation } from "../tools/catalog.ts"; // v6 T
 import { assertServable, detailJson, hasInstall, installCount, installJson, installSkill, normalizeArchive, normalizeGit, storeSkill, summaryJson, type SkillRow } from "../skills/service.ts";
 
 // Secured Skills Hub (src/skills/):
@@ -74,7 +75,7 @@ export function skillsRoutes(app: Hono, ctx: Ctx) {
 
   app.get("/api/v1/skills/:id", async (c) => {
     const row = await find(c);
-    return c.json({ data: { ...detailJson(ctx, row), installs: await installCount(ctx, row.id) } });
+    return c.json({ data: { ...detailJson(ctx, row), installs: await installCount(ctx, row.id), ...(await skillInvocation(ctx, row.id)) } }); // v6 T: paid invocation via /tools/call
   });
 
   app.get("/api/v1/skills/:id/download", async (c) => {

@@ -10,13 +10,16 @@ const list = z.array(name).max(64);
 const usd = z.number().positive().max(1_000_000);
 const tokens = z.number().int().positive().max(10_000_000);
 const names = z.strictObject({ allow: list.optional(), deny: list.optional() });
+// v6 T: tools also carry a price dimension for paid x402 tools bought with the key's balance (src/tools). allow/deny
+// still name declared and MCP tools; for a paid tool they match its resource, host, seller wallet or listing id.
+const toolRules = names.extend({ max_price_per_call: usd.optional(), daily_budget: usd.optional(), pass_to_models: z.boolean().optional() });
 const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 export const agentPolicySchema = z.strictObject({
   version: z.literal(1),
   models: names,
   lanes: z.array(z.enum(["public", "attested", "unlinkable"])).max(64).optional(),
   caps: z.strictObject({ per_request_usd: usd.optional(), per_hour_usd: usd.optional(), per_day_usd: usd.optional(), per_week_usd: usd.optional(), max_output_tokens: tokens.optional() }),
-  tools: names.optional(),
+  tools: toolRules.optional(),
   windows: z.array(z.strictObject({ days: z.array(z.number().int().min(0).max(6)).max(64), start: time, end: time })).max(64).optional(),
   approval: z.strictObject({ above_usd: usd }),
   breakers: agentBreakersSchema.optional(),
@@ -34,6 +37,8 @@ const pico = z.union([z.bigint().nonnegative(), z.string().regex(/^\d+$/).transf
 export const agentIntentSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inference"), model: name, lane: z.enum(["public", "attested", "unlinkable"]), est_cost_pico: pico, max_output_tokens: tokens.optional(), tools: list }),
   z.strictObject({ kind: z.literal("mcp_tool"), name }),
+  // v6 T: a paid x402 tool call. resource is origin + path (never the query); seller is the payTo wallet.
+  z.strictObject({ kind: z.literal("paid_tool"), resource: z.string().url().max(2048), seller: z.string().regex(/^0x[0-9a-fA-F]{40}$/), listing: name.optional(), price_pico: pico }),
 ]);
 export type AgentIntent = z.infer<typeof agentIntentSchema>;
-export const intentJson = (intent: AgentIntent) => intent.kind === "inference" ? { ...intent, est_cost_pico: intent.est_cost_pico.toString() } : { ...intent };
+export const intentJson = (intent: AgentIntent) => intent.kind === "inference" ? { ...intent, est_cost_pico: intent.est_cost_pico.toString() } : intent.kind === "paid_tool" ? { ...intent, price_pico: intent.price_pico.toString() } : { ...intent };

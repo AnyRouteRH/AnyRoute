@@ -102,6 +102,7 @@ TASKS.push(task('get-usdg', 'build', 'Get USDG', 'Read how to get USDG onto Robi
 SEARCH_ONLY.add('spec'); // V80: keep Build at nine menu tools; spec stays searchable.
 SEARCH_ONLY.add('zkapi'); // ZK9: search-only Sepolia pilot.
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
+TASKS.push({ ...task('paid-tools', 'build', 'Browse paid tools', 'List x402 tools a key can pay from its balance, with their canary state.', '/tools/', 'tools, x402, paid, mcp, canary'), menu: false }); // v6 T: search-only until switched on.
 TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
 TASKS.push({ ...task('rulebook-templates', 'agents', 'Start from a rulebook template', 'Review starter limits, then apply a rulebook to a selected agent.', '/agents/#rulebook-templates', 'starter, template, budget, rules'), menu: false }); // V85: search-only.
 TASKS.push({ ...task('request-check', 'agents', 'Check a request against your rules', 'Check agent rules without spending: allow, approval required or deny.', '/agents/#request-check', 'check, try, request, rules'), menu: false }); // V85: search-only.

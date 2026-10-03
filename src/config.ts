@@ -1,4 +1,5 @@
 import { rushEnv, rushSettings } from "./rush/config.ts"; // ON3
+import { toolsEnv, toolsSettings } from "./tools/config.ts"; // v6 T: paid tool market.
 import { zkapiPageEnv } from "./zkapi/page-config.ts"; // ZK10: opt-in static-page origins.
 import { structuredOutputEnv } from "./structured-output/options.ts"; // V83: opt-in JSON checking.
 import { insightsEnv } from "./insights/config.ts"; // V88: off by default.
@@ -59,6 +60,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 
 const schema = z.object({
   ...zkapiPageEnv, // ZK10
+  ...toolsEnv, // v6 T
   ...rushEnv, // ON3
   DEVELOPER_FIRST_CALL_ENABLED: bool.default(false), // ON2: guidance for GETs to model endpoints.
   ...structuredOutputEnv, // V83
@@ -503,6 +505,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("webhooks"); // V86: bounded event delivery.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
       allowed.push("upstream-monitor"); // ON3
+      allowed.push("tools-reconcile", "tools-canary"); // v6 T: the paid tool market's holds and canary probes.
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
       allowed.push("x402-recovery-expire"); // x402 payment recovery retention
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
@@ -603,6 +606,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     statementsEnabled: e.STATEMENTS_ENABLED, // V87
     networkStatsEnabled: e.NETWORK_STATS_ENABLED,
     rush: rushSettings(e), // ON3
+    tools: toolsSettings(e, production), // v6 T: off unless TOOLS_MARKET_ENABLED.
     spendInsightsEnabled: e.SPEND_INSIGHTS_ENABLED, // V88: read-only spend insights.
     webhookSigningEnabled: e.WEBHOOK_SIGNING_ENABLED, // V86: off preserves existing delivery.
     networkPayouts: networkPayoutSettings(e, production),

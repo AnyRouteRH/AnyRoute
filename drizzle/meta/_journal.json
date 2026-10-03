@@ -288,6 +288,13 @@
       "when": 1790939475204,
       "tag": "0041_v6_x402_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790939477204,
+      "tag": "0043_v6_tools",
+      "breakpoints": true
     }
   ]
 }
