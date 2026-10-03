@@ -5,6 +5,26 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "make-good-refunds",
+    "date": "2026-10-03",
+    "title": "Get a refund by rule when a call fails you",
+    "summary": "Built, and off until an operator switches it on (not yet at anyroute.tech). When a paid call gets no answer, a failover costs more, a stream is cut off, repaired JSON still does not parse or an attested call lacks a fresh attestation, the router refunds by fixed rules with a signed refund receipt. Per-call payers are refunded on-chain.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#make-good-refunds"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/be5903d14390594b13e4a663c689c70257b3b527"
+      }
+    ],
+    "tags": [
+      "build",
+      "verify"
+    ]
+  },
+  {
     "id": "x402-payment-recovery",
     "date": "2026-10-03",
     "title": "Recover a lost x402 answer without paying twice",
