@@ -316,6 +316,13 @@
       "when": 1790939479204,
       "tag": "0045_v6_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1790939481204,
+      "tag": "0047_v6_commerce",
+      "breakpoints": true
     }
   ]
 }

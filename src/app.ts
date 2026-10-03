@@ -12,6 +12,7 @@ import { makegoodRoutes } from "./services/makegood.ts"; // V6 R: make-good refu
 import { inboxRoutes } from "./api/inbox.ts"; // U78: account inbox.
 import { activityRoutes } from "./api/activity.ts";
 import { networkStatsRoutes } from "./network/stats.ts";
+import { commerceStatsRoutes } from "./commerce/stats.ts"; // v6 L
 import { agentProfilesRoutes } from "./api/agent-profiles.ts";
 import { identityRoutes } from "./identity/routes.ts"; // v6 I: before the rulebook routes, which 404 without AGENT_POLICY_ENABLED.
 import { agentSealedRoutes } from "./api/agent-sealed.ts";
@@ -245,6 +246,7 @@ export async function createApp(opts: AppOptions = {}) {
   networkBurnRoutes(app, ctx);
   networkHostRoutes(app, ctx);
   networkStatsRoutes(app, ctx);
+  commerceStatsRoutes(app, ctx); // v6 L: off by default.
   mcpRoutes(app, ctx);
   anthropicRoutes(app, ctx);
   ollamaRoutes(app, ctx);

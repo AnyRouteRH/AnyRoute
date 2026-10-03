@@ -5,6 +5,7 @@ import { zkapiPageEnv } from "./zkapi/page-config.ts"; // ZK10: opt-in static-pa
 import { structuredOutputEnv } from "./structured-output/options.ts"; // V83: opt-in JSON checking.
 import { insightsEnv } from "./insights/config.ts"; // V88: off by default.
 import { networkStatsEnv } from "./network/stats-config.ts";
+import { commerceEnv, commerceSettings } from "./commerce/config.ts"; // v6 L: honest commerce ledger.
 import { sealedEnv, guardSealed } from "./agents/sealed/config.ts";
 import { agreementEnv, agreementSettings } from "./agreements/config.ts";
 import { networkPayoutEnv, networkPayoutSettings } from "./network/payout-config.ts";
@@ -76,6 +77,7 @@ const schema = z.object({
   ...facilitatorEnv, // v6 F
   ...networkHostsEnv,
   ...networkStatsEnv,
+  ...commerceEnv, // v6 L
   INFERENCE_KEYS_ENABLED: bool.default(false), // ZK6: minting restricted keys; stored scopes are always enforced.
   WEBHOOK_SIGNING_ENABLED: bool.default(false), // V86: signed account webhooks.
   MAKEGOOD_ENABLED: bool.default(false), // V6 R: deterministic make-good refunds.
@@ -515,6 +517,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
       allowed.push("upstream-monitor"); // ON3
       allowed.push("tools-reconcile", "tools-canary"); // v6 T: the paid tool market's holds and canary probes.
+      allowed.push("commerce-transfers"); // v6 L: public USDG transfer index.
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
       allowed.push("x402-recovery-expire"); // x402 payment recovery retention
       allowed.push("agent-liveness", "agent-identity"); // v6 I: daily signed endpoint probes; isolated ERC-8004 registrar.
@@ -619,6 +622,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     inferenceKeysEnabled: e.INFERENCE_KEYS_ENABLED, // ZK6
     statementsEnabled: e.STATEMENTS_ENABLED, // V87
     networkStatsEnabled: e.NETWORK_STATS_ENABLED,
+    commerce: commerceSettings(e), // v6 L: off by default.
     rush: rushSettings(e), // ON3
     tools: toolsSettings(e, production), // v6 T: off unless TOOLS_MARKET_ENABLED.
     spendInsightsEnabled: e.SPEND_INSIGHTS_ENABLED, // V88: read-only spend insights.

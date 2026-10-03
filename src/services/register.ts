@@ -5,6 +5,7 @@ import { runAgentLiveness } from "../identity/liveness.ts"; // v6 I
 import { runAgentIdentity } from "../identity/identity.ts"; // v6 I
 import { runWebhooks } from "../webhooks/worker.ts"; // V86: bounded event delivery.
 import { runMakegoodPayouts } from "./makegood.ts"; // V6 R
+import { pollCommerceTransfers } from "../commerce/funding.ts"; // v6 L
 import { registerAgreementJobs } from "../agreements/jobs.ts";
 import { runNetworkFeeBurn } from "../network/fee-burn.ts";
 import { pollHostBonds } from "../network/bond-indexer.ts";
@@ -80,6 +81,8 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   jobs.register("chain-indexer", 5_000, async () => (chainOn() ? pollChain(ctx) : { skipped: "no contracts" }), { atStart: true });
   if (cfg.webhookSigningEnabled) jobs.register("webhooks", 60_000, () => runWebhooks(ctx)); // V86.
   if (cfg.makegood.enabled) jobs.register("makegood-payouts", 3_600_000, () => runMakegoodPayouts(ctx)); // V6 R: refuses without its key.
+  // v6 L: copy public USDG transfers for the commerce ledger's funding-source filter (COMMERCE_FUNDING_FROM_BLOCK).
+  if (cfg.commerce.enabled && cfg.commerce.funding.fromBlock !== null) jobs.register("commerce-transfers", 60_000, () => pollCommerceTransfers(ctx));
   jobs.register("spend-watch", 60_000, () => runSpendWatch(ctx));
   jobs.register("escrow-indexer", 5_000, () => pollEscrow(ctx), { atStart: true });
   jobs.register("paywith-aggregator", 60_000, async () => (ctx.chain.address("payWithStock") ? runPaywithAggregator(ctx) : { skipped: "not configured" }));

@@ -26,6 +26,7 @@ import { facilitatorStatus } from "../facilitator/routes.ts"; // v6 F
 import { toolsStatus } from "../tools/routes.ts"; // v6 T
 import { PRIVATE_LANES, PUBLIC_LANE_ROWS, privateLaneStats } from "../services/private-stats.ts";
 import { labelForReceipt } from "../privacy/resolve.ts";
+import { commerceStatus } from "../commerce/stats.ts"; // v6 L
 
 export { providerApplication } from "../providers/application.ts";
 
@@ -362,6 +363,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         facilitator: facilitatorStatus(ctx),
         // v6 T: paying x402 tools from a key's balance; ready only when the market is on and a buyer wallet is set.
         tools: toolsStatus(ctx),
+        // v6 L: the honest commerce ledger: whether it is on, which receipt kinds feed it, and whether its filters can work here.
+        commerce: commerceStatus(ctx),
         // $ANYR holder tiers: the token, the tier ladder, and whether tiers apply to requests.
         holders: holdersStatus(ctx),
         telemetry: ctx.telemetry.enabled,

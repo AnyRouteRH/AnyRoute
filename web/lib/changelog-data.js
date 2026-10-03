@@ -33,6 +33,13 @@ export default [
         "label": "Read the docs",
         "href": "/docs/#agent-identity"
         "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4a573a612a5642110d61038ef7906328e98eccbd"
+    "id": "commerce-ledger",
+    "title": "Read an honest commerce ledger",
+    "summary": "The commerce page counts paid settlements only once their receipts are anchored on Robinhood Chain, removes self-dealing (same owner, round trips within 24 hours, funding links) and shows every filtered figure beside the gross one. A published Dune query recomputes the on-chain part. It is built but not switched on at anyroute.tech yet.",
+        "href": "/commerce/"
+        "label": "Read the methodology",
+        "href": "/docs/#commerce-stats"
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/636176d3921b5ed92a8fb944351971d12c2ce24e"
       "verify"
     ]
   },

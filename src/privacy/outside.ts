@@ -15,6 +15,7 @@ import { telegramLinkRate, telegramLinkReader } from "./telegram-linking.ts";
 import type { Evidence, ExternalDoc, RedisFamily, Touchpoint } from "./types.ts";
 import { networkJoinStores } from "./network-join.ts";
 import { networkStatsStores } from "./network-stats.ts";
+import { commerceStores } from "./commerce.ts"; // v6 L
 import { juryBodyReaders, agreementContractStores } from "./agreements.ts";
 import { x402RecoveryFamily, x402RecoveryReader } from "./x402-recovery.ts";
 import { facilitatorAddressReader, facilitatorBodyReader, facilitatorRedisFamilies } from "./facilitator.ts"; // v6 F
@@ -745,6 +746,7 @@ export const EXTERNAL: ExternalDoc = {
     { id: "network-routing-evidence", name: "Network host routing evidence in memory", purpose: "When NETWORK_HOSTS_ENABLED is on, routing uses existing signed generation records, health probes and attestation outcomes to limit admitted hosts during probation and exclude unavailable hosts.", holds: "Provider ids, probation deadlines, aggregate attested success and recent outcome counts, fresh canonical active bond base units matched to the host id and operator wallet, probe availability and median latency, the latest attestation failure flag and refresh time. No request text or caller address. Successful network probes also record latency in the existing health table.", ttl: "Rebuilt by health refreshes, including idle flushes; evidence older than 120 seconds is refused. Failed refreshes clear the evidence. Lost when the router instance is released or exits.", requestText: "none", evidence: [ev("src/network/routing.ts", "const states = new WeakMap<HealthView, State>();"), ev("src/network/routing.ts", "state.evidence = new Map();"), ev("src/network/weight-config.ts", "evidenceMaxAgeMs: 120_000")] },
     ...networkJoinStores,
     ...networkStatsStores,
+    ...commerceStores, // v6 L
     ...sealedOtherStores,
     ...agreementContractStores,
     {

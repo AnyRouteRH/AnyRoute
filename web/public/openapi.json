@@ -16539,6 +16539,59 @@
           }
         }
       }
+    },
+    "/api/v1/commerce/stats": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "operationId": "commerceStats",
+        "summary": "Read the commerce ledger",
+        "description": "Present only with COMMERCE_STATS_ENABLED (default false; not switched on at anyroute.tech yet). Public, read-only snapshots cached at most 60 seconds; HTTP freshness is limited to the remaining snapshot lifetime. Settlements per receipt kind (model.call for x402 model calls; tool.call, facilitator.settle and job.release once their features report settlements) over 24 hours, 7 days and 30 days. Every block carries gross and filtered figures side by side, plus how many settlements each rule excluded: unanchored (a receipt not in a root confirmed on ReceiptAnchor), same_owner (same wallet, same owner key, or both operator wallets), round_trip (value back from payee to payer within 24 hours), funding_link (USDG funding within COMMERCE_FUNDING_HOPS transfers; only when filters.funding.available). Amounts are decimal strings in USDG base units. Counts, sums and medians only: no payer, payee, transaction or single settlement, and no split by privacy lane. Methodology: /docs/#commerce-stats; integrations/dune/commerce.sql recomputes the on-chain part.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Commerce ledger snapshot",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "public, max-age=<remaining snapshot seconds>, must-revalidate"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CommerceStats"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound",
+            "description": "The commerce ledger is disabled"
+          },
+          "503": {
+            "description": "A source could not be read; no stale snapshot is served",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -29117,6 +29170,284 @@
                 }
               }
             }
+          }
+        }
+      },
+      "CommerceStats": {
+        "type": "object",
+        "required": [
+          "as_of",
+          "cache_seconds",
+          "currency",
+          "kinds",
+          "filters",
+          "windows",
+          "methodology_url",
+          "dune_query"
+        ],
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cache_seconds": {
+            "type": "integer",
+            "const": 60
+          },
+          "currency": {
+            "type": "object",
+            "properties": {
+              "asset": {
+                "type": "string",
+                "const": "USDG"
+              },
+              "decimals": {
+                "type": "integer",
+                "const": 6
+              },
+              "units": {
+                "type": "string"
+              }
+            }
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "label",
+                "wired"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "wired": {
+                  "type": "boolean",
+                  "description": "Whether anything reports settlements of this kind to the ledger"
+                }
+              }
+            }
+          },
+          "filters": {
+            "type": "object",
+            "properties": {
+              "anchored_only": {
+                "type": "boolean",
+                "const": true
+              },
+              "same_owner": {
+                "type": "boolean",
+                "const": true
+              },
+              "round_trip_hours": {
+                "type": "integer",
+                "const": 24
+              },
+              "funding": {
+                "type": "object",
+                "required": [
+                  "available",
+                  "hops",
+                  "min_units",
+                  "hub_fanout",
+                  "from_block",
+                  "indexed_block",
+                  "indexed_at"
+                ],
+                "properties": {
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "hops": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3
+                  },
+                  "min_units": {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  },
+                  "hub_fanout": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "from_block": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[0-9]+$"
+                  },
+                  "indexed_block": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "pattern": "^[0-9]+$"
+                  },
+                  "indexed_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          },
+          "windows": {
+            "type": "object",
+            "required": [
+              "24h",
+              "7d",
+              "30d"
+            ],
+            "properties": {
+              "24h": {
+                "$ref": "#/components/schemas/CommerceWindow"
+              },
+              "7d": {
+                "$ref": "#/components/schemas/CommerceWindow"
+              },
+              "30d": {
+                "$ref": "#/components/schemas/CommerceWindow"
+              }
+            }
+          },
+          "methodology_url": {
+            "type": "string"
+          },
+          "dune_query": {
+            "type": "string"
+          }
+        }
+      },
+      "CommerceWindow": {
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "total",
+          "kinds"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "total": {
+            "$ref": "#/components/schemas/CommerceBlock"
+          },
+          "kinds": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CommerceBlock"
+            }
+          }
+        }
+      },
+      "CommerceBlock": {
+        "type": "object",
+        "required": [
+          "gross",
+          "filtered",
+          "excluded"
+        ],
+        "properties": {
+          "gross": {
+            "$ref": "#/components/schemas/CommerceFigures"
+          },
+          "filtered": {
+            "$ref": "#/components/schemas/CommerceFigures"
+          },
+          "excluded": {
+            "type": "object",
+            "required": [
+              "unanchored",
+              "same_owner",
+              "round_trip",
+              "funding_link"
+            ],
+            "properties": {
+              "unanchored": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "same_owner": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "round_trip": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "funding_link": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "description": "Each excluded settlement is counted once, under the first rule it fails"
+          }
+        }
+      },
+      "CommerceFigures": {
+        "type": "object",
+        "required": [
+          "settlements",
+          "payers",
+          "payees",
+          "volume_usdg",
+          "median_price_usdg",
+          "refunds",
+          "refund_rate"
+        ],
+        "properties": {
+          "settlements": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "payers": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "payees": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "volume_usdg": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "median_price_usdg": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9]+$",
+            "description": "The middle amount, or the floor of the mean of the two middle amounts; null when there are none"
+          },
+          "refunds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "refund_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Refunded over settlements, to four decimals; null when there are none"
           }
         }
       }

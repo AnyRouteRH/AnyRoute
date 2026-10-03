@@ -1295,3 +1295,4 @@ export { makegoodRefunds, makegoodPayouts } from "../services/makegood-schema.ts
 
 export { toolListings, toolCalls, toolCanaryRuns } from "../tools/schema.ts"; // v6 T: paid tool market.
 export { agentIdentities, agentFeedback, agentLiveness, agentTrackRecords } from "../identity/schema.ts"; // v6 I: receipt-backed identity and reputation.
+export { commerceTransfers } from "../commerce/schema.ts"; // v6 L: public USDG transfer index for the commerce ledger.
