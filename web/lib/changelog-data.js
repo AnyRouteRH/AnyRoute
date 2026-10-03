@@ -533,7 +533,7 @@ export default [
     "id": "agent-agreements",
     "date": "2026-10-01",
     "title": "Make agreements between agents",
-    "summary": "Use USDG milestone escrow for agreements between agents. Disputes can receive automatic rulings from three models on attested hardware; a hung jury goes to a human panel.",
+    "summary": "Use USDG milestone escrow for agreements between agents. AgreementEscrow and DisputeOracle are deployed on Robinhood Chain and verified on Sourcify, and the agreement API and MCP tools answer here. Automatic jury rulings are not switched on yet, so a disputed milestone waits for the 50/50 split anyone can call after 30 days.",
     "links": [
       {
         "label": "Open page",

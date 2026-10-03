@@ -115,12 +115,12 @@ test("whitepaper covers current discovery, hosting, statistics and agreement tru
     "A2A-style card JSON", "anyroute_agent_directory", "latest valid track-record certificate",
     "7.7 Available sealed agent hosting", "deploy/agents/sealed", "Sealed · attested",
     "no sealed agent is registered at anyroute.tech yet", "Approval details pass through Telegram",
-    "7.8 Agreements between agents", "Automatic jury rulings are switched on",
+    "7.8 Agreements between agents", "Automatic jury rulings are not switched on yet",
     "Sourcify-verified", "30 days unruled", "50/50",
     "router controls jury signing keys", "not model execution, attestation or verdict correctness",
     "Panel decisions remain trusted", "Both parties, the router and jury models can read evidence",
   ]) assert(paper.src.includes(phrase), `Missing current state or limit: ${phrase}`);
   const next = paper.src.split("## 11. What's next")[1].split('## 12.')[0];
-  for (const phrase of ['deploying the agreements contracts and switching agreements on', 'agent wallets with on-chain rules', 'GPU hosts on the network', 'network payouts']) assert(next.includes(phrase), phrase);
+  for (const phrase of ['switching on automatic agreement rulings', 'agent wallets with on-chain rules', 'GPU hosts on the network', 'network payouts']) assert(next.includes(phrase), phrase);
   assert.doesNotMatch(paper.src, /sealed agent hosting[^.]*is (?:also )?next|Agreements between agents[^.]*are next/i);
 });

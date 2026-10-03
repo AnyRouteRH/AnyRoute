@@ -1,0 +1,69 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { CAPABILITIES, FIXTURE, check, clauses, drift, judge, liveSnapshot, type Snapshot } from "../scripts/docs-claims-check.ts";
+
+const root = resolve(import.meta.dir, "..");
+const fixture = JSON.parse(readFileSync(resolve(root, FIXTURE), "utf8")) as Snapshot;
+const off: Snapshot = { data: { per_call: { configured: false, x402: { configured: false } }, jobs: [{ name: "agreement-indexer" }] }, config: { AGENT_AGREEMENTS_RULINGS_ENABLED: false } };
+const at = (text: string, implicit = false) => judge({ file: "doc.md", line: 1, text, implicit }, off);
+
+describe("docs claims check", () => {
+  test("the repository docs agree with the production status fixture", async () => {
+    const { findings, clauses: count } = await check(fixture);
+    expect(count).toBeGreaterThan(1000);
+    expect(findings.filter((f) => f.level === "fail").map((f) => `${f.clause.file}:${f.clause.line} ${f.capability.id}: ${f.clause.text}`)).toEqual([]);
+  });
+
+  test("every capability names the status field or config flag that decides it", () => {
+    for (const c of CAPABILITIES) expect(c.field.length).toBeGreaterThan(3);
+    expect(CAPABILITIES.find((c) => c.id === "x402")!.field).toBe("per_call.x402.configured");
+    expect(new Set(CAPABILITIES.map((c) => c.id)).size).toBe(CAPABILITIES.length);
+  });
+
+  test("a live claim fails when status says off, and a qualified one passes", () => {
+    expect(at("x402 per-call payments are live at anyroute.tech.").map((f) => f.capability.id)).toEqual(["x402", "per-call"]);
+    expect(at("Automatic jury rulings are switched on.").map((f) => [f.level, f.capability.id])).toEqual([["fail", "rulings"]]);
+    expect(at("x402 per-call payments are built and switch on when the router is configured for them.")).toEqual([]);
+    expect(at("Automatic jury rulings are not switched on yet.")).toEqual([]);
+    expect(at("Agreements between agents are live.")).toEqual([]);
+  });
+
+  test("a capability table row or changelog entry lists a feature as on without saying live", () => {
+    expect(at("Chat and embeddings, including x402 per-call payments.", true).map((f) => f.capability.id)).toEqual(["x402", "per-call"]);
+    expect(at("Chat and embeddings, including x402 per-call payments.", false)).toEqual([]);
+  });
+
+  test("calling an on feature off is a warning, not a failure", () => {
+    expect(at("The agreement contracts are not switched on yet.").map((f) => [f.level, f.capability.id])).toEqual([["warn", "agreements"]]);
+  });
+
+  test("clauses split sentences, semicolons and \", but\"", () => {
+    expect(clauses("Sealed hosting is available, but none is registered. Payouts are off; burns are off.")).toEqual(["Sealed hosting is available", "none is registered.", "Payouts are off", "burns are off."]);
+  });
+
+  test("README table rows, reference links and code spans are read as the check expects", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "docs-claims-"));
+    mkdirSync(join(dir, "web/components"), { recursive: true });
+    writeFileSync(join(dir, "README.md"), [
+      "| Capability | What it gives you |", "| :--- | :--- |",
+      "| **One API** | Chat, including [x402 per-call payments](https://example.invalid/#x402). |",
+      "| **Agreements** | Deployed. Shows `per_call.x402.configured`. [Agreements and jury trust](https://example.invalid/#agreements). |",
+      "```", "x402 is live", "```",
+    ].join("\n"));
+    const { findings } = await check(off, [{ path: "README.md", kind: "markdown" }], dir);
+    expect(findings.map((f) => `${f.clause.line} ${f.capability.id}`)).toEqual(["3 x402", "3 per-call"]);
+  });
+
+  test("live mode reads data from GET /api/v1/status and reports drift from the fixture", async () => {
+    const fetcher = (async (url: URL) => {
+      expect(String(url)).toBe("https://router.example/api/v1/status");
+      return new Response(JSON.stringify({ data: { ...fixture.data, per_call: { configured: true, x402: { configured: true } } } }));
+    }) as unknown as typeof fetch;
+    const live = await liveSnapshot("https://router.example", fetcher);
+    expect(drift(fixture, { ...live, config: fixture.config }).map((d) => d.capability.id).sort()).toEqual(["per-call", "x402"]);
+    const failing = (async () => new Response("nope", { status: 503 })) as unknown as typeof fetch;
+    await expect(liveSnapshot("https://router.example", failing)).rejects.toThrow("503");
+  });
+});

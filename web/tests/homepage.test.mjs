@@ -55,7 +55,7 @@ test('roadmap separates available hosting and inactive agreements from the next 
   assert.equal((roadmap.match(/class="live-square"><\/span>Live/g)||[]).length,4);
   const next=roadmap.match(/class="next-stage"[^>]*><span>(.*?)<\/span><b>Next<\/b>/)[1];
   assert.equal(next,'Agent wallets with on-chain rules; GPU hosts on the network; network payouts.');
-  for(const phrase of ['Sealed agent hosting is available','no sealed agent is registered at anyroute.tech yet','Agreements between agents are live','jury of models on attested hardware'])assert.ok(roadmap.includes(phrase),phrase);
+  for(const phrase of ['Sealed agent hosting is available','no sealed agent is registered at anyroute.tech yet','Agreements between agents are switching on','jury of models on attested hardware'])assert.ok(roadmap.includes(phrase),phrase);
   assert.doesNotMatch(roadmap,/coming|contract deployment|live provider onboarding|\b20\d{2}\b|built and tested/i);
 });
 

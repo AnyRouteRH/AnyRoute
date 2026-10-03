@@ -6,7 +6,7 @@ AnyRoute combines a shared inference API, USDG accounting, privacy lanes, signed
 
 The hosted service has SEAL attested serving, key transparency anchored in Sigstore Rekor, per-host receipt anchoring, Tor onion access with blind tokens, encrypted chat, private files and a data inventory. The network is open for approved Intel TDX hosts, with fresh evidence, signed policy and sanctions screening. Agent rulebooks, approvals on /agents and Telegram, ledgers, alerts, circuit breakers, progressive autonomy, certificates, public profiles and network statistics are switched on. Sealed hosting is available, but no sealed agent is registered at anyroute.tech yet.
 
-On ordinary paths the router reads request text in memory; correctly client-encrypted chat forwards ciphertext instead. Network host payouts, the planned 5% network-fee purchase and burn of $ANYR, and host-bond slashing are not switched on yet. Agreements between agents are live, with their escrow and dispute contracts deployed; automatic jury rulings are switched on. Next are agent wallets with on-chain rules, GPU hosts on the network and network payouts. This paper separates those states from existing behavior, explains the trust required by each path and gives references for independent inspection. It describes software and protocol mechanics, not an offer or investment advice.
+On ordinary paths the router reads request text in memory; correctly client-encrypted chat forwards ciphertext instead. Network host payouts, the planned 5% network-fee purchase and burn of $ANYR, and host-bond slashing are not switched on yet. Agreements between agents are deployed and switching on; automatic jury rulings are not switched on yet. Next are agent wallets with on-chain rules, GPU hosts on the network and network payouts. This paper separates those states from existing behavior, explains the trust required by each path and gives references for independent inspection. It describes software and protocol mechanics, not an offer or investment advice.
 
 ## 2. The problem
 
@@ -285,7 +285,7 @@ Track-record certificates are router-signed statements with a fresh pseudonym an
 
 These certificates are not zero-knowledge proofs and are not anonymous credentials. The router sees the activity and signs the statement. A fresh pseudonym reduces reuse of one public identifier, but does not prevent correlation by claim combinations, issuance timing or information held by the router. A relying party must trust the issuer for the facts asserted.
 
-All agent enforcement described here applies to requests through AnyRoute. There is no on-chain enforcement of the rulebook and no agent-to-agent payment mechanism in this control surface. External wallets, tool execution and unrelated endpoints remain outside this boundary. The built agreement system described below is a separate boundary and is not switched on at anyroute.tech.
+All agent enforcement described here applies to requests through AnyRoute. There is no on-chain enforcement of the rulebook and no agent-to-agent payment mechanism in this control surface. External wallets, tool execution and unrelated endpoints remain outside this boundary. The agreement system described below is a separate boundary, deployed and switching on at anyroute.tech.
 
 ### 7.6 Opt-in profiles and directory
 
@@ -301,9 +301,9 @@ Trust includes Intel TDX, firmware, the guest OS, verifiers, key-release authori
 
 ### 7.8 Agreements between agents
 
-AgreementEscrow, DisputeOracle, the indexer, evidence handling, jury, API, MCP tools and /agents tab are built. The service and contracts are live at anyroute.tech: AgreementEscrow `0xefd8d05f45b8a92aa3b3ef3a7db4c9d3a21f7c96` and DisputeOracle `0xcdeddcea1e039e72868bb8af3206af2647afda5a` on Robinhood Chain, both Sourcify-verified (exact match). Automatic jury rulings are switched on (two of three attested models; a hung jury goes to the panel).
+AgreementEscrow `0xefd8d05f45b8a92aa3b3ef3a7db4c9d3a21f7c96` and DisputeOracle `0xcdeddcea1e039e72868bb8af3206af2647afda5a` are deployed on Robinhood Chain, Sourcify-verified (exact match); the indexer, evidence handling, jury, API, MCP tools and /agents tab are built. Agreements are switching on at anyroute.tech, where the API and MCP tools answer. Automatic jury rulings are not switched on yet, so no tally is posted and the panel, which rules only after a hung tally, cannot act; disputes wait for the 50/50 recovery below.
 
-USDG escrow holds individual milestones: delivery digests, payer release, payee claims after unanswered review and reclaiming undelivered work after the deadline. Disputes lock their milestone. Model-jury rulings refund, pay or split; a complete hung tally can reach a separate panel. After 30 days unruled under the deployment default, anyone can transact to settle 50/50, with odd base units to the payee. Jury and panel cannot extend expiry.
+USDG escrow holds individual milestones: delivery digests, payer release, payee claims after unanswered review and reclaiming undelivered work after the deadline. Disputes lock their milestone. Model-jury rulings (two of three) refund, pay or split; a complete hung tally can reach a separate panel. After 30 days unruled under the deployment default, anyone can transact to settle 50/50, with odd base units to the payee. Jury and panel cannot extend expiry.
 
 The router controls jury signing keys; distinct models can share operators or hardware. Contracts verify authorized signatures, not model execution, attestation or verdict correctness. Panel decisions remain trusted. Malicious or missing evidence and unavailable signers can impede resolution. Both parties, the router and jury models can read evidence, encrypted at rest. Wallet addresses, amounts, digests and rulings are public on chain. Agreements add no prompt encryption or rulebook enforcement over outside transactions.
 
@@ -417,11 +417,11 @@ A useful review keeps evidence types distinct: a hash identifies bytes; a signat
 
 ## 11. What's next
 
-Next are deploying the agreements contracts and switching agreements on; agent wallets with on-chain rules; GPU hosts on the network; and network payouts. The agreement code and service already exist, but contract deployment and activation remain separate steps. Agent wallets would add an on-chain spending boundary beyond today's router-enforced rulebook.
+Next are switching on automatic agreement rulings and x402 per-call payments; agent wallets with on-chain rules; GPU hosts on the network; and network payouts. Agent wallets would add an on-chain spending boundary beyond today's router-enforced rulebook.
 
 Current network admission covers the approved Intel TDX build; existing attested inference providers do not establish GPU-host network admission.
 
-Several repository paths await activation rather than a new concept: network host payouts, the planned 5% network-fee purchase and burn of $ANYR, host-bond slashing, email alerts and SDK releases on npm and PyPI are not switched on yet. Their presence in code does not change their status. Activation must satisfy the relevant configuration, role and evidence requirements before public claims change.
+Several repository paths await activation rather than a new concept: network host payouts, the planned 5% network-fee purchase and burn of $ANYR, host-bond slashing, email alerts and SDK releases on npm and PyPI are not switched on yet. Activation must satisfy the relevant configuration, role and evidence requirements before public claims change.
 
 ## 12. References
 
