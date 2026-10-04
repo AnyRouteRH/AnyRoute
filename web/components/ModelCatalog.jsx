@@ -5,6 +5,7 @@ import { modelUnavailable } from "../lib/model-availability.js"; // ON5
 import { MODEL_CAPABILITIES } from "../lib/model-capabilities.js";
 import { CATALOG_SORTS, filterModels, modelTagCounts } from "../lib/model-catalog.js";
 import { CapabilityChips, CapabilityGuide } from "./ModelCapabilities";
+import { RouteCardDetails, useRouteProviders } from "./RouteCard"; // U99
 import { Button, Modal } from "./UI";
 import s from "./ModelCatalog.module.css";
 
@@ -17,6 +18,7 @@ export default function ModelCatalog({ onChoose }) {
   const [observedAt, setObservedAt] = useState(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const providers = useRouteProviders(); // U99: uptime, latency and attestation for the route cards.
   useEffect(() => {
     let active = true;
     setError("");
@@ -49,6 +51,7 @@ export default function ModelCatalog({ onChoose }) {
         <h3>{model.name}</h3><p>{model.description}</p><CapabilityChips model={raw} />
         <div className="model-meta"><span>{model.context} context</span><span>{model.providers} provider{model.providers === 1 ? "" : "s"}</span></div>
         <div className="model-meta"><span>${perM(model.price)} / 1M input</span><span>${perM(model.output)} / 1M output</span></div>
+        <RouteCardDetails model={raw} providers={providers} />
         <div className="button-row"><button className="text-button" onClick={() => setSelected(raw)}>Model details →</button>{modelUnavailable(raw) ? <span role="status">Temporarily unavailable</span> : onChoose ? <button className="text-button" onClick={() => onChoose(model.id)}>Try model →</button> : <a className="text-button" href={chooseHref(model.id)}>Try model →</a>}</div>
         <div className="card-ramp" aria-hidden="true" />
       </article>;

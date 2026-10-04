@@ -2,7 +2,7 @@
 import AddFunds from "./account/AddFunds"; import { fundingError, recoverFundingDraft } from "../lib/add-funds.js"; // ON1
 import RouteExplanation from "./harness/RouteExplanation"; // V84
 import ProofBadge from "./ProofBadge"; // U76: shared evidence labels.
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, clearKey, loadKey, saveKey, validKey } from "../lib/api";
 import { hasWallet, walletApiKey } from "../lib/wallet";
 import { formatMs, formatUsd, receiptHref, estimateTokens } from "../lib/arena";
@@ -33,6 +33,8 @@ import s from "./Harness.module.css";
 import { modelUnavailable, selectableModels } from "../lib/model-availability.js"; // ON5
 import { useCatalogRefresh } from "./harness/useCatalogRefresh"; // ON5
 import catalogStyles from "./ModelPickerCapabilities.module.css";
+import RouteCard, { useRouteProviders } from "./RouteCard"; // U99: route cards in the picker.
+import routeCardStyles from "./RouteCard.module.css";
 
 const MAX_LANES = 3;
 const FAVS = "anyroute-harness-favs";
@@ -122,7 +124,7 @@ function CapTags({ model }) {
 
 // ---------------------------------------------------------------- model rail
 
-function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs, toggleFav, prefs, setPrefs, searchRef, open, onClose }) {
+function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs, toggleFav, prefs, setPrefs, searchRef, open, onClose, card }) {
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
   const [pickKeys, setPickKeys] = useState("Ctrl Shift K"); // chosen after mount so the pre-rendered page hydrates cleanly
@@ -143,6 +145,8 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
     return out;
   }, [list, favList, prefs.group, deferred, caps]);
   const toggleCap = (k) => setPrefs({ ...prefs, caps: caps.includes(k) ? caps.filter((x) => x !== k) : [...caps, k] });
+  const activeRaw = card?.models.get(activeId); // U99: the selected model's route card, once, in its first group.
+  const cardGroup = activeRaw && groups.find((g) => g.models.some((m) => m.id === activeId))?.maker;
 
   return (
     <aside className={s.rail} data-open={open || undefined} aria-label="Models">
@@ -204,7 +208,8 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
             </h3>
             <ul>
               {g.models.map((m) => (
-                <li key={m.id} className={s.row} data-active={m.id === activeId || undefined}>
+                <Fragment key={m.id}>
+                <li className={s.row} data-active={m.id === activeId || undefined}>
                   <button type="button" disabled={modelUnavailable(m)} className={s.pick} onClick={() => onPick(m.id)} aria-current={m.id === activeId || undefined} title={m.id}>
                     <span className={s.rowName}>
                       {/* U76: hardware badge comes from CapabilityChips below. */}
@@ -224,6 +229,8 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
                     </button>
                   )}
                 </li>
+                {m.id === activeId && g.maker === cardGroup && <li><RouteCard model={activeRaw} providers={card.providers} dark place="rail" /></li>}
+                </Fragment>
               ))}
             </ul>
           </section>
@@ -236,7 +243,7 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
 
 // ---------------------------------------------------------------- command palette
 
-function Palette({ models, onPick, onClose, title, onBrowse }) {
+function Palette({ models, onPick, onClose, title, onBrowse, card }) {
   const ref = useRef(null);
   const listRef = useRef(null);
   const [query, setQuery] = useState("");
@@ -251,6 +258,7 @@ function Palette({ models, onPick, onClose, title, onBrowse }) {
   useEffect(() => {
     listRef.current?.querySelector("[data-active]")?.scrollIntoView({ block: "nearest" });
   }, [active]);
+  const activeRaw = card?.models.get(list[active]?.id); // U99: route card for the highlighted model.
   const key = (e) => {
     if (e.key === "ArrowDown") (e.preventDefault(), setActive((a) => Math.min(list.length - 1, a + 1)));
     else if (e.key === "ArrowUp") (e.preventDefault(), setActive((a) => Math.max(0, a - 1)));
@@ -264,9 +272,9 @@ function Palette({ models, onPick, onClose, title, onBrowse }) {
           <input autoFocus placeholder={title} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={key} role="combobox" aria-expanded="true" aria-controls="palette-list" aria-activedescendant={list[active] ? "pal-" + active : undefined} spellCheck={false} autoComplete="off" />
           <kbd>Esc</kbd>
         </label>
-        <ul id="palette-list" role="listbox" ref={listRef} className={`${s.paletteList} ${catalogStyles.paletteList}`}>
+        <ul id="palette-list" role="listbox" ref={listRef} className={`${s.paletteList} ${catalogStyles.paletteList} ${activeRaw ? routeCardStyles.shortList : ""}`}>
           {list.map((m, i) => (
-            <li key={m.id} id={"pal-" + i} role="option" aria-selected={i === active} data-active={i === active || undefined} onMouseMove={() => setActive(i)} onClick={() => onPick(m.id)}>
+            <li key={m.id} id={"pal-" + i} role="option" aria-selected={i === active} aria-describedby={i === active && activeRaw ? "palette-route-card" : undefined} data-active={i === active || undefined} onMouseMove={() => setActive(i)} onClick={() => onPick(m.id)}>
               <span className={s.palName}>
                 {/* U76: hardware badge comes from CapabilityChips below. */}
                 {m.name}
@@ -282,6 +290,7 @@ function Palette({ models, onPick, onClose, title, onBrowse }) {
           ))}
           {!list.length && <li className={s.palEmpty}>No model matches “{query}”.</li>}
         </ul>
+        {activeRaw && <RouteCard id="palette-route-card" model={activeRaw} providers={card.providers} dark place="palette" />}
         <p className={s.paletteFoot}>
           <span>↑↓ and Enter to choose</span>
           {onBrowse ? (
@@ -800,6 +809,8 @@ export default function Harness() {
   const all = useMemo(() => [...routes, ...models], [routes, models]);
   const find = useCallback((id) => all.find((m) => m.id === id) || null, [all]);
   const counts = useMemo(() => catalogueCounts(models), [models]);
+  const routeProviders = useRouteProviders(); // U99: route cards read the raw catalogue record and the provider list.
+  const card = useMemo(() => ({ models: new Map((shown || []).map((m) => [m.id, m])), providers: routeProviders }), [shown, routeProviders]);
 
   const loadAccount = useCallback(async (key) => {
     const [me, credits] = await Promise.all([api("/api/v1/key", { key }), api("/api/v1/credits", { key })]);
@@ -1113,6 +1124,7 @@ export default function Harness() {
         searchRef={searchRef}
         open={sheet === "models"}
         onClose={() => setSheet(null)}
+        card={card}
       />
 
       <main
@@ -1351,6 +1363,7 @@ export default function Harness() {
           onClose={() => setPalette(null)}
           onPick={(id) => pickModel(id, palette.lane, palette.add)}
           onBrowse={palette.add || palette.images || palette.vision ? undefined : () => (setPalette(null), setSheet("models"))}
+          card={card}
         />
       )}
       {signin && <SignIn reason={signin} onKey={onKey} onClose={() => (setSignin(null), (pendingSend.current = false))} />}

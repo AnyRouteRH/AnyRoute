@@ -1,0 +1,35 @@
+/* Route card: price, context, tags, routes, health and proof for one model, in the catalogue's mono detail style. */
+.card { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: 12px; text-align: left; }
+.card[data-dark] { border-color: var(--line-dark); background: var(--ink-2); color: var(--paper); }
+.card dl { margin: 0; }
+.card dt { font: 500 9.5px/1.3 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.card[data-dark] dt { color: var(--muted-dark); }
+.card dd { margin: 0; min-width: 0; font: 400 11.5px/1.45 var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.card dd[data-missing] { color: var(--muted); }
+.card[data-dark] dd[data-missing] { color: var(--muted-dark); }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.card[data-dark] .stats { border-color: var(--line-dark); }
+.stats dd { margin-top: 3px; font-size: 12.5px; font-weight: 500; }
+.rows { display: grid; gap: 8px; }
+.rows > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.card .flush { margin: 0; }
+.card .routes { display: flex; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.link { color: inherit; text-decoration: underline; text-decoration-color: var(--signal); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.link:hover { text-decoration-color: currentColor; }
+.link:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 2px; }
+.card[data-dark] .link:focus-visible { outline-color: var(--signal); }
+
+/* Harness: under the selected model in the rail, and under the list for the highlighted model in the palette. */
+.card[data-place="rail"] { margin: 2px 16px 10px; }
+.card[data-place="palette"] { max-height: min(32vh, 300px); overflow-y: auto; padding: 12px 20px; border-width: 1px 0 0; scrollbar-width: thin; scrollbar-color: var(--ink-4) transparent; }
+ul.shortList { max-height: min(36vh, 340px); }
+
+/* Models page: one disclosure per model card. */
+.toggle { margin: 4px 0 16px; }
+.toggle[open] > summary { margin-bottom: 6px; }
+
+@media (max-width: 480px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rows > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}
