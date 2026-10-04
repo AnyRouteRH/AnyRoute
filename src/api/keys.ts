@@ -11,8 +11,6 @@ import { agentSessions, byokKeys, generations, keys, kv, ledger, spentRoots, tea
 import { deriveKey, generateApiKey } from "../chain/keys.ts";
 import { fail } from "../lib/errors.ts";
 import { picoToUsd, usdToPico } from "../lib/money.ts";
-import { fastCreditFields } from "../pay/fast-credit-state.ts"; // V97
-import { depositTiming } from "../pay/deposit-progress.ts"; // V97B
 import { balanceOf, ensureAccount } from "../ledger/ledger.ts";
 import { encrypt, uid, randomHex } from "../lib/util.ts";
 import { SENTINEL_NEIGHBOUR, SpentTree, type SpentNeighbour } from "../receipts/merkle.ts";
@@ -82,7 +80,7 @@ function depositInfo(ctx: Ctx, k: Pick<KeyRow, "chainKeyHash" | "keyAddress">) {
     credits_contract: ctx.cfg.chain.credits ?? null,
     key_hash: k.chainKeyHash,
     key_address: k.keyAddress,
-    how: "Approve USDG to the Credits contract, then call deposit(key_hash, amount). Credits wait for chain finality; eligible early credit applies only when enabled. Withdraw by signing with the key address.",
+    how: "Approve USDG to the Credits contract, then call deposit(key_hash, amount). The balance is usable immediately after confirmation; withdraw any time by signing with the key address.",
   };
 }
 
@@ -300,8 +298,6 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
       .where(eq(generations.accountId, k.accountId));
     return c.json({
       data: {
-        ...await fastCreditFields(ctx, k.accountId), // V97
-        ...await depositTiming(ctx), // V97B: live delay and block numbers, including USDG-only accounts.
         total_credits: picoToUsd(BigInt(dep?.n ?? 0)),
         total_usage: picoToUsd(BigInt(use?.n ?? 0)),
         balance: picoToUsd(bal.balance),

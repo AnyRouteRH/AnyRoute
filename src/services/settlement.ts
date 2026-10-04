@@ -1,5 +1,4 @@
 import { retainedMargin } from "./retained-margin.ts";
-import { finalizedFastUsdg } from "../pay/fast-credit-state.ts"; // V97
 import { accrueNetworkHours } from "../network/accrual.ts";
 import { runMakegood } from "./makegood.ts"; // V6 R
 import { addPendingNetworkPayouts, networkPayout } from "../network/payout.ts";
@@ -160,7 +159,6 @@ export async function computeSpentLeaves(ctx: Ctx, only?: { accountId: string })
       if (USAGE_KINDS.has(r.kind)) usage += BigInt(r.neg) - BigInt(r.pos);
       else if (!["deposit", "credit", "paywith", "withdrawal_lock", "withdrawal_release", "withdrawal"].includes(r.kind)) offchain += BigInt(r.pos) - BigInt(r.neg);
     }
-    offchain -= await finalizedFastUsdg(ctx, acct); // V97: settled provisional USDG is chain-backed.
     const usageUsdg = picoToUsdg(usage - offchain > 0n ? usage - offchain : 0n, "ceil");
     const settledOnchain = BigInt(ratchet[acct] ?? "0") > usageUsdg ? BigInt(ratchet[acct] ?? "0") : usageUsdg;
     ratchet[acct] = settledOnchain.toString();

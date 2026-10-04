@@ -118,7 +118,7 @@ export const STEPS = ["Sent", "Final", "Priced", "Credited"];
 export const TERMINAL = new Set(["credited", "orphaned", "reversed"]);
 
 /** GET /api/v1/escrow/deposits stage, with a fallback for routers that only send `status`. */
-export const stageOf = (d) => d?.stage || { pending_finality: "confirming", pending: "crediting", provisional: "provisional", credited: "credited", orphaned: "orphaned", reversed: "reversed" }[d?.status] || "confirming";
+export const stageOf = (d) => d?.stage || { pending_finality: "confirming", pending: "crediting", credited: "credited", orphaned: "orphaned", reversed: "reversed" }[d?.status] || "confirming";
 
 const minutes = (s) => {
   const m = Math.max(1, Math.round(Number(s) / 60));
@@ -132,7 +132,6 @@ const minutes = (s) => {
 export function depositView(d, escrow) {
   const stage = stageOf(d);
   const sym = d.symbol || "token";
-  if (stage === "provisional") return { stage, tone: "wait", step: 1, label: "Credited (settling)", detail: `${formatUsd(d.credited_usd || 0)} added while this transfer settles. Any remainder waits for finality. A chain reorganisation can reverse the early credit.` };
   if (stage === "confirming") {
     let where = "";
     try {

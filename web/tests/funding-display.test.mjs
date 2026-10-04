@@ -107,29 +107,7 @@ test('rendered quotes omit raw rate decimals and both selectors share the defaul
   const card = read('../components/account/AddFunds.jsx');
   assert.match(card, /options.find\(item => item.id === selected\) \|\| defaultFundingOption\(options, ANYR_CA\)/);
   assert.match(card, /<FundingQuote option=\{option\} amount=\{amount\}/);
-  assert.doesNotMatch(card, /FundingDeposits/);
-  assert.match(card, /showProgress && <DepositProgress apiKey=\{apiKey\}/);
-  assert.match(card, /depositWaitText\(data\.escrow\.fast_credit\)/);
+  assert.match(card, /<FundingDeposits deposits=\{data\?\.stock\?\.deposits\} escrow=\{data\?\.escrow\}/);
   assert.doesNotMatch(card, /Current credit rate:|USDG per token|haircut/);
   assert.match(read('../components/Dashboard.jsx'), /useState\(defaultFundingOption\(tokens, ANYR_CA\)\?\.symbol/);
-});
-
-test('early credit retains the quote and limit without promising to wait for finality', () => {
-  const quote = fundingQuote({ ...anyr, fast_credit: { enabled: true } }, '13000');
-  assert.equal(quote.estimate, '13,000 $ANYR ≈ $10.93 in credits');
-  assert.equal(quote.limit, 'Up to $250 per deposit.');
-  assert.match(quote.note, /priced again when credited/);
-  assert.doesNotMatch(quote.note, /after chain finality/);
-  assert.match(fundingQuote({ ...anyr, fast_credit: { enabled: false } }, '13000').note, /after chain finality/);
-  const options = fundingOptions({ credits: {}, chain: { chain_id: 4663 }, stock: { wallet: address('6') }, officialAnyr: official,
-    escrow: { enabled: true, chain_id: 4663, address: address('3'), fast_credit: { enabled: true }, tokens: [anyr] } });
-  assert.equal(options[0].fast_credit.enabled, true);
-});
-
-test('both funding stage formats use the same labels without treating settling credits as final', () => {
-  assert.equal(fundingDepositView({ stage: 'detected' }).label, fundingDepositView({ stage: 'confirming' }).label);
-  assert.equal(fundingDepositView({ stage: 'final', credited_usd: 10.93 }).detail, '$10.93 added to your balance.');
-  const provisional = fundingDepositView({ status: 'provisional', credited_usd: 10.93 });
-  assert.equal(provisional.label, 'Credited (settling)');
-  assert.match(provisional.detail, /remainder waits for finality.*reverse/);
 });

@@ -1,9 +1,4 @@
 "use client";
-import DepositCreditStatus from './account/DepositCreditStatus'; // V97
-import DepositProgress from './account/DepositProgress'; // V97B
-import DepositNextLine from './account/DepositNextLine'; // V97B
-import TrackDeposit from './account/TrackDeposit'; // V97B
-import { depositSender } from '../lib/deposit-progress.js'; // V97B
 import AddFunds from "./account/AddFunds"; import { fundingError } from "../lib/add-funds.js"; // ON1
 import { defaultFundingOption } from "../lib/funding-display.js"; import { ANYR_CA } from "./ContractAddress"; // V96
 import AccountStatements from "./account/AccountStatements"; import AccountExport from "./account/AccountExport"; // V87
@@ -383,7 +378,7 @@ function DepositDialog({ onClose, apiKey, credits, status, onDone }) {
               const from = await connect();
               await ensureChain(chainOf(status));
               const tx = (await api("/api/v1/credits/deposit-tx", { key: apiKey, method: "POST", body: { amount } })).data;
-              await sendTransactions(from, tx.transactions, depositSender(apiKey, 'usdg', setStep)); // V97B
+              await sendTransactions(from, tx.transactions, setStep);
               setStep("Deposited. Waiting for the router to index it…");
               await onDone(Number(amount));
             } catch (e) {
@@ -396,9 +391,7 @@ function DepositDialog({ onClose, apiKey, credits, status, onDone }) {
         </Button>
         <CopyButton text={deposit.key_hash || ""} label="Copy key hash" />
       </div>
-      <DepositNextLine info={credits}/><DepositProgress apiKey={apiKey}/> {/* V97B */}
       <p className="help-text">No wallet here? Approve USDG to the Credits contract and call deposit(keyHash, amount) from any wallet.</p>
-      <TrackDeposit apiKey={apiKey} lane="usdg"/> {/* V97B */}
       {status?.dev_faucet && (
         <>
           <div className="note">Development chain: add sample USDG to this key without a wallet. It has no value and exists only on this machine’s chain.</div>
@@ -453,7 +446,6 @@ const DEPOSIT_STATUS = {
 };
 // The router's `stage` says more than `status`: a final deposit either waits for a price or is about to be credited.
 const DEPOSIT_STAGE = {
-  provisional: ["Credited (settling)", ""], // V97B
   confirming: ["Waiting for finality", ""],
   awaiting_price: ["Waiting for a price", ""],
   crediting: ["Crediting", ""],
@@ -463,7 +455,7 @@ const DEPOSIT_STAGE = {
 /** ERC-20 transfer(to, raw) calldata, built without a library. */
 const transferData = (to, raw) => "0xa9059cbb" + to.slice(2).toLowerCase().padStart(64, "0") + BigInt(raw).toString(16).padStart(64, "0");
 
-function StockDepositDialog({ onClose, escrow, stock, status, onDone, apiKey }) {
+function StockDepositDialog({ onClose, escrow, stock, status, onDone }) {
   const tokens = escrow?.tokens || [];
   const [symbol, setSymbol] = useState(defaultFundingOption(tokens, ANYR_CA)?.symbol || ""); // V96
   const [amount, setAmount] = useState("1");
@@ -562,7 +554,7 @@ function StockDepositDialog({ onClose, escrow, stock, status, onDone, apiKey }) 
                   const from = await connect();
                   if (from.toLowerCase() !== wallet.toLowerCase()) throw new Error(`Switch your wallet to ${shortAddress(wallet)}, the wallet you signed in with. Tokens sent from another wallet are credited to that wallet.`);
                   await ensureChain(chainOf(status));
-                  await sendTransactions(from, [{ to: token.address, data: transferData(escrow.address, raw), description: `Send ${amount} ${token.symbol} to escrow` }], depositSender(apiKey, 'escrow', setStep)); // V97B
+                  await sendTransactions(from, [{ to: token.address, data: transferData(escrow.address, raw), description: `Send ${amount} ${token.symbol} to escrow` }], setStep);
                   setStep("Sent. Waiting for the router to see the transfer…");
                   await onDone();
                 } catch (e) {
@@ -575,9 +567,7 @@ function StockDepositDialog({ onClose, escrow, stock, status, onDone, apiKey }) 
             </Button>
             <CopyButton text={escrow?.address || ""} label="Copy escrow address" />
           </div>
-          <DepositNextLine info={escrow}/><DepositProgress apiKey={apiKey}/> {/* V97B */}
           <p className="help-text">Any wallet app works: send a listed token from {shortAddress(wallet)} to the escrow address. Tokens sent from an exchange or another wallet are credited to that sender, not to you.</p>
-          <TrackDeposit apiKey={apiKey} lane="escrow"/> {/* V97B */}
         </>
       )}
     </Modal>
@@ -1505,8 +1495,7 @@ export default function Dashboard() {
               )}
             </>
           )}
-          {live && tab === "Payments" && <AddFunds showProgress={false} key={apiKey} apiKey={apiKey} balance={ws?.credits?.available} onBalance={() => refresh()}/>} {/* ON1 */}
-          {live && tab === "Payments" && <DepositProgress apiKey={apiKey}/>} {/* V97B */}
+          {live && tab === "Payments" && <AddFunds key={apiKey} apiKey={apiKey} balance={ws?.credits?.available} onBalance={() => refresh()}/>} {/* ON1 */}
           {tab === "Payments" && escrowOn && (
             <>
               <div className="panel-heading">
@@ -1517,7 +1506,6 @@ export default function Dashboard() {
                 <div>
                   <span className="eyebrow">AVAILABLE CREDITS / USD</span>
                   <strong>{money(view.balance, 4)}</strong>
-                  <DepositCreditStatus credits={ws?.credits}/> {/* V97 */}
                   <p>{`Held for calls in progress: $${money(ws?.credits?.held ?? 0, 6)} · Credited in total: $${money(ws?.credits?.total_credits ?? 0, 2)}.`}</p>
                 </div>
                 <div className="button-row">
@@ -1861,7 +1849,7 @@ export default function Dashboard() {
                 if ((next.credits?.total_credits ?? 0) >= before + amount - 1e-9) break;
                 await new Promise((r) => setTimeout(r, 1000));
               }
-              setNotice(kind === "test" ? amount + " test USDG added." : "Transaction sent. Follow the observed amount and credit status under Deposit status."); // V97B
+              setNotice(kind === "test" ? amount + " test USDG added." : amount + " USDG deposited.");
               if (errorKind === "insufficient_credits") {
                 setError("");
                 setErrorKind("");
@@ -1890,7 +1878,6 @@ export default function Dashboard() {
         ))}
       {modal?.type === "stock" && (
         <StockDepositDialog
-          apiKey={apiKey} // V97B
           escrow={ws?.escrow}
           stock={ws?.stock}
           status={status}
