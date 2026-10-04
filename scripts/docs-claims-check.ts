@@ -41,6 +41,7 @@ const job = (name: string) => (s: Status) => (Array.isArray(s.jobs) ? s.jobs.som
 const flag = (name: string) => (_: Status, config: Record<string, boolean>) => (typeof config[name] === "boolean" ? config[name] : undefined);
 
 export const CAPABILITIES: Capability[] = [
+  { id: "agent-guard", label: "Agent Guard", field: "agent_guard.enabled", on: field("agent_guard.enabled"), mention: /\bagent guard\b/i },
   { id: "x402", label: "x402 per-call payments", field: "per_call.x402.configured", on: field("per_call.x402.configured"), mention: /\bx402\b(?! (?:facilitator|tools?)\b)/i },
   { id: "facilitator", label: "hosted x402 facilitator", field: "facilitator.enabled", on: field("facilitator.enabled"), mention: /\bfacilitator\b/i },
   { id: "tools", label: "paying x402 tools from a balance", field: "tools.ready", on: field("tools.ready"), mention: /\bx402 tools?\b|\btool market\b|\bpaid tools?\b/i },

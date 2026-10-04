@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "models": {},
+  "caps": {},
+  "actions": {
+    "allow": [
+      "swap",
+      "token.approve"
+    ],
+    "deny": [
+      "transfer.*",
+      "bridge.*"
+    ],
+    "per_action_usd": 200,
+    "per_day_usd": 1000,
+    "approval_above_usd": 50,
+    "max_per_hour": 10
+  },
+  "on_breach": "kill"
+}

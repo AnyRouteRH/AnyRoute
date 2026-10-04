@@ -1,3 +1,4 @@
+import { actionState } from "./guard-state.ts";
 import { loadBreakerState } from "./breaker-state.ts";
 import { and, desc, eq, getTableColumns, lt, sql } from "drizzle-orm";
 import { checkpointAutonomy, readAutonomy, autonomyRetention } from "./autonomy.ts";
@@ -52,7 +53,7 @@ export async function policyState(db: Db | Tx, policy: Pick<PolicyRow, "keyHash"
     const [h] = await db.select({ held: sql<string>`coalesce(sum(${holds.amount}), 0)` }).from(holds).where(sql`${holds.keyHash} in ${scope} and ${holds.status} = 'held' and ${holds.kind} = 'tool_call'`);
     tools = BigInt(t.charged) + BigInt(h.held);
   }
-  return { ...(policy.spec?.autonomy ? { autonomy: await readAutonomy(db, policy as PolicyRow, now) } : {}), ...(policy.spec?.breakers ? { breakers: await loadBreakerState(db, policy.keyHash, now) } : {}), ...(policy.spec?.approval?.above_calls_per_hour !== undefined ? { calls_hour: await callsInHour(db, policy.keyHash, scope, now) } : {}), killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight }, ...(tools !== undefined ? { tools_spent_pico_day: tools } : {}) };
+  return { ...(policy.spec?.actions ? await actionState(db, scope, now) : {}), ...(policy.spec?.autonomy ? { autonomy: await readAutonomy(db, policy as PolicyRow, now) } : {}), ...(policy.spec?.breakers ? { breakers: await loadBreakerState(db, policy.keyHash, now) } : {}), ...(policy.spec?.approval?.above_calls_per_hour !== undefined ? { calls_hour: await callsInHour(db, policy.keyHash, scope, now) } : {}), killed: policy.killed, spent_pico: { hour: BigInt(charges.hour) + inflight, day: BigInt(charges.day) + inflight, week: BigInt(charges.week) + inflight }, ...(tools !== undefined ? { tools_spent_pico_day: tools } : {}) };
 }
 /**
  * B: model calls this rulebook admitted in the rolling hour, from its own hash-chained events: its "allow" decisions for
@@ -62,7 +63,7 @@ async function callsInHour(db: Db | Tx, keyHash: string, scope: ReturnType<typeo
   const since = new Date(now.getTime() - 3_600_000).toISOString();
   const [row] = await db.select({ n: sql<string>`count(*)::text` }).from(agentPolicyEvents).where(sql`${agentPolicyEvents.ts} > ${since} and ${agentPolicyEvents.ts} <= ${now.toISOString()} and (
     (${agentPolicyEvents.keyHash} = ${keyHash} and ${agentPolicyEvents.kind} = 'decision' and ${agentPolicyEvents.decision} = 'allow' and ${agentPolicyEvents.intent}->>'kind' = 'inference')
-    or (${agentPolicyEvents.keyHash} in ${scope} and ${agentPolicyEvents.kind} = 'approval_used'))`);
+    or (${agentPolicyEvents.keyHash} in ${scope} and ${agentPolicyEvents.kind} = 'approval_used' and coalesce(${agentPolicyEvents.intent}->>'kind', '') <> 'action'))`);
   return Number(row.n);
 }
 export async function setPolicy(db: Db, accountId: string, keyHash: string, policy: AgentPolicy, actor: string) {

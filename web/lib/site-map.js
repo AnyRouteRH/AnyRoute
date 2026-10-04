@@ -54,6 +54,7 @@ export const TASKS = [
   task('settings', 'build', 'Set account preferences', 'Open Settings in the dashboard to manage account preferences.', '/dashboard/', 'settings, account, preferences'),
   task('mcp', 'build', 'Connect agent tools', 'Read the MCP tool interface and connection instructions.', '/docs/#mcp', 'mcp, tools, agent'),
 
+  task('agent-guard', 'agents', 'Read about action rules', 'Read the action checks and execution limits; not switched on yet.', '/docs/#agent-guard', 'agent guard, order, trade, swap, action'), // V98
   task('rulebook', 'agents', 'Give an agent a budget', 'Set caps, models, lanes, tools and hours for requests through AnyRoute.', '/agents/', 'agent, rulebook, budget, limits', true),
   task('sessions', 'agents', 'Give an agent a session', 'Open Agent Sessions in the dashboard to set a session budget and lifetime.', '/dashboard/', 'agent sessions, session, ttl'),
   task('approvals', 'agents', "Approve an agent’s payment", 'Review how approvals work, then connect a key to approve or deny a request.', '/agents/', 'approval, approve, deny, payment', true),
@@ -96,7 +97,9 @@ export const TASKS = [
 ];
 
 // Tools that live inside a page tab are found through search; menus, the mobile menu and the footer stay short.
-const SEARCH_ONLY = new Set(['json-check', /* V83 */ 'inbox', 'activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
+const SEARCH_ONLY = new Set([
+  'agent-guard', // V98
+  'json-check', /* V83 */ 'inbox', 'activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
 SEARCH_ONLY.add('payments'); SEARCH_ONLY.add('get-usdg'); // ON1: funding joins Build; payment reference stays searchable.
 TASKS.push(task('get-usdg', 'build', 'Get USDG', 'Read how to get USDG onto Robinhood Chain before adding funds.', '/docs/#get-usdg', 'usdg, bridge, buy, chain, funding')); // ON1
 SEARCH_ONLY.add('spec'); // V80: keep Build at nine menu tools; spec stays searchable.

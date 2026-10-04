@@ -1,3 +1,4 @@
+import { actionsRemaining, combinedActionsRemaining } from "../agents/guard-state.ts"; // V98
 import { autonomyDescription, autonomyMultiplier, spendingCapPico } from "../agents/autonomy.ts";
 import { agentAlertsRoutes } from "./agent-alerts.ts";
 import type { Context, Hono } from "hono";
@@ -42,7 +43,7 @@ async function describe(ctx: Ctx, key: KeyRow, rows: PolicyRow[], now: Date) {
       const value = cap === undefined ? null : spendingCapPico(cap, autonomyMultiplier(row.spec, state.autonomy)) - state.spent_pico[w];
       return [w, value === null ? null : picoToUsd(value > 0n ? value : 0n)];
     }));
-    return { key_hash: row.keyHash, inherited: row.keyHash !== key.keyHash, ...jsonPolicy(row), spent, remaining, ...autonomyDescription(row.spec, state.autonomy, now) };
+    return { key_hash: row.keyHash, inherited: row.keyHash !== key.keyHash, ...jsonPolicy(row), spent, remaining, ...(ctx.cfg.agentGuardEnabled ? actionsRemaining(row.spec, state) : {}), ...autonomyDescription(row.spec, state.autonomy, now) };
   }));
 }
 export function agentsRoutes(app: Hono, ctx: Ctx) {
@@ -71,11 +72,12 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
       const limits = policies.map(p => p.remaining[window]).filter((v): v is number => typeof v === "number");
       return [window, limits.length ? Math.min(...limits) : null];
     }));
-    return c.json({ data: { key_hash: key.keyHash, name: key.name, policy: own?.policy ?? null, sha256: own?.sha256 ?? null, killed: policies.some(p => p.killed), remaining, policies, ...(own?.autonomy ? { autonomy: own.autonomy, effective_caps: own.effective_caps } : {}) } });
+    return c.json({ data: { key_hash: key.keyHash, name: key.name, policy: own?.policy ?? null, sha256: own?.sha256 ?? null, killed: policies.some(p => p.killed), remaining, policies, ...(ctx.cfg.agentGuardEnabled ? combinedActionsRemaining(policies) : {}), ...(own?.autonomy ? { autonomy: own.autonomy, effective_caps: own.effective_caps } : {}) } });
   });
   app.post("/api/v1/agents/check", async c => {
     const key = await requireKey(ctx, c.req.header("authorization"));
     const intent = agentIntentSchema.parse(await readJson(c));
+    if (intent.kind === "action" && !ctx.cfg.agentGuardEnabled) fail(404, "Not found.", "not_found"); // V98
     // Account locking gives the dry run one coherent state without writing events or changing kill state.
     const data = await ctx.db.transaction(async tx => {
       await lockAccount(tx, key.accountId);

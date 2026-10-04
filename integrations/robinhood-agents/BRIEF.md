@@ -1,0 +1,11 @@
+# Ask before acting
+
+Agent Guard is not switched on yet. Where enabled, ask the owner's rulebook before actions with money, with any model. An inference-only key can check an action and report what happened; keep the management key outside the agent. Decisions return allow, deny or approval_required, carry a router signature and enter the existing hash chain. Approve or deny on /agents or linked Telegram, then have the agent redeem its single-use approval. A kill breach stops future requests until the owner resumes on /agents or sends /resume followed by the agent key hash in private linked Telegram.
+
+Rules apply to actions your agent checks first. Wired into your code before the order function, the model can't skip the check; it doesn't stop whoever holds the brokerage or wallet keys. Amounts traded count what your agent reports.
+
+Wrap every order path with guarded(opts, action, describe, fn) from guard.ts or guard.py. Supply the requested amount and an executedAmountUsd(result) / executed_amount_usd(result) function that returns the actual amount as a decimal string. Both helpers hash the order object using the decision-receipt helper, so the action decision and model receipt can share an order hash. Prices and quantities should be strings for cross-language hashing. If reporting fails after execution, retain the decision id and reconcile the report; do not retry the order function. Calling an MCP tool is a seatbelt that a model can omit. On-chain execution control is a next step, outside this update.
+
+The three guard-*.json starters in rulebooks/ set separate action limits; they impose no model budget or declared-tool restrictions. UTC windows cover the entire rulebook. Trading 13:30–20:00 matches US daylight-time hours; from Nov 1 use 14:30–21:00. These are starting configurations, not advice or a claim of brokerage affiliation.
+
+AGENT_GUARD_ENABLED defaults to false and requires AGENT_POLICY_ENABLED. Check agent_guard.enabled in /api/v1/status; off omits the field to preserve existing responses, so an absent field means unavailable. Read /docs#agent-guard for requests, outcomes, limits and storage. Action amounts do not debit the model balance; they count agent-reported activity.

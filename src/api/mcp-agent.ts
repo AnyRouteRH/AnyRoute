@@ -1,3 +1,4 @@
+export { guardMcpArgs, guardMcpTools, callGuardMcp } from "./mcp-guard.ts"; // V98
 import type { Context } from "hono";
 import { z } from "zod";
 import { ApiError } from "../lib/errors.ts";

@@ -24,13 +24,13 @@ function project(intents: AgentIntent[], cost = true) {
     kind: i.kind, model: i.model, lane: i.lane, ...(cost ? { est_cost_pico: i.est_cost_pico.toString() } : {}),
     ...(i.max_output_tokens === undefined ? {} : { max_output_tokens: i.max_output_tokens }), tools: [...new Set(i.tools)].sort(),
   } : i.kind === "paid_tool" ? { kind: i.kind, resource: i.resource, seller: i.seller.toLowerCase(), ...(i.listing ? { listing: i.listing } : {}), ...(cost ? { price_pico: i.price_pico.toString() } : {}) } // v6 T
-    : intentJson(i)).sort((a, b) => canonicalJson(a) < canonicalJson(b) ? -1 : canonicalJson(a) > canonicalJson(b) ? 1 : 0);
+    : i.kind === "action" ? { kind: i.kind, action: i.action, ...(i.target === undefined ? {} : { target: i.target }), ...(i.details_sha256 === undefined ? {} : { details_sha256: i.details_sha256 }), ...(cost ? { amount_pico: i.amount_pico.toString() } : {}) } : intentJson(i)).sort((a, b) => canonicalJson(a) < canonicalJson(b) ? -1 : canonicalJson(a) > canonicalJson(b) ? 1 : 0);
   return rows.length === 1 ? rows[0] : { intents: rows };
 }
 export const approvalIntentHash = (intents: AgentIntent[]) => sha256(canonicalJson(project(intents)));
 function binding(value: unknown): string {
   const copy = JSON.parse(JSON.stringify(value));
-  for (const i of copy.intents ?? [copy]) { delete i.est_cost_pico; delete i.price_pico; } // v6 T: max_cost_pico bounds a paid tool's price
+  for (const i of copy.intents ?? [copy]) { delete i.est_cost_pico; delete i.price_pico; delete i.amount_pico; } // v6 T: max_cost_pico bounds a paid tool's price
   return canonicalJson(copy);
 }
 export async function expireApprovals(tx: Db | Tx, keyHash: string, now = new Date()) {
@@ -46,7 +46,7 @@ export async function prepareApproval(db: Db, tx: Tx, rows: PolicyRow[], intents
   if (refusal && refusal.type !== "agent_approval_required") return { error: refusal };
   const id = approvalRequest.getStore();
   if (!refusal && id === undefined) return {};
-  const cost = intents.reduce((max, i) => { const c = i.kind === "inference" ? i.est_cost_pico : i.kind === "paid_tool" ? i.price_pico : 0n; return c > max ? c : max; }, 0n);
+  const cost = intents.reduce((max, i) => { const c = i.kind === "inference" ? i.est_cost_pico : i.kind === "paid_tool" ? i.price_pico : i.kind === "action" ? i.amount_pico : 0n; return c > max ? c : max; }, 0n);
   await expireApprovals(tx, keyHash, now);
   if (id !== undefined) {
     const [row] = await tx.select().from(agentApprovals).where(and(eq(agentApprovals.id, id), eq(agentApprovals.keyHash, keyHash))).for("update");

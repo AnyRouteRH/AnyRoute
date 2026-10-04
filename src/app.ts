@@ -64,6 +64,7 @@ import { presetsRoutes } from "./api/presets.ts";
 import { characterRoutes } from "./api/characters.ts";
 import { memoryRoutes } from "./api/memory.ts";
 import { agentCertificatesRoutes } from "./api/agent-certificates.ts";
+import { guardRoutes } from "./api/guard.ts"; // V98
 import { agentsRoutes } from "./api/agents.ts";
 import { agentApprovalMiddleware, agentApprovalsRoutes } from "./api/agent-approvals.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
@@ -215,6 +216,7 @@ export async function createApp(opts: AppOptions = {}) {
   identityRoutes(app, ctx); // v6 I
   agentSealedRoutes(app, ctx);
   agentsRoutes(app, ctx);
+  guardRoutes(app, ctx); // V98
   agreementsRoutes(app, ctx);
   agentCertificatesRoutes(app, ctx);
   agentLedgerRoutes(app, ctx);

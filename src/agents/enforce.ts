@@ -13,6 +13,7 @@ import { intentJson, type AgentIntent } from "./policy.ts";
 import { appendEvent, changeKill, lockAccount, policiesFor, policyState, type PolicyRow } from "./store.ts";
 import { requireKey } from "../api/auth.ts";
 import { approvalRequest, prepareApproval } from "./approvals.ts";
+export { prepareApproval } from "./approvals.ts";
 const enabled = new WeakMap<Db, boolean>();
 const checked = new AsyncLocalStorage<boolean>();
 export const configureAgentPolicies = (ctx: Ctx) => enabled.set(ctx.db, ctx.cfg.agentPolicyEnabled);
@@ -37,7 +38,7 @@ export function decisionError(decision: AgentDecision, row: PolicyRow) {
   const type = decision.reasons.some(r => r.code === "killed") || breakerKillReason(decision) ? "agent_killed" : decision.decision === "approval_required" ? "agent_approval_required" : "agent_policy_denied";
   return new ApiError(403, decision.reasons.map(r => r.message).join(" "), type, { reasons: decision.reasons, policy_sha256: row.sha256 });
 }
-async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentIntent[], actor: string, now: Date) {
+export async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentIntent[], actor: string, now: Date) {
   ledgerActor(actor);
   let refusal: ApiError | undefined;
   for (const row of rows) {

@@ -1,3 +1,7 @@
+import { handleGuardResume } from "./guard-resume.ts"; // V98
+import { guardApprovalText } from "./guard-text.ts";
+import { picoToUsdString } from "../lib/money.ts";
+import { policiesFor } from "../agents/store.ts";
 import { and, eq, gt, isNull, like, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import type { Db } from "../db/client.ts";
@@ -13,13 +17,21 @@ export const notificationKey = (id: string, link: Link) => `telegram-approval:${
 type Notice = { uid: number; approval: string; generation: string; expires: number; message_id?: number; status: string };
 const callbackData = (action: "approve" | "deny", id: string, generation: string) => `tg:${action === "approve" ? "a" : "d"}:${id}:${generation}`;
 // These are the approval's existing metadata, never the inference messages or tool arguments.
-export function approvalText(row: ApprovalRow) {
-  return `AnyRoute approval ${row.id}\nIntent: ${JSON.stringify(row.intent).slice(0, 2600)}\nMaximum cost: ${row.maxCostPico} pico-USD\nExpires: ${row.expiresAt.toISOString()}\nStatus: ${approvalStatus(row).status}`;
+export function approvalText(row: ApprovalRow, name?: string, policySha256?: string, guardEnabled = false) {
+  if (!guardEnabled) return `AnyRoute approval ${row.id}\nIntent: ${JSON.stringify(row.intent).slice(0, 2600)}\nMaximum cost: ${row.maxCostPico} pico-USD\nExpires: ${row.expiresAt.toISOString()}\nStatus: ${approvalStatus(row).status}`; // Preserve existing delivery bytes while off.
+  const action = guardApprovalText(row, name, policySha256);
+  if (action) return action;
+  return `AnyRoute approval ${row.id}\nIntent: ${JSON.stringify(row.intent).slice(0, 2600)}\nMaximum cost: $${picoToUsdString(row.maxCostPico)}\nExpires: ${row.expiresAt.toISOString()}\nStatus: ${approvalStatus(row).status}`;
+}
+async function noticeText(ctx: Ctx, row: ApprovalRow) {
+  const [key] = await ctx.db.select({ name: keys.name }).from(keys).where(eq(keys.keyHash, row.keyHash));
+  const policies = await policiesFor(ctx.db, row.keyHash);
+  return approvalText(row, key?.name ?? undefined, policies[0]?.sha256, ctx.cfg.agentGuardEnabled);
 }
 async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Notice, row: ApprovalRow) {
   const status = approvalStatus(row).status;
   if (status === notice.status || !notice.message_id) return;
-  await api.call("editMessageText", { chat_id: notice.uid, message_id: notice.message_id, text: approvalText(row), reply_markup: { inline_keyboard: [] } }, AbortSignal.timeout(5_000));
+  await api.call("editMessageText", { chat_id: notice.uid, message_id: notice.message_id, text: await noticeText(ctx, row), reply_markup: { inline_keyboard: [] } }, AbortSignal.timeout(5_000));
   await ctx.db.update(kv).set({ value: { ...notice, status }, updatedAt: new Date() }).where(eq(kv.key, key));
 }
 /** Delivery holds the link lock until the send ends: an acknowledged unlink stops later sends. */
@@ -73,7 +85,7 @@ export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi) {
       const notice: Notice = { uid: link.uid, approval: row.id, generation: link.generation, expires: row.expiresAt.getTime(), status: "pending" };
       await tx.insert(kv).values({ key, value: notice });
       try {
-        const sent = await api.call<{ message_id: number }>("sendMessage", { chat_id: link.uid, text: approvalText(row), reply_markup: { inline_keyboard: [[{ text: "Approve", callback_data: callbackData("approve", row.id, link.generation) }, { text: "Deny", callback_data: callbackData("deny", row.id, link.generation) }]] } }, AbortSignal.timeout(5_000));
+        const sent = await api.call<{ message_id: number }>("sendMessage", { chat_id: link.uid, text: await noticeText(scoped, row), reply_markup: { inline_keyboard: [[{ text: "Approve", callback_data: callbackData("approve", row.id, link.generation) }, { text: "Deny", callback_data: callbackData("deny", row.id, link.generation) }]] } }, AbortSignal.timeout(5_000));
         await tx.update(kv).set({ value: { ...notice, message_id: sent.message_id } }).where(eq(kv.key, key));
       } catch { await tx.delete(kv).where(eq(kv.key, key)); }
     }
@@ -82,6 +94,7 @@ export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi) {
 }
 export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgUpdate): Promise<boolean> {
   if (!ctx.cfg.telegram.linkingEnabled) return false;
+  if (await handleGuardResume(ctx, api, update)) return true; // V98
   const callback = update.callback_query;
   if (callback) {
     let outcome = "Approval unavailable.";

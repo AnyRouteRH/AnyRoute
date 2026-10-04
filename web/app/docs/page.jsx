@@ -1,3 +1,4 @@
+import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
 import FacilitatorDocs from "../../components/FacilitatorDocs"; // v6 F: hosted x402 facilitator.
 import ToolsMarketDocs from "../../components/ToolsMarketDocs"; // v6 T: paid x402 tools.
@@ -857,6 +858,7 @@ export default function Docs() {
           <ToolsMarketDocs /> {/* v6 T */}
           <AgentAlertDocs />
           <AgentApprovalDocs />
+          <AgentGuardDocs /> {/* V98 */}
           <TradingAgentDocs /> {/* B */}
           <AgentCertificateDocs /><AgentProfileDocs /><AgentIdentityDocs /><SealedAgentDocs />
           <h2 id="quickstart">Make your first API call.</h2> {/* ON2 */}

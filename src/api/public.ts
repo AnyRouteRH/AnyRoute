@@ -347,6 +347,7 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         paywith: { tokens: ctx.cfg.paywith.tokens.map((t) => t.symbol), configured: !!ctx.cfg.chain.payWithStock },
         // Escrow payments: the tokens it credits, the Stock Token haircut, and $ANYR's own terms (null when not accepted).
         escrow: { enabled: escrowEnabled(ctx), tokens: escrowEnabled(ctx) ? acceptedTokens(ctx).map((t) => t.symbol) : [], haircut_bps: ctx.cfg.escrow.haircutBps, anyr: anyrSummary(ctx) },
+        ...(ctx.cfg.agentGuardEnabled ? { agent_guard: { enabled: true } } : {}), // V98: preserve status bytes while off
         per_call: {
           configured: !!ctx.cfg.chain.callPay || x402Enabled(ctx),
           max_usd: ctx.cfg.fees.perCallMaxUsd,

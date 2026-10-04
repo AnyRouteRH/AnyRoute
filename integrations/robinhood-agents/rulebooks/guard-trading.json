@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "models": {},
+  "caps": {},
+  "windows": [
+    {
+      "days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "start": "13:30",
+      "end": "20:00"
+    }
+  ],
+  "actions": {
+    "allow": [
+      "trade.order",
+      "trade.cancel"
+    ],
+    "targets": {
+      "allow": [
+        "NVDA",
+        "TSLA",
+        "AAPL",
+        "MSFT",
+        "SPY",
+        "QQQ"
+      ]
+    },
+    "per_action_usd": 500,
+    "per_day_usd": 2000,
+    "approval_above_usd": 250,
+    "max_per_hour": 20
+  },
+  "on_breach": "deny"
+}

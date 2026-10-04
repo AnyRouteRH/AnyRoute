@@ -1,4 +1,5 @@
 'use client';
+import GuardStarters from "./GuardStarters"; // V98
 import AccountShell from '../../components/account/AccountShell';
 import { useAccountKey } from '../../components/account/useAccountKey';
 import { SealedBadge } from './SealedAgent';
@@ -124,6 +125,7 @@ export default function Agents() {
   }, [key,revision,onError]);
   const agent = agents.find(a => a.key_hash === selected);
   return <AccountShell publicContent current="Agents" apiKey={key} onConnect={value => { setKey(value); setAgents([]); setSelected(''); setOff(false); setError(''); }} onDisconnect={() => { setKey(''); setAgents([]); setSelected(''); setLoaded(false); setOff(false); setError(''); }}><div className={s.body}>
+    <GuardStarters agent={key && !off ? agent : null} request={request} disabled={busy} onApplied={() => setRevision(r => r+1)}/> {/* V98 */}
     <StarterRulebooks key={key+selected} agent={key && !off ? agent : null} request={request} disabled={busy} onApplied={() => setRevision(r => r+1)}/> {/* V85 */}
     <div id="request-check">{key && !off && agent ? <RequestCheck key={key+selected} agent={agent} refreshVersion={revision}/> : <p className="note">Select an agent after connecting to check a request against its rules without spending.</p>}</div> {/* V85 */}
     {error && <p className="note" role="alert">{error}</p>}

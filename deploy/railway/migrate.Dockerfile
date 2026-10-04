@@ -15,6 +15,7 @@ COPY src/network/bond-schema.ts ./src/network/bond-schema.ts
 COPY src/agents/profile-schema.ts ./src/agents/profile-schema.ts
 COPY src/agents/schema.ts ./src/agents/schema.ts
 COPY src/agents/approval-schema.ts ./src/agents/approval-schema.ts
+COPY src/agents/guard-schema.ts ./src/agents/guard-schema.ts
 COPY src/agents/ledger-schema.ts ./src/agents/ledger-schema.ts
 COPY src/facilitator/schema.ts ./src/facilitator/schema.ts
 COPY src/tools/schema.ts ./src/tools/schema.ts

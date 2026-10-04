@@ -434,6 +434,7 @@ const schema = z.object({
   // witnesses; src/tlog). Off by default: no route is registered and nothing is appended.
   AGENT_PROFILES_ENABLED: bool.default(false),
   AGENT_POLICY_ENABLED: bool.default(false),
+  AGENT_GUARD_ENABLED: bool.default(false), // V98
   AGENT_APPROVAL_TTL_S: z.coerce.number().int().min(1).max(86400).default(900),
   NETWORK_POLICY_ENABLED: bool.default(false),
   TLOG_ENABLED: bool.default(false),
@@ -568,6 +569,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   // The bot token is optional and secret (it is part of every Telegram API URL): never echo it.
   // The API only issues and checks link codes; every Telegram message is sent by the process that runs the bot and
   // alert jobs, so only roles that run jobs need the bot token.
+  if (e.AGENT_GUARD_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("AGENT_GUARD_ENABLED requires AGENT_POLICY_ENABLED."); // V98
   if (e.TELEGRAM_LINKING_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("TELEGRAM_LINKING_ENABLED requires AGENT_POLICY_ENABLED.");
   if (e.TELEGRAM_LINKING_ENABLED && e.RUNTIME_ROLE !== "api" && !e.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_LINKING_ENABLED requires TELEGRAM_BOT_TOKEN on the worker (or a combined role).");
   if (e.TELEGRAM_BOT_TOKEN && !/^\d{3,20}:[A-Za-z0-9_-]{20,}$/.test(e.TELEGRAM_BOT_TOKEN)) throw new Error("TELEGRAM_BOT_TOKEN must be the token BotFather issued (<id>:<secret>).");
@@ -658,6 +660,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     adminToken: e.ADMIN_TOKEN,
     agentProfilesEnabled: e.AGENT_PROFILES_ENABLED,
     agentPolicyEnabled: e.AGENT_POLICY_ENABLED,
+    agentGuardEnabled: e.AGENT_GUARD_ENABLED, // V98
     agentSealedEnabled: e.AGENT_SEALED_ENABLED,
     agentApprovalTtlS: e.AGENT_APPROVAL_TTL_S,
     networkPolicyEnabled: e.NETWORK_POLICY_ENABLED,

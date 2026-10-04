@@ -10,7 +10,9 @@ import { fail } from "../lib/errors.ts";
 
 // Allow-list by method and full path: every added route starts refused. A stored
 // restriction stays in force even when INFERENCE_KEYS_ENABLED is turned off.
-export function inferenceRouteAllowed(method: string, path: string) {
+export function inferenceRouteAllowed(method: string, path: string, guardEnabled = true) {
+  if (method === "POST" && ((guardEnabled && path === "/mcp") || path === "/api/v1/guard/decide" || /^\/api\/v1\/guard\/decisions\/[^/]+\/outcome$/.test(path))) return true; // V98: internal MCP calls pass this middleware again.
+  if (guardEnabled && method === "GET" && (path === "/api/v1/agents/me" || /^\/api\/v1\/agents\/approvals\/[^/]+$/.test(path))) return true;
   if (method === "POST") return /^\/(api\/)?v1\/(chat\/completions|completions|embeddings|responses|messages)$/.test(path);
   if (method !== "GET") return false;
   // B: paid market-data tools, charged per call like inference (src/data-tools); read-only and account-free.
@@ -26,7 +28,7 @@ export function inferenceScopeMiddleware(ctx: Ctx): MiddlewareHandler {
     for (const secret of secrets) {
       const [key] = await ctx.db.select({ keyHash: keys.keyHash, scope: keys.scope }).from(keys).where(eq(keys.keyHash, sha256(secret)));
       if (key?.scope !== "inference") continue;
-      if (!inferenceRouteAllowed(c.req.method, c.req.path)) fail(403, "Inference-only keys may call models and data tools and read only their own generations and receipts.", "inference_only");
+      if (!inferenceRouteAllowed(c.req.method, c.req.path, ctx.cfg.agentGuardEnabled)) fail(403, "Inference-only keys may call models and data tools and read only their own generations and receipts.", "inference_only");
       await requireKey(ctx, `Bearer ${secret}`);
       const receipt = c.req.path.match(/^\/api\/v1\/receipts\/([^/]+)(?:\/(proof|privacy))?$/);
       // keys and verify are public helper endpoints, not this key's receipts.

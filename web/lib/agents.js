@@ -1,3 +1,4 @@
+import { guardIntentSummary } from "./agent-guard.js"; // V98
 import { breakerForm, buildBreakers, breakerReasonText } from "./agent-breakers.js";
 import { autonomyForm, autonomyPolicy } from "./agent-autonomy.js";
 import { alertSettingsErrors } from './agent-alerts.js';
@@ -36,6 +37,7 @@ export function capBars(agent) {
 
 export function intentSummary(intent) {
   if (Array.isArray(intent?.intents)) return intent.intents.map(intentSummary).join(' / ');
+  if (intent?.kind === 'action') return guardIntentSummary(intent, formatUsd, picoUsd); // V98
   if (intent?.kind === 'mcp_tool') return `Tool: ${intent.name || 'Not recorded'}`;
   if (intent?.kind !== 'inference') return 'No intent recorded';
   return `Model: ${intent.model || 'Not recorded'} · Lane: ${intent.lane || 'Not recorded'} · Estimated cost: ${formatUsd(picoUsd(intent.est_cost_pico))} · Tools: ${(intent.tools || []).join(', ') || 'None'}`;
@@ -61,7 +63,7 @@ export function eventsPage(json) {
 const entries = value => String(value || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
 export function policyForm(policy) {
   const p = policy || {};
-  return { ...autonomyForm(p), breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
+  return { ...(p.actions === undefined ? {} : { actions: structuredClone(p.actions) }), ...autonomyForm(p), breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
     restrictTools: p.tools?.allow !== undefined, /* V85: preserve empty allowlists. */ toolAllow: (p.tools?.allow || []).join('\n'), toolDeny: (p.tools?.deny || []).join('\n'),
     restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES],
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
@@ -81,7 +83,7 @@ export function buildPolicy(form) {
     if (!Number.isFinite(n) || n <= 0 || n > LIMITS.usd) errors.push(`${label}: enter USD greater than 0 and up to 1,000,000.`);
     return n;
   };
-  const policy = { ...autonomyPolicy(form), version: 1, models: {}, caps: {}, on_breach: form.onBreach };
+  const policy = { ...(form.actions === undefined ? {} : { actions: structuredClone(form.actions) }), ...autonomyPolicy(form), version: 1, models: {}, caps: {}, on_breach: form.onBreach };
   for (const [input, group, field, label] of [['modelAllow','models','allow','Allowed models'], ['modelDeny','models','deny','Denied models'], ['toolAllow','tools','allow','Allowed tools'], ['toolDeny','tools','deny','Denied tools']]) {
     const items = list(form[input], label);
     if (items.length) { policy[group] ||= {}; policy[group][field] = items; }

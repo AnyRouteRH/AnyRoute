@@ -27,6 +27,7 @@ export const agentPolicySchema = z.strictObject({
   autonomy: autonomySchema.optional(),
   alerts: agentAlertsSchema.optional(),
   agreements: agreementRulesSchema.optional(),
+  actions: z.strictObject({ allow: list.optional(), deny: list.optional(), targets: names.optional(), per_action_usd: usd.optional(), per_day_usd: usd.optional(), approval_above_usd: usd.optional(), max_per_hour: z.number().int().positive().max(100000).optional() }).optional(),
   on_breach: z.enum(["deny", "kill"]),
 }).partial({ approval: true });
 export type AgentPolicy = z.infer<typeof agentPolicySchema>;
@@ -35,11 +36,14 @@ export const agentPolicySha256 = (policy: AgentPolicy) => sha256(canonicalAgentP
 export { canonicalJson, sha256 };
 
 const pico = z.union([z.bigint().nonnegative(), z.string().regex(/^\d+$/).transform(BigInt)]);
+export const actionName = z.string().regex(/^[a-z0-9_]+(\.[a-z0-9_]+)*$/).max(64);
+export const actionIntentSchema = z.strictObject({ kind: z.literal("action"), action: actionName, target: z.string().min(1).max(160).optional(), amount_pico: pico, details_sha256: z.string().regex(/^sha256:[0-9a-f]{64}$/).optional() });
 export const agentIntentSchema = z.discriminatedUnion("kind", [
+  actionIntentSchema,
   z.strictObject({ kind: z.literal("inference"), model: name, lane: z.enum(["public", "attested", "unlinkable"]), est_cost_pico: pico, max_output_tokens: tokens.optional(), tools: list }),
   z.strictObject({ kind: z.literal("mcp_tool"), name }),
   // v6 T: a paid x402 tool call. resource is origin + path (never the query); seller is the payTo wallet.
   z.strictObject({ kind: z.literal("paid_tool"), resource: z.string().url().max(2048), seller: z.string().regex(/^0x[0-9a-fA-F]{40}$/), listing: name.optional(), price_pico: pico }),
 ]);
 export type AgentIntent = z.infer<typeof agentIntentSchema>;
-export const intentJson = (intent: AgentIntent) => intent.kind === "inference" ? { ...intent, est_cost_pico: intent.est_cost_pico.toString() } : intent.kind === "paid_tool" ? { ...intent, price_pico: intent.price_pico.toString() } : { ...intent };
+export const intentJson = (intent: AgentIntent) => intent.kind === "inference" ? { ...intent, est_cost_pico: intent.est_cost_pico.toString() } : intent.kind === "paid_tool" ? { ...intent, price_pico: intent.price_pico.toString() } : intent.kind === "action" ? { ...intent, amount_pico: intent.amount_pico.toString() } : { ...intent };

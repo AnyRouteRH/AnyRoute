@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { agentPolicySchema, agentIntentSchema, type AgentPolicy } from "../src/agents/policy.ts";
 import { evaluateAgentPolicy, type AgentPolicyState } from "../src/agents/evaluate.ts";
+import { GUARD_STARTERS } from "../web/lib/agent-guard.js"; // V98
 import { STARTER_RULEBOOKS } from "../web/lib/agent-starters.js";
 import { startRouter, MODELS, type Harness } from "./helpers.ts";
 
@@ -18,11 +19,11 @@ const intent = (model: string, cost = 0n) => agentIntentSchema.parse({ kind: "in
 const codes = (policy: AgentPolicy, s: AgentPolicyState, i = intent("openai/gpt-5.4")) => evaluateAgentPolicy(policy, s, i, now).reasons.map((r) => r.code);
 
 describe("trading rulebook files", () => {
-  test("exactly the three trading starters, validated by the enforced schema without change", () => {
-    expect(Object.keys(files).sort()).toEqual(["trading-allowlist", "trading-ask-first", "trading-budget"]);
+  test("exactly three model trading and three action starters, validated by the enforced schema without change", () => {
+    expect(Object.keys(files).sort()).toEqual(["guard-onchain", "guard-payments", "guard-trading", "trading-allowlist", "trading-ask-first", "trading-budget"]);
     for (const [id, policy] of Object.entries(files)) {
       expect(agentPolicySchema.parse(policy)).toEqual(policy);
-      expect(policy).toEqual(STARTER_RULEBOOKS.find((t: { id: string }) => t.id === id)!.policy);
+      expect(policy).toEqual([...STARTER_RULEBOOKS, ...GUARD_STARTERS].find((t: { id: string }) => t.id === id)!.policy);
       // Agent platforms declare their own tools (quotes, orders): the rulebook leaves them alone.
       expect(policy.tools).toBeUndefined();
       expect(evaluateAgentPolicy(policy, state, intent("openai/gpt-5.4"), now).decision).toBe("allow");
