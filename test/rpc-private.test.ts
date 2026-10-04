@@ -37,9 +37,9 @@ test("config keeps public-only behaviour, supports defaults/disabled/deduplicate
   expect(loadConfig({ RHC_RPC_URL: privateRpc, RHC_RPC_FALLBACK_URLS: ` ${DEFAULT_PUBLIC_RPC},${privateRpc},${DEFAULT_PUBLIC_RPC}` }).chain.rpcFallbackUrls).toEqual([DEFAULT_PUBLIC_RPC]);
   expect(loadConfig({ RHC_RPC_URL: "http://127.0.0.1:8545", RHC_RPC_FALLBACK_URLS: "" }).chain.rpcUrl).toBe("http://127.0.0.1:8545");
   for (const change of [
-    { RHC_RPC_URL: "http://rpc.example/key/SECRETKEY123" },
+    { RHC_RPC_URL: "ws://rpc.example/key/SECRETKEY123" },
     { RHC_RPC_URL: "SECRETKEY123" },
-    { RHC_RPC_FALLBACK_URLS: "http://rpc.example/key/SECRETKEY123" },
+    { RHC_RPC_FALLBACK_URLS: "wss://rpc.example/key/SECRETKEY123" },
     { RHC_RPC_FALLBACK_URLS: "https://rpc.example/key/SECRETKEY123," },
     { RHC_RPC_URL: privateRpc, PUBLIC_RPC_URL: privateRpc },
     { RHC_RPC_URL: "https://rpc.example/key/SECRETKEY123#fragment" },
@@ -52,13 +52,14 @@ test("config keeps public-only behaviour, supports defaults/disabled/deduplicate
   }
 });
 
-test("production-like real config loader accepts keyed primary and loopback HTTP, rejects remote HTTP", () => {
+test("production-like real config loader accepts keyed primary and private-network HTTP, rejects other schemes", () => {
   const address = "0x" + "1".repeat(40);
   const base = { ANYROUTE_ENV: "production", RUNTIME_ROLE: "api", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/test", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: address, CALLPAY_ADDRESS: address, PROVIDER_BOND_ADDRESS: address, RECEIPT_ANCHOR_ADDRESS: address, ROUTER_PRIVATE_KEY: "0x" + "3".repeat(64), RHC_RPC_URL: privateRpc };
   expect(loadConfig(base).chain.rpcFallbackUrls).toEqual([DEFAULT_PUBLIC_RPC]);
-  expect(() => loadConfig({ ...base, RHC_RPC_URL: "http://rpc.example/key/SECRETKEY123" })).toThrow("RHC_RPC_URL requires HTTPS");
+  expect(loadConfig({ ...base, RHC_RPC_URL: "http://chain:8545", RHC_RPC_FALLBACK_URLS: "" }).chain.rpcUrl).toBe("http://chain:8545"); // compose / private network
+  expect(() => loadConfig({ ...base, RHC_RPC_URL: "ws://rpc.example/key/SECRETKEY123" })).toThrow("RHC_RPC_URL must use http or https");
   expect(loadConfig({ ...base, RHC_RPC_URL: "http://localhost:8545", RHC_RPC_FALLBACK_URLS: "" }).chain.rpcUrl).toBe("http://localhost:8545"); // loopback cannot leak; CI smoke runs production mode against it
-  expect(() => loadConfig({ ...base, RHC_RPC_FALLBACK_URLS: "http://rpc.example/fallback" })).toThrow("RHC_RPC_FALLBACK_URLS requires HTTPS");
+  expect(() => loadConfig({ ...base, RHC_RPC_FALLBACK_URLS: "ftp://rpc.example/fallback" })).toThrow("RHC_RPC_FALLBACK_URLS must use http or https");
 });
 
 for (const failure of [429, 500, 503, "timeout"] as const) test(`viem falls back on primary ${failure} and keeps the primary first`, async () => {

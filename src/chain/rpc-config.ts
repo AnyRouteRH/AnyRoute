@@ -2,12 +2,12 @@ import { z } from "zod";
 import { createRpcRedactor, DEFAULT_PUBLIC_RPC, registerRpcRedaction } from "./rpc-redaction.ts";
 
 export const rpcEnv = { RHC_RPC_FALLBACK_URLS: z.string().default(DEFAULT_PUBLIC_RPC) };
-const localHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
-function validateRpcUrl(value: string, name: string, production: boolean) {
+function validateRpcUrl(value: string, name: string, _production: boolean) {
+  // Plain HTTP stays allowed: compose service names and private networks (e.g. *.railway.internal) use it.
+  // What protects a keyed URL is redaction, not the scheme.
   let url: URL;
-  try { url = new URL(value); } catch { throw new Error(`${name} must contain valid HTTPS URLs.`); }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && localHosts.has(url.hostname)))
-    throw new Error(`${name} requires HTTPS${production ? " in production" : ""}; HTTP is allowed only for loopback hosts.`);
+  try { url = new URL(value); } catch { throw new Error(`${name} must contain valid HTTP(S) URLs.`); }
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(`${name} must use http or https.`);
   if (url.hash) throw new Error(`${name} must not contain URL fragments.`);
 }
 export function rpcSettings(e: { RHC_RPC_URL: string; RHC_RPC_FALLBACK_URLS: string; PUBLIC_RPC_URL: string }, production: boolean) {
