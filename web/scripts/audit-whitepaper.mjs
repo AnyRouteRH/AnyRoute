@@ -7,7 +7,7 @@ import { WHITEPAPER_BANNED_WORDS, whitepaperText } from "../scripts/whitepaper-w
 export function auditWhitepaper(root) {
   const html = fs.readFileSync(path.join(root, "whitepaper/index.html"), "utf8");
   const paper = loadWhitepaper();
-  assert(html.includes("<title>AnyRoute Whitepaper — Anyroute</title>"), "Whitepaper title differs");
+  assert(html.includes("<title>Whitepaper — Anyroute</title>"), "Whitepaper title differs");
   assert(html.includes(paper.html), "Exported whitepaper differs from the root Markdown");
   assert.doesNotMatch(whitepaperText(paper.html), WHITEPAPER_BANNED_WORDS);
   for (const heading of paper.headings) {
