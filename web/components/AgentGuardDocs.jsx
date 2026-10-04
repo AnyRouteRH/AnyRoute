@@ -2,13 +2,13 @@ import { Code } from './UI';
 import { GUARD_LIMIT, GUARD_STARTERS } from '../lib/agent-guard';
 const decide = `curl "$ANYROUTE_URL/api/v1/guard/decide" \
   -H "Authorization: Bearer $AGENT_KEY" -H 'Content-Type: application/json' \
-  -d '{"action":"trade.order","target":"NVDA","amount_usd":"360.00"}'`;
+  -d '{"action":"payment.send","amount_usd":"40.00"}'`;
 const report = `curl "$ANYROUTE_URL/api/v1/guard/decisions/$DECISION_ID/outcome" \
   -H "Authorization: Bearer $AGENT_KEY" -H 'Content-Type: application/json' \
-  -d '{"status":"executed","amount_usd":"359.50"}'`;
+  -d '{"status":"executed","amount_usd":"40.00"}'`;
 export default function AgentGuardDocs() {
   return <section id="agent-guard"><h2>Ask before an action with money</h2>
-    <p>Agent Guard is not switched on yet. AGENT_GUARD_ENABLED defaults to false and requires AGENT_POLICY_ENABLED. Off returns 404 on guard routes and hides its MCP tools. When enabled, /api/v1/status adds agent_guard.enabled: true. Off omits that field to preserve existing responses; treat an absent field as unavailable.</p>
+    <p>Agent Guard is switched on at anyroute.tech. Self-hosted routers enable it with AGENT_GUARD_ENABLED (default false), which requires AGENT_POLICY_ENABLED. While it is off, guard routes return 404 and its MCP tools are hidden. /api/v1/status reports agent_guard.enabled: true when it is on and omits the field when it is off; treat an absent field as unavailable.</p>
     <p>{GUARD_LIMIT}</p>
     <ol><li>Model calls the MCP tool: a seatbelt. Ask anyroute_guard_decide before acting; a model can omit a tool call.</li><li>Code wraps the order function: the model can’t skip the check when every execution path goes through that wrapper. Use integrations/robinhood-agents/guard.ts or guard.py beside the decision-receipt helper.</li><li>Guard controls execution: agent wallets with on-chain rules are the next step and are not part of this update.</li></ol>
     <p>Use the agent’s inference-only key to decide, report an outcome, read its rules and poll its approval. Keep the owner or management key outside the agent. POST /mcp internal calls still pass the same route scope checks; the agent cannot PUT policies, kill, resume or approve itself.</p>
