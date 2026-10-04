@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { CHAIN, FEED, REVISION, CIRCUIT, checkCap, digest, ethFromUnits, loadManifest, parseEth, validateManifest, validateQuote, walletConfig } from '../lib/zkapi/protocol.js';
+import { CHAIN, FEED, REVISION, CIRCUIT, checkCap, checkedFetch, digest, ethFromUnits, loadManifest, parseEth, validateManifest, validateQuote, walletConfig } from '../lib/zkapi/protocol.js';
 import { STORE, emptyWallet, walletStore } from '../lib/zkapi/storage.js';
 import { ZkapiClient, publicRequest } from '../lib/zkapi/client.js';
 import { DEPOSIT_EVENT, WalletChain, closeData, depositData, word } from '../lib/zkapi/chain.js';
@@ -35,9 +35,11 @@ function fixture(options = {}) {
     if (op === 'nullifier') return H(44);
     if (op === 'withdraw') return { mode: 'mutual', siblings: Array(32).fill(H(0)), proof: { backend: 'groth16_bn254', proof: Buffer.alloc(256).toString('base64') }, public_inputs: { protocol_version: 2, chain_id: CHAIN, contract_address: vault, active_root: H(10), state_signing_key_x: H(1), state_signing_key_y: H(2), clearance_signing_key_x: H(3), clearance_signing_key_y: H(4), note_id: 0, final_balance: args.state.current_balance, destination: Array(20).fill(0x34), withdrawal_nullifier: H(44), has_clearance: true, withdrawal_tag: H(45) } };
   } };
-  const fetcher = async (url, init) => {
+  const fetcher = async function (url, init) {
+    if (options.browserFetch && this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
     requests.push([url, init]);
     assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error');
+    if (options.expiredPath && url.includes(options.expiredPath)) return response({ error_code: 'native_quote_expired' }, 409);
     if (url.endsWith('/v2/billing/quote')) return response(quote());
     if (url.endsWith('/v1/tree/snapshot')) return response({ root: H(10), next_note_id: 0, leaves: [] });
     if (url.endsWith('/v2/openrouter/leases')) {
@@ -57,6 +59,43 @@ function fixture(options = {}) {
   return { client, store, requests, operations, chain, prover };
 }
 function fund(f) { f.store.write({ ...emptyWallet(), deployment: { chain_id: CHAIN, contract_address: vault }, state: state() }); }
+
+test('browser-like fetch safely starts a lease, chats and retires', async () => {
+  const f = fixture({ browserFetch: true }); fund(f);
+  await f.client.pay(); assert.ok(f.client.lease);
+  assert.equal((await f.client.chat('meta-llama/llama-3.3-70b-instruct', 'Hello')).receipt, 'gen-receipt');
+  assert.equal((await f.client.retire()).charge, 400);
+  assert.equal(f.store.read().journal, null);
+  for (const path of ['/credits', '/chat/completions', '/v2/openrouter/leases/']) assert.ok(f.requests.some(([url]) => url.includes(path)));
+});
+
+for (const [action, path] of [
+  ['pay', '/v2/billing/quote'], ['pay', '/v1/tree/snapshot'], ['pay', '/v2/openrouter/leases'], ['pay', '/credits'],
+  ['chat', '/chat/completions'], ['retire', '/v2/openrouter/leases/'], ['retire', '/v2/requests/'], ['withdraw', '/v2/withdraw/clearance'],
+]) {
+  test(`${action} explains an expired native quote at ${path} and preserves recovery state`, async () => {
+    const options = {}, f = fixture(options); fund(f);
+    if (action === 'chat' || action === 'retire') await f.client.pay();
+    const before = f.store.read(); options.expiredPath = path;
+    const args = action === 'chat' ? ['meta-llama/llama-3.3-70b-instruct', 'Hello'] : action === 'withdraw' ? [destination, destination] : [];
+    await assert.rejects(f.client[action](...args), { message: 'The Sepolia ETH price is refreshing. Try again in a few minutes.' });
+    const after = f.store.read(); assert.deepEqual(after.state, before.state);
+    if (before.journal) {
+      assert.deepEqual(after.journal, action === 'chat' ? { ...before.journal, call_attempted: true } : before.journal);
+    }
+    if (action === 'pay' && (path === '/v2/openrouter/leases' || path === '/credits')) assert.ok(after.journal);
+    if (action === 'retire') { assert.equal(f.client.lease, null); assert.ok(!f.operations.some(([op]) => op === 'complete')); }
+    options.expiredPath = null;
+    if (after.journal) { await f.client.retire(); assert.equal(f.store.read().journal, null); }
+  });
+}
+
+test('HTTP errors keep the existing fallback unless 409 identifies an expired native quote', async () => {
+  for (const [body, status] of [[{}, 409], [{ error_code: 'native_quote_expired' }, 500], ['not JSON', 409]]) {
+    await assert.rejects(checkedFetch('https://operator.example/config.json', { fetcher: async () => typeof body === 'string' ? new Response(body, { status }) : response(body, status) }), { message: `Request failed (${status}). Recovery state was preserved; retry the saved request.` });
+  }
+  await assert.rejects(loadManifest('https://operator.example/config.json', 'f'.repeat(64), async () => response({ error_code: 'native_quote_expired' }, 409)), { message: 'The Sepolia ETH price is refreshing. Try again in a few minutes.' });
+});
 
 test('integer ETH parsing and exact USD ceilings', () => {
   assert.equal(parseEth('0.0003'), 300000); assert.equal(ethFromUnits(300000), '0.000300000');

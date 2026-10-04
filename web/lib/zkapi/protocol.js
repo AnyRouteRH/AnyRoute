@@ -1,4 +1,5 @@
 // ZK9: transport and policy for the pinned Rust wallet; no cryptography port.
+import { checkNativeQuote } from './response-errors.js';
 export const REVISION = '045b444ea1b52538d1b40273c7cb6ed09468a052';
 export const CIRCUIT = 'zkapi-v2-note-bound-v1';
 export const CHAIN = 11155111;
@@ -21,6 +22,7 @@ export async function digest(bytes) {
 }
 export async function checkedFetch(url, { fetcher = fetch, ...options } = {}) {
   const response = await fetcher(url, { credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(30_000), ...options });
+  await checkNativeQuote(response);
   if (!response.ok) throw new Error(`Request failed (${response.status}). Recovery state was preserved; retry the saved request.`);
   return response;
 }

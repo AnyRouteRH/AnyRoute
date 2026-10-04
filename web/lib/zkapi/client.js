@@ -1,5 +1,6 @@
 import { CHAIN, MAX_LEASE_USD, MAX_NOTE_USD, checkCap, hexAddress, jsonRequest, requireValue, usdFromUnits, validateQuote, walletConfig } from './protocol.js';
 import { closeData, depositData } from './chain.js';
+import { checkNativeQuote } from './response-errors.js';
 
 // Select only public wire fields, including when recovering an imported journal.
 export function publicRequest(journal, config) {
@@ -19,7 +20,7 @@ export function publicRequest(journal, config) {
 export class ZkapiClient {
   constructor({ manifest, store, prover, chain, inferenceBase, fetcher = fetch, lock = callback => navigator.locks.request('anyroute-zkapi-private-wallet', { mode: 'exclusive', ifAvailable: true }, acquired => { requireValue(acquired, 'Another tab is using your private wallet.'); return callback(); }) }) {
     this.manifest = manifest; this.config = walletConfig(manifest); this.store = store; this.prover = prover; this.chain = chain;
-    this.inferenceBase = inferenceBase.replace(/\/$/, ''); this.fetcher = fetcher; this.lock = lock;
+    this.inferenceBase = inferenceBase.replace(/\/$/, ''); this.fetcher = (...args) => fetcher(...args); this.lock = lock;
     this.lease = null; this.spend = 0;
   }
   current() {
@@ -87,6 +88,7 @@ export class ZkapiClient {
     const max = usdFromUnits(this.config.request_charge_cap, quote);
     requireValue(issued.client_request_id === prepared.journal.client_request_id && /^sk-ar-v1-[\da-f]{64}$/.test(issued.api_key) && issued.openrouter_api_base?.replace(/\/$/, '') === this.inferenceBase && Number.isFinite(issued.spending_limit_usd) && issued.spending_limit_usd > 0 && issued.spending_limit_usd <= MAX_LEASE_USD && issued.spending_limit_usd <= max && Number.isSafeInteger(issued.issued_at) && Number.isSafeInteger(issued.expires_at) && issued.expires_at > Date.now() / 1000 && issued.expires_at <= issued.issued_at + 300 && issued.expires_at < w.state.expiry_ts && Object.keys(quote).every(k => issued.billing_quote?.[k] === quote[k]), 'The returned lease does not match the proof, inference origin, quote, cap or expiry. Retire the saved lease.');
     const scope = await this.fetcher(this.inferenceBase + '/credits', { headers: { Authorization: 'Bearer ' + issued.api_key }, credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30_000) });
+    await checkNativeQuote(scope);
     const result = await scope.json();
     requireValue(scope.status === 403 && result.error?.type === 'inference_only', 'The returned key is not inference-only. Retire the saved lease.');
     this.lease = issued; this.spend = 0;
@@ -99,6 +101,7 @@ export class ZkapiClient {
     requireValue(typeof prompt === 'string' && prompt.trim().length > 0 && prompt.length <= 4000 && model === 'meta-llama/llama-3.3-70b-instruct', 'Enter up to 4,000 characters for the pilot model.');
     this.store.write({ ...w, journal: { ...w.journal, call_attempted: true } });
     const response = await this.fetcher(this.inferenceBase + '/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + this.lease.api_key }, body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 64, stream: false }), credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(60_000) });
+    await checkNativeQuote(response);
     requireValue(response.ok, `Chat was refused (${response.status}). The lease and recovery journal remain saved.`);
     const answer = await response.json();
     const cost = Number(answer.usage?.cost);
@@ -111,6 +114,7 @@ export class ZkapiClient {
     const request = publicRequest(w.journal, this.config);
     // Stock operator uses 409 for retirement awaiting settlement. It is pending, never success.
     const response = await this.fetcher(this.manifest.operator_url + '/v2/openrouter/leases/' + encodeURIComponent(request.client_request_id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(30_000) });
+    await checkNativeQuote(response);
     requireValue(response.ok || response.status === 409, `Retirement is unavailable (${response.status}). Keep your backup and retry.`);
     return this.recoverSuccessor();
   }); }
