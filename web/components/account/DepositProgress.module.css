@@ -1,0 +1,7 @@
+.panel{min-width:0;margin:16px 0;font:400 14px/1.5 var(--sans);color:var(--ink)}
+.panel h3{margin:0 0 10px;font-size:16px;font-weight:600;letter-spacing:-.02em}
+.panel ul{display:grid;gap:8px;list-style:none;margin:0;padding:0}
+.panel li{min-width:0;padding:14px;border:1px solid var(--line);border-left:3px solid var(--ink);background:var(--white);overflow-wrap:anywhere}
+.panel li[data-final=true]{border-left-color:var(--signal-deep)}
+.panel p{margin:0 0 6px}.panel p:last-child{margin-bottom:0}.panel code{font:400 11px/1.5 var(--mono)}
+.track{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0;min-width:0}.track label,.track p{flex-basis:100%;font:400 12px/1.5 var(--sans)}.track input{flex:1 1 200px;min-width:0;max-width:100%;border:1px solid var(--line-strong);padding:10px;background:var(--white);color:var(--ink);font:400 12px var(--mono)}

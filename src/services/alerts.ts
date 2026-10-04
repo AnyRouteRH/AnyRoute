@@ -1,4 +1,5 @@
 import { planBalanceAlerts, deliveredBalanceTime } from "../rush/balance-alerts.ts"; // ON5
+import { fastCreditAlertChecks } from "../pay/fast-credit-state.ts"; // V97
 import { upstreamAlertChecks } from "../rush/monitor.ts"; // ON3
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -145,7 +146,7 @@ async function releaseLease(ctx: Ctx, holder: string) {
 }
 
 async function evaluateReadiness(ctx: Ctx) {
-  return { ...(await readiness(ctx)).checks, ...await upstreamAlertChecks(ctx) }; // ON3
+  return { ...(await readiness(ctx)).checks, ...await upstreamAlertChecks(ctx), ...await fastCreditAlertChecks(ctx) }; // ON3
 }
 
 export type NotifierOptions = { now?: () => number; evaluate?: (ctx: Ctx) => Promise<Record<string, boolean>>; fetch?: typeof fetch; sustainMs?: number };

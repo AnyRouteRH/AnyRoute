@@ -1,4 +1,5 @@
 // ON1: account funding state and API-derived deposit instructions.
+import { depositCreditLabel } from './fast-credit.js';
 import { isAddress, toRawAmount, erc20TransferData } from './anyr-pay.js';
 export const fundingError = error => error?.type !== 'key_budget_exceeded' && (error?.status === 402 || ['insufficient_credits', 'insufficient_balance'].includes(error?.type) || /insufficient (?:balance|credits)/i.test(error?.message || ''));
 export const recoverFundingDraft = (draft, history) => draft || history.findLast(message => message.role === 'user')?.text || '';
@@ -9,8 +10,9 @@ export function fundingState(state, event) {
   if (event.type === 'pending') return { phase: 'pending', baseline: event.total, status: event.status || 'Waiting for confirmation…' };
   if (event.type === 'failed') return { ...state, phase: 'zero', status: '' };
   if (event.type === 'observed') {
+    if (state.phase === 'credited' && event.fastCredit?.enabled) return { ...state, status: Number(event.balance) < 0 ? 'Credit reversed. Cover the negative balance before spending again.' : depositCreditLabel(event.fastCredit) || state.status };
     if (state.phase === 'credited' && Number(event.balance) === 0) return initialFunding;
-    if (state.baseline != null && Number(event.total) > state.baseline) return { ...state, phase: 'credited', baseline: null, status: 'Credited. Your balance has been updated.' };
+    if (state.baseline != null && Number(event.total) > state.baseline) return { ...state, phase: 'credited', baseline: null, status: depositCreditLabel(event.fastCredit) || 'Credited. Your balance has been updated.' };
     return state;
   }
   return state;
@@ -25,7 +27,7 @@ export function fundingOptions({ credits, escrow, stock, chain, officialAnyr }) 
       const anyr = token.symbol === 'ANYR' || token.address?.toLowerCase() === escrow.anyr?.address?.toLowerCase();
       if (!isAddress(token.address) || !Number.isInteger(token.decimals) || token.decimals < 0 || token.decimals > 36) continue;
       if (anyr && token.address.toLowerCase() !== officialAnyr?.toLowerCase()) continue;
-      options.push({ ...token, id: token.address, symbol: anyr ? '$ANYR' : token.symbol, to: escrow.address, kind: 'escrow', wallet: stock.wallet });
+      options.push({ ...token, id: token.address, symbol: anyr ? '$ANYR' : token.symbol, to: escrow.address, kind: 'escrow', wallet: stock.wallet, fast_credit: escrow.fast_credit });
     }
   }
   return options;

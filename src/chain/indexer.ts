@@ -1,3 +1,7 @@
+import { pollFastUsdg, isUsdgDeposit } from "../pay/fast-credit-indexer.ts"; // V97
+import { fastCreditActive } from "../pay/fast-credit-state.ts"; // V97
+import { usdgFinalityReady } from "../pay/deposit-progress.ts"; // V97B
+import { handleFastUsdg } from "../pay/fast-credit-usdg.ts"; // V97
 import { withHostStatus } from "../webhooks/hosts.ts"; // V86: atomic host status notices.
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { keccak256, toBytes, type Hex } from "viem";
@@ -49,13 +53,14 @@ export async function pollChain(ctx: Ctx, maxRange = 2_000n) {
   const anyContract = ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty"].some((n) => ctx.chain.address(n as never));
   if (!anyContract) return { skipped: "no contracts configured" };
   const head = await ctx.chain.blockNumber();
+  const fast = await pollFastUsdg(ctx, maxRange); // V97: independent USDG finality cursor.
   const safeHead = head - BigInt(Math.max(0, ctx.cfg.chain.confirmations - 1));
   const [cur] = await ctx.db.select().from(chainCursor).where(eq(chainCursor.id, "main"));
   let from = cur ? cur.block + 1n : (ctx.cfg.chain.startBlock ?? (safeHead > 5_000n ? safeHead - 5_000n : 0n));
   let total = 0;
   while (from <= safeHead) {
     const to = from + maxRange - 1n < safeHead ? from + maxRange - 1n : safeHead;
-    const logs = await ctx.chain.logs(from, to);
+    const logs = (await ctx.chain.logs(from, to)).filter(e => !fast || !isUsdgDeposit(e)); // V97: deposits use the separate finality cursor.
     total += await recordEvents(ctx, logs);
     await ctx.db
       .insert(chainCursor)
@@ -136,6 +141,8 @@ async function applyEvent(ctx: Ctx, e: EventRow): Promise<boolean> {
   switch (`${e.contract}.${e.event}`) {
     case "credits.Deposited":
     case "credits.Credited": {
+      if (e.event === "Deposited" && await fastCreditActive(ctx)) return handleFastUsdg(ctx, { ...e, txHash: e.txHash as Hex, args: e.args as Record<string, unknown>, contract: "credits" }); // V97
+      if (e.event === "Deposited" && !await usdgFinalityReady(ctx, e.blockNumber)) return false; // V97B: without early credit, USDG waits for finality too.
       const key = await keyByChainHash(ctx, a.keyHash);
       if (!key) return unclaimed(ctx, e);
       const fromPayWith = e.event === "Credited" && ctx.chain.address("payWithStock")?.toLowerCase() === String(a.source).toLowerCase();

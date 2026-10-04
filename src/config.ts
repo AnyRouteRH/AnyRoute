@@ -1,4 +1,5 @@
 import { rpcEnv, rpcSettings } from "./chain/rpc-config.ts"; // RPC1: private transport settings.
+import { fastCreditEnv, fastCreditSettings } from "./pay/fast-credit-config.ts"; // V97
 import { identityEnv, identitySettings } from "./identity/config.ts"; // v6 I: receipt-backed identity and reputation.
 import { accountRuntimeSchema } from "./paymaster/account-policy.ts";
 import { rushEnv, rushSettings } from "./rush/config.ts"; // ON3
@@ -67,6 +68,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...fastCreditEnv, // V97
   ...identityEnv, // v6 I
   ...zkapiPageEnv, // ZK10
   ...toolsEnv, // v6 T
@@ -615,6 +617,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   const anyrEscrow = anyrEscrowConfig(e, lower);
   const holders = holderSettings(e, anyrEscrow);
   return {
+    fastCredit: fastCreditSettings(e), // V97
     env: e.ANYROUTE_ENV,
     production,
     developerFirstCallEnabled: e.DEVELOPER_FIRST_CALL_ENABLED, // ON2

@@ -7,6 +7,10 @@ import { ANYR_ATTESTED_LINE, STEPS, creditEstimate, depositView, depositsOf, erc
 import { Button, CopyButton, Modal } from "./UI";
 import { ANYR_CA } from "./ContractAddress";
 import styles from "./PayAnyr.module.css";
+import DepositProgress from "./account/DepositProgress";
+import DepositNextLine from "./account/DepositNextLine";
+import TrackDeposit from "./account/TrackDeposit";
+import { depositSender } from "../lib/deposit-progress.js";
 
 /**
  * "Pay with $ANYR": the live rate the router credits at (GET /api/v1/escrow/anyr/price), the escrow address with copy
@@ -161,11 +165,11 @@ export default function PayAnyrDialog({ escrow: initialEscrow, stock, chain, api
       if (from.toLowerCase() !== wallet.toLowerCase()) throw new Error(`Switch your wallet to ${shortAddress(wallet)}, the wallet you signed in with. Tokens sent from another wallet are credited to that wallet.`);
       await ensureChain(chain);
       const data = erc20TransferData(escrow.address, estimate.raw);
-      await sendTransactions(from, [{ to: anyr.address, data, description: `Send ${amount.trim()} ${symbol} to the escrow address` }], setStep);
+      await sendTransactions(from, [{ to: anyr.address, data, description: `Send ${amount.trim()} ${symbol} to the escrow address` }], depositSender(apiKey, "escrow", setStep));
       setAmount("");
       // Look again soon and a few times after: the transfer shows up as "Waiting for finality" within seconds.
       for (const ms of [500, 3000, 8000]) setTimeout(() => alive.current && wake.current?.(), ms);
-      setStep("Sent. Track it below: it is credited once the chain finalizes it.");
+      setStep("Transaction sent. Follow the observed amount and credit status below.");
     } catch (e) {
       setStep("");
       setError(e?.code === 4001 || /user (rejected|denied)/i.test(String(e?.message)) ? "You declined the transfer in your wallet. Nothing was sent." : e?.message || String(e));
@@ -286,9 +290,11 @@ export default function PayAnyrDialog({ escrow: initialEscrow, stock, chain, api
                 {busy ? "Waiting for your wallet…" : hasWallet() ? `Send ${symbol} with wallet` : "Connect a wallet"}
               </Button>
             </div>
+            <DepositNextLine info={escrow}/>
           </section>
         )}
 
+        <DepositProgress apiKey={apiKey}/>
         <section className={styles.where} aria-label="Escrow address">
           <h3>{wallet ? "Or send from any wallet app" : "Escrow address"}</h3>
           <div className={styles.addr}>
@@ -312,6 +318,7 @@ export default function PayAnyrDialog({ escrow: initialEscrow, stock, chain, api
           <QrCode text={escrow.address} />
         </section>
 
+        {wallet && <TrackDeposit apiKey={apiKey} lane="escrow"/>}
         {wallet && (
           <section className={styles.track} aria-label="Your deposits">
             <div className={styles.trackHead}>

@@ -14,7 +14,7 @@ export const billingTables: Record<string, TableDoc> = {
       inference_keys_default: "Whether newly provisioned child keys default to inference-only access. Management keys can explicitly select account scope.", // ZK6
       kind: "key for an API-key account, wallet for a wallet account.",
       wallet: "The wallet address of a wallet account. Empty for a key account.",
-      balance: { purpose: "The settled balance: the sum of the account's ledger lines, in pico-USD. A database trigger keeps it equal to that sum.", request: "aggregate" },
+      balance: { purpose: "The spendable balance, including provisional deposit credits: the sum of the account's ledger lines, in pico-USD. A database trigger keeps it equal to that sum.", request: "aggregate" },
       held: { purpose: "The amount reserved by open holds for calls in flight, in pico-USD.", request: "aggregate" },
       created_at: CREATED,
     },
@@ -31,7 +31,7 @@ export const billingTables: Record<string, TableDoc> = {
       account_id: "The account the line applies to.",
       key_hash: "The key hash the line came from, when there is one.",
       amount: "The signed amount in pico-USD: positive adds to the balance, negative takes from it.",
-      kind: "What the line is: deposit, credit, usage, refund, paywith, change, adjustment, withdrawal_lock, withdrawal, blind_purchase, tool_call (a paid x402 tool), data_tool (a market-data tool call) and similar.",
+      kind: "What the line is: provisional (early deposit credit), deposit_reversal (a reversed USDG early credit), deposit, credit, usage, refund, paywith, change, adjustment, withdrawal_lock, withdrawal, blind_purchase, tool_call (a paid x402 tool), data_tool (a market-data tool call) and similar.",
       ref: "A unique idempotency reference, such as usage:<generation id> or escrow:<transaction>:<log index>, so a line can never be posted twice.",
       generation_id: { purpose: "For a usage line, the generation it paid for.", request: "yes" },
       description: {

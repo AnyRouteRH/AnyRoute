@@ -35,7 +35,7 @@ export async function readStatement(ctx: Ctx, key: KeyRow, month: string, now = 
       left join generations g on g.id=l.generation_id and (g.account_id=l.account_id or (g.account_id is null and g.key_hash=l.key_hash))
       where l.account_id=${key.accountId} and (${whole} or l.key_hash=${key.keyHash}) and l.created_at < ${to.toISOString()}::timestamptz
     ), monthly as (
-      select *, case when kind in ('deposit','stock_deposit','anyr_deposit') then 'deposits'
+      select *, case when kind in ('provisional','deposit','stock_deposit','anyr_deposit') then 'deposits'
         when kind='refund' then 'refunds' when kind='usage' then 'usage'
         when kind='fee' or right(kind,4)='_fee' then 'fees' else 'other' end category
       from visible where created_at >= ${from.toISOString()}::timestamptz

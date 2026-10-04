@@ -1,3 +1,5 @@
+import { fastCreditLogRecords } from "./fast-credit.ts";
+import { depositProgressReader } from "./deposit-progress.ts"; // V97B
 import { rushStores } from "./rush.ts"; // ON3
 import { toolsBodyReader, toolsRateFamilies, toolsStores } from "./tools.ts"; // v6 T: paid tool market.
 import { feedbackLimit, identityBodyReader, identityStores } from "./identity.ts"; // v6 I
@@ -400,6 +402,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  depositProgressReader, // V97B
   toolsBodyReader, // v6 T
   provisioningBodyReader, inferenceModelReader, // ZK6
   structuredOutputReader, // V83
@@ -712,6 +715,7 @@ export const EXTERNAL: ExternalDoc = {
       "The router writes one JSON line per event to standard output (standard error for warnings and errors). A line is a time, a level, a fixed message and a few fields chosen at each call site. No call site writes a request or response body, a header, a client address, a query string or a prompt.",
     format: "JSON lines: { t, level, msg, ...fields }.",
     records: [
+      ...fastCreditLogRecords,
       "The time, the level and a message written in the code.",
       "Host slash dry-run intent: provider id, evidence commitment root, proposeSlash function name, whole-bond USDG amount, numeric contract reason, contract and chain id, bytes32 host id and delist flag. Logged once per evidence root; no signed bytes, key, raw quote or receipt envelope.",
       "Sanctions refresh counts (distinct EVM entries, ignored formats and digital currency entries), publication date and source hash; screening skip/refusal reasons and provider ids. Freshness exceptions for previously paid addresses and refresh failures use fixed reason codes. No payout wallet or identity fields are added to these logs.",

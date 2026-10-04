@@ -52,7 +52,7 @@ export const chainTables: Record<string, TableDoc> = {
         review: rv(["name:network"], "wallet-address", "A blockchain wallet address that is public in the transfer itself; not a network address."),
       },
       raw_amount: "The amount in token base units.",
-      status: "pending_finality, pending, credited, orphaned or reversed.",
+      status: "pending_finality, pending, provisional (credited while settling), credited, orphaned or reversed.",
       block_hash: "The block hash when recorded; the credit is checked against it.",
       account_id: "The account it was credited to.",
       price18: "USD per whole token at 18 decimals, as read from the price feed.",
