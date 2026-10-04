@@ -1,3 +1,5 @@
+import { creditFastEscrow } from "./fast-credit-escrow.ts"; // V97
+import { fastCreditFields } from "./fast-credit-state.ts"; // V97
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { Hex } from "viem";
 import type { Ctx } from "../context.ts";
@@ -43,7 +45,7 @@ const RECONCILE_EVERY_MS = 60_000;
 const RECHECK_AFTER_MS = 10 * 60_000;
 const DROPPED = "Dropped before its block was final; nothing was credited.";
 
-export type EscrowStatus = "pending_finality" | "pending" | "credited" | "orphaned" | "reversed";
+export type EscrowStatus = "provisional" | "pending_finality" | "pending" | "credited" | "orphaned" | "reversed";
 export type EscrowPrice = { price18: bigint; updatedAt: number };
 /** The chain's finality point plus `creditable`: the highest block whose transfers may be credited. */
 export type EscrowFinal = EscrowFinality & { creditable: bigint };
@@ -223,7 +225,7 @@ export function peekAnyrQuote(ctx: Ctx): AnyrQuote | null {
   return hit?.quote ?? null;
 }
 
-const tokenPrice = (ctx: Ctx, t: AcceptedToken) => (t.kind === "anyr" ? anyrEscrowPrice(ctx, t.anyr) : escrowPrice(ctx, t.feed));
+export const tokenPrice = (ctx: Ctx, t: AcceptedToken) => (t.kind === "anyr" ? anyrEscrowPrice(ctx, t.anyr) : escrowPrice(ctx, t.feed));
 
 export type PriceReason = { code: AnyrPriceFailure | "feed_stale"; message: string };
 /** A token's price and, when there is none, why (so a deposit that waits can say what it waits for). */
@@ -323,6 +325,7 @@ async function recordFinal(tx: Tx, rows: Row[]) {
       // Never credited: the final, canonical copy of the log is what gets credited.
       if (e.status !== "pending" || !same || moved) await tx.update(escrowDeposits).set({ ...facts, status: "pending", error: null }).where(eq(escrowDeposits.id, id));
       if (e.status !== "pending") recorded++;
+    } else if (e.status === "provisional") { continue; // V97: retain original facts for the receipt check and fixed-price settlement.
     } else if (e.status === "credited" && same) {
       if (moved) {
         await tx.update(escrowDeposits).set({ blockNumber: facts.blockNumber, blockHash: facts.blockHash }).where(eq(escrowDeposits.id, id));
@@ -393,7 +396,7 @@ async function scanFinal(ctx: Ctx, fin: EscrowFinal, maxRange: bigint) {
 async function scanPreview(ctx: Ctx, fin: EscrowFinal, finalCursor: bigint, maxRange: bigint) {
   const tokens = acceptedTokens(ctx).map((t) => t.address as Hex);
   const [pc] = await ctx.db.select().from(chainCursor).where(eq(chainCursor.id, PREVIEW));
-  let from = (pc && pc.block > finalCursor ? pc.block : finalCursor) + 1n;
+  let from = (!ctx.cfg.fastCredit.enabled && pc && pc.block > finalCursor ? pc.block : finalCursor) + 1n;
   let seen = 0;
   while (from <= fin.head) {
     const to = from + maxRange - 1n < fin.head ? from + maxRange - 1n : fin.head;
@@ -414,6 +417,7 @@ export async function pollEscrow(ctx: Ctx, maxRange = 2_000n) {
   const fin = await escrowFinality(ctx);
   const scan = await scanFinal(ctx, fin, maxRange);
   const seen = await scanPreview(ctx, fin, scan.cursor, maxRange);
+  await creditFastEscrow(ctx, fin); // V97: fixed-price provisional settlement.
   const credit = await creditEscrowDeposits(ctx, fin);
   // Re-verification is cheap but not free: once a minute, and at once over any range the scan rewound.
   const due = scan.rewoundTo !== null || Date.now() - (lastReconcile.get(ctx) ?? 0) >= RECONCILE_EVERY_MS;
@@ -422,7 +426,7 @@ export async function pollEscrow(ctx: Ctx, maxRange = 2_000n) {
 }
 
 /** Pre-credit check: the recorded block is still canonical and its receipt still holds exactly this Transfer log. */
-async function verifyForCredit(ctx: Ctx, d: Deposit): Promise<Verdict> {
+export async function verifyForCredit(ctx: Ctx, d: Deposit): Promise<Verdict> {
   const canonical = (await ctx.chain.blockHashAt(d.blockNumber))?.toLowerCase();
   if (!canonical) return { ok: false, unknown: true, reason: `block ${d.blockNumber} is not available from the RPC node yet` };
   if (d.blockHash && canonical !== d.blockHash) return { ok: false, reason: `block ${d.blockNumber} was replaced by a chain reorganization` };
@@ -657,6 +661,7 @@ export async function escrowInfo(ctx: Ctx) {
   ]);
   return {
     enabled: true as const,
+    ...await fastCreditFields(ctx), // V97
     address: ctx.cfg.escrow.address,
     chain_id: ctx.cfg.chain.id,
     explorer: ctx.cfg.chain.explorerUrl,
@@ -680,7 +685,7 @@ export async function escrowInfo(ctx: Ctx) {
  * confirming (seen, waiting for its block to be final), awaiting_price (final, but the token has no trustworthy
  * price right now), crediting (final and priced; the next watcher poll credits it), then credited, orphaned or reversed.
  */
-export type EscrowStage = "confirming" | "awaiting_price" | "crediting" | "credited" | "orphaned" | "reversed";
+export type EscrowStage = "provisional" | "confirming" | "awaiting_price" | "crediting" | "credited" | "orphaned" | "reversed";
 export const escrowStage = (status: EscrowStatus, awaitingPrice: boolean): EscrowStage =>
   status === "pending_finality" ? "confirming" : status === "pending" ? (awaitingPrice ? "awaiting_price" : "crediting") : status;
 

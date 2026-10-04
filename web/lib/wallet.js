@@ -50,7 +50,7 @@ export async function sendTransactions(from, txs, onStep) {
   for (const [i, tx] of txs.entries()) {
     onStep?.(`${i + 1}/${txs.length}: ${tx.description || "Confirm in your wallet"}`);
     const hash = await eth.request({ method: "eth_sendTransaction", params: [{ from, to: tx.to, data: tx.data, value: "0x0" }] });
-    onStep?.(`${i + 1}/${txs.length}: waiting for confirmation…`);
+    await onStep?.(`${i + 1}/${txs.length}: waiting for confirmation…`, { hash, index: i, count: txs.length }); // V97B: save only the broadcast deposit hash.
     await waitForReceipt(hash);
     hashes.push(hash);
   }

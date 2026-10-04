@@ -59,6 +59,7 @@ import { generationRoutes } from "./api/generation.ts";
 import { keysRoutes } from "./api/keys.ts";
 import { teamsRoutes } from "./api/teams.ts";
 import { escrowRoutes } from "./api/escrow.ts";
+import { depositRoutes } from "./api/deposits.ts"; // V97B
 import { savedRoutesRoutes } from "./api/saved-routes.ts";
 import { presetsRoutes } from "./api/presets.ts";
 import { characterRoutes } from "./api/characters.ts";
@@ -208,6 +209,7 @@ export async function createApp(opts: AppOptions = {}) {
   keysRoutes(app, ctx);
   teamsRoutes(app, ctx);
   escrowRoutes(app, ctx);
+  depositRoutes(app, ctx); // V97B: account-owned deposit progress, both lanes.
   savedRoutesRoutes(app, ctx);
   presetsRoutes(app, ctx);
   characterRoutes(app, ctx);

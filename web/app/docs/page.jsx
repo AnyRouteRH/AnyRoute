@@ -1,4 +1,5 @@
 import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
+import FastCreditDocs from '../../components/FastCreditDocs'; // V97
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
 import FacilitatorDocs from "../../components/FacilitatorDocs"; // v6 F: hosted x402 facilitator.
 import ToolsMarketDocs from "../../components/ToolsMarketDocs"; // v6 T: paid x402 tools.
@@ -1202,6 +1203,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           </p>
           <Code label="Claim a royalty: request, then response">{`${claimRequest}\n\n${claimResponse}`}</Code>
           <h2 id="payments">One settlement unit. More ways to pay.</h2>
+          <FastCreditDocs/> {/* V97 */}
           <GetUsdgDocs/> {/* ON1 */}
           <div className="table-wrap">
             <table className="docs-table">
