@@ -18,7 +18,7 @@ export function publicRequest(journal, config) {
   return { client_request_id: r.client_request_id, payload: r.payload, payload_hash: r.payload_hash, public_inputs: Object.fromEntries(inputKeys.map(k => [k, p[k]])), proof: { backend: r.proof.backend, proof: r.proof.proof } };
 }
 export class ZkapiClient {
-  constructor({ manifest, store, prover, chain, inferenceBase, fetcher = fetch, lock = callback => navigator.locks.request('anyroute-zkapi-private-wallet', { mode: 'exclusive', ifAvailable: true }, acquired => { requireValue(acquired, 'Another tab is using your private wallet.'); return callback(); }) }) {
+  constructor({ manifest, store, prover, chain, inferenceBase, fetcher = fetch, lock = callback => navigator.locks.request('anyroute-zkapi-private-wallet', { mode: 'exclusive', ifAvailable: true }, acquired => { requireValue(acquired, 'Another tab is using your note wallet.'); return callback(); }) }) {
     this.manifest = manifest; this.config = walletConfig(manifest); this.store = store; this.prover = prover; this.chain = chain;
     this.inferenceBase = inferenceBase.replace(/\/$/, ''); this.fetcher = (...args) => fetcher(...args); this.lock = lock;
     this.lease = null; this.spend = 0;

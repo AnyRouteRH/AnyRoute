@@ -7,8 +7,8 @@ export function validateWallet(w) {
   if (w.state) {
     const s = w.state;
     requireValue(w.deployment && s.chain_id === CHAIN && s.protocol_version === 2 && BigInt(s.contract_address) === BigInt(w.deployment.contract_address), 'Wallet deployment mismatch.');
-    requireValue(field(s.secret_s) && BigInt(s.secret_s) !== 0n && field(s.balance_blinding) && field(s.current_anchor) && field(s.current_commitment_x) && field(s.current_commitment_y), 'Invalid private note state.');
-    requireValue(Number.isSafeInteger(s.note_id) && s.note_id >= 0 && s.note_id <= 0xffffffff && Number.isSafeInteger(s.expiry_ts) && s.expiry_ts > 0 && Number.isSafeInteger(s.deposit_amount) && s.deposit_amount > 0 && Number.isSafeInteger(s.current_balance) && s.current_balance >= 0 && s.current_balance <= s.deposit_amount && typeof s.is_genesis === 'boolean', 'Invalid private note balance or expiry.');
+    requireValue(field(s.secret_s) && BigInt(s.secret_s) !== 0n && field(s.balance_blinding) && field(s.current_anchor) && field(s.current_commitment_x) && field(s.current_commitment_y), 'Invalid saved note state.');
+    requireValue(Number.isSafeInteger(s.note_id) && s.note_id >= 0 && s.note_id <= 0xffffffff && Number.isSafeInteger(s.expiry_ts) && s.expiry_ts > 0 && Number.isSafeInteger(s.deposit_amount) && s.deposit_amount > 0 && Number.isSafeInteger(s.current_balance) && s.current_balance >= 0 && s.current_balance <= s.deposit_amount && typeof s.is_genesis === 'boolean', 'Invalid saved note balance or expiry.');
   }
   if (w.draft) requireValue(w.deployment && !w.state && field(w.draft.secret) && field(w.draft.registration_commitment) && Number.isSafeInteger(w.draft.amount) && w.draft.amount > 0, 'Invalid deposit recovery state.');
   if (w.journal) requireValue(w.state && w.journal.exists === true && field(w.journal.nullifier) && field(w.journal.user_rerandomization) && w.journal.prepared_request?.client_request_id === w.journal.client_request_id && w.journal.prepared_request?.public_inputs?.request_nullifier === w.journal.nullifier && Number.isSafeInteger(w.journal.prepared_request?.public_inputs?.solvency_bound), 'Invalid lease recovery state.');
