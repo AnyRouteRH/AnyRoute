@@ -1,23 +1,18 @@
 // The browser maps controls to existing router APIs; it never estimates or authorises spending.
+import { chatFromLimits, limitsFromRulebook, rulebookFromLimits, withLimits } from './spending-limits.js';
 export const CHAT_LIMITS_STORE = 'anyroute-harness-limits-v1';
 const path = value => encodeURIComponent(value);
 const abortError = () => new DOMException('Stopped.', 'AbortError');
 const failure = message => Object.assign(new Error(message), { type: 'chat_limits' });
 
+// U102: the chat panel uses the shared spending limits editor; the earlier flat form (session, day, approval, minutes) maps onto it.
+const sharedForm = form => form.caps ? form : { ...limitsFromRulebook(null), total: form.session, minutes: form.minutes, approval: form.approval ?? '',
+  caps: { ...limitsFromRulebook(null).caps, per_day_usd: form.day ?? '' } };
+
 export function chatLimitSpec(form) {
-  const amount = (value, label, max = 1_000_000) => {
-    const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0 || n > max) throw failure(`${label} must be greater than $0 and at most $${max}.`);
-    return n;
-  };
-  const budget = amount(form.session, 'Session cap', 1000);
-  const minutes = Number(form.minutes);
-  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw failure('Expiry must be between 1 and 1440 minutes.');
-  return {
-    session: { name: 'Chat in this browser', budget_usd: budget, ttl_minutes: minutes },
-    policy: { version: 1, models: {}, caps: form.day ? { per_day_usd: amount(form.day, '24-hour cap') } : {},
-      ...(form.approval ? { approval: { above_usd: amount(form.approval, 'Ask-first amount') } } : {}), on_breach: 'deny' },
-  };
+  const { session, policy, errors } = chatFromLimits(sharedForm(form));
+  if (errors.length) throw failure(errors.join(' '));
+  return { session, policy };
 }
 
 // Terminal decisions never return to pending. Only a server-approved, unexpired decision can resume.
@@ -87,6 +82,18 @@ export function createHarnessLimits({ request, stream, storage, pollMs = 5000 })
         catch { throw failure('The rulebook could not be saved or the chat key revoked. Chat is blocked. Use Remove limits to retry, or stop this session in /agents.'); }
         throw e;
       }
+    });
+  }
+  // U102: change the chat key's caps and ask-first amount in place. Other saved rules on that key stay as they are.
+  async function update(form) {
+    if (!state.session?.ready || !state.session.key_hash) throw failure('Create the chat key before changing its limits.');
+    return mutate(async () => {
+      const session = state.session, url = `/api/v1/agents/${path(session.key_hash)}/policy`;
+      const saved = (await owner(url)).data?.policy || session.policy;
+      const { policy, errors } = rulebookFromLimits(withLimits(saved, form));
+      if (errors.length) throw failure(errors.join(' '));
+      await owner(url, { method: 'PUT', body: policy });
+      persist({ ...session, policy });
     });
   }
   async function remove() {
@@ -181,6 +188,6 @@ export function createHarnessLimits({ request, stream, storage, pollMs = 5000 })
     } finally { running--; }
   }
   return { get: () => state, subscribe: fn => { listeners.add(fn); return () => listeners.delete(fn); },
-    connect, enable, remove, stop, resume, decide, streamChat,
+    connect, enable, update, remove, stop, resume, decide, streamChat,
     signOut: async () => { await remove(); parent = ''; parentHash = ''; } };
 }

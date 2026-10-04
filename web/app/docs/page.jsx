@@ -30,6 +30,7 @@ import { sampleRequest } from "../../components/Extensions";
 import AgentAutonomyDocs from "../../components/AgentAutonomyDocs";
 import AgentAlertDocs from "../../components/AgentAlertDocs";
 import AgentRulebookDocs from "../../components/AgentRulebookDocs";
+import SpendingLimitsDocs from "../../components/SpendingLimitsDocs";
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentCertificateDocs from "../../components/AgentCertificateDocs";
 import AgentApprovalDocs from "../../components/AgentApprovalDocs";
@@ -851,7 +852,7 @@ export default function Docs() {
           <KeyProvisioningDocs /> {/* ZK6 */}
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
-          <AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
+          <SpendingLimitsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <StatementDocs /> {/* V87 */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />

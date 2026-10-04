@@ -17,7 +17,7 @@ export const reasonText = reason => reason?.message || ({
   tool_not_allowed: 'A tool is outside the rulebook.', outside_window: 'The current UTC time is outside the allowed windows.',
   approval_required: 'This request needs approval.', approval_calls_per_hour: 'This hour reached the call count; further calls need approval.',
 }[reason?.code] || breakerReasonText(reason?.code) || reason?.code || 'No reason supplied.');
-export const decisionText = value => ({ allow: 'Allow', deny: 'Deny', approval_required: 'Approval required', policy_set: 'Rulebook saved', killed: 'Killed', resumed: 'Resumed' }[value] || value || 'Decision not recorded');
+export const decisionText = value => ({ allow: 'Allow', deny: 'Deny', approval_required: 'Approval required', policy_set: 'Rulebook saved', killed: 'Stopped', resumed: 'Resumed' }[value] || value || 'Decision not recorded');
 export const errorState = error => error?.status === 404 && error?.type === 'not_found'
   ? { off: true, message: FEATURE_OFF } : { off: false, message: error?.message || 'The request could not be completed.' };
 export const formatUsd = value => value != null && Number.isFinite(Number(value)) ? '$' + Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 12 }) : 'Not recorded';
@@ -100,13 +100,13 @@ export function buildPolicy(form) {
       const n = Number(value);
       if (!Number.isInteger(n) || n <= 0 || n > LIMITS.tokens) errors.push('Output tokens: enter a whole number from 1 to 10,000,000.');
       policy.caps[k] = n;
-    } else policy.caps[k] = money(value, k.replaceAll('_', ' '));
+    } else policy.caps[k] = money(value, 'Cap per ' + k.slice(4, -4)); // U102: the spending limits editor's words.
   }
-  if (String(form.approval).trim() !== '') policy.approval = { above_usd: money(form.approval, 'Approval threshold') };
+  if (String(form.approval).trim() !== '') policy.approval = { above_usd: money(form.approval, 'Ask me first above') };
   if (String(form.approvalCalls ?? '').trim() !== '') { // B: ask first above a count of model calls in the rolling hour.
     const n = Number(form.approvalCalls);
     if (!Number.isInteger(n) || n <= 0 || n > 1_000_000) errors.push('Calls per hour before asking: enter a whole number from 1 to 1,000,000.');
-    if (!policy.approval) errors.push('Calls per hour before asking also needs an approval amount in USD.');
+    if (!policy.approval) errors.push('Calls per hour before asking also needs an approval amount in “Ask me first above”.');
     else policy.approval.above_calls_per_hour = n;
   }
   if (form.restrictWindows) {
@@ -147,7 +147,7 @@ export function sampleIntent(form) {
 
 // The confirmation is the sole path to the kill mutation; cancellation sends nothing.
 export async function confirmKill(agent, reason, confirm, request) {
-  if (!confirm(`Kill ${agent.name || 'this agent'}? New requests through AnyRoute will be stopped until you resume it.`)) return false;
+  if (!confirm(`Stop ${agent.name || 'this key'}? New requests through AnyRoute will be refused until you resume it.`)) return false;
   await request(`/api/v1/agents/${encodeURIComponent(agent.key_hash)}/kill`, { method: 'POST', body: reason.trim() ? { reason: reason.trim() } : {} });
   return true;
 }

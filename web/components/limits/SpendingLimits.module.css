@@ -1,0 +1,22 @@
+.limits { display: grid; min-width: 0; }
+.group { border: 0; border-top: 1px solid var(--line); padding: 20px 0 0; margin: 0 0 20px; min-width: 0; }
+.group legend { font: 500 12px var(--mono); padding-right: 12px; color: var(--ink); }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.checks { display: flex; gap: 4px 16px; flex-wrap: wrap; }
+.state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 16px; font-size: 14px; overflow-wrap: anywhere; }
+.stop { min-height: 48px; justify-content: center; }
+.group :global(.field) > :global(.help-text) { margin-bottom: 0 !important; }
+.group a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.compact { font-size: 12.5px; }
+.compact .group { padding-top: 14px; margin-bottom: 14px; }
+.compact .group legend { font-size: 10.5px; color: var(--muted); }
+.compact .grid { gap: 0 10px; }
+.compact :global(.field) { margin-bottom: 12px; gap: 5px; }
+.compact :global(.field) input, .compact :global(.field) textarea { padding: 9px 10px; font: 400 13px var(--mono); background: var(--paper); }
+.compact :global(.field) textarea { min-height: 64px; }
+.compact :global(.help-text) { margin: 0 0 12px !important; font-size: 11px; }
+.compact :global(.check-label) { font-size: 12.5px; margin-bottom: 10px; }
+.compact .state { margin-bottom: 10px; }
+.compact .stop { min-height: 40px; }
+.group a:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+@media (max-width: 480px) { .limits:not(.compact) .grid { grid-template-columns: 1fr; } }

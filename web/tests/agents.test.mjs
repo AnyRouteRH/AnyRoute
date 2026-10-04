@@ -90,7 +90,7 @@ test('kill cancellation performs no request and confirmation posts only the reas
   const request = async (...args) => calls.push(args);
   const agent = {key_hash:'hash/1',name:'Research'};
   assert.equal(await confirmKill(agent,'because',() => false,request),false); assert.equal(calls.length,0);
-  assert.equal(await confirmKill(agent,'  budget review  ',message => { assert.match(message,/Kill Research/); assert.match(message,/until you resume/); return true; },request),true);
+  assert.equal(await confirmKill(agent,'  budget review  ',message => { assert.match(message,/Stop Research/); assert.match(message,/until you resume/); return true; },request),true);
   assert.deepEqual(calls,[['/api/v1/agents/hash%2F1/kill',{method:'POST',body:{reason:'budget review'}}]]);
   await confirmKill(agent,' ',() => true,request); assert.deepEqual(calls[1][1].body,{});
 });

@@ -36,6 +36,7 @@ import SpendWatch from "./features/SpendWatch";
 import Tracing from "./features/Tracing";
 import Holders from "./features/Holders";
 import PayAnyrDialog from "./PayAnyr";
+import KeyLimits from "./limits/KeyLimits"; // U102: spending limits for any key.
 
 // Account shell: preserve feature sections and their dashboard hashes.
 const tabId = sectionHash;
@@ -1385,7 +1386,7 @@ export default function Dashboard() {
               <div className="panel-heading">
                 <div>
                   <h2>A key for every workload.</h2>
-                  <p className="help-text">{live ? "Budgeted sub-keys share this workspace’s balance. Secrets are shown once." : "Local sample keys with enforced sample budgets."}</p>
+                  <p className="help-text">{live ? "Budgeted sub-keys share this workspace’s balance. Secrets are shown once. Any key can also have spending limits." : "Local sample keys with enforced sample budgets."}</p>
                 </div>
                 <Button onClick={() => setModal({ type: "key" })}>Create key</Button>
               </div>
@@ -1411,6 +1412,11 @@ export default function Dashboard() {
                         <button className="text-button" onClick={() => setModal({ type: "key", data: k })}>
                           Edit budget
                         </button>
+                        {live && k.active && (
+                          <button className="text-button" onClick={() => setModal({ type: "limits", data: k })}>
+                            Spending limits
+                          </button>
+                        )}
                         {k.active ? (
                           <button className="text-button" disabled={live && k.current} title={live && k.current ? "A key cannot revoke itself. Use Sign out, or revoke it from another management key." : undefined} onClick={() => setModal({ type: "revoke", data: k })}>
                             Revoke
@@ -1807,6 +1813,7 @@ export default function Dashboard() {
       </AccountShell>
       {modal?.type === "receipt" && <ReceiptDetails receipt={modal.data} apiKey={apiKey} status={status} onClose={() => setModal(null)} />}
       {modal?.type === "key" && <KeyDialog live={live} existing={modal.data} onClose={() => setModal(null)} onSave={saveKeyValues} />}
+      {modal?.type === "limits" && <KeyLimits apiKey={apiKey} keyHash={modal.data.id} name={modal.data.name} current={modal.data.current} onClose={() => setModal(null)} />}
       {modal?.type === "session" && <SessionDialog live={live} tokens={ws?.tokens || []} paywith={ws?.paywith || {}} existing={modal.data} onClose={() => setModal(null)} onSave={saveSession} />}
       {modal?.type === "provider" && (
         <Modal title={modal.data.name} onClose={() => setModal(null)}>

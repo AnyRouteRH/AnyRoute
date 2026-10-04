@@ -14,14 +14,11 @@
 .barLabel{font:11px/1.6 var(--mono);display:grid;gap:4px}
 .bars progress{margin:8px 0 0;display:block}
 .checks{display:flex;gap:16px;flex-wrap:wrap}
-.fieldset{border:0;border-top:1px solid var(--line);padding:20px 0 0;margin:24px 0}
-.fieldset legend{font:500 12px var(--mono);padding-right:12px}
 .window{padding:16px;border:1px solid var(--line);margin-bottom:16px}
 .events{list-style:none;padding:0;margin:0}
 .event{padding:20px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
 .event p{font-size:14px;margin:12px 0}
 .event ul,.errors{padding-left:20px;font-size:14px;line-height:1.6}
 .result{margin-top:24px;padding:16px;border:1px solid var(--line);background:var(--paper-2)}
-.kill{width:100%;justify-content:center;min-height:64px;font-size:18px}
 .json{overflow:auto;max-height:420px;padding:16px;background:var(--paper-2);font:12px/1.6 var(--mono)}
 @media(max-width:600px){.bars{grid-template-columns:1fr}.heading{align-items:flex-start}}
