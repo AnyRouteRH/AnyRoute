@@ -2,7 +2,7 @@ import PageFrame from "../../components/PageFrame";
 import ProofTime from "../../components/ProofTime";
 import StatusBoard from "../../components/StatusBoard";
 
-export const metadata = { title: "Anyroute status", description: "Availability, latency and error budgets for each privacy lane and API surface, incidents with Atom and RSS feeds, attestation advisories, and how long each attesting provider held a fresh attestation." };
+export const metadata = { title: "Status — Anyroute", description: "Availability, latency and error budgets for each privacy lane and API surface, incidents with Atom and RSS feeds, attestation advisories, and how long each attesting provider held a fresh attestation." };
 
 export default function StatusPage() {
   return (

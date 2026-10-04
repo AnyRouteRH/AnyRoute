@@ -92,7 +92,7 @@ test('the page is wired: the board and proof-time on /status, relative API paths
 
 test('the built page renders the status shell',{skip:!fs.existsSync(new URL('../out/status/index.html',import.meta.url))},()=>{
  const html=read('out/status/index.html');
- assert.match(html,/<title>Anyroute status<\/title>/);
+ assert.match(html,/<title>Status — Anyroute<\/title>/);
  assert.match(html,/measured in the open/);
  assert.match(html,/Proof-time is better/);
  assert.match(html,/href="\/status\/"/);

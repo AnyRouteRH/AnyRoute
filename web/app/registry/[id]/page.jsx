@@ -8,7 +8,7 @@ export function generateStaticParams() {
   return [{ id: "_" }];
 }
 
-export const metadata = { title: "Anyroute registry entry", description: "One endpoint’s measurement history as the router recorded it, and its embeddable attestation badge." };
+export const metadata = { title: "Registry entry — Anyroute", description: "One endpoint’s measurement history as the router recorded it, and its embeddable attestation badge." };
 
 export default function RegistryEntryPage() {
   return (

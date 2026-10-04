@@ -3,7 +3,7 @@ import { loadWhitepaper } from "../../lib/whitepaper";
 import s from "./whitepaper.module.css";
 
 export const metadata = {
-  title: "AnyRoute Whitepaper — Anyroute",
+  title: "Whitepaper — Anyroute",
   description: "The AnyRoute router, SEAL evidence, privacy paths, host network and agent controls: implementation, activation and honest limits.",
 };
 

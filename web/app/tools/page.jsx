@@ -1,7 +1,7 @@
 import PageFrame from "../../components/PageFrame";
 import ToolsCatalog from "../../components/ToolsCatalog";
 
-export const metadata = { title: "Anyroute paid tools", description: "x402 tools any Anyroute key can pay from its balance, each with a daily known-answer probe, and how a paid call is held, charged and receipted." };
+export const metadata = { title: "Paid tools — Anyroute", description: "x402 tools any Anyroute key can pay from its balance, each with a daily known-answer probe, and how a paid call is held, charged and receipted." };
 
 export default function ToolsPage() {
   return (
