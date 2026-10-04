@@ -27,7 +27,7 @@ uv pip install -e sdks/python
 ```python
 from anyroute import Anyroute
 
-client = Anyroute()  # reads ANYROUTE_API_KEY (and ANYROUTE_BASE_URL if set)
+client = Anyroute(base_url="https://anyroute.tech")  # reads ANYROUTE_API_KEY
 
 reply = client.chat.completions.create(
     model="meta-llama/llama-3.3-70b-instruct",
@@ -52,7 +52,7 @@ Constructor options:
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `api_key` | `$ANYROUTE_API_KEY` | Sent as `Authorization: Bearer ...` |
-| `base_url` | `$ANYROUTE_BASE_URL`, else `https://api-production-70da.up.railway.app` | A trailing `/api/v1` is fine |
+| `base_url` | `$ANYROUTE_BASE_URL`, else the built-in router URL | Set `base_url="https://anyroute.tech"`; a trailing `/api/v1` is fine |
 | `lane`, `disclosure` | none | Applied to every request (see Lanes) |
 | `timeout` | 120 seconds | Any `httpx` timeout value |
 | `http_client` | a new `httpx.Client` | Bring your own client (proxies, custom transports, tests) |

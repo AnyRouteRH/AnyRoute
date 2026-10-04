@@ -8,11 +8,11 @@
     "url": "https://github.com/AnyRouteRH/AnyRoute",
     "source": "github"
   },
-  "websiteUrl": "https://api-production-70da.up.railway.app/docs",
+  "websiteUrl": "https://anyroute.tech/docs",
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://api-production-70da.up.railway.app/mcp",
+      "url": "https://anyroute.tech/mcp",
       "headers": [
         {
           "name": "Authorization",

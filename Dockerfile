@@ -33,6 +33,8 @@ COPY spec /spec
 COPY WHITEPAPER.md /WHITEPAPER.md
 # The build writes the installable app's service worker from the exported shell.
 COPY web/scripts/build-pwa.mjs ./scripts/build-pwa.mjs
+# The build first checks public wording (changelog, whitepaper) with these build-time-only scripts.
+COPY web/scripts/check-public-wording.mjs web/scripts/whitepaper-wording.mjs ./scripts/
 RUN pnpm build
 
 FROM oven/bun:1.3.14@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS deps

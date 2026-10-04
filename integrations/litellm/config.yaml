@@ -7,7 +7,7 @@ model_list:
   - model_name: llama-3.3-70b
     litellm_params:
       model: openai/meta-llama/llama-3.3-70b-instruct
-      api_base: https://api-production-70da.up.railway.app/api/v1
+      api_base: https://anyroute.tech/api/v1
       api_key: os.environ/ANYROUTE_API_KEY
       input_cost_per_token: 1.055e-7
       output_cost_per_token: 3.376e-7
@@ -19,7 +19,7 @@ model_list:
   - model_name: hermes-4-405b
     litellm_params:
       model: openai/nousresearch/hermes-4-405b
-      api_base: https://api-production-70da.up.railway.app/api/v1
+      api_base: https://anyroute.tech/api/v1
       api_key: os.environ/ANYROUTE_API_KEY
       input_cost_per_token: 0.000001055
       output_cost_per_token: 0.000003165
@@ -31,7 +31,7 @@ model_list:
   - model_name: deepseek-v3.2
     litellm_params:
       model: openai/deepseek/deepseek-v3.2
-      api_base: https://api-production-70da.up.railway.app/api/v1
+      api_base: https://anyroute.tech/api/v1
       api_key: os.environ/ANYROUTE_API_KEY
       input_cost_per_token: 2.954e-7
       output_cost_per_token: 4.431e-7
@@ -43,7 +43,7 @@ model_list:
   - model_name: glm-5.3-attested
     litellm_params:
       model: openai/z-ai/glm-5.3
-      api_base: https://api-production-70da.up.railway.app/api/v1
+      api_base: https://anyroute.tech/api/v1
       api_key: os.environ/ANYROUTE_API_KEY
       extra_headers:
         X-Anyroute-Lane: attested
@@ -57,7 +57,7 @@ model_list:
   - model_name: qwen3-vl-30b
     litellm_params:
       model: openai/qwen/qwen3-vl-30b-a3b-instruct
-      api_base: https://api-production-70da.up.railway.app/api/v1
+      api_base: https://anyroute.tech/api/v1
       api_key: os.environ/ANYROUTE_API_KEY
       input_cost_per_token: 1.5825e-7
       output_cost_per_token: 6.33e-7
@@ -69,7 +69,7 @@ model_list:
   - model_name: qwen3-embedding-8b
     litellm_params:
       model: openai/qwen/qwen3-embedding-8b
-      api_base: https://api-production-70da.up.railway.app/api/v1
+      api_base: https://anyroute.tech/api/v1
       api_key: os.environ/ANYROUTE_API_KEY
       input_cost_per_token: 1e-8
       output_cost_per_token: 0

@@ -7,7 +7,7 @@ Hugging Face model cards have no field for third-party inference routers, so the
 The badge renders as `Run on | Anyroute` in Anyroute's ink and signal green:
 
 ```markdown
-[![Run on Anyroute](https://img.shields.io/badge/Run%20on-Anyroute-1fe15a?labelColor=0b0c0b)](https://api-production-70da.up.railway.app/models)
+[![Run on Anyroute](https://img.shields.io/badge/Run%20on-Anyroute-1fe15a?labelColor=0b0c0b)](https://anyroute.tech/models)
 ```
 
 ## For model authors

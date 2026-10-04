@@ -180,7 +180,7 @@ bun install
 bun run example        # http://localhost:5178
 ```
 
-With no API key the example talks to a demo router inside the page (streamed replies with a receipt and a privacy label), so it needs no network. Enter a router URL and key to use a real router.
+With no API key the example uses an offline sample router for the example page. It streams replies with sample receipts that are not real AnyRoute receipts, and needs no network. Enter a router URL and key to use a real router.
 
 ## Develop
 

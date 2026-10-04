@@ -1,9 +1,11 @@
+import { validateChangelogWording } from './check-public-wording.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { changelog, rssFeed, atomFeed, jsonFeed } from '../lib/changelog-feeds.js';
 
 export function auditChangelog(root) {
+  validateChangelogWording(changelog);
   const html = fs.readFileSync(path.join(root, 'changelog/index.html'), 'utf8');
   for (const entry of changelog) {
     assert.ok(html.includes(`id="${entry.id}"`), `Missing changelog permalink ${entry.id}`);

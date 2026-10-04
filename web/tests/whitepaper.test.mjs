@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { loadWhitepaper, resolveWhitepaperHref } from "../lib/whitepaper.js";
 import { listDocs, REPO_URL } from "../lib/seal-spec.js";
 import { parseBlocks, plainText } from "../lib/spec-markdown.js";
-import { WHITEPAPER_BANNED_WORDS, whitepaperText } from "../lib/whitepaper-wording.js";
+import { WHITEPAPER_BANNED_WORDS, whitepaperText } from "../scripts/whitepaper-wording.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const paper = loadWhitepaper(root);

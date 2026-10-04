@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { CHANGELOG_TAGS, COMMIT_URL, filterChangelog, groupChangelog, sortChangelog, validateChangelog } from '../lib/changelog.js';
 import { changelog, rssFeed, atomFeed, jsonFeed, escapeXml } from '../lib/changelog-feeds.js';
+import { validateChangelogWording } from '../scripts/check-public-wording.mjs';
 import { TASKS, menuTasks } from '../lib/site-map.js';
 
 const sample = () => ({ id: 'sample-change', date: '2026-09-30', title: 'Read receipts', summary: 'Inspect signed receipts.', tags: ['verify'], links: [{ label: 'Open page', href: '/verify/' }, { label: 'View commit', href: 'https://github.com/AnyRouteRH/AnyRoute/commit/' + 'a'.repeat(40) }] });
@@ -31,8 +32,9 @@ test('schema rejects invalid dates, ids, tags, copy and incomplete or unsafe lin
 });
 
 test('public copy excludes banned words and features not switched on', () => {
+  assert.equal(validateChangelogWording(changelog), changelog);
   for (const summary of ['demo', 'tested', 'mock', 'simulated', 'placeholder', 'local-build', 'earn', 'yield', 'APY', 'returns', 'passive income', 'decentralized', 'trustless', 'zero-knowledge', 'anonymous', 'host payouts', 'slashing', 'email alerts', 'SDK releases on npm']) {
-    assert.throws(() => validateChangelog([{ ...sample(), summary }]));
+    assert.throws(() => validateChangelogWording([{ ...sample(), summary }]));
   }
   const encrypted = changelog.find(entry => entry.id === 'encrypted-chat');
   assert.match(encrypted.summary, /on this path/);

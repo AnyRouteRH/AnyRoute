@@ -1,3 +1,4 @@
+import { auditShippedWordingLists } from './check-public-wording.mjs';
 import fs from 'node:fs';
 import {auditNetwork} from './audit-network.mjs';
 import {auditNetworkJoin} from './audit-network-join.mjs'; auditNetworkJoin(path.resolve(process.argv[2]||'out'));
@@ -66,4 +67,5 @@ let pdfNote='';
  const kib=n=>`${(n/1024).toFixed(0)} KiB`;
  pdfNote=` PDF reader ${version} on demand on /ask/ only (chunk ${kib(Math.max(...readers.map(f=>scripts.get(f).length)))}, worker ${kib(worker.length)}, own origin).`;
 }
+auditShippedWordingLists(root);
 console.log(`PASS: ${routes.length} routes; ${count} local asset/link references; no stray files.${pdfNote}`);

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 4280",
-    "build": "next build && node scripts/build-pwa.mjs out",
+    "build": "node scripts/check-public-wording.mjs && next build && node scripts/build-pwa.mjs out",
     "start": "node scripts/preview.mjs",
     "preview": "node scripts/preview.mjs",
     "test": "node --test tests/*.test.mjs"

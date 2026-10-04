@@ -14,8 +14,6 @@ export function validateChangelog(entries) {
     if (!Array.isArray(entry.tags) || !entry.tags.length || new Set(entry.tags).size !== entry.tags.length || entry.tags.some(tag => !CHANGELOG_TAGS.includes(tag))) fail('invalid tags');
     if (!Array.isArray(entry.links) || !entry.links.length || entry.links.some(link => typeof link.label !== 'string' || !link.label.trim() || typeof link.href !== 'string' || !(COMMIT_URL.test(link.href) || /^\/(?:[a-z0-9-]+\/)*(?:#[a-z0-9-]+)?$/.test(link.href)))) fail('invalid links');
     if (!entry.links.some(link => COMMIT_URL.test(link.href)) || !entry.links.some(link => link.href.startsWith('/'))) fail('needs a site link and full public commit URL');
-    const copy = [entry.title, entry.summary, ...entry.links.map(link => link.label)].join(' ');
-    if (/\b(?:demo|test|tested|mock|simulated|placeholder|earn|yield|APY|returns|passive income|decentralized|trustless|anonymous)\b|local[ -]build|zero[ -]knowledge|payout|slashing|email alert|sdk release|npm|pypi/i.test(copy)) fail('unavailable feature or banned wording');
   }
   return entries;
 }

@@ -23,7 +23,7 @@ export const character = {
 | Setting | Default |
 | --- | --- |
 | `ANYROUTE_API_KEY` | required |
-| `ANYROUTE_BASE_URL` | `https://api-production-70da.up.railway.app/api/v1` |
+| `ANYROUTE_BASE_URL` | `https://anyroute.tech/api/v1` |
 | `ANYROUTE_SMALL_MODEL` | `meta-llama/llama-3.3-70b-instruct` |
 | `ANYROUTE_LARGE_MODEL` | `deepseek/deepseek-v3.2` |
 | `ANYROUTE_EMBEDDING_MODEL` | `qwen/qwen3-embedding-8b` |

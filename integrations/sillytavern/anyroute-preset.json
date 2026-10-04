@@ -1,6 +1,6 @@
 {
   "chat_completion_source": "custom",
-  "custom_url": "https://api-production-70da.up.railway.app/api/v1",
+  "custom_url": "https://anyroute.tech/api/v1",
   "custom_model": "deepseek/deepseek-v3.2",
   "custom_include_body": "",
   "custom_exclude_body": "",

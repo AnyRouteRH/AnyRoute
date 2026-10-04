@@ -7,7 +7,7 @@ import { createOpenAICompatible, type MetadataExtractor, type OpenAICompatiblePr
 import { type FetchFunction, loadApiKey, loadOptionalSetting, withoutTrailingSlash } from "@ai-sdk/provider-utils";
 
 /** The public Anyroute router. Point `baseURL` elsewhere to use a self-hosted router. */
-export const ANYROUTE_BASE_URL = "https://api-production-70da.up.railway.app/api/v1";
+export const ANYROUTE_BASE_URL = "https://anyroute.tech/api/v1";
 
 /** Any id from GET /api/v1/models, e.g. "meta-llama/llama-3.3-70b-instruct" or "z-ai/glm-5.3". */
 export type AnyrouteModelId = string & {};

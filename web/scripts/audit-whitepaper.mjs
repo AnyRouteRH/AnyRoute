@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { loadWhitepaper } from "../lib/whitepaper.js";
-import { WHITEPAPER_BANNED_WORDS, whitepaperText } from "../lib/whitepaper-wording.js";
+import { WHITEPAPER_BANNED_WORDS, whitepaperText } from "../scripts/whitepaper-wording.mjs";
 
 export function auditWhitepaper(root) {
   const html = fs.readFileSync(path.join(root, "whitepaper/index.html"), "utf8");

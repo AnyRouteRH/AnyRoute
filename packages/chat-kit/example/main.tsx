@@ -1,16 +1,16 @@
-// The example app: one <AnyrouteChat> with a theme switch and an encrypted history. With no API key it talks to a
-// built-in demo router in this page (canned, streamed replies with a receipt), so it runs with no network at all.
+// The example app: one <AnyrouteChat> with a theme switch and an encrypted history. With no API key it talks to an
+// offline sample router for this example page. Its sample receipts are not real AnyRoute receipts. No network is needed.
 import { StrictMode, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnyrouteChat, createEncryptedHistory, type ColorScheme, type FetchLike, type ThemeName } from "../src";
 
-const DEMO_MODELS = [
-  { id: "demo/fast", name: "Demo fast", input_modalities: ["text"] },
-  { id: "demo/vision", name: "Demo vision", input_modalities: ["text", "image"] },
+const SAMPLE_MODELS = [
+  { id: "sample/fast", name: "Sample fast", input_modalities: ["text"] },
+  { id: "sample/vision", name: "Sample vision", input_modalities: ["text", "image"] },
 ];
 
 const REPLY = [
-  "Here is a **streamed** reply from the demo router, with a code block you can copy:",
+  "Here is a **streamed** reply from the offline sample router, with a code block you can copy:",
   "",
   "```ts",
   'import { AnyrouteChat } from "@anyroute/chat-kit";',
@@ -21,13 +21,13 @@ const REPLY = [
   "- Your history is encrypted in this browser.",
 ].join("\n");
 
-/** A router in the page: /api/v1/models, a streamed chat reply with a receipt, and a privacy label. */
-const demoFetch: FetchLike = async (input, init) => {
+/** An offline sample router: streamed replies with sample receipts, not real AnyRoute receipts. */
+const sampleFetch: FetchLike = async (input, init) => {
   const path = new URL(String(input), location.href).pathname;
   const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
-  if (path === "/api/v1/models") return json({ data: DEMO_MODELS });
+  if (path === "/api/v1/models") return json({ data: SAMPLE_MODELS });
   if (path.endsWith("/privacy"))
-    return json({ data: { receipt_id: "demo_receipt", lane: "attested", summary: ["This is the demo router: nothing left this page."], label: { stored: "Nothing", network: "Nobody: the demo runs in the page" } } });
+    return json({ data: { receipt_id: "sample_receipt", lane: "attested", summary: ["This offline sample router runs in the example page. Its sample receipts are not real AnyRoute receipts."], label: { stored: "Nothing", network: "Nobody: the sample router runs in the page" } } });
   const enc = new TextEncoder();
   const words = REPLY.split(/(?<=\s)/);
   const body = new ReadableStream<Uint8Array>({
@@ -36,10 +36,10 @@ const demoFetch: FetchLike = async (input, init) => {
       init?.signal?.addEventListener("abort", abort);
       for (const w of words) {
         if (init?.signal?.aborted) return;
-        ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ model: "demo/fast", choices: [{ delta: { content: w } }] })}\n\n`));
+        ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ model: "sample/fast", choices: [{ delta: { content: w } }] })}\n\n`));
         await new Promise((r) => setTimeout(r, 35));
       }
-      ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [], receipt: { id: "demo_receipt", v2: { claims: { lane: "attested" } } } })}\n\ndata: [DONE]\n\n`));
+      ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [], receipt: { id: "sample_receipt", v2: { claims: { lane: "attested" } } } })}\n\ndata: [DONE]\n\n`));
       ctrl.close();
     },
   });
@@ -75,18 +75,18 @@ function App() {
           Router URL <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://your-router" />
         </label>
         <label>
-          API key <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="empty: demo router" autoComplete="off" />
+          API key <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="empty: offline sample router" autoComplete="off" />
         </label>
       </form>
       <AnyrouteChat
-        key={live ? "live" : "demo"}
+        key={live ? "live" : "sample"}
         theme={theme}
         colorScheme={scheme}
-        title={live ? "Chat" : "Chat (demo router)"}
+        title={live ? "Chat" : "Chat (offline sample router)"}
         baseUrl={live ? baseUrl : ""}
         apiKey={live ? key : undefined}
-        fetch={live ? undefined : demoFetch}
-        model={live ? "@preset/default" : "demo/fast"}
+        fetch={live ? undefined : sampleFetch}
+        model={live ? "@preset/default" : "sample/fast"}
         showModelPicker
         pickerExtra={live ? [{ id: "@preset/default", name: "Your default preset" }] : []}
         systemPrompt="You are a helpful assistant."

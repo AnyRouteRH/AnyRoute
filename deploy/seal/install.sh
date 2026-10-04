@@ -15,7 +15,7 @@
 set -eu
 
 SEAL_INSTALLER_VERSION=0.1.0
-DEFAULT_ROUTER=https://api-production-70da.up.railway.app
+DEFAULT_ROUTER=https://anyroute.tech
 
 # Patterns shared with seal.schema.json (test/seal-install.test.ts checks they are identical).
 RE_HOST_ID='^0x[0-9a-f]{64}$'

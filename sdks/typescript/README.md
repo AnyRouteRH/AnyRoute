@@ -17,7 +17,7 @@ npm install /path/to/AnyRoute/sdks/typescript
 ```sh
 export ANYROUTE_API_KEY=sk-ar-v1-...
 # optional, defaults to the public router
-export ANYROUTE_BASE_URL=https://api-production-70da.up.railway.app
+export ANYROUTE_BASE_URL=https://anyroute.tech
 ```
 
 ## Chat

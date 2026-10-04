@@ -2,7 +2,7 @@
   "x402Version": 1,
   "items": [
     {
-      "resource": "https://api-production-70da.up.railway.app/api/v1/chat/completions",
+      "resource": "https://anyroute.tech/api/v1/chat/completions",
       "type": "http",
       "x402Version": 1,
       "accepts": [
@@ -10,7 +10,7 @@
           "scheme": "exact",
           "network": "robinhood-chain",
           "maxAmountRequired": "25000000",
-          "resource": "https://api-production-70da.up.railway.app/api/v1/chat/completions",
+          "resource": "https://anyroute.tech/api/v1/chat/completions",
           "description": "OpenAI-compatible chat completion on any of 350+ models, with a signed receipt. Priced per request; the 402 reply quotes the exact amount.",
           "mimeType": "application/json",
           "payTo": "<X402_PAY_TO>",
@@ -42,12 +42,12 @@
         "tags": ["attested", "tee", "uncensored-ok"],
         "category": "ai-inference",
         "priceHint": "Per request: the model's per-token price (GET /api/v1/models) times the request's prompt and max_tokens, plus a 1% per-call margin; at most 25 USDG.",
-        "docs": "https://api-production-70da.up.railway.app/docs",
-        "models": "https://api-production-70da.up.railway.app/api/v1/models"
+        "docs": "https://anyroute.tech/docs",
+        "models": "https://anyroute.tech/api/v1/models"
       }
     },
     {
-      "resource": "https://api-production-70da.up.railway.app/api/v1/completions",
+      "resource": "https://anyroute.tech/api/v1/completions",
       "type": "http",
       "x402Version": 1,
       "accepts": [
@@ -55,7 +55,7 @@
           "scheme": "exact",
           "network": "robinhood-chain",
           "maxAmountRequired": "25000000",
-          "resource": "https://api-production-70da.up.railway.app/api/v1/completions",
+          "resource": "https://anyroute.tech/api/v1/completions",
           "description": "OpenAI-compatible text completion on any Anyroute model, with a signed receipt. Priced per request; the 402 reply quotes the exact amount.",
           "mimeType": "application/json",
           "payTo": "<X402_PAY_TO>",
@@ -85,7 +85,7 @@
       }
     },
     {
-      "resource": "https://api-production-70da.up.railway.app/api/v1/embeddings",
+      "resource": "https://anyroute.tech/api/v1/embeddings",
       "type": "http",
       "x402Version": 1,
       "accepts": [
@@ -93,7 +93,7 @@
           "scheme": "exact",
           "network": "robinhood-chain",
           "maxAmountRequired": "25000000",
-          "resource": "https://api-production-70da.up.railway.app/api/v1/embeddings",
+          "resource": "https://anyroute.tech/api/v1/embeddings",
           "description": "OpenAI-compatible embeddings with a signed receipt; on the attested lane the vectors come back only from a verified enclave.",
           "mimeType": "application/json",
           "payTo": "<X402_PAY_TO>",
@@ -126,7 +126,7 @@
     "x402Version": 2,
     "items": [
       {
-        "resource": "https://api-production-70da.up.railway.app/api/v1/chat/completions",
+        "resource": "https://anyroute.tech/api/v1/chat/completions",
         "type": "http",
         "x402Version": 2,
         "accepts": [
@@ -284,12 +284,12 @@
           ],
           "category": "ai-inference",
           "priceHint": "Per request: the model's per-token price (GET /api/v1/models) times the request's prompt and max_tokens, plus a 1% per-call margin; at most 25 USDG.",
-          "docs": "https://api-production-70da.up.railway.app/docs",
-          "models": "https://api-production-70da.up.railway.app/api/v1/models"
+          "docs": "https://anyroute.tech/docs",
+          "models": "https://anyroute.tech/api/v1/models"
         }
       },
       {
-        "resource": "https://api-production-70da.up.railway.app/api/v1/completions",
+        "resource": "https://anyroute.tech/api/v1/completions",
         "type": "http",
         "x402Version": 2,
         "accepts": [
@@ -433,7 +433,7 @@
         }
       },
       {
-        "resource": "https://api-production-70da.up.railway.app/api/v1/embeddings",
+        "resource": "https://anyroute.tech/api/v1/embeddings",
         "type": "http",
         "x402Version": 2,
         "accepts": [

@@ -30,7 +30,7 @@ From the Python SDK, without the proxy:
 ```python
 import litellm
 litellm.completion(model="openai/meta-llama/llama-3.3-70b-instruct",
-                   api_base="https://api-production-70da.up.railway.app/api/v1",
+                   api_base="https://anyroute.tech/api/v1",
                    api_key=os.environ["ANYROUTE_API_KEY"],
                    messages=[{"role": "user", "content": "hi"}])
 ```

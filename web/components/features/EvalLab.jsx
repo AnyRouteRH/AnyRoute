@@ -537,7 +537,7 @@ export default function EvalLab({ live, apiKey, ws, catalog = [], refresh, notif
       <div className="panel-heading">
         <div>
           <h2>Compare models on your own cases.</h2>
-          <p className="help-text">One test set, two to four models or saved routes, side by side. Pass rates, latency, tokens, actual cost and a signed receipt for every output.</p>
+          <p className="help-text">One evaluation set, two to four models or saved routes, side by side. Pass rates, latency, tokens, actual cost and a signed receipt for every output.</p>
         </div>
         <span className={"badge" + (live ? " green" : "")}>{live ? "Live · each case is a billed call" : "Sample · editor only"}</span>
       </div>
@@ -556,7 +556,7 @@ export default function EvalLab({ live, apiKey, ws, catalog = [], refresh, notif
       <section className={styles.panel} aria-labelledby="eval-set-title">
         <header className={styles.panelHead}>
           <span className="eyebrow">01 · Eval set</span>
-          <h3 id="eval-set-title">Test cases</h3>
+          <h3 id="eval-set-title">Evaluation cases</h3>
           <span className={styles.count}>
             {cases.length} / {LIMITS.cases} cases
           </span>
@@ -1277,7 +1277,7 @@ function Results({ run, example = false, runs, running = false, onShow, onForget
           </div>
         )}
       </div>
-      {example && <div className="note">A static example of the results layout. No requests were sent: the outputs, latencies and costs below are placeholders, not measurements. Connect a live key to run your own eval.</div>}
+      {example && <div className="note">A static example of the results layout. No requests were sent: the outputs, latencies and costs below are sample values, not measurements. Connect a live key to run your own eval.</div>}
       {!example && runs.length > 1 && (
         <div className={styles.runPicker}>
           <Field label="Showing run" id="eval-run-select">

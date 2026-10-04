@@ -6,7 +6,7 @@ Anyroute works in [SillyTavern](https://sillytavern.app) today through the built
 
 1. Open **API Connections** (the plug icon).
 2. **API**: `Chat Completion`. **Chat Completion Source**: `Custom (OpenAI-compatible)`.
-3. **Custom Endpoint (Base URL)**: `https://api-production-70da.up.railway.app/api/v1`
+3. **Custom Endpoint (Base URL)**: `https://anyroute.tech/api/v1`
 4. **Custom API Key**: your Anyroute key (`sk-ar-v1-...`). SillyTavern keeps it in its secrets store, not in presets.
 5. **Available Models** loads the live catalogue from `/models`. Pick one, or type an id into **Enter a Model ID**.
 6. Click **Connect**, then save it as a **Connection Profile** so you can switch back in one click.
@@ -20,7 +20,7 @@ Model ids to start with:
 | `nousresearch/hermes-4-405b` | popular for roleplay |
 | `thedrummer/...`, `sao10k/...`, `undi95/...` | community finetunes; search the model list |
 
-The full list with prices: `https://api-production-70da.up.railway.app/models`.
+The full list with prices: `https://anyroute.tech/models`.
 
 ## Attested only
 

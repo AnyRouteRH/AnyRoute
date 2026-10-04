@@ -12,21 +12,21 @@ export function routeCall({state,modelId,prompt,privateRoute,payWith,keyId,force
  const model=models.find(m=>m.id===modelId);if(!model)throw Error('Choose a model from the sample catalog.');
  if(!['USDG','NVDA','TSLA'].includes(payWith))throw Error('Choose USDG, NVDA or TSLA from the sample payment menu.');
  if(!prompt?.trim())throw Error('Enter a prompt before routing a call.');
- if(prompt.length>4000)throw Error('Keep the demo prompt under 4,000 characters.');
+ if(prompt.length>4000)throw Error('Keep the sample prompt under 4,000 characters.');
  if(privateRoute&&!model.private)throw Error('No sample attested provider serves this model. Select Llama or Qwen, or use the standard route.');
  if(forceFailure)throw Error('The sample provider timed out. No balance or budget was spent. Retry or choose another model.');
- const key=state.keys.find(k=>k.id===keyId&&k.active);if(!key)throw Error('Choose an active demo key. You can create one in API keys.');
- const usage=calculateCall(model,prompt);if(key.spent+usage.cost>key.budget)throw Error('This demo key has reached its budget. Increase its cap or choose another key.');
+ const key=state.keys.find(k=>k.id===keyId&&k.active);if(!key)throw Error('Choose an active sample key. You can create one in API keys.');
+ const usage=calculateCall(model,prompt);if(key.spent+usage.cost>key.budget)throw Error('This sample key has reached its budget. Increase its cap or choose another key.');
  const provider=providers.find(p=>!privateRoute||p.private);
  const day=new Date(now).toISOString().slice(0,10);
  let session,units=0;
  if(payWith!=='USDG'){
    session=state.sessions.find(s=>s.token===payWith&&s.active);
-   if(!session)throw Error('Open an active '+payWith+' demo session in Payments before using this route.');
+   if(!session)throw Error('Open an active '+payWith+' sample session in Payments before using this route.');
    units=usage.cost/(payWith==='NVDA'?100:200);
    const spent=session.day===day?session.spent:0;
-   if(spent+units>session.cap)throw Error('The demo session daily cap would be exceeded. Increase its cap or pay with USDG.');
- }else if(state.balance<usage.cost)throw Error('Insufficient demo USDG. Add sample credits in Payments.');
+   if(spent+units>session.cap)throw Error('The sample session daily cap would be exceeded. Increase its cap or pay with USDG.');
+ }else if(state.balance<usage.cost)throw Error('Insufficient sample USDG. Add sample credits in Payments.');
  const receipt={id:'demo_'+now.toString(36)+'_'+Math.random().toString(36).slice(2,6),time:new Date(now).toISOString(),model:model.name,modelId:model.id,provider:provider.name,tokens:usage.input+usage.output,input:usage.input,output:usage.output,inference:usage.inference,royalty:usage.royalty,cost:usage.cost,latency:provider.latency,private:privateRoute,quant:provider.quant,paidWith:payWith,units,keyId:key.id,status:'Sample only',attestation:privateRoute?'fixture:tee-evidence-not-verified':null,signature:null,anchor:null};
  return {receipt,state:{...state,balance:payWith==='USDG'?state.balance-usage.cost:state.balance,keys:state.keys.map(k=>k.id===key.id?{...k,spent:k.spent+usage.cost}:k),sessions:state.sessions.map(s=>s.id===session?.id?{...s,day,spent:(s.day===day?s.spent:0)+units}:s),receipts:[receipt,...state.receipts].slice(0,500)}};
 }

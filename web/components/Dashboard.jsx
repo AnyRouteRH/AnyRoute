@@ -206,7 +206,7 @@ function KeyDialog({ existing, onSave, onClose, live }) {
   const [budget, setBudget] = useState(existing?.budget == null ? (existing ? "" : "10") : String(existing.budget));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const noun = live ? "key" : "demo key";
+  const noun = live ? "key" : "sample key";
   return (
     <Modal title={existing ? "Edit " + noun : "Create a " + noun} onClose={onClose}>
       <form
@@ -234,13 +234,13 @@ function KeyDialog({ existing, onSave, onClose, live }) {
         <Field label="Key name" id="key-name">
           <input id="key-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required placeholder="e.g. Research agent" autoFocus />
         </Field>
-        <Field label={live ? "Budget / USDG" : "Total demo budget / USDG"} id="key-budget">
+        <Field label={live ? "Budget / USDG" : "Total sample budget / USDG"} id="key-budget">
           <input id="key-budget" type="number" min="0.000001" max="100000" step="any" value={budget} onChange={(e) => setBudget(e.target.value)} required={!live} placeholder={live ? "No limit" : undefined} />
         </Field>
         <div className="note">
           {live
             ? "Sub-keys share this workspace’s USDG balance and stop at their own budget. The secret is shown once; the router stores only its hash."
-            : "Demo keys work only in this browser preview. They cannot authenticate with an API."}
+            : "Sample keys work only in this browser preview. They cannot authenticate with an API."}
         </div>
         <Button type="submit" disabled={busy}>
           {busy ? "Saving…" : existing ? "Save changes" : "Create " + noun}
@@ -394,7 +394,7 @@ function DepositDialog({ onClose, apiKey, credits, status, onDone }) {
       <p className="help-text">No wallet here? Approve USDG to the Credits contract and call deposit(keyHash, amount) from any wallet.</p>
       {status?.dev_faucet && (
         <>
-          <div className="note">Local test chain: add mock USDG to this key without a wallet. It has no value and exists only on this machine’s chain.</div>
+          <div className="note">Development chain: add sample USDG to this key without a wallet. It has no value and exists only on this machine’s chain.</div>
           <div className="button-row modal-actions">
             <Button
               secondary
@@ -1022,7 +1022,7 @@ export default function Dashboard() {
         update((s) => ({ ...s, keys: [...s.keys, { ...values, id, token: "demo_anyr_" + id.replaceAll("-", "").slice(0, 20), spent: 0, active: true }] }));
         setKeyId(id);
       }
-      setNotice(modal.data ? "Demo key updated." : "Demo key created. It is not a production credential.");
+      setNotice(modal.data ? "Sample key updated." : "Sample key created. It is not a production credential.");
       setModal(null);
       return;
     }
@@ -1139,7 +1139,7 @@ export default function Dashboard() {
         setNotice("Key revoked. It stops working immediately.");
       } else {
         update((s) => ({ ...s, keys: s.keys.map((k) => (k.id === modal.data.id ? { ...k, active: false } : k)) }));
-        setNotice("Demo key revoked.");
+        setNotice("Sample key revoked.");
       }
     } else if (live) {
       const wallet = await connect();
@@ -1253,7 +1253,7 @@ export default function Dashboard() {
                     </select>
                   </Field>
                   <div className="two-fields">
-                    <Field label={live ? "Key" : "Demo key"} id="play-key">
+                    <Field label={live ? "Key" : "Sample key"} id="play-key">
                       <select id="play-key" value={keyId} onChange={(e) => setKeyId(e.target.value)} disabled={busy}>
                         <option value="">Select key</option>
                         {view.keys
@@ -1279,11 +1279,11 @@ export default function Dashboard() {
                   <Field label={live ? "Prompt" : "Sample prompt"} id="play-prompt">
                     <textarea id="play-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={4000} disabled={busy} />
                   </Field>
-                  <p className="help-text">{live ? "Streams a real completion (up to 512 tokens). Prompts and responses are never stored." : "The demo returns a fixed sample response. Prompt text is not saved."}</p>
+                  <p className="help-text">{live ? "Streams a real completion (up to 512 tokens). Prompts and responses are never stored." : "The preview returns a fixed sample response. Prompt text is not saved."}</p>
                   <details className="failure-option">
-                    <summary>{live ? "Routing options" : "Test a failure state"}</summary>
+                    <summary>{live ? "Routing options" : "Preview a failure state"}</summary>
                     <label className="check-label">
-                      <input type="checkbox" checked={forceFailure} onChange={(e) => setForceFailure(e.target.checked)} disabled={busy} /> {live ? "Disallow fallbacks (allow_fallbacks: false)" : "Simulate provider timeout"}
+                      <input type="checkbox" checked={forceFailure} onChange={(e) => setForceFailure(e.target.checked)} disabled={busy} /> {live ? "Disallow fallbacks (allow_fallbacks: false)" : "Preview a provider timeout"}
                     </label>
                   </details>
                   {live && errorKind === "insufficient_credits" && <AddFunds key={keyId} apiKey={view.keys.find(k => k.id === keyId)?.secret || apiKey} balance={ws?.credits?.available} force onBalance={() => refresh()} onResume={() => run({ preventDefault() {} })} disabled={busy}/>} {/* ON1 */}
@@ -1375,7 +1375,7 @@ export default function Dashboard() {
               <div className="panel-heading">
                 <div>
                   <h2>A key for every workload.</h2>
-                  <p className="help-text">{live ? "Budgeted sub-keys share this workspace’s balance. Secrets are shown once." : "Local demo keys with enforced sample budgets."}</p>
+                  <p className="help-text">{live ? "Budgeted sub-keys share this workspace’s balance. Secrets are shown once." : "Local sample keys with enforced sample budgets."}</p>
                 </div>
                 <Button onClick={() => setModal({ type: "key" })}>Create key</Button>
               </div>
@@ -1397,7 +1397,7 @@ export default function Dashboard() {
                       </div>
                       <progress max={k.budget ?? 1} value={k.budget == null ? 0 : Math.min(k.spent, k.budget)} aria-label={"Budget used by " + k.name} />
                       <div className="button-row">
-                        <CopyButton text={live ? k.chainKeyHash : k.token} label={live ? "Copy deposit hash" : "Copy demo key"} />
+                        <CopyButton text={live ? k.chainKeyHash : k.token} label={live ? "Copy deposit hash" : "Copy sample key"} />
                         <button className="text-button" onClick={() => setModal({ type: "key", data: k })}>
                           Edit budget
                         </button>
@@ -1411,7 +1411,7 @@ export default function Dashboard() {
                             onClick={async () => {
                               if (!live) {
                                 update((s) => ({ ...s, keys: s.keys.map((x) => (x.id === k.id ? { ...x, active: true } : x)) }));
-                                setNotice("Demo key restored.");
+                                setNotice("Sample key restored.");
                                 return;
                               }
                               try {
@@ -1423,7 +1423,7 @@ export default function Dashboard() {
                               }
                             }}
                           >
-                            {live ? "Restore key" : "Restore demo key"}
+                            {live ? "Restore key" : "Restore sample key"}
                           </button>
                         )}
                       </div>
@@ -1434,7 +1434,7 @@ export default function Dashboard() {
               ) : (
                 <div className="empty">
                   <h3>No keys yet.</h3>
-                  <p>{live ? "Create a key to start routing." : "Create a demo key to start routing."}</p>
+                  <p>{live ? "Create a key to start routing." : "Create a sample key to start routing."}</p>
                 </div>
               )}
               <Tracing live={live && signedIn} apiKey={apiKey} ws={ws} notify={setNotice} fail={setError} />
@@ -1545,7 +1545,7 @@ export default function Dashboard() {
               </div>
               <div className="payment-balance">
                 <div>
-                  <span className="eyebrow">{live ? "AVAILABLE USDG" : "AVAILABLE DEMO USDG"}</span>
+                  <span className="eyebrow">{live ? "AVAILABLE USDG" : "AVAILABLE SAMPLE USDG"}</span>
                   <strong>{money(view.balance, 4)}</strong>
                   <p>{live
                       ? `Held for calls in progress: ${money(ws?.credits?.held ?? 0, 6)} · Deposited in total: ${money(ws?.credits?.total_credits ?? 0, 2)}.${ws?.credits?.pending_withdrawal ? ` Withdrawal of ${money(fromRaw(ws.credits.pending_withdrawal.amount_usdg_units, 6), 2)} pending finalization.` : " Withdraw any time."}`
@@ -1636,7 +1636,7 @@ export default function Dashboard() {
               <div className="note">
                 {live
                   ? `Fair value comes from the token’s Chainlink feed on ${chainOf(status).name} (it already includes the token’s multiplier). Swaps are exact-output, slippage-bounded, never exceed your daily cap and happen only with your wallet’s signature: a bounded allowance or each charge. Pausing keeps the session open but stops using it by default.`
-                  : "Conversion fixtures: NVDA = 100 USDG; TSLA = 200 USDG. These are fictional demo values, not market quotes. No wallet authorization, swap, transfer or settlement occurs."}
+                  : "Conversion fixtures: NVDA = 100 USDG; TSLA = 200 USDG. These are sample values, not market quotes. No wallet authorization, swap, transfer or settlement occurs."}
               </div>
               <div className="panel-heading">
                 <h2>Payment statement</h2>
@@ -1753,7 +1753,7 @@ export default function Dashboard() {
                   <p>
                     {live
                       ? `Signed in with ${ws?.me?.label ?? "—"}. The key is kept in this browser (this tab session only). Read What we keep for router storage and retention. Open Export your data to download accessible account records with a manifest; key secrets are excluded.`
-                      : "Changes persist only in this browser. No account has been created. The workspace export contains demo keys, receipt metadata, sessions and sample balances; it contains no prompt text."}
+                      : "Changes persist only in this browser. No account has been created. The workspace export contains sample keys, receipt metadata, sessions and sample balances; it contains no prompt text."}
                   </p>
                   <div className="button-row">
                     <Button
@@ -1859,7 +1859,7 @@ export default function Dashboard() {
           />
         ) : (
           <Modal title="Add sample credits" onClose={() => setModal(null)}>
-            <p>Add 25 USDG to this browser’s demo balance. This is a free local simulation, with no deposit, purchase or transfer.</p>
+            <p>Add 25 USDG to this browser’s sample balance. These are free sample credits, with no deposit, purchase or transfer.</p>
             <div className="button-row modal-actions">
               <Button
                 onClick={() => {
@@ -1922,18 +1922,18 @@ export default function Dashboard() {
       {modal?.type === "withdraw" && <WithdrawDialog apiKey={apiKey} credits={ws?.credits} status={status} onClose={() => setModal(null)} onDone={() => refresh()} />}
       {["reset", "revoke", "close-session"].includes(modal?.type) && (
         <Modal
-          title={modal.type === "reset" ? (live ? "Sign out of this browser?" : "Reset the sample workspace?") : modal.type === "revoke" ? (live ? "Revoke this key?" : "Revoke this demo key?") : live ? "Close this session?" : "Close this sample session?"}
+          title={modal.type === "reset" ? (live ? "Sign out of this browser?" : "Reset the sample workspace?") : modal.type === "revoke" ? (live ? "Revoke this key?" : "Revoke this sample key?") : live ? "Close this session?" : "Close this sample session?"}
           onClose={() => setModal(null)}
         >
           <p>
             {modal.type === "reset"
               ? live
                 ? "This forgets the key in this browser. Your key, balance and receipts stay with the router; connect the key again any time."
-                : "This removes the current browser’s sample records and restores 25 demo USDG and the starter key. Export the workspace first if you want to keep a copy."
+                : "This removes the current browser’s sample records and restores 25 sample USDG and the starter key. Export the workspace first if you want to keep a copy."
               : modal.type === "revoke"
                 ? live
                   ? "This key stops working immediately. Existing receipts remain, and you can restore it later from a management key."
-                  : "This key will stop working in the local playground. Existing receipts remain. You can restore the demo key later."
+                  : "This key will stop working in the local playground. Existing receipts remain. You can restore the sample key later."
                 : live
                   ? "Your wallet sends closeSession to the PayWithStock contract. It takes effect immediately and revokes every charge authorization; unpaid debt stays on this key."
                   : "This sample token session will be removed. Existing generation receipts remain."}
@@ -1949,7 +1949,7 @@ export default function Dashboard() {
                 }
               }}
             >
-              {modal.type === "reset" ? (live ? "Sign out" : "Reset workspace") : modal.type === "revoke" ? (live ? "Revoke key" : "Revoke demo key") : "Close session"}
+              {modal.type === "reset" ? (live ? "Sign out" : "Reset workspace") : modal.type === "revoke" ? (live ? "Revoke key" : "Revoke sample key") : "Close session"}
             </Button>
             <Button secondary onClick={() => setModal(null)}>
               Cancel

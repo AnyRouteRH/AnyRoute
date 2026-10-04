@@ -54,7 +54,7 @@
         "type": "string",
         "description": "Router base URL including /api/v1.",
         "required": false,
-        "default": "https://api-production-70da.up.railway.app/api/v1"
+        "default": "https://anyroute.tech/api/v1"
       },
       "ANYROUTE_SMALL_MODEL": {
         "type": "string",

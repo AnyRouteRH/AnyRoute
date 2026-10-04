@@ -33,7 +33,7 @@ import anyroute "github.com/AnyRouteRH/AnyRoute/sdks/go"
 ## Quick start
 
 ```go
-c := anyroute.NewClient() // reads ANYROUTE_API_KEY and ANYROUTE_BASE_URL
+c := anyroute.NewClient(anyroute.WithBaseURL("https://anyroute.tech")) // reads ANYROUTE_API_KEY
 
 res, err := c.Chat(ctx, anyroute.ChatRequest{
 	Model:    "meta-llama/llama-3.3-70b-instruct",
@@ -51,7 +51,7 @@ Client options:
 | Option | Default |
 | --- | --- |
 | `WithAPIKey(key)` | `ANYROUTE_API_KEY` |
-| `WithBaseURL(url)` | `ANYROUTE_BASE_URL`, then `https://api-production-70da.up.railway.app` |
+| `WithBaseURL(url)` | `ANYROUTE_BASE_URL`, then the built-in router URL; set `WithBaseURL("https://anyroute.tech")` |
 | `WithHTTPClient(*http.Client)` | `http.DefaultClient` |
 | `WithLane(lane)` | none |
 | `WithDisclosure(ceiling)` | none |

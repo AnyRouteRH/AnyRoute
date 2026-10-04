@@ -19,6 +19,8 @@ web/*
 !web/pnpm-lock.yaml
 !web/pnpm-workspace.yaml
 !web/scripts/build-pwa.mjs
+!web/scripts/check-public-wording.mjs
+!web/scripts/whitepaper-wording.mjs
 !web/next.config.mjs
 
 .audit-grade
