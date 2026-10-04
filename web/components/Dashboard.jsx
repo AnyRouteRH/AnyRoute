@@ -112,7 +112,7 @@ function ReceiptDetails({ receipt, onClose, apiKey, status }) {
     ...(receipt.margin ? [["Per-call margin", money(receipt.margin, 8) + " USDG"]] : []),
     ["Total", money(receipt.cost, 8) + " USDG"],
     ["Paid with", paidWithText(receipt, full)],
-    ["Route", live ? (receipt.private ? "Private · " + (full?.attestation_hash ? "attestation " + full.attestation_hash.slice(0, 18) + "…" : "attested provider") : "Standard") : receipt.private ? "Private fixture" : "Standard fixture"],
+    ["Route", live ? (receipt.private ? "Private · " + (full?.attestation_hash ? "attestation " + full.attestation_hash.slice(0, 18) + "…" : "attested provider") : "Standard") : receipt.private ? "Sample private route" : "Sample standard route"],
     ["Signature", live ? (full ? "Ed25519 · key " + full.receipt_key_id : "Loading…") : "Not connected"],
     ["Anchor", live ? (full ? (full.anchor ? `Batch #${full.anchor.index} · ${full.anchor.status}` : `Pending (anchored ${anchorEvery})`) : "Loading…") : "Not connected"],
   ];
@@ -1648,7 +1648,7 @@ export default function Dashboard() {
               <div className="note">
                 {live
                   ? `Fair value comes from the token’s Chainlink feed on ${chainOf(status).name} (it already includes the token’s multiplier). Swaps are exact-output, slippage-bounded, never exceed your daily cap and happen only with your wallet’s signature: a bounded allowance or each charge. Pausing keeps the session open but stops using it by default.`
-                  : "Conversion fixtures: NVDA = 100 USDG; TSLA = 200 USDG. These are sample values, not market quotes. No wallet authorization, swap, transfer or settlement occurs."}
+                  : "Sample conversions: NVDA = 100 USDG; TSLA = 200 USDG. These are sample values, not market quotes. No wallet authorization, swap, transfer or settlement occurs."}
               </div>
               <div className="panel-heading">
                 <h2>Payment statement</h2>
@@ -1700,16 +1700,16 @@ export default function Dashboard() {
               <p className="catalog-note">
                 {live
                   ? "Uptime is the 30-day share of successful calls and probes; latency is time to first token (p50). Bonds are read from the ProviderBond contract; attestation is re-verified every 10 minutes."
-                  : "Names, health, bonds and attestation states are illustrative fixtures. No provider partnership is implied."}
+                  : "Names, health, bonds and attestation states are sample values. No provider partnership is implied."}
               </p>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
                     <tr>
                       <th>Provider</th>
-                      <th className="num">{live ? "Uptime (30d)" : "Uptime fixture"}</th>
-                      <th className="num">{live ? "Latency (p50)" : "Latency fixture"}</th>
-                      <th className="num">{live ? "Bond" : "Bond fixture"}</th>
+                      <th className="num">{live ? "Uptime (30d)" : "Sample uptime"}</th>
+                      <th className="num">{live ? "Latency (p50)" : "Sample latency"}</th>
+                      <th className="num">{live ? "Bond" : "Sample bond"}</th>
                       <th>Private route</th>
                       <th>
                         <span className="sr-only">Details</span>
@@ -1723,17 +1723,17 @@ export default function Dashboard() {
                           <strong>{p.name}</strong>
                           <small>{p.quant}</small>
                         </td>
-                        <td className="num" data-label={live ? "Uptime (30d)" : "Uptime fixture"}>
+                        <td className="num" data-label={live ? "Uptime (30d)" : "Sample uptime"}>
                           {p.uptime == null ? "No data yet" : p.uptime + "%"}
                         </td>
-                        <td className="num" data-label={live ? "Latency (p50)" : "Latency fixture"}>
+                        <td className="num" data-label={live ? "Latency (p50)" : "Sample latency"}>
                           {p.latency == null ? "No data yet" : Math.round(p.latency) + " ms"}
                         </td>
-                        <td className="num" data-label={live ? "Bond" : "Bond fixture"}>
+                        <td className="num" data-label={live ? "Bond" : "Sample bond"}>
                           {p.bond ? p.bond.toLocaleString() + " USDG" : live ? "Operator-onboarded" : "0 USDG"}
                         </td>
                         <td data-label="Private route">
-                          <span className={"route-tag" + (p.private ? " private" : " off")}>{p.private ? (live ? "Attested TEE" : "TEE fixture") : "Unavailable"}</span>
+                          <span className={"route-tag" + (p.private ? " private" : " off")}>{p.private ? (live ? "Attested TEE" : "Sample TEE") : "Unavailable"}</span>
                         </td>
                         <td className="cell-action">
                           <button className="text-button" onClick={() => setModal({ type: "provider", data: p })}>
@@ -1821,11 +1821,11 @@ export default function Dashboard() {
               <dd>{modal.data.quant}</dd>
             </div>
             <div>
-              <dt>{live ? "Attestation" : "Attestation fixture"}</dt>
+              <dt>{live ? "Attestation" : "Sample attestation"}</dt>
               <dd>{live ? (modal.data.private ? `${modal.data.tee?.toUpperCase() || "TEE"} · ${modal.data.attestation?.slice(0, 22)}… · ${new Date(modal.data.attestedAt).toLocaleString("en-GB")}` : "Not attested") : modal.data.private ? "TEE example — not verified" : "Unavailable"}</dd>
             </div>
             <div>
-              <dt>{live ? "Data policy" : "Data policy fixture"}</dt>
+              <dt>{live ? "Data policy" : "Sample data policy"}</dt>
               <dd>
                 {live
                   ? `${modal.data.policy.training ? "May train on data" : "No training"} · ${modal.data.policy.retains_prompts ? "Retains prompts" : "Does not retain prompts"}${modal.data.policy.zdr ? " · Zero data retention" : ""}`
@@ -1833,7 +1833,7 @@ export default function Dashboard() {
               </dd>
             </div>
             <div>
-              <dt>{live ? "Bond" : "Bond fixture"}</dt>
+              <dt>{live ? "Bond" : "Sample bond"}</dt>
               <dd>{modal.data.bond} USDG</dd>
             </div>
             {live && (
