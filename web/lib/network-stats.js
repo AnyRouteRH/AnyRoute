@@ -32,5 +32,5 @@ export function networkStatCards(data) {
   return [scalar("Network hosts", data?.hosts.total), scalar("Attested hosts", data?.attested_hosts),
     scalar("Models on admitted hosts", data?.capacity.model_count), scalar("Waitlist interest", data?.interest.total),
     tokens("Public-lane tokens · 7 days", data?.tokens.public_lane.days_7), tokens("Public-lane tokens · 30 days", data?.tokens.public_lane.days_30),
-    bond("Total indexed bonds", "total_units"), bond("Active indexed bonds", "active_units")];
+    ...(data?.bonds == null ? [] : [bond("Total indexed bonds", "total_units"), bond("Active indexed bonds", "active_units")])];
 }

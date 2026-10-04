@@ -9,7 +9,7 @@ const LOG=[
 ];
 const STAGES=[['Quote','done'],['Policy','done'],['Screening','done'],['Probation','now']];
 
-/** Network admission steps and current bond limits. */
+/** Network admission steps; hosts post no deposit. */
 export default function Accountability(){return <section className="section dark" id="accountability"><div className="container split">
   <div className="split-copy">
     <div data-reveal><span className="eyebrow tick">Accountability / AnyRoute Network</span><h2 className="h2">A public record for every host.</h2><p className="lede">The AnyRoute Network is open for early hosts running the approved build. Admission checks the hardware and policy before a host serves requests.</p></div>
@@ -20,8 +20,8 @@ export default function Accountability(){return <section className="section dark
     <div className="console-head"><span><b>Host admission</b> · process</span><span>Intel TDX<span className="console-extra"> · approved build</span></span></div>
     <div className="console-body">{LOG.map(([t,tone,tag,msg,detail],i)=><div className="log" key={i} style={{'--i':i}}><span>{t}</span><span><em className={tone}>{tag}</em>{msg}</span><b>{detail}</b></div>)}</div>
     <div className="bond">
-      <div className="bond-row"><span>Minimum HostBond</span><b><span data-count="5000">5,000</span> USDG</b></div>
-      <div className="bond-row"><span>Payouts / slashing</span><b className="warn">Not switched on yet</b></div>
+      <div className="bond-row"><span>Deposit required</span><b>None</b></div>
+      <div className="bond-row"><span>Payouts</span><b className="warn">Not switched on yet</b></div>
       <div className="meter" style={{'--v':.75}} aria-hidden="true"><i/></div>
       <div className="timeline" role="list" aria-label="Admission process">{STAGES.map(([s,state],i)=><div role="listitem" key={s} className={state} aria-current={state==='now'?'step':undefined}>0{i+1}<b>{s}</b></div>)}</div>
     </div>

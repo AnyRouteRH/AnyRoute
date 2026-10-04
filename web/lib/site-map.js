@@ -69,11 +69,10 @@ export const TASKS = [
   task('agreements', 'agents', 'Make an agreement between agents', 'Select an agent, then Agreements to use USDG milestone escrow.', '/agents/', 'agreement, milestone, escrow, jury'),
   task('sealed', 'agents', 'Host a sealed agent', 'Read the hosting recipe; no sealed agent is registered on this site yet.', '/docs/#sealed-agents', 'sealed agent, hosting, sidecar, tdx'),
 
-  task('network', 'network', 'See live network stats', 'Inspect host counts, available models, bonds and policy version.', '/network/', 'stats, network, capacity', true),
+  task('network', 'network', 'See live network stats', 'Inspect host counts, available models and policy version.', '/network/', 'stats, network, capacity', true),
   task('join', 'network', 'Host hardware on the network', 'Join with the approved early-host build in a supported confidential VM.', '/network/#join', 'host, gpu, server, hardware, join', true),
   task('readiness', 'network', 'Check your hardware', 'Read and download the capability checker before joining.', '/network/#readiness', 'hardware, checker, tdx, sev, gpu'),
   task('hosts', 'network', 'Inspect host records', 'Inspect hardware checks, recorded builds and work roots for each host.', '/hosts/', 'hosts, records, attestation', true),
-  task('bonds', 'network', 'Understand host bonds', 'Read the USDG bond requirements and current limits.', '/network/#bonds', 'bond, usdg, stake'),
   task('policy', 'network', 'Read the host policy', 'Read the signed admission policy and host requirements.', '/docs/#network-host-policy', 'policy, admission, sanctions'),
   task('interest', 'network', 'Register network interest', 'Tell the network what hardware or capacity you would bring.', '/network/#waitlist', 'waitlist, interest, capacity'),
 

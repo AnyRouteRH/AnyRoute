@@ -1699,8 +1699,8 @@ export default function Dashboard() {
               </div>
               <p className="catalog-note">
                 {live
-                  ? "Uptime is the 30-day share of successful calls and probes; latency is time to first token (p50). Bonds are read from the ProviderBond contract; attestation is re-verified every 10 minutes."
-                  : "Names, health, bonds and attestation states are sample values. No provider partnership is implied."}
+                  ? "Uptime is the 30-day share of successful calls and probes; latency is time to first token (p50). Attestation is re-verified every 10 minutes."
+                  : "Names, health and attestation states are sample values. No provider partnership is implied."}
               </p>
               <div className="table-wrap">
                 <table className="data-table">
@@ -1709,7 +1709,6 @@ export default function Dashboard() {
                       <th>Provider</th>
                       <th className="num">{live ? "Uptime (30d)" : "Sample uptime"}</th>
                       <th className="num">{live ? "Latency (p50)" : "Sample latency"}</th>
-                      <th className="num">{live ? "Bond" : "Sample bond"}</th>
                       <th>Private route</th>
                       <th>
                         <span className="sr-only">Details</span>
@@ -1729,9 +1728,6 @@ export default function Dashboard() {
                         <td className="num" data-label={live ? "Latency (p50)" : "Sample latency"}>
                           {p.latency == null ? "No data yet" : Math.round(p.latency) + " ms"}
                         </td>
-                        <td className="num" data-label={live ? "Bond" : "Sample bond"}>
-                          {p.bond ? p.bond.toLocaleString() + " USDG" : live ? "Operator-onboarded" : "0 USDG"}
-                        </td>
                         <td data-label="Private route">
                           <span className={"route-tag" + (p.private ? " private" : " off")}>{p.private ? (live ? "Attested TEE" : "Sample TEE") : "Unavailable"}</span>
                         </td>
@@ -1748,8 +1744,8 @@ export default function Dashboard() {
               {live && !providerRows.length && <div className="empty">{liveProviders ? "No live providers yet." : "Loading providers…"}</div>}
               <div className="note">
                 {live
-                  ? "Self-serve providers apply with the provider spec, post a 10,000 USDG bond and pass a 7-day canary shadow period before they receive live traffic."
-                  : "Production onboarding is planned to include schema validation, a USDG bond and a canary shadow period before a provider is routed live."}
+                  ? "Providers are onboarded by the operator. No bond or deposit is required."
+                  : "Providers are onboarded by the operator. No bond or deposit is required."}
               </div>
             </>
           )}
@@ -1831,10 +1827,6 @@ export default function Dashboard() {
                   ? `${modal.data.policy.training ? "May train on data" : "No training"} · ${modal.data.policy.retains_prompts ? "Retains prompts" : "Does not retain prompts"}${modal.data.policy.zdr ? " · Zero data retention" : ""}`
                   : "Model requests are not sent in this preview."}
               </dd>
-            </div>
-            <div>
-              <dt>{live ? "Bond" : "Sample bond"}</dt>
-              <dd>{modal.data.bond} USDG</dd>
             </div>
             {live && (
               <div>

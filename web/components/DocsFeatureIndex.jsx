@@ -15,7 +15,7 @@ const sections = [
   ["network-host-signup", "Host signup"],
   ["network-host-policy", "Host policy"],
   ["network-payouts", "Host payouts"],
-  ["host-bonds", "Host bonds"],
+  ["host-bonds", "Host bonds (switched off)"],
   ["network-stats", "Live network statistics"],
   ["commerce-stats", "Commerce ledger"],
 ];

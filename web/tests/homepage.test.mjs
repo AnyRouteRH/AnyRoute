@@ -46,7 +46,7 @@ test('homepage describes the live rulebook and preserves enforcement and privacy
 });
 
 test('homepage states approved early-host admission and inactive payouts and slashing',()=>{
-  for(const phrase of ['open for early hosts running the approved build','supported confidential VM','signed host policy v1','sanctions screening of operator and payout addresses','probation with a public record','5,000','Not switched on yet'])assert.ok(text.includes(phrase),phrase);
+  for(const phrase of ['open for early hosts running the approved build','supported confidential VM','signed host policy v1','sanctions screening of operator and payout addresses','probation with a public record','Deposit required','Not switched on yet'])assert.ok(text.includes(phrase),phrase);
   assert.doesNotMatch(main,/\b(?:earn|yield|APY|passive income)\b|Hosting isn’t open yet/i);
 });
 

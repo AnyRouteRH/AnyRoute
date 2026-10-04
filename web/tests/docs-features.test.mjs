@@ -53,7 +53,7 @@ test('hosted enablement keeps self-host defaults and accurately separates unavai
   for (const phrase of ['Telegram linking and approvals', 'opt-in public profiles', 'no sealed agent is registered', 'escrow and dispute contracts deployed on Robinhood Chain', 'Live network statistics', 'Agent agreements · live, with jury rulings']) assert.ok(featureHtml.includes(phrase), phrase);
   const bonds = read('components/NetworkBondsNote.jsx');
   assert.match(bonds, /https:\/\/robinhoodchain.blockscout.com\/address\/0x2921d34fd86d3323a5369a270a82814a74250518/);
-  assert.match(bonds, /minimum is 5,000 USDG/);
+  assert.match(bonds, /no bond or deposit at anyroute.tech/);
   assert.match(bonds, /Payouts, fee buy-and-burn and slashing are not switched on at anyroute.tech yet/);
   assert.match(read('app/network/NetworkContent.jsx'), /<NetworkBondsNote \/>/);
   assert.match(read('components/NetworkPayoutDocs.jsx'), /No payouts are being made/);
