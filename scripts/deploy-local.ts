@@ -136,7 +136,6 @@ function writeEnvLocal(d: Deployments, accts: ReturnType<typeof anvilAccount>[])
     PROVIDER_BOND_ADDRESS: d.contracts.providerBond,
     RECEIPT_ANCHOR_ADDRESS: d.contracts.receiptAnchor,
     ROYALTY_ADDRESS: d.contracts.royalty,
-    ANYR_STAKING_ADDRESS: d.contracts.anyrStaking,
     PAYMASTER_ADDRESS: d.contracts.paymaster,
     CALLPAY_TREASURY: d.roles.callPayTreasury as Address,
     ROUTER_PRIVATE_KEY: accts[1].key,

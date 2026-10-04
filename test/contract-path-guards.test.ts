@@ -24,30 +24,29 @@ const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
 const VERIFIER_REVISION = "5".repeat(40);
 const RELEASE = "6".repeat(40);
 const SAFE_SINGLETON = a(80);
-const ORACLE = a(90);
 
 const manifest: DeploymentManifest = {
   schema: "anyroute.deployments/v1", mode: "production", chainId: 4663, blockNumber: 100,
   deployer: a(1), owner: a(1), pendingOwner: a(20),
-  contracts: { usdg: a(30), anyrToken: a(45), credits: a(31), callPay: a(32), receiptAnchor: a(33), royalty: a(34), providerBond: a(35), anyrStaking: a(36), payWithStock: a(37), stockOracle: a(38), paymaster: a(39), uniswapV4Adapter: a(40), uniswapV3Adapter: a(41), entryPoint: a(42), poolManager: a(43), swapRouter02: a(44), timelock: a(20), buybackAdapter: a(40) },
-  roles: { ownerSafe: a(50), settlement: a(51), slasher: a(52), router: a(53), registrar: a(54), anchorer: a(55), keeper: a(56), opsWallet: a(57), paymasterSigner: a(58), refundPool: a(59), callPayTreasury: a(60), guardian: a(61), anyrRecipients: [a(62), a(63), a(64), a(65)] },
+  contracts: { usdg: a(30), anyrToken: a(45), credits: a(31), callPay: a(32), receiptAnchor: a(33), royalty: a(34), providerBond: a(35), payWithStock: a(37), stockOracle: a(38), paymaster: a(39), uniswapV4Adapter: a(40), uniswapV3Adapter: a(41), entryPoint: a(42), poolManager: a(43), swapRouter02: a(44), timelock: a(20), buybackAdapter: a(40) },
+  roles: { ownerSafe: a(50), settlement: a(51), slasher: a(52), router: a(53), registrar: a(54), anchorer: a(55), keeper: a(56), paymasterSigner: a(58), refundPool: a(59), callPayTreasury: a(60), guardian: a(61), anyrRecipients: [a(62), a(63), a(64), a(65)] },
   params: { timelockMinDelay: 86400, paymasterDailyCap: "10000000000000000", paymasterDeposit: "20000000000000000", paymasterStake: "10000000000000000" },
   stockTokens: [{ address: a(70), feed: a(71), primaryAdapter: a(41), fallbackAdapter: a(0) }],
 };
 
 /** A chain whose state matches the manifest, so the real read-only verifier passes against it. */
-function chainMatching(m: DeploymentManifest, buybackOracle: Address = a(0)): ChainReader {
-  const owned = ["credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "paymaster", "uniswapV4Adapter", "uniswapV3Adapter"];
+function chainMatching(m: DeploymentManifest): ChainReader {
+  const owned = ["credits", "callPay", "receiptAnchor", "royalty", "providerBond", "payWithStock", "stockOracle", "paymaster", "uniswapV4Adapter", "uniswapV3Adapter"];
   const timelockOwned = new Set(Object.entries(m.contracts).filter(([k]) => owned.includes(k)).map(([, v]) => v.toLowerCase()));
   const roles = m.roles as Record<string, Address>;
   const answers: Record<string, unknown> = {
     "pendingOwner()": a(0), "CONTROL_VERSION()": 2n, "settlement()": roles.settlement, "isCreditor(address)": true, "usdg()": m.contracts.usdg,
     "anyr()": m.contracts.anyrToken, "slasher()": roles.slasher, "refundPool()": roles.refundPool, "treasury()": roles.callPayTreasury, "anchorer()": roles.anchorer,
-    "registrar()": roles.registrar, "keeper()": roles.keeper, "opsWallet()": roles.opsWallet, "adapter()": m.contracts.buybackAdapter, "poolManager()": m.contracts.poolManager,
+    "registrar()": roles.registrar, "keeper()": roles.keeper, "adapter()": m.contracts.buybackAdapter, "poolManager()": m.contracts.poolManager,
     "isCaller(address)": true, "tokens(address)": [true, m.stockTokens![0].primaryAdapter, m.stockTokens![0].fallbackAdapter], "masterCopy()": SAFE_SINGLETON,
     "oracle()": m.contracts.stockOracle, "verifyingSigner()": roles.paymasterSigner, "entryPoint()": m.contracts.entryPoint, "dailyCap()": BigInt(String(m.params.paymasterDailyCap)),
     "guardian()": roles.guardian, "getMinDelay()": 86400n, "getThreshold()": 2n, "getDepositInfo(address)": [20_000_000_000_000_000n, true, 10_000_000_000_000_000n, 86400, 0],
-    "buybackPriceOracle()": buybackOracle, "configOf(address)": [m.stockTokens![0].feed, 8, 302400, false, false],
+    "configOf(address)": [m.stockTokens![0].feed, 8, 302400, false, false],
   };
   return {
     async chainId() { return 4663; },
@@ -69,8 +68,8 @@ function chainMatching(m: DeploymentManifest, buybackOracle: Address = a(0)): Ch
 }
 
 /** The verifier's own JSON output for a manifest, as scripts/verify-deployment.ts prints it. */
-async function verifierReport(m: DeploymentManifest, buybackOracle?: Address) {
-  const report = await verifyDeployment(m, chainMatching(m, buybackOracle), VERIFIER_REVISION, SAFE_SINGLETON, { sourceRevision: VERIFIER_REVISION, contracts: Object.fromEntries(Object.keys(m.contracts).map(name => [name, { object: "0x6001" as Hex, immutableReferences: {}, immutableValues: {} }])) });
+async function verifierReport(m: DeploymentManifest) {
+  const report = await verifyDeployment(m, chainMatching(m), VERIFIER_REVISION, SAFE_SINGLETON, { sourceRevision: VERIFIER_REVISION, contracts: Object.fromEntries(Object.keys(m.contracts).map(name => [name, { object: "0x6001" as Hex, immutableReferences: {}, immutableValues: {} }])) });
   expect(report.ok).toBe(true);
   return JSON.stringify(report, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2);
 }
@@ -86,11 +85,9 @@ const prodApi = {
   ROUTER_PRIVATE_KEY: "0x" + "3".repeat(64),
 };
 let report = "";
-let reportWithOracle = "";
 const verified = (overrides: Record<string, string> = {}) => ({ ...prodApi, RELEASE_COMMIT: RELEASE, DEPLOYMENT_MANIFEST: JSON.stringify(manifest), DEPLOYMENT_VERIFICATION: report, ...overrides });
 beforeAll(async () => {
   report = await verifierReport(manifest);
-  reportWithOracle = await verifierReport(manifest, ORACLE);
 });
 
 describe("H-02: production contract mode starts only against a verified deployment", () => {
@@ -164,32 +161,6 @@ describe("H-02: production contract mode starts only against a verified deployme
     expect(escrow.release).toEqual({ commit: null, deployment: { status: "none", manifestSha256: null, manifestBlock: null, verifiedAtBlock: null, verifierRevision: null } });
     expect(loadConfig({ ANYROUTE_ENV: "test", CREDITS_ADDRESS: a(31) }).release.deployment.status).toBe("unverified");
     expect(() => loadConfig({ ANYROUTE_ENV: "test", RELEASE_COMMIT: "not-a-commit" })).toThrow(/RELEASE_COMMIT/);
-  });
-});
-
-describe("M-05: buybacks stay off without a reviewed floor oracle", () => {
-  const keeper = { RUNTIME_ROLE: "worker", WORKER_JOBS: "buyback", ROUTER_PRIVATE_KEY: "", KEEPER_PRIVATE_KEY: "0x" + "5".repeat(64), ANYR_STAKING_ADDRESS: manifest.contracts.anyrStaking, ANYR_POOL_LEGS: "[]" };
-
-  test("production refuses the buyback job and keeper key unless the configured oracle is the one AnyrStaking reads", () => {
-    expect(() => loadConfig(verified(keeper))).toThrow(/BUYBACK_ORACLE_ADDRESS/);
-    // AnyrStaking has no oracle on-chain (buybacks disabled), so naming one does not enable them.
-    expect(() => loadConfig(verified({ ...keeper, BUYBACK_ORACLE_ADDRESS: ORACLE }))).toThrow(/reads on-chain/);
-    expect(() => loadConfig(verified({ ...keeper, BUYBACK_ORACLE_ADDRESS: a(91), DEPLOYMENT_VERIFICATION: reportWithOracle }))).toThrow(/reads on-chain/);
-    expect(loadConfig(verified({ ...keeper, BUYBACK_ORACLE_ADDRESS: ORACLE, DEPLOYMENT_VERIFICATION: reportWithOracle })).workerJobs).toEqual(["buyback"]);
-    // The floor is the on-chain oracle's quote; off-chain pool legs are only an optional second opinion.
-    const noLegs = loadConfig(verified({ ...keeper, BUYBACK_ORACLE_ADDRESS: ORACLE, DEPLOYMENT_VERIFICATION: reportWithOracle, ANYR_POOL_LEGS: "" }));
-    expect(noLegs.buyback).toMatchObject({ legs: null, oracle: ORACLE.toLowerCase() });
-    expect(() => loadConfig(verified({ ...keeper, BUYBACK_ORACLE_ADDRESS: ORACLE, DEPLOYMENT_VERIFICATION: reportWithOracle, ANYR_STAKING_ADDRESS: "" }))).toThrow(/ANYR_STAKING_ADDRESS/);
-  });
-
-  test("fixtures still need an explicit oracle, escrow mode never runs buybacks, development is unchanged", () => {
-    const fixture = { ...prodApi, ...keeper, PUBLIC_BASE_URL: "https://router.example" };
-    expect(() => loadConfig(fixture)).toThrow(/BUYBACK_ORACLE_ADDRESS/);
-    expect(loadConfig({ ...fixture, BUYBACK_ORACLE_ADDRESS: ORACLE }).workerJobs).toEqual(["buyback"]);
-    const { CREDITS_ADDRESS, CALLPAY_ADDRESS, PROVIDER_BOND_ADDRESS, RECEIPT_ANCHOR_ADDRESS, ROUTER_PRIVATE_KEY, ...noContracts } = prodApi;
-    const escrowWorker = { ...noContracts, PAYMENTS_MODE: "escrow", ESCROW_ADDRESS: a(77), ESCROW_START_BLOCK: "1", ESCROW_TOKENS: JSON.stringify([{ symbol: "NVDA", address: a(70), decimals: 18, feed: a(71) }]), RUNTIME_ROLE: "worker" };
-    expect(() => loadConfig({ ...escrowWorker, WORKER_JOBS: "escrow-indexer,buyback" })).toThrow(/buyback/i);
-    expect(loadConfig({ ANYROUTE_ENV: "test", RUNTIME_ROLE: "worker", WORKER_JOBS: "buyback", KEEPER_PRIVATE_KEY: keeper.KEEPER_PRIVATE_KEY }).workerJobs).toEqual(["buyback"]);
   });
 });
 

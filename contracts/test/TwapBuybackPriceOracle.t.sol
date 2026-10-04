@@ -9,7 +9,7 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 import {Deploy} from "../script/Deploy.s.sol";
-import {AnyrStaking} from "../src/AnyrStaking.sol";
+import {NetworkFeeBurn} from "../src/NetworkFeeBurn.sol";
 import {TwapBuybackPriceOracle} from "../src/oracle/TwapBuybackPriceOracle.sol";
 import {UniswapV3Adapter, ISwapRouter02} from "../src/adapters/UniswapV3Adapter.sol";
 import {IBuybackAdapter} from "../src/interfaces/IBuybackAdapter.sol";
@@ -19,7 +19,7 @@ import {MockStockToken} from "../src/mocks/MockStockToken.sol";
 import {MockBuybackAdapter} from "../src/mocks/MockBuybackAdapter.sol";
 import {MockV3Factory, MockV3Pool, MockV3SwapRouter} from "./utils/MockUniswapV3.sol";
 
-/// @notice ANYR/USDG Uniswap V3 pool (mock with V3 oracle semantics), UniswapV3Adapter, AnyrStaking and the oracle.
+/// @notice ANYR/USDG Uniswap V3 pool (mock with V3 oracle semantics), UniswapV3Adapter, NetworkFeeBurn and the oracle.
 /// The pool has sat at $0.05 per ANYR for an hour, with ~$1M of virtual depth per side.
 abstract contract TwapOracleFixture is Test {
     uint256 internal constant T0 = 1_750_032_000; // 2025-06-16 00:00:00 UTC
@@ -41,7 +41,7 @@ abstract contract TwapOracleFixture is Test {
     MockV3Pool internal pool;
     MockV3SwapRouter internal router;
     UniswapV3Adapter internal v3;
-    AnyrStaking internal staking;
+    NetworkFeeBurn internal executor;
     TwapBuybackPriceOracle internal oracle;
 
     address internal gov = makeAddr("gov"); // the timelock in production
@@ -91,11 +91,11 @@ abstract contract TwapOracleFixture is Test {
         factory.setPool(address(usdg), address(anyr), FEE, address(pool));
         router = new MockV3SwapRouter(address(factory));
         v3 = new UniswapV3Adapter(ISwapRouter02(address(router)), gov);
-        staking = new AnyrStaking(
-            IERC20(address(anyr)), IERC20(address(usdg)), gov, keeper, ops, IBuybackAdapter(address(v3))
+        executor = new NetworkFeeBurn(
+            IERC20(address(anyr)), IERC20(address(usdg)), gov, keeper, IBuybackAdapter(address(v3)), 10_000e6
         );
         vm.startPrank(gov);
-        v3.setCaller(address(staking), true);
+        v3.setCaller(address(executor), true);
         v3.setPath(address(usdg), address(anyr), _path(FEE));
         vm.stopPrank();
 
@@ -106,11 +106,11 @@ abstract contract TwapOracleFixture is Test {
 
         oracle = new TwapBuybackPriceOracle(_config(), gov, guardian);
         vm.prank(gov);
-        staking.setBuybackPriceOracle(oracle);
+        executor.setBuybackPriceOracle(oracle);
 
         usdg.mint(settlement, 1e15);
         vm.prank(settlement);
-        usdg.approve(address(staking), type(uint256).max);
+        usdg.approve(address(executor), type(uint256).max);
         usdg.mint(attacker, 1e15);
         vm.prank(attacker);
         usdg.approve(address(router), type(uint256).max);
@@ -119,7 +119,7 @@ abstract contract TwapOracleFixture is Test {
     function _config() internal view returns (TwapBuybackPriceOracle.Config memory c) {
         c.pool = address(pool);
         c.factory = address(factory);
-        c.staking = address(staking);
+        c.executor = address(executor);
         c.routeAdapter = address(v3);
         c.usdg = address(usdg);
         c.anyr = address(anyr);
@@ -194,7 +194,7 @@ abstract contract TwapOracleFixture is Test {
 
     function _notify(uint256 amount) internal {
         vm.prank(settlement);
-        staking.notifyMargin(amount);
+        usdg.transfer(address(executor), amount / 2);
     }
 
     function _attackerBuysAnyr(uint256 usdgIn) internal returns (uint256) {
@@ -222,7 +222,7 @@ abstract contract TwapOracleCases is TwapOracleFixture {
     function test_constructorStoresReviewedConfig() public view {
         assertEq(address(oracle.pool()), address(pool));
         assertEq(oracle.factory(), address(factory));
-        assertEq(oracle.staking(), address(staking));
+        assertEq(oracle.executor(), address(executor));
         assertEq(oracle.routeAdapter(), address(v3));
         assertEq(oracle.usdg(), address(usdg));
         assertEq(oracle.anyr(), address(anyr));
@@ -308,7 +308,7 @@ abstract contract TwapOracleCases is TwapOracleFixture {
             TwapBuybackPriceOracle.Config memory c = _config();
             if (i == 0) c.pool = address(0);
             if (i == 1) c.factory = address(0);
-            if (i == 2) c.staking = address(0);
+            if (i == 2) c.executor = address(0);
             if (i == 3) c.routeAdapter = address(0);
             if (i == 4) c.usdg = address(0);
             if (i == 5) c.anyr = address(0);
@@ -340,13 +340,13 @@ abstract contract TwapOracleCases is TwapOracleFixture {
     }
 
     function test_constructorRejectsARouteThatCannotReachThePool() public {
-        // an AnyrStaking trading other tokens
+        // an NetworkFeeBurn trading other tokens
         MockStockToken other = new MockStockToken("Other", "OTH", _anyrDecimals());
-        AnyrStaking otherStaking = new AnyrStaking(
-            IERC20(address(other)), IERC20(address(usdg)), gov, keeper, ops, IBuybackAdapter(address(v3))
+        NetworkFeeBurn otherExecutor = new NetworkFeeBurn(
+            IERC20(address(other)), IERC20(address(usdg)), gov, keeper, IBuybackAdapter(address(v3)), 10_000e6
         );
         TwapBuybackPriceOracle.Config memory c = _config();
-        c.staking = address(otherStaking);
+        c.executor = address(otherExecutor);
         _expectInvalid(c);
 
         // an adapter whose router resolves pools from another factory
@@ -652,16 +652,16 @@ abstract contract TwapOracleCases is TwapOracleFixture {
         oracle.minimumOutput(address(usdg), address(anyr), 1_000e6);
         _assertStatus(TwapBuybackPriceOracle.Status.RouteMismatch);
 
-        // back on the pool, but AnyrStaking swaps through another adapter
+        // back on the pool, but NetworkFeeBurn swaps through another adapter
         vm.startPrank(gov);
         v3.setPath(address(usdg), address(anyr), _path(FEE));
-        staking.setAdapter(new MockBuybackAdapter(1, 1));
+        executor.setAdapter(new MockBuybackAdapter(1, 1));
         vm.stopPrank();
         vm.expectRevert(TwapBuybackPriceOracle.RouteMismatch.selector);
         oracle.minimumOutput(address(usdg), address(anyr), 1_000e6);
 
         vm.prank(gov);
-        staking.setAdapter(v3);
+        executor.setAdapter(v3);
         _floor(1_000e6);
     }
 
@@ -678,19 +678,20 @@ abstract contract TwapOracleCases is TwapOracleFixture {
     }
 
     // =============================================================================================
-    // AnyrStaking integration
+    // NetworkFeeBurn integration
     // =============================================================================================
 
     function test_buybackAtAFairPriceSucceeds() public {
         _notify(4_000e6);
         uint256 floor = _floor(1_000e6);
         vm.prank(keeper);
-        uint256 out = staking.executeBuyback(1_000e6, floor);
+        uint256 out = executor.swap(keccak256("fee-operation"), 1_000e6, floor);
         assertGe(out, floor);
         assertApproxEqRel(out, 20_000 * _one() * 9955 / 10_000, 0.002e18); // 0.3% fee + ~0.1% impact
-        assertEq(anyr.balanceOf(address(staking)), out);
-        assertEq(staking.rewardReserve(), out);
-        assertEq(staking.buybackBalance(), 1_000e6);
+        assertEq(anyr.balanceOf(address(executor)), out);
+        (, uint256 received,) = executor.operations(keccak256("fee-operation"));
+        assertEq(received, out);
+        assertEq(usdg.balanceOf(address(executor)), 1_000e6);
         assertEq(usdg.balanceOf(address(v3)), 0);
     }
 
@@ -698,8 +699,8 @@ abstract contract TwapOracleCases is TwapOracleFixture {
         _notify(4_000e6);
         uint256 floor = _floor(1_000e6);
         vm.prank(keeper);
-        vm.expectRevert(AnyrStaking.UnsafeBuybackPrice.selector);
-        staking.executeBuyback(1_000e6, floor - 1);
+        vm.expectRevert(NetworkFeeBurn.Refused.selector);
+        executor.swap(keccak256("fee-operation"), 1_000e6, floor - 1);
     }
 
     function test_buybackRevertsAfterASpotManipulation() public {
@@ -713,9 +714,9 @@ abstract contract TwapOracleCases is TwapOracleFixture {
                 TwapBuybackPriceOracle.PriceDeviation.selector, r.spotTick, _baseTick(), _baseTick()
             )
         );
-        staking.executeBuyback(1_000e6, 1);
-        assertEq(staking.buybackBalance(), 2_000e6);
-        assertEq(staking.boughtOnDay(), 0);
+        executor.swap(keccak256("fee-operation"), 1_000e6, 1);
+        assertEq(usdg.balanceOf(address(executor)), 2_000e6);
+        assertEq(executor.used(), 0);
     }
 
     function test_sandwichInsideTheGuardCannotFillBelowTheFloor() public {
@@ -728,8 +729,8 @@ abstract contract TwapOracleCases is TwapOracleFixture {
         assertEq(_floor(1_000e6), floorBefore, "the front-run does not move the floor");
         vm.prank(keeper);
         vm.expectRevert(bytes("Too little received"));
-        staking.executeBuyback(1_000e6, floorBefore);
-        assertEq(staking.buybackBalance(), 2_000e6);
+        executor.swap(keccak256("fee-operation"), 1_000e6, floorBefore);
+        assertEq(usdg.balanceOf(address(executor)), 2_000e6);
     }
 
     function test_oversizedBuybackFailsClosed() public {
@@ -738,18 +739,18 @@ abstract contract TwapOracleCases is TwapOracleFixture {
         uint256 floor = _floor(10_000e6);
         vm.prank(keeper);
         vm.expectRevert(bytes("Too little received"));
-        staking.executeBuyback(10_000e6, floor);
+        executor.swap(keccak256("fee-operation"), 10_000e6, floor);
     }
 
-    function test_quietPoolBuybackPassesStakingFreshnessRule() public {
+    function test_quietPoolBuybackPassesExecutorFreshnessRule() public {
         _notify(4_000e6);
         vm.warp(block.timestamp + 6 hours);
         uint256 floor = _floor(1_000e6);
         vm.prank(keeper);
-        assertGe(staking.executeBuyback(1_000e6, floor), floor);
+        assertGe(executor.swap(keccak256("fee-operation"), 1_000e6, floor), floor);
     }
 
-    /// The keeper bids its read floor plus 0.1%: enough for the averages to drift in the stakers' favour until
+    /// The keeper bids its read floor plus 0.1%: enough for the averages to drift in the burn executor's favour until
     /// the transaction lands (here a 480-tick move priced into the 5-minute average over 3 seconds).
     function test_keeperMarginCoversFloorDriftUntilInclusion() public {
         _notify(4_000e6);
@@ -761,7 +762,7 @@ abstract contract TwapOracleCases is TwapOracleFixture {
         assertGt(atInclusion, read, "the short average moved towards the cheaper spot");
         assertLe(atInclusion, bid);
         vm.prank(keeper);
-        assertGe(staking.executeBuyback(1_000e6, bid), bid);
+        assertGe(executor.swap(keccak256("fee-operation"), 1_000e6, bid), bid);
     }
 
     function test_pausedOrReroutedOracleStopsBuybacks() public {
@@ -770,16 +771,16 @@ abstract contract TwapOracleCases is TwapOracleFixture {
         oracle.pause();
         vm.prank(keeper);
         vm.expectRevert(TwapBuybackPriceOracle.OraclePaused.selector);
-        staking.executeBuyback(1_000e6, type(uint128).max);
+        executor.swap(keccak256("fee-operation"), 1_000e6, type(uint128).max);
 
         vm.startPrank(gov);
         oracle.unpause();
-        staking.setAdapter(new MockBuybackAdapter(1e30, 1));
+        executor.setAdapter(new MockBuybackAdapter(1e30, 1));
         vm.stopPrank();
         vm.prank(keeper);
         vm.expectRevert(TwapBuybackPriceOracle.RouteMismatch.selector);
-        staking.executeBuyback(1_000e6, type(uint128).max);
-        assertEq(staking.buybackBalance(), 2_000e6);
+        executor.swap(keccak256("fee-operation"), 1_000e6, type(uint128).max);
+        assertEq(usdg.balanceOf(address(executor)), 2_000e6);
     }
 
     // =============================================================================================
@@ -902,14 +903,14 @@ contract TwapOracleDeployTest is TwapOracleFixture {
         timelock = new TimelockController(1 days, proposers, proposers, address(0));
         // production state before the oracle: buybacks through another adapter, no oracle, no V3 route
         vm.startPrank(gov);
-        staking.setBuybackPriceOracle(IBuybackPriceOracle(address(0)));
-        staking.setAdapter(new MockBuybackAdapter(1, 1));
+        executor.setBuybackPriceOracle(IBuybackPriceOracle(address(0)));
+        executor.setAdapter(new MockBuybackAdapter(1, 1));
         v3.setPath(address(usdg), address(anyr), "");
-        staking.transferOwnership(address(timelock));
+        executor.transferOwnership(address(timelock));
         v3.transferOwnership(address(timelock));
         vm.stopPrank();
         vm.startPrank(address(timelock));
-        staking.acceptOwnership();
+        executor.acceptOwnership();
         v3.acceptOwnership();
         vm.stopPrank();
     }
@@ -929,7 +930,7 @@ contract TwapOracleDeployTest is TwapOracleFixture {
         assertEq(o.owner(), address(timelock));
         assertEq(o.guardian(), guardian);
         // nothing is enabled until governance executes the batch
-        assertEq(address(staking.buybackPriceOracle()), address(0));
+        assertEq(address(executor.buybackPriceOracle()), address(0));
         (TwapBuybackPriceOracle.Status s,) = o.status();
         assertEq(uint256(s), uint256(TwapBuybackPriceOracle.Status.RouteMismatch));
 
@@ -940,7 +941,7 @@ contract TwapOracleDeployTest is TwapOracleFixture {
         assertEq(vm.parseJsonString(batch, ".anyroute.schema"), "anyroute.buyback-oracle/v1");
         assertEq(vm.parseJsonAddress(batch, ".anyroute.oracle"), address(o));
         assertEq(vm.parseJsonAddress(batch, ".anyroute.pool"), address(pool));
-        assertEq(vm.parseJsonAddress(batch, ".anyroute.anyrStaking"), address(staking));
+        assertEq(vm.parseJsonAddress(batch, ".anyroute.networkFeeBurn"), address(executor));
         assertEq(vm.parseJsonAddress(batch, ".anyroute.uniswapV3Adapter"), address(v3));
         assertEq(vm.parseJsonBytes(batch, ".anyroute.path"), _path(FEE));
         assertEq(vm.parseJsonUint(batch, ".anyroute.params.twapWindow"), WINDOW);
@@ -965,8 +966,8 @@ contract TwapOracleDeployTest is TwapOracleFixture {
         assertTrue(ok, "execute");
         assertTrue(timelock.isOperationDone(id));
 
-        assertEq(address(staking.buybackPriceOracle()), address(o));
-        assertEq(address(staking.adapter()), address(v3));
+        assertEq(address(executor.buybackPriceOracle()), address(o));
+        assertEq(address(executor.adapter()), address(v3));
         (bytes memory path,) = v3.getPath(address(usdg), address(anyr));
         assertEq(path, _path(FEE));
         (s,) = o.status();
@@ -975,7 +976,7 @@ contract TwapOracleDeployTest is TwapOracleFixture {
         _notify(4_000e6);
         (uint256 floor,) = o.minimumOutput(address(usdg), address(anyr), 1_000e6);
         vm.prank(keeper);
-        assertGe(staking.executeBuyback(1_000e6, floor), floor);
+        assertGe(executor.swap(keccak256("fee-operation"), 1_000e6, floor), floor);
     }
 
     /// The env entry point is opt-in and reads the production manifest's addresses.
@@ -996,8 +997,8 @@ contract TwapOracleDeployTest is TwapOracleFixture {
                 vm.toString(address(usdg)),
                 '","anyrToken":"',
                 vm.toString(address(anyr)),
-                '","anyrStaking":"',
-                vm.toString(address(staking)),
+                '","networkFeeBurn":"',
+                vm.toString(address(executor)),
                 '","uniswapV3Adapter":"',
                 vm.toString(address(v3)),
                 '","timelock":"',
@@ -1016,6 +1017,7 @@ contract TwapOracleDeployTest is TwapOracleFixture {
             )
         );
         vm.setEnv("BUYBACK_ORACLE", "1");
+        vm.setEnv("NETWORK_FEE_BURN_ADDRESS", vm.toString(address(executor)));
         vm.setEnv("DEPLOYMENTS_PATH", manifestPath);
         vm.setEnv("CONFIG_PATH", configPath);
         vm.setEnv("BUYBACK_ORACLE_PATH", outPath);
@@ -1024,6 +1026,7 @@ contract TwapOracleDeployTest is TwapOracleFixture {
         vm.setEnv("BUYBACK_MIN_LIQUIDITY", vm.toString(uint256(_minLiq())));
         TwapBuybackPriceOracle o = TwapBuybackPriceOracle(script.deployBuybackOracle());
         vm.setEnv("BUYBACK_ORACLE", "");
+        vm.setEnv("NETWORK_FEE_BURN_ADDRESS", "");
         vm.setEnv("DEPLOYMENTS_PATH", "");
         vm.setEnv("CONFIG_PATH", "");
 
@@ -1031,7 +1034,7 @@ contract TwapOracleDeployTest is TwapOracleFixture {
         assertEq(o.guardian(), guardian);
         assertEq(address(o.pool()), address(pool));
         assertEq(o.factory(), address(factory));
-        assertEq(o.staking(), address(staking));
+        assertEq(o.executor(), address(executor));
         assertEq(o.routeAdapter(), address(v3));
         assertEq(o.twapWindow(), 30 minutes);
         assertEq(o.shortWindow(), 5 minutes);

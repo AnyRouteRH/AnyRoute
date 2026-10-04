@@ -167,7 +167,7 @@ export const operationTables: Record<string, TableDoc> = {
       "agreement-jury:heartbeat: written by the isolated agreement-jury worker each pass after its signer keys matched the DisputeOracle's jury on chain: the escrow and oracle addresses, threshold, the jury signers' public addresses and the time. GET /api/v1/status reads it to report whether automatic rulings are on. Overwritten in place; no evidence, verdict or key material.",
       "tls-pin:<provider>, aci-gateway:<provider>, aci-gpu:<model>, attest-policy:<provider>, attest-allow:<provider>, static-models-pending:<provider>, apply-token:<application id>: facts about providers (pinned certificate keys, verified gateway keysets, operator allow-lists, a pending model list, and the SHA-256 of an application token).",
       "paywith-allowance:<chain key hash>, paywith-intent:<chain key hash>, paywith-commitment:<commitment>: a signed pay-with allowance (wallet address and signature), the wallet and token a key holder registered for pay-with, and the swap a usage commitment belongs to.",
-      "escrow:checkpoints, spent_settled:<epoch>, margin_unsent, holder-credits-run:<period>:<time>, ipx-oracle:*: chain cursors and settlement bookkeeping.",
+      "escrow:checkpoints, spent_settled:<epoch>, margin_unsent, holder-credits-run:<period>:<time>, ipx-oracle:*: chain cursors and settlement bookkeeping. margin_unsent retains accumulated protocol margin and provider-side fees in pico-USD; settlement reports the rounded USDG amount without transferring or clearing it.",
     ],
     columns: {
       key: "The key, a family name plus an identifier (see the families above).",

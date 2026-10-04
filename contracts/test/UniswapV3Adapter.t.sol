@@ -124,7 +124,7 @@ contract UniswapV3AdapterTest is Test {
     MockUSDG usdg; // 6 dec
 
     address owner = makeAddr("owner");
-    address caller = makeAddr("caller"); // PayWithStock / AnyrStaking stand-in
+    address caller = makeAddr("caller"); // PayWithStock / NetworkFeeBurn stand-in
     address recipient = makeAddr("recipient");
     address refundTo = makeAddr("refundTo");
     address stranger = makeAddr("stranger");

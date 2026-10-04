@@ -3,7 +3,6 @@ contracts/script/DeployAgreements.s.sol
 contracts/script/DeployIdentity.s.sol
 contracts/src/APIU.sol
 contracts/src/AnyrPaymaster.sol
-contracts/src/AnyrStaking.sol
 contracts/src/AnyrToken.sol
 contracts/src/BlindIssuer.sol
 contracts/src/CallPay.sol
@@ -23,7 +22,6 @@ contracts/src/agents/DisputeOracle.sol
 contracts/src/identity/IERC8004.sol
 contracts/src/identity/ValidationRegistry.sol
 contracts/src/interfaces/IAPIU.sol
-contracts/src/interfaces/IAnyrStaking.sol
 contracts/src/interfaces/IBlindIssuer.sol
 contracts/src/interfaces/IBuybackAdapter.sol
 contracts/src/interfaces/IBuybackPriceOracle.sol
@@ -583,7 +581,6 @@ src/services/attestor-verifiers.ts
 src/services/attestor.ts
 src/services/backup.ts
 src/services/batches.ts
-src/services/buyback.ts
 src/services/canaries.ts
 src/services/creators.ts
 src/services/dayzero-sets.ts
@@ -659,3 +656,7 @@ src/webhooks/worker.ts
 src/worker.ts
 src/zkapi/hosting.ts
 src/zkapi/page-config.ts
+src/network/burn-quote.ts
+src/services/retained-margin.ts
+src/network/burn-verification.ts
+scripts/network-burn-verification.ts

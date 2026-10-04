@@ -319,21 +319,11 @@ If the pool history, liquidity, deviation or source checks do not provide a usab
 
 Deposited tokens remain in escrow and the resulting credit is for inference. The flow creates an operational relationship with the escrow operator. It is separate from x402 USDG authorization and from blind-token redemption. A wallet-linked escrow deposit does not itself hide who funded an account.
 
-### 8.2 Staking and buyback code
+### 8.2 The planned network-fee burn
 
-The repository also implements `AnyrStaking`. Its code records deposits, optional provider attribution, an unstake cooldown and allocation accounting. The contract's margin notification splits the notified USDG amount between operations and a buyback balance. A permitted keeper can swap from that balance subject to the daily cap and an on-chain minimum-output oracle; the contract measures actual received tokens by balance change before allocation.
+The network payout design includes a 5% fee intended to purchase and burn $ANYR. Network payouts and this burn path are not switched on yet. The executor has its own adapter, minimum-output oracle, keeper and daily USDG cap, with owner-only changes recorded by events. It checks fresh nonzero oracle floors, actual received tokens and unique operation IDs, then transfers acquired tokens to the dead address; total supply stays unchanged. The design has separate accrual, payout, fee-burn configuration and execution code; the presence of those components does not establish current token purchases, burns or transfers to hosts.
 
-Bought tokens in this staking mechanism are allocated through the contract's accounting. They are not the planned network-fee burn. Unstaking removes the requested amount from active stake immediately and places it in a seven-day cooldown. Allocation and unclaimed balances have explicit accounting rather than being inferred from a displayed token balance alone.
-
-Buyback execution refuses a missing oracle, zero or stale observations, an invalid minimum output, excess daily usage and insufficient actual output. The router keeper adds configuration and oracle-agreement checks. Production contract mode requires reviewed deployment evidence for the configured oracle; escrow payment mode must not run this job.
-
-The hosted activation state of the staking buyback job is not established by the deployment facts used for this paper. This section describes inspectable repository mechanics and makes no claim of current executions or distributions. An operator must establish the actual contract addresses, roles, reviewed oracle and job configuration before describing that path as switched on.
-
-### 8.3 The separate planned network-fee burn
-
-The network payout design includes a 5% fee intended to purchase and burn $ANYR. Network payouts and this burn path are not switched on yet. The design has separate accrual, payout, fee-burn configuration and execution code; the presence of those components does not establish current token purchases, burns or transfers to hosts.
-
-HostBond uses USDG collateral, and the router's inference settlement unit is USDG. Those distinctions matter when inspecting the system: a host bond is not a $ANYR stake, a prepaid inference credit is not an ownership claim, and a staking allocation is not a burn. This discussion is limited to mechanics. It is not an offer or investment advice.
+HostBond uses USDG collateral, and the router's inference settlement unit is USDG. Those distinctions matter when inspecting the system: a host bond is USDG collateral and a prepaid inference credit is not an ownership claim. This discussion is limited to mechanics. It is not an offer or investment advice.
 
 ## 9. Security and trust model
 
@@ -459,7 +449,7 @@ The [approved host recipe](deploy/network/approved/tdx-qwen2.5-0.5b/README.md), 
 | Bonds and inactive payment paths | [HostBond](contracts/src/seal/HostBond.sol), [indexer](src/network/bond-indexer.ts), [payout](src/network/payout.ts), [fee burn](src/network/fee-burn.ts), [slashing](src/network/slashing.ts) |
 | Agent authority | [Policy schema](src/agents/policy.ts), [evaluation](src/agents/evaluate.ts), [enforcement](src/agents/enforce.ts), [approvals](src/agents/approvals.ts), [MCP](src/api/mcp-agent.ts) |
 | Agent records and controls | [Ledger](src/agents/ledger.ts), [alerts](src/agents/alerts.ts), [breakers](src/agents/BREAKERS.md), [autonomy](src/agents/autonomy.ts), [certificates](src/agents/record-certificate.ts) |
-| Token contract mechanics | [Staking](contracts/src/AnyrStaking.sol), [keeper](src/services/buyback.ts), [TWAP accounting](src/chain/twap.ts) |
+| Token contract mechanics | [Network fee executor](contracts/src/NetworkFeeBurn.sol), [fee keeper](src/network/fee-burn.ts), [TWAP accounting](src/chain/twap.ts) |
 | Production defaults and guards | [Loader](src/config.ts), [encrypted gateway](src/e2ee/config.ts), [host admission](src/network/host-config.ts), [payout activation](src/network/payout-config.ts), [bond activation](src/network/bond-config.ts) |
 
 References identify the repository implementation and its public documentation. A specification target is not evidence of activation; a source file is not evidence of a live transaction. Where this paper establishes hosted activation, the accompanying limits still apply.

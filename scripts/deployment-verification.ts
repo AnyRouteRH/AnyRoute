@@ -1,8 +1,10 @@
 import { createPublicClient, decodeFunctionResult, encodeFunctionData, http, keccak256, parseAbi, stringToHex, type Abi, type Address, type Hex } from "viem";
 import {
-  AnyrPaymasterAbi, AnyrStakingAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi,
+  AnyrPaymasterAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi,
   ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi, UniswapV3AdapterAbi, UniswapV4AdapterAbi,
 } from "../src/chain/abis";
+import { verifyNetworkBurn } from "./network-burn-verification.ts";
+import { networkBurnAbi } from "../src/network/burn-chain.ts";
 import { runtimeMatches, type DeploymentBuild } from "./runtime-proof.ts";
 
 export type DeploymentManifest = {
@@ -37,11 +39,11 @@ const isUnsigned = (value: unknown) => typeof value === "bigint" || (typeof valu
 const isAddress = (value: unknown) => typeof value === "string" && /^0x[0-9a-fA-F]{40}$/.test(value);
 
 // SEAL contracts are checked when the manifest lists them (older manifests predate them).
-const owned = ["credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "paymaster", "uniswapV4Adapter", "uniswapV3Adapter", "sealMeasurementRegistry", "policyRegistry", "kmsGovernance", "hostBond", "creditMintEvents", "skillRegistry"] as const;
-const requiredContracts = ["usdg", "anyrToken", "credits", "callPay", "receiptAnchor", "royalty", "providerBond", "anyrStaking", "payWithStock", "stockOracle", "uniswapV4Adapter", "uniswapV3Adapter", "paymaster", "entryPoint", "poolManager", "swapRouter02", "timelock", "buybackAdapter"] as const;
+const owned = ["credits", "callPay", "receiptAnchor", "royalty", "providerBond", "payWithStock", "stockOracle", "paymaster", "uniswapV4Adapter", "uniswapV3Adapter", "sealMeasurementRegistry", "policyRegistry", "kmsGovernance", "hostBond", "creditMintEvents", "skillRegistry", "networkFeeBurn"] as const;
+const requiredContracts = ["usdg", "anyrToken", "credits", "callPay", "receiptAnchor", "royalty", "providerBond", "payWithStock", "stockOracle", "uniswapV4Adapter", "uniswapV3Adapter", "paymaster", "entryPoint", "poolManager", "swapRouter02", "timelock"] as const;
 const zero = "0x0000000000000000000000000000000000000000" as Address;
 const role = (name: string) => keccak256(stringToHex(name)) as Hex;
-const appAbis = [AnyrPaymasterAbi, AnyrStakingAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi, ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi, UniswapV3AdapterAbi, UniswapV4AdapterAbi] as unknown as Abi[];
+const appAbis = [networkBurnAbi,AnyrPaymasterAbi, CallPayAbi, CreditsAbi, PayWithStockAbi, ProviderBondAbi, ReceiptAnchorAbi, RoyaltyAbi, StockOracleAbi, UniswapV3AdapterAbi, UniswapV4AdapterAbi] as unknown as Abi[];
 export const governanceAbi = parseAbi([
   "function getOwners() view returns (address[] owners)",
   "function getThreshold() view returns (uint256 threshold)",
@@ -151,11 +153,6 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
   equalAddress("roles.receiptAnchor.anchorer", await get("roles.receiptAnchor.anchorer.read", manifest.contracts.receiptAnchor, "anchorer()"), manifest.roles.anchorer);
   equalAddress("roles.royalty.registrar", await get("roles.royalty.registrar.read", manifest.contracts.royalty, "registrar()"), manifest.roles.registrar);
   equalAddress("roles.royalty.settlement", await get("roles.royalty.settlement.read", manifest.contracts.royalty, "settlement()"), manifest.roles.settlement);
-  for (const [name, sig, expected] of [["keeper", "keeper()", manifest.roles.keeper], ["opsWallet", "opsWallet()", manifest.roles.opsWallet], ["adapter", "adapter()", manifest.contracts.buybackAdapter]] as const) {
-    equalAddress(`roles.anyrStaking.${name}`, await get(`roles.anyrStaking.${name}.read`, manifest.contracts.anyrStaking, sig), expected);
-  }
-  equalAddress("roles.anyrStaking.usdg", await get("roles.anyrStaking.usdg.read", manifest.contracts.anyrStaking, "usdg()"), manifest.contracts.usdg);
-  equalAddress("roles.anyrStaking.anyr", await get("roles.anyrStaking.anyr.read", manifest.contracts.anyrStaking, "anyr()"), manifest.contracts.anyrToken);
   for (const [name, sig, expected] of [["router", "router()", manifest.roles.router], ["oracle", "oracle()", manifest.contracts.stockOracle]] as const) {
     equalAddress(`roles.payWithStock.${name}`, await get(`roles.payWithStock.${name}.read`, manifest.contracts.payWithStock, sig), expected);
   }
@@ -220,16 +217,7 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
     add("paymaster.stake", staked === true && BigInt(String(stake)) >= BigInt(String(p.paymasterStake ?? 0)) && BigInt(String(stake)) >= 10_000_000_000_000_000n, { staked, actual: String(stake), manifestMinimum: String(p.paymasterStake ?? 0), hardMinimum: "10000000000000000" });
     add("paymaster.unstake_delay", BigInt(String(unstakeDelaySec)) >= 86400n, { actual: String(unstakeDelaySec), requiredMinimum: 86400 });
   }
-  const priceOracle = await call("buybacks.oracle.read", manifest.contracts.anyrStaking, "buybackPriceOracle()");
-  const buybacksEnabled = typeof priceOracle === "string" && priceOracle.toLowerCase() !== zero.toLowerCase();
-  if (typeof priceOracle === "string") {
-    info("buybacks.oracle", priceOracle, buybacksEnabled ? "Oracle address present; its policy and price quality require separate review." : "Buybacks are disabled until a price oracle is selected and configured.");
-    if (buybacksEnabled) {
-      const oracleCode = await reader.code(priceOracle as Address, snapshot.number);
-      add("buybacks.oracle_code_present", !!oracleCode && oracleCode !== "0x", { address: priceOracle, present: !!oracleCode && oracleCode !== "0x" });
-    }
-  }
-
+  checks.push(...await verifyNetworkBurn(manifest, reader, snapshot.number));
   const stockTokens = manifest.stockTokens ?? [];
   info("stockPay.feature", stockTokens.length ? `${stockTokens.length} manifest tokens` : "disabled/not certified", stockTokens.length ? "Every manifest-listed route is checked below; tokens omitted from the manifest cannot be enumerated from the on-chain mapping." : "No stock tokens are listed, so stock-pay readiness is not certified and does not block unrelated features.");
   const requiredAdapterCallers = new Map<string, { adapter: Address; caller: Address }>();
@@ -239,9 +227,6 @@ export async function verifyDeployment(manifest: DeploymentManifest, reader: Cha
         requiredAdapterCallers.set(`${adapter.toLowerCase()}:${manifest.contracts.payWithStock.toLowerCase()}`, { adapter, caller: manifest.contracts.payWithStock });
       }
     }
-  }
-  if (buybacksEnabled && [manifest.contracts.uniswapV3Adapter, manifest.contracts.uniswapV4Adapter].some((configured) => manifest.contracts.buybackAdapter.toLowerCase() === configured.toLowerCase())) {
-    requiredAdapterCallers.set(`${manifest.contracts.buybackAdapter.toLowerCase()}:${manifest.contracts.anyrStaking.toLowerCase()}`, { adapter: manifest.contracts.buybackAdapter, caller: manifest.contracts.anyrStaking });
   }
   for (const { adapter, caller } of requiredAdapterCallers.values()) {
     const isCaller = await call(`adapters.${adapter}.${caller}.read`, adapter, "isCaller(address)", [caller]);

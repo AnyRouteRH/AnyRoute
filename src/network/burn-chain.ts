@@ -1,7 +1,9 @@
 import { keccak256, parseAbi, toBytes, type Hex } from "viem";
 import type { Ctx } from "../context.ts";
 export const networkBurnAbi = parseAbi([
-  "function staking() view returns (address)", "function remainingToday() view returns (uint256)",
+  "function usdg() view returns (address)", "function anyr() view returns (address)",
+  "function adapter() view returns (address)", "function buybackPriceOracle() view returns (address)",
+  "function keeper() view returns (address)", "function maxDailyBuyback() view returns (uint256)", "function remainingToday() view returns (uint256)",
   "function operations(bytes32) view returns (uint256 usdgIn, uint256 anyrOut, bool burned)",
   "function swap(bytes32 id, uint256 amount, uint256 minimum)", "function burn(bytes32 id)",
   "event Swapped(bytes32 indexed id, uint256 usdgIn, uint256 anyrOut)", "event Burned(bytes32 indexed id, uint256 anyrOut)",
@@ -17,8 +19,17 @@ export function networkBurnChain(ctx: Ctx): BurnChain {
   const address = ctx.cfg.networkPayouts.burnAddress!;
   const client = ctx.chain.client;
   const configured = async () => {
-    const staking = await client.readContract({ address, abi: networkBurnAbi, functionName: "staking" });
-    if (staking.toLowerCase() !== ctx.chain.require("staking").toLowerCase()) throw new Error("Network fee executor uses a different staking configuration.");
+    const block = await client.getBlock({ blockTag: "latest" });
+    const [adapter, oracle, cap, keeper, usdg, anyr] = await Promise.all([
+      client.readContract({ address, abi: networkBurnAbi, functionName: "adapter", blockNumber: block.number }),
+      client.readContract({ address, abi: networkBurnAbi, functionName: "buybackPriceOracle", blockNumber: block.number }),
+      client.readContract({ address, abi: networkBurnAbi, functionName: "maxDailyBuyback", blockNumber: block.number }),
+      client.readContract({ address, abi: networkBurnAbi, functionName: "keeper", blockNumber: block.number }),
+      client.readContract({ address, abi: networkBurnAbi, functionName: "usdg", blockNumber: block.number }),
+      client.readContract({ address, abi: networkBurnAbi, functionName: "anyr", blockNumber: block.number }),
+    ]);
+    const settings = ctx.cfg.networkPayouts;
+    if (adapter.toLowerCase() !== settings.burnAdapter?.toLowerCase() || oracle.toLowerCase() !== settings.burnOracle?.toLowerCase() || cap !== settings.burnDailyCap || keeper.toLowerCase() !== ctx.chain.roleAddress("keeper")?.toLowerCase() || usdg.toLowerCase() !== ctx.cfg.chain.usdg.toLowerCase() || anyr.toLowerCase() !== ctx.cfg.networkPayouts.burnToken.toLowerCase()) throw new Error("Network fee executor configuration differs from the reviewed settings.");
   };
   const send = async (functionName: "swap" | "burn", args: readonly unknown[]) => {
     await configured();

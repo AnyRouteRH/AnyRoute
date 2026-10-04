@@ -37,8 +37,8 @@ interface IUniswapV3FactoryPools {
     function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address);
 }
 
-/// @notice AnyrStaking views: its tokens and the adapter its buybacks swap through.
-interface IBuybackStakingRoute {
+/// @notice NetworkFeeBurn views: its tokens and the adapter its buybacks swap through.
+interface IBuybackExecutorRoute {
     function anyr() external view returns (address);
     function usdg() external view returns (address);
     function adapter() external view returns (address);
@@ -58,11 +58,11 @@ interface IV3RouterFactory {
 }
 
 /// @title TwapBuybackPriceOracle
-/// @notice Buyback floor for AnyrStaking (USDG -> ANYR) from the time-weighted average price of one canonical
+/// @notice Buyback floor for NetworkFeeBurn (USDG -> ANYR) from the time-weighted average price of one canonical
 /// Uniswap V3 ANYR/USDG pool, the same pool the buyback swaps through.
 ///
 /// Methodology (all parameters immutable; governance changes them by deploying a new oracle and pointing
-/// AnyrStaking at it through the timelock):
+/// NetworkFeeBurn at it through the timelock):
 ///  - Reads three ticks from the pool: the arithmetic-mean tick over `twapWindow` (>= 30 min), the mean tick over
 ///    `shortWindow`, and the current (spot) tick. Mean ticks are geometric-mean prices, so a short spike is weighted
 ///    by its duration only; a same-block spike has zero weight.
@@ -70,21 +70,21 @@ interface IV3RouterFactory {
 ///    (1 tick ~ 1 bp), when the observation ring holds fewer than `minCardinality` slots or does not reach back
 ///    `twapWindow`, when the current or the window's harmonic-mean in-range liquidity is below `minLiquidity`,
 ///    while the pool is mid-swap (`slot0.unlocked == false`), while the guardian pause is set, and whenever
-///    AnyrStaking would not swap through exactly this pool (its adapter must be `routeAdapter` with the single-hop
+///    NetworkFeeBurn would not swap through exactly this pool (its adapter must be `routeAdapter` with the single-hop
 ///    path USDG | fee | ANYR).
-///  - Prices at whichever of the two averages is more favourable to stakers (more ANYR per USDG), with every
+///  - Prices at whichever of the two averages is more favourable to the burn executor (more ANYR per USDG), with every
 ///    rounding step raising the result: `minimumOut = ceil(quote(amountIn) * (10_000 - haircutBps) / 10_000)`.
 ///    Depressing the floor therefore requires depressing both averages, i.e. holding the pool price down for the
-///    whole long window against arbitrage, while a recent move in the stakers' favour is priced in within minutes.
+///    whole long window against arbitrage, while a recent move in the burn executor's favour is priced in within minutes.
 ///    Spot is only a guard: a front-run in the buyback block has zero weight in both averages, and pricing at spot
 ///    would make the floor jump between the keeper's read and its transaction. `haircutBps` must exceed the pool
 ///    fee: it is the most a keeper (or anyone sandwiching the keeper) can give away relative to the average price.
 ///  - `updatedAt` is `block.timestamp`: the averages end in the current block and are recomputed from the pool's own
-///    accumulators on every call, so a successful read is never older than AnyrStaking's MAX_PRICE_AGE. History that
+///    accumulators on every call, so a successful read is never older than NetworkFeeBurn's MAX_PRICE_AGE. History that
 ///    does not cover the window makes the read revert instead of returning an older value. A pool that simply has not
 ///    traded keeps its last price, which the accumulator integrates exactly.
 /// @dev The floor is only as good as the arbitrage that keeps the pool at the market price: with no arbitrageurs, a
-/// price held for the whole window is indistinguishable from a real move. `minLiquidity`, AnyrStaking's daily cap and
+/// price held for the whole window is indistinguishable from a real move. `minLiquidity`, NetworkFeeBurn's daily cap and
 /// the haircut bound the value at stake per day.
 contract TwapBuybackPriceOracle is IBuybackPriceOracle, Ownable2Step {
     enum Status {
@@ -101,8 +101,8 @@ contract TwapBuybackPriceOracle is IBuybackPriceOracle, Ownable2Step {
     struct Config {
         address pool; // canonical Uniswap V3 ANYR/USDG pool
         address factory; // canonical Uniswap V3 factory the pool and the router belong to
-        address staking; // AnyrStaking
-        address routeAdapter; // UniswapV3Adapter AnyrStaking must swap through
+        address executor; // NetworkFeeBurn
+        address routeAdapter; // UniswapV3Adapter NetworkFeeBurn must swap through
         address usdg; // tokenIn
         address anyr; // tokenOut
         uint8 usdgDecimals; // expected decimals, checked against the tokens
@@ -135,7 +135,7 @@ contract TwapBuybackPriceOracle is IBuybackPriceOracle, Ownable2Step {
 
     IUniswapV3PoolOracle public immutable pool;
     address public immutable factory;
-    address public immutable staking;
+    address public immutable executor;
     address public immutable routeAdapter;
     address public immutable usdg;
     address public immutable anyr;
@@ -179,7 +179,7 @@ contract TwapBuybackPriceOracle is IBuybackPriceOracle, Ownable2Step {
     /// @param guardian_ Pauses instantly; zero leaves only the owner able to pause.
     constructor(Config memory c, address owner_, address guardian_) Ownable(owner_) {
         if (
-            c.pool == address(0) || c.factory == address(0) || c.staking == address(0)
+            c.pool == address(0) || c.factory == address(0) || c.executor == address(0)
                 || c.routeAdapter == address(0) || c.usdg == address(0) || c.anyr == address(0)
         ) revert ZeroAddress();
         if (c.usdg == c.anyr) revert InvalidConfig();
@@ -206,11 +206,11 @@ contract TwapBuybackPriceOracle is IBuybackPriceOracle, Ownable2Step {
         if (IERC20Metadata(c.usdg).decimals() != c.usdgDecimals) revert InvalidConfig();
         if (IERC20Metadata(c.anyr).decimals() != c.anyrDecimals) revert InvalidConfig();
 
-        // The buyback side: AnyrStaking trades these tokens, and the adapter's router resolves pools from the same
+        // The buyback side: NetworkFeeBurn trades these tokens, and the adapter's router resolves pools from the same
         // factory, so the path USDG | fee | ANYR through `routeAdapter` swaps in exactly `pool`.
         if (
-            IBuybackStakingRoute(c.staking).anyr() != c.anyr
-                || IBuybackStakingRoute(c.staking).usdg() != c.usdg
+            IBuybackExecutorRoute(c.executor).anyr() != c.anyr
+                || IBuybackExecutorRoute(c.executor).usdg() != c.usdg
         ) {
             revert InvalidConfig();
         }
@@ -220,7 +220,7 @@ contract TwapBuybackPriceOracle is IBuybackPriceOracle, Ownable2Step {
 
         pool = p;
         factory = c.factory;
-        staking = c.staking;
+        executor = c.executor;
         routeAdapter = c.routeAdapter;
         usdg = c.usdg;
         anyr = c.anyr;
@@ -348,10 +348,10 @@ contract TwapBuybackPriceOracle is IBuybackPriceOracle, Ownable2Step {
         revert PriceDeviation(r.spotTick, r.shortTick, r.longTick);
     }
 
-    /// @dev AnyrStaking swaps through `routeAdapter`, whose registered USDG -> ANYR path is the single hop through
+    /// @dev NetworkFeeBurn swaps through `routeAdapter`, whose registered USDG -> ANYR path is the single hop through
     /// this pool (the router resolves USDG | fee | ANYR to `pool` via the shared factory).
     function _routeMatches() internal view returns (bool) {
-        if (IBuybackStakingRoute(staking).adapter() != routeAdapter) return false;
+        if (IBuybackExecutorRoute(executor).adapter() != routeAdapter) return false;
         (bytes memory path,) = IV3BuybackAdapterRoute(routeAdapter).getPath(usdg, anyr);
         return keccak256(path) == routeHash;
     }

@@ -8,7 +8,7 @@ Only the current main branch is maintained. Three app contracts are published; t
 
 **No audit findings have been accepted as risks.** The incomplete audit reported no confirmed findings in completed coverage; missing review is not acceptance. New exceptions require a public issue containing affected releases, impact, owner role, mitigation, expiry and independent review. Critical or High findings block release.
 
-Known trust boundaries remain: hardware/vendor attestation, issuer/keeper reporting truth, stock-feed and liquidity availability, jury/panel discretion, and settlement proof availability. Pending bond slashes can block exits until independent governance resolves them. No permissionless expiry, staking redesign, allocation change or new economic cap is introduced by this remediation. These boundaries remain review obligations.
+Known trust boundaries remain: hardware/vendor attestation, issuer/keeper reporting truth, stock-feed and liquidity availability, jury/panel discretion, and settlement proof availability. Pending bond slashes can block exits until independent governance resolves them. No permissionless expiry, allocation change or new economic cap is introduced by this remediation. These boundaries remain review obligations.
 
 ## Authority and holder inventory
 
@@ -20,7 +20,6 @@ Known trust boundaries remain: hardware/vendor attestation, issuer/keeper report
 | Credits: postSpentRoot, sweep; approveSpentRoot/approveSweep/revokeApprovals; setSettlement/setCreditor | SETTLEMENT; owner | Planned lock | Root/sweep approvals, amount/address checks; helper revocation emits event |
 | CallPay: setTreasury | owner | Planned lock | Nonzero treasury, event |
 | ProviderBond: proposeSlash/executeSlash/cancelSlash; approveSlash/revokeSlashApprovals; setSlasher/setRefundPool | SLASHER_SAFE; owner; cancellation by owner or slasher | Planned lock | Delay/dispute/approval checks; nonzero role addresses; helper events |
-| AnyrStaking: notifyMargin/executeBuyback; oracle/keeper/opsWallet/adapter/maxDaily setters | configured royalty/KEEPER; owner | Planned lock | Address checks, limits; maxDaily has no upper bound; events |
 | PayWithStock: token registration and router/oracle/slip setters, rescue; forceCloseSession/payCall/payCallWithAllowance | owner; ROUTER | Planned lock | bps/address/route checks and events; rescue relies on transfer event |
 | AnyrPaymaster: signer/daily-cap settings, inherited EntryPoint deposit/stake withdrawals | owner; verifying signer for user operations | Planned lock | Signer nonzero; daily cap unsigned without upper bound; events |
 | ReceiptAnchor: anchor/anchorAttested; signing-key registration/revocation; setAnchorer | ANCHORER or owner | Planned lock | Key/date/address checks; events |
@@ -28,6 +27,7 @@ Known trust boundaries remain: hardware/vendor attestation, issuer/keeper report
 | UniswapV3Adapter: setCaller/setPath/rescue; swapExactIn/Out | owner; allow-listed callers | Planned lock | Path/address checks, rescue limits; events |
 | UniswapV4Adapter: setCaller/setRoute/rescue; swapExactIn/Out; unlockCallback | owner; allow-listed callers; PoolManager callback | Planned lock | Route/address checks, callback validation; events |
 | ChainlinkStockOracle: feed/multiplier/sequencer/guardian setters, pause/unpause | owner; GUARDIAN may pause | Planned lock | Feed/decimal/staleness checks; sequencer grace configurable; events |
+| NetworkFeeBurn: swap/burn; adapter/oracle/keeper/daily-cap setters | KEEPER; owner | Separate planned lock | Nonzero token/adapter/keeper checks, fresh oracle floor and measured output, daily cap; events |
 | TwapBuybackPriceOracle: setGuardian, pause/unpause | owner; GUARDIAN may pause | Separate planned lock | Immutable oracle policy; zero guardian disables role; events |
 | CapacityCommit: mint/recordDelivery; keeper/slashRecipient/discount/bondRate/reportGrace/mintPause/providerBond setters | provider operator; keeper; owner | Standalone: timelock required by the plan below | bps/grace/address checks; bond rate unsigned; events |
 | IPXFeed: update; keeper/thinThreshold/maxStaleness setters | keeper; owner | Standalone: timelock required by the plan below | Round freshness/increasing timestamp; threshold unsigned; events |
@@ -41,7 +41,7 @@ Known trust boundaries remain: hardware/vendor attestation, issuer/keeper report
 | CreditMintEvents: recordPurchase/publishKeyset/setMintSigner | MINT_SIGNER; owner | Planned lock | Nonzero IDs/address, duplicates forbidden; events |
 | KmsGovernance: image/compose/KMS allow-list add/remove, setKmsRoot/bumpEpoch | owner | Planned lock | Set uniqueness, root/transcript checks; events |
 
-AgreementEscrow is ownerless: its payer, payee and selected dispute oracle are per-agreement capabilities; these are not administrative ownership roles. AnyrToken is fixed supply and ownerless. NetworkFeeBurn has fixed infrastructure/callback authorities, without mutable administration.
+AgreementEscrow is ownerless: its payer, payee and selected dispute oracle are per-agreement capabilities; these are not administrative ownership roles. AnyrToken is fixed supply and ownerless. NetworkFeeBurn has owner-controlled adapter, minimum-output oracle, keeper and daily cap settings; each setter emits an event. Its daily cap is in USDG base units; zero disables swaps and lowering it does not reset usage. This executor is not deployed or switched on yet.
 
 ## Governance completion plan
 
@@ -55,7 +55,7 @@ AgreementEscrow is ownerless: its payer, payee and selected dispute oracle are p
 
 Address setters require nonzero recipients where source enforces them; code-bearing dependencies also need reviewed runtime proofs. Guardian zero values that explicitly disable a role remain allowed. Bps/quorum/TCB/validity settings retain source bounds. Host minimum bond is 5,000–100,000 USDG; CapacityCommit discount is 1–10,000 bps and report grace is 1 hour–30 days; royalty bps is 0–2,000; PayWithStock slippage cap is at most 1,000 bps. Check source constants and boundary tests for the exact deployed version.
 
-These settings have no hard-coded maximum; they are owner-only and every change emits an event: paymaster daily cap (native base units), staking daily buyback (USDG base units), capacity bond per million units (USDG base units), and IPX thin-volume threshold (USDG base units). A governance proposal must specify old/new values, units, treasury/liquidity exposure and a rollback value. Zero may disable a lane where supported; never interpret it as an unlimited default. No new protocol upper bounds are approved. The audit's meaningful-policy-bound criterion remains open pending an economic decision.
+These settings have no hard-coded maximum; they are owner-only and every change emits an event: paymaster daily cap (native base units), capacity bond per million units (USDG base units), and IPX thin-volume threshold (USDG base units). A governance proposal must specify old/new values, units, treasury/liquidity exposure and a rollback value. Zero may disable a lane where supported; never interpret it as an unlimited default. No new protocol upper bounds are approved. The audit's meaningful-policy-bound criterion remains open pending an economic decision.
 
 ## Emergency response
 
@@ -63,7 +63,7 @@ Role contacts are the security triage role (private GitHub reports), operations 
 
 1. Operations on-call records finalized block/hash, affected release, readiness failures and public transaction IDs. Disable new routing/sponsorship and the affected worker job through the release configuration; preserve evidence and durable retry records.
 2. The configured oracle guardian may pause unsafe pricing. Governance can set CapacityCommit mintingPaused(true), revoke pending root/sweep/slash approvals, rotate compromised operational roles and stop new settlement approvals. Follow the normal timelock; no bypass privilege is implied.
-3. Preserve exits: do not pause credits withdrawals, bond exits with resolved sanctions, staking unstake/claim, APIU redemption or ownerless escrow timeout recovery. Supply the latest verified root and durable proofs. Do not delete pending signed transactions or escrow journals.
+3. Preserve exits: do not pause credits withdrawals, bond exits with resolved sanctions, APIU redemption or ownerless escrow timeout recovery. Supply the latest verified root and durable proofs. Do not delete pending signed transactions or escrow journals.
 4. A pending slash is independently reviewed before cancellation/execution. Escalate unresolved proposals at 72 hours and again every day; document the adjudication result. This operational escalation cannot guarantee permissionless exit or replace an on-chain expiry policy.
 5. Before resuming, reconcile balances/roots and pending submissions, verify canonical state, re-run deployment code/config checks, exercise a synthetic alert, and have governance approve the release. Review receipts/attestations and rotate credentials through private operator procedures as applicable.
 

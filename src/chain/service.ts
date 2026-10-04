@@ -25,7 +25,6 @@ import { fail } from "../lib/errors.ts";
 import { ipxFeedAbi } from "../services/ipx.ts";
 import { log } from "../lib/util.ts";
 import {
-  AnyrStakingAbi,
   CallPayAbi,
   CreditsAbi,
   PayWithStockAbi,
@@ -36,7 +35,7 @@ import {
   erc20Abi,
 } from "./abis.ts";
 
-export type ContractName = "credits" | "callPay" | "payWithStock" | "providerBond" | "receiptAnchor" | "royalty" | "staking";
+export type ContractName = "credits" | "callPay" | "payWithStock" | "providerBond" | "receiptAnchor" | "royalty";
 export const CONTRACT_ABIS: Record<ContractName, Abi> = {
   credits: CreditsAbi as unknown as Abi,
   callPay: CallPayAbi as unknown as Abi,
@@ -44,7 +43,6 @@ export const CONTRACT_ABIS: Record<ContractName, Abi> = {
   providerBond: ProviderBondAbi as unknown as Abi,
   receiptAnchor: ReceiptAnchorAbi as unknown as Abi,
   royalty: RoyaltyAbi as unknown as Abi,
-  staking: AnyrStakingAbi as unknown as Abi,
 };
 
 export type DecodedLog = { contract: ContractName; event: string; args: Record<string, unknown>; txHash: Hex; logIndex: number; blockNumber: bigint };
@@ -591,23 +589,6 @@ export class ChainService {
     const r = this.require("royalty");
     await this.ensureAllowance("settlement", r, usdg);
     return this.send("settlement", r, RoyaltyAbi as unknown as Abi, "stream", [modelIdHash, usdg]);
-  }
-  async notifyMargin(usdg: bigint) {
-    const s = this.require("staking");
-    await this.ensureAllowance("settlement", s, usdg);
-    return this.send("settlement", s, AnyrStakingAbi as unknown as Abi, "notifyMargin", [usdg]);
-  }
-
-  async buybackState() {
-    const s = this.require("staking");
-    const [balance, remaining] = await Promise.all([
-      this.client.readContract({ address: s, abi: AnyrStakingAbi, functionName: "buybackBalance" }) as Promise<bigint>,
-      this.client.readContract({ address: s, abi: AnyrStakingAbi, functionName: "buybackRemainingToday" }) as Promise<bigint>,
-    ]);
-    return { balance, remaining };
-  }
-  async executeBuyback(usdgIn: bigint, minAnyrOut: bigint) {
-    return this.send("keeper", this.require("staking"), AnyrStakingAbi as unknown as Abi, "executeBuyback", [usdgIn, minAnyrOut]);
   }
   async registerRoyalty(modelIdHash: Hex, creator: Hex, bps: number) {
     return this.send("router", this.require("royalty"), RoyaltyAbi as unknown as Abi, "register", [modelIdHash, creator, bps]);

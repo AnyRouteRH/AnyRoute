@@ -18,7 +18,7 @@ import {CallPay} from "../src/CallPay.sol";
 import {ReceiptAnchor} from "../src/ReceiptAnchor.sol";
 import {Royalty} from "../src/Royalty.sol";
 import {ProviderBond} from "../src/ProviderBond.sol";
-import {AnyrStaking} from "../src/AnyrStaking.sol";
+import {NetworkFeeBurn} from "../src/NetworkFeeBurn.sol";
 import {PayWithStock} from "../src/PayWithStock.sol";
 import {AnyrPaymaster} from "../src/AnyrPaymaster.sol";
 import {ChainlinkStockOracle, AggregatorV3Interface} from "../src/oracle/ChainlinkStockOracle.sol";
@@ -104,7 +104,6 @@ contract Deploy is Script {
         address anchorer;
         address registrar;
         address keeper;
-        address opsWallet;
         address paymasterSigner;
         address refundPool;
         address callPayTreasury;
@@ -123,7 +122,6 @@ contract Deploy is Script {
         address receiptAnchor;
         address royalty;
         address providerBond;
-        address anyrStaking;
         address payWithStock;
         address stockOracle;
         address uniswapV4Adapter;
@@ -201,7 +199,6 @@ contract Deploy is Script {
         r.slasher = _anvil(4);
         r.paymasterSigner = _anvil(5);
         r.keeper = _anvil(6);
-        r.opsWallet = _anvil(6);
         r.guardian = deployer;
         r.anyrRecipients = [deployer, deployer, deployer, deployer];
         r.sealPublisher = r.anchorer;
@@ -264,15 +261,13 @@ contract Deploy is Script {
         _d.anyrToken = address(new AnyrToken(r.anyrRecipients));
         // Buybacks go through the V3 adapter, in the Uniswap V3 ANYR/USDG pool whose TWAP sets the buyback floor
         // (TwapBuybackPriceOracle); the route and the oracle are enabled together once that pool exists, see
-        // `deployBuybackOracle`. Until then AnyrStaking has no oracle and buybacks revert.
+        // `deployBuybackOracle`. The network executor is deployed separately before that step.
         _d.buybackAdapter = _d.uniswapV3Adapter;
 
         _deployCore(deployer);
 
         UniswapV4Adapter(payable(_d.uniswapV4Adapter)).setCaller(_d.payWithStock, true);
-        UniswapV4Adapter(payable(_d.uniswapV4Adapter)).setCaller(_d.anyrStaking, true);
         UniswapV3Adapter(_d.uniswapV3Adapter).setCaller(_d.payWithStock, true);
-        UniswapV3Adapter(_d.uniswapV3Adapter).setCaller(_d.anyrStaking, true);
 
         _configureStockTokens(cfg);
 
@@ -387,7 +382,6 @@ contract Deploy is Script {
         _deployCore(deployer);
 
         UniswapV4Adapter(payable(_d.uniswapV4Adapter)).setCaller(_d.payWithStock, true);
-        UniswapV4Adapter(payable(_d.uniswapV4Adapter)).setCaller(_d.anyrStaking, true);
 
         ChainlinkStockOracle(_d.stockOracle)
             .setFeed(address(nvda), AggregatorV3Interface(_d.mockNvdaFeed), MAX_STALENESS, false);
@@ -432,16 +426,6 @@ contract Deploy is Script {
         _d.receiptAnchor = address(new ReceiptAnchor(deployer, r.anchorer));
         _d.royalty = address(new Royalty(usdg, deployer, r.registrar, r.settlement));
         _d.providerBond = address(new ProviderBond(usdg, deployer, r.slasher, r.refundPool));
-        _d.anyrStaking = address(
-            new AnyrStaking(
-                IERC20(_d.anyrToken),
-                usdg,
-                deployer,
-                r.keeper,
-                r.opsWallet,
-                IBuybackAdapter(_d.buybackAdapter)
-            )
-        );
         _d.stockOracle = address(new ChainlinkStockOracle(deployer));
         _d.payWithStock = address(
             new PayWithStock(usdg, ICredits(_d.credits), IStockOracle(_d.stockOracle), r.router, deployer)
@@ -469,25 +453,24 @@ contract Deploy is Script {
 
     /// @notice Every Ownable2Step contract handed to the timelock (order = accept batch order).
     function _ownedContracts() internal view returns (address[] memory a) {
-        uint256 n = _d.uniswapV3Adapter == address(0) ? 16 : 17;
+        uint256 n = _d.uniswapV3Adapter == address(0) ? 15 : 16;
         a = new address[](n);
         a[0] = _d.credits;
         a[1] = _d.callPay;
         a[2] = _d.receiptAnchor;
         a[3] = _d.royalty;
         a[4] = _d.providerBond;
-        a[5] = _d.anyrStaking;
-        a[6] = _d.payWithStock;
-        a[7] = _d.stockOracle;
-        a[8] = _d.paymaster;
-        a[9] = _d.uniswapV4Adapter;
-        a[10] = _d.sealMeasurementRegistry;
-        a[11] = _d.policyRegistry;
-        a[12] = _d.kmsGovernance;
-        a[13] = _d.hostBond;
-        a[14] = _d.creditMintEvents;
-        a[15] = _d.skillRegistry;
-        if (n == 17) a[16] = _d.uniswapV3Adapter;
+        a[5] = _d.payWithStock;
+        a[6] = _d.stockOracle;
+        a[7] = _d.paymaster;
+        a[8] = _d.uniswapV4Adapter;
+        a[9] = _d.sealMeasurementRegistry;
+        a[10] = _d.policyRegistry;
+        a[11] = _d.kmsGovernance;
+        a[12] = _d.hostBond;
+        a[13] = _d.creditMintEvents;
+        a[14] = _d.skillRegistry;
+        if (n == 16) a[15] = _d.uniswapV3Adapter;
     }
 
     function ownedContracts() external view returns (address[] memory) {
@@ -546,7 +529,6 @@ contract Deploy is Script {
         r.settlement = vm.envAddress("SETTLEMENT");
         r.anchorer = vm.envAddress("ANCHORER");
         r.keeper = vm.envAddress("KEEPER");
-        r.opsWallet = vm.envAddress("OPS_WALLET");
         r.paymasterSigner = vm.envAddress("PAYMASTER_SIGNER");
         r.refundPool = vm.envAddress("REFUND_POOL");
         r.callPayTreasury = vm.envAddress("CALLPAY_TREASURY");
@@ -570,7 +552,6 @@ contract Deploy is Script {
         r.slasher = vm.envOr("SLASHER", r.slasher);
         r.paymasterSigner = vm.envOr("PAYMASTER_SIGNER", r.paymasterSigner);
         r.keeper = vm.envOr("KEEPER", r.keeper);
-        r.opsWallet = vm.envOr("OPS_WALLET", r.opsWallet);
         r.guardian = vm.envOr("GUARDIAN", r.guardian);
         r.sealPublisher = vm.envOr("SEAL_PUBLISHER", r.anchorer);
         r.mintSigner = vm.envOr("MINT_SIGNER", r.anchorer);
@@ -583,7 +564,7 @@ contract Deploy is Script {
         require(
             r.slasher != address(0) && r.router != address(0) && r.settlement != address(0)
                 && r.anchorer != address(0) && r.registrar != address(0) && r.keeper != address(0)
-                && r.opsWallet != address(0) && r.paymasterSigner != address(0) && r.refundPool != address(0)
+                && r.paymasterSigner != address(0) && r.refundPool != address(0)
                 && r.callPayTreasury != address(0) && r.guardian != address(0)
                 && r.sealPublisher != address(0) && r.mintSigner != address(0),
             "Deploy: missing role address"
@@ -618,11 +599,11 @@ contract Deploy is Script {
 
     /// @dev Schema "anyroute.deployments/v1":
     /// { schema, chainId, mode, blockNumber, timestamp, deployer, owner, pendingOwner,
-    ///   contracts: { usdg, anyrToken, credits, callPay, receiptAnchor, royalty, providerBond, anyrStaking,
+    ///   contracts: { usdg, anyrToken, credits, callPay, receiptAnchor, royalty, providerBond,
     ///                payWithStock, stockOracle, uniswapV4Adapter, uniswapV3Adapter, paymaster, entryPoint,
     ///                poolManager, swapRouter02, timelock, buybackAdapter, sealMeasurementRegistry,
     ///                policyRegistry, kmsGovernance, hostBond, creditMintEvents, skillRegistry },
-    ///   roles: { ownerSafe, slasher, router, settlement, anchorer, registrar, keeper, opsWallet, paymasterSigner,
+    ///   roles: { ownerSafe, slasher, router, settlement, anchorer, registrar, keeper, paymasterSigner,
     ///            refundPool, callPayTreasury, guardian, anyrRecipients[4], creditors[], adapterCallers[],
     ///            sealPublisher, mintSigner },
     ///   params: { timelockMinDelay, maxStaleness, applyUiMultiplier, payWithStockMaxSlipBps,
@@ -653,7 +634,7 @@ contract Deploy is Script {
 
     function _contractsJson() internal view returns (string memory) {
         Deployed memory d = _d;
-        string[] memory f = new string[](24);
+        string[] memory f = new string[](23);
         f[0] = _kvA("usdg", d.usdg);
         f[1] = _kvA("anyrToken", d.anyrToken);
         f[2] = _kvA("credits", d.credits);
@@ -661,38 +642,36 @@ contract Deploy is Script {
         f[4] = _kvA("receiptAnchor", d.receiptAnchor);
         f[5] = _kvA("royalty", d.royalty);
         f[6] = _kvA("providerBond", d.providerBond);
-        f[7] = _kvA("anyrStaking", d.anyrStaking);
-        f[8] = _kvA("payWithStock", d.payWithStock);
-        f[9] = _kvA("stockOracle", d.stockOracle);
-        f[10] = _kvA("uniswapV4Adapter", d.uniswapV4Adapter);
-        f[11] = _kvA("uniswapV3Adapter", d.uniswapV3Adapter);
-        f[12] = _kvA("paymaster", d.paymaster);
-        f[13] = _kvA("entryPoint", d.entryPoint);
-        f[14] = _kvA("poolManager", d.poolManager);
-        f[15] = _kvA("swapRouter02", d.swapRouter02);
-        f[16] = _kvA("timelock", d.timelock);
-        f[17] = _kvA("buybackAdapter", d.buybackAdapter);
-        f[18] = _kvA("sealMeasurementRegistry", d.sealMeasurementRegistry);
-        f[19] = _kvA("policyRegistry", d.policyRegistry);
-        f[20] = _kvA("kmsGovernance", d.kmsGovernance);
-        f[21] = _kvA("hostBond", d.hostBond);
-        f[22] = _kvA("creditMintEvents", d.creditMintEvents);
-        f[23] = _kvA("skillRegistry", d.skillRegistry);
+        f[7] = _kvA("payWithStock", d.payWithStock);
+        f[8] = _kvA("stockOracle", d.stockOracle);
+        f[9] = _kvA("uniswapV4Adapter", d.uniswapV4Adapter);
+        f[10] = _kvA("uniswapV3Adapter", d.uniswapV3Adapter);
+        f[11] = _kvA("paymaster", d.paymaster);
+        f[12] = _kvA("entryPoint", d.entryPoint);
+        f[13] = _kvA("poolManager", d.poolManager);
+        f[14] = _kvA("swapRouter02", d.swapRouter02);
+        f[15] = _kvA("timelock", d.timelock);
+        f[16] = _kvA("buybackAdapter", d.buybackAdapter);
+        f[17] = _kvA("sealMeasurementRegistry", d.sealMeasurementRegistry);
+        f[18] = _kvA("policyRegistry", d.policyRegistry);
+        f[19] = _kvA("kmsGovernance", d.kmsGovernance);
+        f[20] = _kvA("hostBond", d.hostBond);
+        f[21] = _kvA("creditMintEvents", d.creditMintEvents);
+        f[22] = _kvA("skillRegistry", d.skillRegistry);
         return _obj(f);
     }
 
     function _rolesJson() internal view returns (string memory) {
         Roles memory r = _r;
-        address[] memory callers = new address[](2);
+        address[] memory callers = new address[](1);
         callers[0] = _d.payWithStock;
-        callers[1] = _d.anyrStaking;
         address[] memory creditors = new address[](1);
         creditors[0] = _d.payWithStock;
         address[] memory rec = new address[](4);
         for (uint256 i; i < 4; ++i) {
             rec[i] = r.anyrRecipients[i];
         }
-        string[] memory f = new string[](17);
+        string[] memory f = new string[](16);
         f[0] = _kvA("ownerSafe", r.ownerSafe);
         f[1] = _kvA("slasher", r.slasher);
         f[2] = _kvA("router", r.router);
@@ -700,16 +679,15 @@ contract Deploy is Script {
         f[4] = _kvA("anchorer", r.anchorer);
         f[5] = _kvA("registrar", r.registrar);
         f[6] = _kvA("keeper", r.keeper);
-        f[7] = _kvA("opsWallet", r.opsWallet);
-        f[8] = _kvA("paymasterSigner", r.paymasterSigner);
-        f[9] = _kvA("refundPool", r.refundPool);
-        f[10] = _kvA("callPayTreasury", r.callPayTreasury);
-        f[11] = _kvA("guardian", r.guardian);
-        f[12] = _kv("anyrRecipients", _addrArray(rec));
-        f[13] = _kv("creditors", _addrArray(creditors));
-        f[14] = _kv("adapterCallers", _addrArray(callers));
-        f[15] = _kvA("sealPublisher", r.sealPublisher);
-        f[16] = _kvA("mintSigner", r.mintSigner);
+        f[7] = _kvA("paymasterSigner", r.paymasterSigner);
+        f[8] = _kvA("refundPool", r.refundPool);
+        f[9] = _kvA("callPayTreasury", r.callPayTreasury);
+        f[10] = _kvA("guardian", r.guardian);
+        f[11] = _kv("anyrRecipients", _addrArray(rec));
+        f[12] = _kv("creditors", _addrArray(creditors));
+        f[13] = _kv("adapterCallers", _addrArray(callers));
+        f[14] = _kvA("sealPublisher", r.sealPublisher);
+        f[15] = _kvA("mintSigner", r.mintSigner);
         return _obj(f);
     }
 
@@ -871,7 +849,7 @@ contract Deploy is Script {
         address timelock; // oracle owner; executes the governance batch
         address ownerSafe; // proposes and executes on the timelock
         address guardian; // may pause the oracle instantly
-        TwapBuybackPriceOracle.Config oracle; // .staking / .routeAdapter = anyrStaking / uniswapV3Adapter
+        TwapBuybackPriceOracle.Config oracle; // .executor / .routeAdapter = networkFeeBurn / uniswapV3Adapter
         string outPath; // Safe batch + oracle record ("" = none)
     }
 
@@ -885,8 +863,8 @@ contract Deploy is Script {
     ///   BUYBACK_MIN_CARDINALITY (1800), BUYBACK_MAX_DEVIATION_TICKS (500), BUYBACK_HAIRCUT_BPS (100),
     ///   BUYBACK_ORACLE_PATH (default deployments/<chainid>-buyback-oracle.json).
     ///   Output: a Safe Transaction Builder batch, OWNER_SAFE -> timelock.scheduleBatch(
-    ///   UniswapV3Adapter.setPath(USDG, ANYR, USDG|fee|ANYR), AnyrStaking.setAdapter(UniswapV3Adapter),
-    ///   AnyrStaking.setBuybackPriceOracle(oracle)), with the oracle record under "anyroute"; and <path>-execute.json.
+    ///   UniswapV3Adapter.setPath(USDG, ANYR, USDG|fee|ANYR), NetworkFeeBurn.setAdapter(UniswapV3Adapter),
+    ///   NetworkFeeBurn.setBuybackPriceOracle(oracle)), with the oracle record under "anyroute"; and <path>-execute.json.
     function deployBuybackOracle() external returns (address) {
         string memory flag = vm.envOr("BUYBACK_ORACLE", string(""));
         require(
@@ -912,7 +890,7 @@ contract Deploy is Script {
         TwapBuybackPriceOracle.Config memory c = p.oracle;
         c.pool = vm.envAddress("BUYBACK_V3_POOL");
         c.factory = vm.parseJsonAddress(cfg, ".uniswap.v3Factory");
-        c.staking = vm.parseJsonAddress(m, ".contracts.anyrStaking");
+        c.executor = vm.envAddress("NETWORK_FEE_BURN_ADDRESS");
         c.routeAdapter = vm.parseJsonAddress(m, ".contracts.uniswapV3Adapter");
         c.usdg = vm.parseJsonAddress(m, ".contracts.usdg");
         c.anyr = vm.parseJsonAddress(m, ".contracts.anyrToken");
@@ -952,10 +930,10 @@ contract Deploy is Script {
         targets[0] = adapter;
         payloads[0] =
             abi.encodeCall(UniswapV3Adapter.setPath, (oracle.usdg(), oracle.anyr(), _buybackPath(oracle)));
-        targets[1] = oracle.staking();
-        payloads[1] = abi.encodeCall(AnyrStaking.setAdapter, (IBuybackAdapter(adapter)));
-        targets[2] = oracle.staking();
-        payloads[2] = abi.encodeCall(AnyrStaking.setBuybackPriceOracle, (oracle));
+        targets[1] = oracle.executor();
+        payloads[1] = abi.encodeCall(NetworkFeeBurn.setAdapter, (IBuybackAdapter(adapter)));
+        targets[2] = oracle.executor();
+        payloads[2] = abi.encodeCall(NetworkFeeBurn.setBuybackPriceOracle, (oracle));
         salt = keccak256(abi.encode(BUYBACK_ORACLE_SALT_TAG, block.chainid, address(oracle)));
     }
 
@@ -988,7 +966,7 @@ contract Deploy is Script {
         g[1] = _kvA("oracle", address(oracle));
         g[2] = _kvA("pool", address(oracle.pool()));
         g[3] = _kvA("factory", oracle.factory());
-        g[4] = _kvA("anyrStaking", oracle.staking());
+        g[4] = _kvA("networkFeeBurn", oracle.executor());
         g[5] = _kvA("uniswapV3Adapter", oracle.routeAdapter());
         g[6] = _kvS("path", vm.toString(_buybackPath(oracle)));
         g[7] = _kv("params", _buybackOracleParamsJson(oracle));
@@ -1047,7 +1025,7 @@ contract Deploy is Script {
             "description",
             string.concat(
                 "OWNER_SAFE proposes/executes on the TimelockController: UniswapV3Adapter.setPath, ",
-                "AnyrStaking.setAdapter and AnyrStaking.setBuybackPriceOracle; execute no earlier than ",
+                "NetworkFeeBurn.setAdapter and NetworkFeeBurn.setBuybackPriceOracle; execute no earlier than ",
                 vm.toString(TIMELOCK_DELAY),
                 "s after scheduling."
             )

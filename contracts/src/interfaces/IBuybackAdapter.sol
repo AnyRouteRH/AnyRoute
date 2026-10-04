@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-/// @notice Exact-input swap used by AnyrStaking buybacks (USDG -> ANYR). The caller must have
+/// @notice Exact-input swap used by NetworkFeeBurn buybacks (USDG -> ANYR). The caller must have
 /// transferred `amountIn` of `tokenIn` to the adapter first. Sends at least `minOut` of
 /// `tokenOut` to `recipient` or reverts. Returns the amount received.
 interface IBuybackAdapter {

@@ -46,7 +46,7 @@ export async function recordEvents(ctx: Ctx, logs: DecodedLog[]) {
 
 /** Pull new confirmed logs from the chain, then apply them. */
 export async function pollChain(ctx: Ctx, maxRange = 2_000n) {
-  const anyContract = ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty", "staking"].some((n) => ctx.chain.address(n as never));
+  const anyContract = ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty"].some((n) => ctx.chain.address(n as never));
   if (!anyContract) return { skipped: "no contracts configured" };
   const head = await ctx.chain.blockNumber();
   const safeHead = head - BigInt(Math.max(0, ctx.cfg.chain.confirmations - 1));

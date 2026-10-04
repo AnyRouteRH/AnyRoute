@@ -1,3 +1,4 @@
+import { retainedMargin } from "./retained-margin.ts";
 import { accrueNetworkHours } from "../network/accrual.ts";
 import { runMakegood } from "./makegood.ts"; // V6 R
 import { addPendingNetworkPayouts, networkPayout } from "../network/payout.ts";
@@ -6,7 +7,7 @@ import { and, asc, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { keccak256, toBytes, type Hex } from "viem";
 import type { Ctx } from "../context.ts";
 import { accounts, chainEvents, generations, keys, kv, ledger, models, payouts, providers, royalties, settlements, spentRoots } from "../db/schema.ts";
-import { mulBps, picoToUsdg, PICO_PER_USDG_UNIT } from "../lib/money.ts";
+import { mulBps, picoToUsdg } from "../lib/money.ts";
 import { log, uid } from "../lib/util.ts";
 import { SpentTree } from "../receipts/merkle.ts";
 
@@ -17,7 +18,6 @@ import { SpentTree } from "../receipts/merkle.ts";
 //  4. prepaid spent roots: every funded key's cumulative on-chain spend in a tree sorted by key hash,
 //     posted to Credits so self-custodial withdrawals are provably bounded. A key the root leaves out
 //     withdraws as if it spent nothing, so completeness is the operator's own money, not a trust ask.
-//  5. protocol margin -> AnyrStaking.notifyMargin (50% buyback to stakers / 50% attestor+canary ops)
 
 const hourKey = (d: Date) => d.toISOString().slice(0, 13);
 const USAGE_KINDS = new Set(["usage"]);
@@ -312,23 +312,12 @@ export async function streamRoyalties(ctx: Ctx) {
   return { streamed: n };
 }
 
-/** 5: send accrued margin to AnyrStaking (it splits 50% buyback / 50% ops). */
-export async function sendMargin(ctx: Ctx) {
-  const unsent = BigInt((await getKv<string>(ctx, "margin_unsent")) ?? "0");
-  const usdg = picoToUsdg(unsent, "floor");
-  if (usdg <= 0n) return { sent: "0" };
-  if (!ctx.chain.address("staking") || !ctx.chain.roleAddress("settlement")) return { sent: "0", accrued_usdg: usdg.toString(), reason: "staking not configured" };
-  const r = await ctx.chain.notifyMargin(usdg);
-  await setKv(ctx, "margin_unsent", (unsent - usdg * PICO_PER_USDG_UNIT).toString());
-  return { sent: usdg.toString(), tx: r.hash };
-}
-
 export async function runSettlement(ctx: Ctx) {
   const makegood = await runMakegood(ctx).catch((e) => ({ error: (e as Error).message })); // V6 R: before spent roots
   const hours = await settleHours(ctx);
   const roots = await postSpentRoot(ctx);
   const royaltiesResult = await streamRoyalties(ctx).catch((e) => ({ error: (e as Error).message }));
-  const margin = await sendMargin(ctx).catch((e) => ({ error: (e as Error).message }));
+  const margin = await retainedMargin(ctx).catch((e) => ({ error: (e as Error).message }));
   const weekly = new Date().getUTCDay() === 1 && new Date().getUTCHours() === 0 ? await runPayouts(ctx) : { skipped: "weekly (Mondays 00 UTC)" };
   return { makegood, hours, roots, royalties: royaltiesResult, margin, payouts: weekly };
 }

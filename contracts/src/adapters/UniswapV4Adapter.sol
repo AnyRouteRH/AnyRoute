@@ -49,7 +49,7 @@ contract UniswapV4Adapter is
 
     IPoolManager public immutable poolManager;
 
-    /// @notice Addresses allowed to call the swap functions (PayWithStock, AnyrStaking).
+    /// @notice Addresses allowed to call the swap functions (PayWithStock, NetworkFeeBurn).
     mapping(address caller => bool) public isCaller;
 
     mapping(address tokenIn => mapping(address tokenOut => PoolKey[])) internal _routes;

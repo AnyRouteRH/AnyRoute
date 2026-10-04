@@ -2,9 +2,8 @@
 pragma solidity 0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {NetworkFeeBurn, INetworkBuybackConfig} from "../src/NetworkFeeBurn.sol";
+import {NetworkFeeBurn} from "../src/NetworkFeeBurn.sol";
 import {AnyrToken} from "../src/AnyrToken.sol";
-import {AnyrStaking} from "../src/AnyrStaking.sol";
 import {IBuybackPriceOracle} from "../src/interfaces/IBuybackPriceOracle.sol";
 import {IBuybackAdapter} from "../src/interfaces/IBuybackAdapter.sol";
 import {MockUSDG} from "../src/mocks/MockUSDG.sol";
@@ -15,7 +14,7 @@ contract NetworkFloor is IBuybackPriceOracle {
     function minimumOutput(address, address, uint256) external view returns (uint256, uint256) { require(!refused, "refused"); return (floor, updated); }
 }
 /// @dev The adapter is also the authorized keeper: role checks cannot mask a broken mutex.
-contract ReentrantNetworkAdapter is IBuybackAdapter, INetworkBuybackConfig {
+contract ReentrantNetworkAdapter is IBuybackAdapter {
     IERC20 public usdg;
     IERC20 public anyr;
     IBuybackPriceOracle public buybackPriceOracle;
@@ -40,15 +39,14 @@ contract ReentrantNetworkAdapter is IBuybackAdapter, INetworkBuybackConfig {
     }
 }
 contract NetworkFeeBurnTest is Test {
-    NetworkFeeBurn burn; AnyrStaking staking; AnyrToken anyr; MockUSDG usdg; MockBuybackAdapter adapter; NetworkFloor oracle;
+    NetworkFeeBurn burn; AnyrToken anyr; MockUSDG usdg; MockBuybackAdapter adapter; NetworkFloor oracle;
     address keeper = makeAddr("keeper"); bytes32 id = keccak256("fee-period");
     function setUp() public {
         vm.warp(1800000000);
         anyr = new AnyrToken([address(this), makeAddr("team"), makeAddr("liquidity"), makeAddr("community")]);
         usdg = new MockUSDG(); adapter = new MockBuybackAdapter(10e18, 1e6);
-        staking = new AnyrStaking(IERC20(address(anyr)), IERC20(address(usdg)), address(this), keeper, makeAddr("ops"), adapter);
-        oracle = new NetworkFloor(); oracle.configure(1, block.timestamp, false); staking.setBuybackPriceOracle(oracle);
-        burn = new NetworkFeeBurn(INetworkBuybackConfig(address(staking)));
+        oracle = new NetworkFloor(); oracle.configure(1, block.timestamp, false);
+        burn = new NetworkFeeBurn(anyr, usdg, address(this), keeper, adapter, 10_000e6); burn.setBuybackPriceOracle(oracle);
         usdg.mint(address(burn), 100000e6); anyr.transfer(address(adapter), 1000000e18);
     }
     function test_swapThenBurnAndDuplicateRefusal() public {
@@ -67,7 +65,7 @@ contract NetworkFeeBurnTest is Test {
     }
     function test_dailyCapAndKeeperRestriction() public {
         vm.expectRevert(NetworkFeeBurn.Refused.selector); burn.swap(id, 10e6, 99e18);
-        uint256 cap = staking.maxDailyBuyback(); vm.prank(keeper); burn.swap(id, cap, 1);
+        uint256 cap = burn.maxDailyBuyback(); vm.prank(keeper); burn.swap(id, cap, 1);
         vm.expectRevert(NetworkFeeBurn.Refused.selector); vm.prank(keeper); burn.swap(keccak256("next"), 1, 1);
         vm.warp(block.timestamp + 1 days); assertEq(burn.remainingToday(), cap);
     }
@@ -77,9 +75,35 @@ contract NetworkFeeBurnTest is Test {
         oracle.configure(0, block.timestamp, false); vm.expectRevert(NetworkFeeBurn.Refused.selector); vm.prank(keeper); burn.swap(id, 1e6, 1);
         oracle.configure(1, block.timestamp + 1, false); vm.expectRevert(NetworkFeeBurn.Refused.selector); vm.prank(keeper); burn.swap(id, 1e6, 1);
     }
+    function test_ownerOnlySettersEmitAndRejectInvalidAddresses() public {
+        vm.expectRevert(); vm.prank(keeper); burn.setAdapter(adapter);
+        vm.expectRevert(); vm.prank(keeper); burn.setBuybackPriceOracle(oracle);
+        vm.expectRevert(); vm.prank(keeper); burn.setKeeper(keeper);
+        vm.expectRevert(); vm.prank(keeper); burn.setMaxDailyBuyback(1);
+        vm.expectRevert(NetworkFeeBurn.Refused.selector); burn.setAdapter(IBuybackAdapter(address(0)));
+        vm.expectRevert(NetworkFeeBurn.Refused.selector); burn.setKeeper(address(0));
+        vm.expectEmit(true, false, false, true); emit NetworkFeeBurn.AdapterSet(address(adapter)); burn.setAdapter(adapter);
+        vm.expectEmit(true, false, false, true); emit NetworkFeeBurn.BuybackPriceOracleSet(address(oracle)); burn.setBuybackPriceOracle(oracle);
+        vm.expectEmit(true, false, false, true); emit NetworkFeeBurn.KeeperSet(keeper); burn.setKeeper(keeper);
+        vm.expectEmit(false, false, false, true); emit NetworkFeeBurn.MaxDailyBuybackSet(10e6); burn.setMaxDailyBuyback(10e6);
+    }
+    function test_capReductionPreservesUsageAndZeroDisablesSwaps() public {
+        vm.prank(keeper); burn.swap(id, 10e6, 99e18);
+        burn.setMaxDailyBuyback(5e6); assertEq(burn.remainingToday(), 0); assertEq(burn.used(), 10e6);
+        burn.setMaxDailyBuyback(12e6); assertEq(burn.remainingToday(), 2e6);
+        burn.setMaxDailyBuyback(0); vm.warp(block.timestamp + 1 days); assertEq(burn.remainingToday(), 0);
+        vm.expectRevert(NetworkFeeBurn.Refused.selector); vm.prank(keeper); burn.swap(keccak256("next"), 1, 1);
+        vm.prank(keeper); burn.burn(id); assertEq(anyr.balanceOf(burn.DEAD()), 100e18);
+    }
+    function test_missingOracleDisablesSwapsButAllowsCompletedBurn() public {
+        vm.prank(keeper); burn.swap(id, 10e6, 99e18);
+        burn.setBuybackPriceOracle(IBuybackPriceOracle(address(0)));
+        vm.expectRevert(NetworkFeeBurn.Refused.selector); vm.prank(keeper); burn.swap(keccak256("next"), 1, 1);
+        vm.prank(keeper); burn.burn(id); assertEq(anyr.balanceOf(burn.DEAD()), 100e18);
+    }
     function test_adapterKeeperCannotReenterSwapOrBurn() public {
         ReentrantNetworkAdapter attack = new ReentrantNetworkAdapter(usdg, anyr, oracle);
-        NetworkFeeBurn guarded = new NetworkFeeBurn(attack);
+        NetworkFeeBurn guarded = new NetworkFeeBurn(anyr, usdg, address(this), address(attack), attack, 100e6); guarded.setBuybackPriceOracle(oracle);
         attack.configure(guarded);
         usdg.mint(address(guarded), 10e6); anyr.transfer(address(attack), 10e18);
         attack.run(keccak256("prior")); attack.run(keccak256("second"));

@@ -2,9 +2,8 @@
 pragma solidity 0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {NetworkFeeBurn, INetworkBuybackConfig} from "../src/NetworkFeeBurn.sol";
+import {NetworkFeeBurn} from "../src/NetworkFeeBurn.sol";
 import {AnyrToken} from "../src/AnyrToken.sol";
-import {AnyrStaking} from "../src/AnyrStaking.sol";
 import {MockUSDG} from "../src/mocks/MockUSDG.sol";
 import {MockBuybackAdapter} from "../src/mocks/MockBuybackAdapter.sol";
 import {NetworkFloor} from "./NetworkFeeBurn.t.sol";
@@ -26,7 +25,7 @@ contract NetworkFeeConservationHandler is Test {
     function swap(uint256 amount) external {
         uint256 room = fee.remainingToday(); uint256 balance = input.balanceOf(address(fee)); if (room > balance) room = balance;
         // Adapter reserve is finite, so do not synthesize more output than its backing.
-        uint256 reserve = output.balanceOf(address(fee.staking().adapter())) / 1e13;
+        uint256 reserve = output.balanceOf(address(fee.adapter())) / 1e13;
         if (room > reserve) room = reserve; if (room == 0) return;
         amount = 1 + amount % room; floor.configure(1, block.timestamp, false);
         vm.prank(keeper); fee.swap(bytes32(++count), amount, 1);
@@ -54,9 +53,8 @@ contract NetworkFeeConservationTest is Test {
         AnyrToken output = new AnyrToken([address(this), makeAddr("team"), makeAddr("liquidity"), makeAddr("community")]);
         MockUSDG input = new MockUSDG(); MockBuybackAdapter adapter = new MockBuybackAdapter(10e18, 1e6);
         output.transfer(address(adapter), 100_000_000e18);
-        AnyrStaking staking = new AnyrStaking(output, input, address(this), keeper, makeAddr("ops"), adapter);
-        NetworkFloor floor = new NetworkFloor(); staking.setBuybackPriceOracle(floor);
-        NetworkFeeBurn fee = new NetworkFeeBurn(INetworkBuybackConfig(address(staking)));
+        NetworkFloor floor = new NetworkFloor();
+        NetworkFeeBurn fee = new NetworkFeeBurn(output, input, address(this), keeper, adapter, 10_000e6); fee.setBuybackPriceOracle(floor);
         handler = new NetworkFeeConservationHandler(fee, input, output, floor, keeper); targetContract(address(handler));
         bytes4[] memory selectors = new bytes4[](4);
         selectors[0] = handler.fund.selector; selectors[1] = handler.swap.selector; selectors[2] = handler.burn.selector; selectors[3] = handler.advance.selector;

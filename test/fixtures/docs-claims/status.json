@@ -16,8 +16,7 @@
         "payWithStock": null,
         "providerBond": null,
         "receiptAnchor": null,
-        "royalty": null,
-        "staking": null
+        "royalty": null
       }
     },
     "paywith": {
@@ -86,7 +85,6 @@
       { "name": "host-anchor" },
       { "name": "settlement" },
       { "name": "slasher" },
-      { "name": "buyback" },
       { "name": "chain-indexer" },
       { "name": "webhooks" },
       { "name": "spend-watch" },

@@ -12,7 +12,6 @@ import {CallPay} from "../src/CallPay.sol";
 import {ReceiptAnchor} from "../src/ReceiptAnchor.sol";
 import {Royalty} from "../src/Royalty.sol";
 import {ProviderBond} from "../src/ProviderBond.sol";
-import {AnyrStaking} from "../src/AnyrStaking.sol";
 import {PayWithStock} from "../src/PayWithStock.sol";
 import {IPayWithStock} from "../src/interfaces/IPayWithStock.sol";
 import {AnyrPaymaster} from "../src/AnyrPaymaster.sol";
@@ -71,7 +70,7 @@ contract DeployLocalTest is Test {
 
     function test_ownershipIsDeployerWithoutTimelock() public view {
         address[] memory owned = _owned();
-        assertEq(owned.length, 16);
+        assertEq(owned.length, 15);
         for (uint256 i; i < owned.length; ++i) {
             assertEq(Ownable2Step(owned[i]).owner(), deployer, "owner");
             assertEq(Ownable2Step(owned[i]).pendingOwner(), address(0), "no pending owner");
@@ -141,10 +140,6 @@ contract DeployLocalTest is Test {
         assertEq(Royalty(d.royalty).settlement(), r.settlement);
         assertEq(ProviderBond(d.providerBond).slasher(), r.slasher);
         assertEq(ProviderBond(d.providerBond).refundPool(), r.refundPool);
-        assertEq(AnyrStaking(d.anyrStaking).keeper(), r.keeper);
-        assertEq(AnyrStaking(d.anyrStaking).opsWallet(), r.opsWallet);
-        assertEq(address(AnyrStaking(d.anyrStaking).adapter()), d.buybackAdapter);
-        assertEq(address(AnyrStaking(d.anyrStaking).anyr()), d.anyrToken);
         assertEq(PayWithStock(d.payWithStock).router(), r.router);
         assertEq(address(PayWithStock(d.payWithStock).credits()), d.credits);
         assertEq(address(PayWithStock(d.payWithStock).oracle()), d.stockOracle);
@@ -173,12 +168,12 @@ contract DeployLocalTest is Test {
         assertEq(r.mintSigner, r.anchorer);
 
         address[] memory owned = _owned();
-        assertEq(owned[10], d.sealMeasurementRegistry);
-        assertEq(owned[11], d.policyRegistry);
-        assertEq(owned[12], d.kmsGovernance);
-        assertEq(owned[13], d.hostBond);
-        assertEq(owned[14], d.creditMintEvents);
-        assertEq(owned[15], d.skillRegistry);
+        assertEq(owned[9], d.sealMeasurementRegistry);
+        assertEq(owned[10], d.policyRegistry);
+        assertEq(owned[11], d.kmsGovernance);
+        assertEq(owned[12], d.hostBond);
+        assertEq(owned[13], d.creditMintEvents);
+        assertEq(owned[14], d.skillRegistry);
         SkillRegistry sreg = SkillRegistry(d.skillRegistry);
         assertEq(sreg.publisher(), r.sealPublisher);
         assertEq(sreg.guardian(), r.guardian);
@@ -188,7 +183,6 @@ contract DeployLocalTest is Test {
     function test_adapterCallers() public view {
         UniswapV4Adapter v4 = UniswapV4Adapter(payable(d.uniswapV4Adapter));
         assertTrue(v4.isCaller(d.payWithStock));
-        assertTrue(v4.isCaller(d.anyrStaking));
         assertFalse(v4.isCaller(deployer));
         assertEq(address(v4.poolManager()), d.poolManager);
     }
@@ -286,7 +280,6 @@ contract DeployLocalTest is Test {
         assertEq(vm.parseJsonAddress(json, ".contracts.entryPoint"), d2.entryPoint);
         assertEq(vm.parseJsonAddress(json, ".contracts.usdg"), d2.usdg);
         assertEq(vm.parseJsonAddress(json, ".roles.router"), r.router);
-        assertEq(vm.parseJsonAddress(json, ".roles.adapterCallers[1]"), d2.anyrStaking);
         assertEq(vm.parseJsonAddress(json, ".roles.creditors[0]"), d2.payWithStock);
         assertEq(vm.parseJsonString(json, ".stockTokens[0].symbol"), "NVDA");
         assertEq(vm.parseJsonAddress(json, ".stockTokens[0].address"), d2.mockNvda);
@@ -349,7 +342,6 @@ contract DeployProductionForkTest is Test {
         roles.anchorer = makeAddr("anchorer");
         roles.registrar = roles.router;
         roles.keeper = makeAddr("keeper");
-        roles.opsWallet = makeAddr("ops");
         roles.paymasterSigner = makeAddr("pmSigner");
         roles.refundPool = makeAddr("refundPool");
         roles.callPayTreasury = makeAddr("treasury");
@@ -371,11 +363,8 @@ contract DeployProductionForkTest is Test {
         assertEq(SealMeasurementRegistry(d.sealMeasurementRegistry).guardian(), r.ownerSafe);
         assertEq(CreditMintEvents(d.creditMintEvents).mintSigner(), r.mintSigner);
         // buybacks route through the V3 pool whose TWAP sets the floor
-        assertEq(address(AnyrStaking(d.anyrStaking).adapter()), d.uniswapV3Adapter);
         assertTrue(UniswapV4Adapter(payable(d.uniswapV4Adapter)).isCaller(d.payWithStock));
-        assertTrue(UniswapV4Adapter(payable(d.uniswapV4Adapter)).isCaller(d.anyrStaking));
         assertTrue(UniswapV3Adapter(d.uniswapV3Adapter).isCaller(d.payWithStock));
-        assertTrue(UniswapV3Adapter(d.uniswapV3Adapter).isCaller(d.anyrStaking));
         assertEq(AnyrPaymaster(payable(d.paymaster)).verifyingSigner(), r.paymasterSigner);
         assertEq(AnyrPaymaster(payable(d.paymaster)).getDeposit(), 0.05 ether);
         assertEq(IERC20(d.anyrToken).balanceOf(r.anyrRecipients[0]), 800_000_000e18);
@@ -411,7 +400,7 @@ contract DeployProductionForkTest is Test {
 
         // --- pending ownership
         address[] memory owned = script.ownedContracts();
-        assertEq(owned.length, 17);
+        assertEq(owned.length, 16);
         for (uint256 i; i < owned.length; ++i) {
             assertEq(Ownable2Step(owned[i]).owner(), deployer);
             assertEq(Ownable2Step(owned[i]).pendingOwner(), d.timelock);

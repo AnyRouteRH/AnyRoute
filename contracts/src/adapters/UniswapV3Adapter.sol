@@ -74,7 +74,7 @@ contract UniswapV3Adapter is ISwapAdapter, IBuybackAdapter, Ownable2Step, Reentr
 
     ISwapRouter02 public immutable router;
 
-    /// @notice Addresses allowed to call the swap functions (PayWithStock, AnyrStaking).
+    /// @notice Addresses allowed to call the swap functions (PayWithStock, NetworkFeeBurn).
     mapping(address caller => bool) public isCaller;
 
     struct Route {

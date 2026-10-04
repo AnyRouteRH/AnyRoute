@@ -31,7 +31,6 @@ import { runProbes } from "./probes.ts";
 import { runRegistry } from "./registry.ts";
 import { runSettlement } from "./settlement.ts";
 import { runSlasher } from "./slasher.ts";
-import { runBuyback } from "./buyback.ts";
 import { ALERT_INTERVAL_MS, runAlertNotifier } from "./alerts.ts";
 import { TelegramBot, type RouterCall } from "./telegram.ts";
 import { runBatches, type Dispatch } from "./batches.ts";
@@ -50,7 +49,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   if (cfg.identity.enabled && cfg.agentProfilesEnabled) jobs.register("agent-liveness", cfg.identity.livenessIntervalMs, () => runAgentLiveness(ctx));
   if (cfg.identity.enabled && cfg.identity.mode === "registrar" && cfg.identity.registrarKey) jobs.register("agent-identity", 60_000, () => runAgentIdentity(ctx));
   if (cfg.sanctions.enabled) jobs.register("sanctions-refresh", 86_400_000, () => refreshSanctions(ctx), { atStart: true });
-  const chainOn = () => ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty", "staking"].some((n) => ctx.chain.address(n as never));
+  const chainOn = () => ["credits", "callPay", "payWithStock", "providerBond", "receiptAnchor", "royalty"].some((n) => ctx.chain.address(n as never));
   jobs.register("health-flush", 5_000, () => ctx.health.flush(ctx.db));
   jobs.register("holds-expire", 60_000, () => expireHolds(ctx.db));
   // x402 payment recovery: rows and sealed answers past their 24 hours are deleted.
@@ -76,7 +75,6 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   if (cfg.hostAnchor.enabled) jobs.register("host-anchor", cfg.hostAnchor.intervalMs, () => runHostAnchor(ctx));
   jobs.register("settlement", cfg.workers.settlementIntervalMs, () => runSettlement(ctx), { atStart: true });
   jobs.register("slasher", 3_600_000, () => runSlasher(ctx));
-  jobs.register("buyback", 3_600_000, () => runBuyback(ctx));
   if (cfg.networkPayouts.burnEnabled) jobs.register("network-fee-burn", 3_600_000, () => runNetworkFeeBurn(ctx));
   jobs.register("chain-indexer", 5_000, async () => (chainOn() ? pollChain(ctx) : { skipped: "no contracts" }), { atStart: true });
   if (cfg.webhookSigningEnabled) jobs.register("webhooks", 60_000, () => runWebhooks(ctx)); // V86.

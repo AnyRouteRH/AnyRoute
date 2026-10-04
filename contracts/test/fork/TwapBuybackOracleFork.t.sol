@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {Test, console2} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {AnyrStaking} from "../../src/AnyrStaking.sol";
+import {NetworkFeeBurn} from "../../src/NetworkFeeBurn.sol";
 import {TwapBuybackPriceOracle} from "../../src/oracle/TwapBuybackPriceOracle.sol";
 import {UniswapV3Adapter, ISwapRouter02} from "../../src/adapters/UniswapV3Adapter.sol";
 import {IBuybackAdapter} from "../../src/interfaces/IBuybackAdapter.sol";
@@ -40,7 +40,7 @@ contract TwapBuybackOracleForkTest is Test {
     address constant WETH_USDG_POOL = 0x52e65B17fB6E5BA00Ed806f37Afcd2DaA50271Ca; // 0.01%
     uint24 constant FEE = 100;
 
-    AnyrStaking staking;
+    NetworkFeeBurn executor;
     UniswapV3Adapter v3;
     TwapBuybackPriceOracle oracle;
     address keeper = makeAddr("keeper");
@@ -54,16 +54,16 @@ contract TwapBuybackOracleForkTest is Test {
         }
         vm.createSelectFork(rpc);
         v3 = new UniswapV3Adapter(ISwapRouter02(SWAP_ROUTER_02), address(this));
-        staking = new AnyrStaking(
-            IERC20(WETH), IERC20(USDG), address(this), keeper, makeAddr("ops"), IBuybackAdapter(address(v3))
+        executor = new NetworkFeeBurn(
+            IERC20(WETH), IERC20(USDG), address(this), keeper, IBuybackAdapter(address(v3)), 10_000e6
         );
-        v3.setCaller(address(staking), true);
+        v3.setCaller(address(executor), true);
         v3.setPath(USDG, WETH, abi.encodePacked(USDG, FEE, WETH));
 
         TwapBuybackPriceOracle.Config memory c;
         c.pool = WETH_USDG_POOL;
         c.factory = V3_FACTORY;
-        c.staking = address(staking);
+        c.executor = address(executor);
         c.routeAdapter = address(v3);
         c.usdg = USDG;
         c.anyr = WETH;
@@ -76,7 +76,7 @@ contract TwapBuybackOracleForkTest is Test {
         c.maxDeviationTicks = 500;
         c.haircutBps = 100;
         oracle = new TwapBuybackPriceOracle(c, address(this), address(this));
-        staking.setBuybackPriceOracle(oracle);
+        executor.setBuybackPriceOracle(oracle);
     }
 
     function test_fork_floorTracksTheLivePoolAndCostsLittleGas() public {
@@ -112,22 +112,22 @@ contract TwapBuybackOracleForkTest is Test {
         vm.prank(WETH_USDG_POOL); // the pool holds USDG; avoids guessing the proxy's balance slot
         assertTrue(IERC20(USDG).transfer(settlement, 4_000e6));
         vm.startPrank(settlement);
-        IERC20(USDG).approve(address(staking), type(uint256).max);
-        staking.notifyMargin(4_000e6);
+        IERC20(USDG).approve(address(executor), type(uint256).max);
+        IERC20(USDG).transfer(address(executor), 2_000e6);
         vm.stopPrank();
 
         (uint256 floor,) = oracle.minimumOutput(USDG, WETH, 1_000e6);
         vm.prank(keeper);
         uint256 g = gasleft();
-        uint256 out = staking.executeBuyback(1_000e6, floor);
+        uint256 out = executor.swap(keccak256("fee-operation"), 1_000e6, floor);
         g -= gasleft();
         assertGe(out, floor);
-        assertEq(IERC20(WETH).balanceOf(address(staking)), out);
+        assertEq(IERC20(WETH).balanceOf(address(executor)), out);
         console2.log("executeBuyback gas (oracle + swap)", g);
         console2.log("WETH bought / floor", out, floor);
 
         vm.prank(keeper);
-        vm.expectRevert(AnyrStaking.UnsafeBuybackPrice.selector);
-        staking.executeBuyback(1_000e6, floor / 2);
+        vm.expectRevert(NetworkFeeBurn.Refused.selector);
+        executor.swap(keccak256("fee-operation"), 1_000e6, floor / 2);
     }
 }

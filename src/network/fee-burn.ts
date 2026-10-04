@@ -1,13 +1,13 @@
 import { and, asc, eq, lt, ne } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { PICO_PER_USDG_UNIT } from "../lib/money.ts";
-import { runBuyback } from "../services/buyback.ts";
+import { quoteNetworkBurn } from "./burn-quote.ts";
 import { networkPeriod } from "./accrual.ts";
 import { burnOperationId, networkBurnChain, type BurnChain } from "./burn-chain.ts";
 import { networkFeeLedger } from "./payout-schema.ts";
 /** Closed accrual periods only. Each ledger id is also the on-chain idempotency key.
  * Fee subunits below one USDG unit remain in the ledger; no rounding-up spends host funds. */
-export async function runNetworkFeeBurn(ctx: Ctx, deps: { chain?: BurnChain; quote?: typeof runBuyback } = {}) {
+export async function runNetworkFeeBurn(ctx: Ctx, deps: { chain?: BurnChain; quote?: typeof quoteNetworkBurn } = {}) {
   if (!ctx.cfg.networkPayouts.burnEnabled) return { skipped: "network fee burn disabled" };
   const chain = deps.chain ?? networkBurnChain(ctx);
   const rows = await ctx.db.select().from(networkFeeLedger).where(and(ne(networkFeeLedger.status, "burned"), lt(networkFeeLedger.period, networkPeriod(new Date())))).orderBy(asc(networkFeeLedger.createdAt));
@@ -22,7 +22,7 @@ export async function runNetworkFeeBurn(ctx: Ctx, deps: { chain?: BurnChain; quo
     if (!op.usdgIn) {
       if (row.status !== "accrued" || row.swapTx) throw new Error("Network fee chain/database mismatch; reconcile before proceeding.");
       if (usdg > cap - spent || usdg > await chain.remaining()) continue;
-      const quote = await (deps.quote ?? runBuyback)(ctx, { quoteOnly: usdg });
+      const quote = await (deps.quote ?? quoteNetworkBurn)(ctx, { quoteOnly: usdg });
       if (!quote.quoted || quote.minOut === undefined) return { burned, skipped: quote.skipped ?? "buyback quote unavailable" };
       await chain.swap(id, usdg, quote.minOut);
       spent += usdg;

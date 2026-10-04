@@ -1,13 +1,9 @@
 # Invariants and executable evidence
 
-This map accounts for all 39 single-contract, 6 cross-contract and 3 economic candidates in the historical audit x-ray. Candidates are not automatically true invariants: I-5 and I-15 require the qualifications below; I-11–I-13/E-2 and X-3 contain off-chain/deployment assumptions. Test references identify exercised behavior, not formal proofs or complete input coverage.
+This map accounts for 35 retained single-contract, 6 cross-contract and 3 economic candidates in the historical audit x-ray. I-1–I-4 were retired with the unused token allocation contract; their numbers are preserved for the remaining historical references. Candidates are not automatically true invariants: I-5 and I-15 require the qualifications below; I-11–I-13/E-2 and X-3 contain off-chain/deployment assumptions. Test references identify exercised behavior, not formal proofs or complete input coverage.
 
 | Candidate | Rule / qualification | Executable evidence |
 |---|---|---|
-| I-1 | totalStaked = sum(_staked[account]) across all accounts. | [invariant_principalAndRewardsBacked](../contracts/test/AnyrStaking.t.sol) |
-| I-2 | totalCooldown = sum(pendingUnstake[account].amount). | [invariant_principalAndRewardsBacked](../contracts/test/AnyrStaking.t.sol) |
-| I-3 | requestUnstake conserves active plus cooling principal within its own transition. | [invariant_principalAndRewardsBacked](../contracts/test/AnyrStaking.t.sol) |
-| I-4 | Recorded rewardReserve grows only on _distribute and shrinks only when rewards are claimed; active/cooldown principal use separate storage. | [invariant_principalAndRewardsBacked](../contracts/test/AnyrStaking.t.sol) |
 | I-5 | Qualification: charges respect the cap at authorization/execution; lowering a session cap can leave historical spend above the new cap. The unqualified x-ray hypothesis is not adopted. | [invariant_chargesWithinTheirBounds](../contracts/test/PayWithStockInvariants.t.sol) |
 | I-6 | maxSlipCapBps <= HARD_MAX_SLIP_BPS (1000). | [test_slippageAboveCapReverts](../contracts/test/PayWithStock.t.sol) |
 | I-7 | A charge nonce and a nonzero usage commitment are consumable once per key, including across authorization epochs. | [test_payCallRevokedEpoch](../contracts/test/PayWithStock.t.sol) |
@@ -44,11 +40,11 @@ This map accounts for all 39 single-contract, 6 cross-contract and 3 economic ca
 | I-38 | AnyrPaymaster sender usage.day never moves backwards; reconciliation only changes the currently matching reservation bucket. | [test_bucketNeverMovesBackwards](../contracts/test/AnyrPaymaster.t.sol) |
 | I-39 | NetworkFeeBurn operation ID is recorded once and its burn flag is one-way. | [test_swapThenBurnAndDuplicateRefusal](../contracts/test/NetworkFeeBurn.t.sol) |
 | X-1 | When APIU.minter is the scoped CapacityCommit, totalSupply <= openCapacityApiu across all authored supply/capacity writers. | [invariant_supplyNeverExceedsOpenCapacity](../contracts/test/CapacityCommitInvariants.t.sol) |
-| X-2 | With TwapBuybackPriceOracle selected, AnyrStaking accepts only the oracle's pinned adapter and canonical single-hop pool route. | [test_pausedOrReroutedOracleStopsBuybacks](../contracts/test/TwapBuybackPriceOracle.t.sol) |
+| X-2 | With TwapBuybackPriceOracle selected, NetworkFeeBurn accepts only the oracle's pinned adapter and canonical single-hop pool route. | [test_pausedOrReroutedOracleStopsBuybacks](../contracts/test/TwapBuybackPriceOracle.t.sol) |
 | X-3 | PayWithStock credits.credit uses the same immutable USDG token that PayWithStock swaps and approves. | [test/deployment-verification.test.ts](../test/deployment-verification.test.ts) |
 | X-4 | DisputeOracle signed votes bind the immutable parties/terms/value and current delivery/dispute evidence from the targeted escrow, while final payout remains limited by escrow lifecycle. | [testDomainAndJuryVersionPreventReplay](../contracts/test/agents/Agreements.t.sol) |
 | X-5 | CapacityCommit counts delivery only against an existing matching router receipt anchor overlapping the commitment term. | [test_recordDelivery_anchorMustExistAndMatch](../contracts/test/CapacityCommit.t.sol) |
-| X-6 | NetworkFeeBurn reads current keeper/adapter/oracle/cap configuration from AnyrStaking each operation. | [test_dailyCapAndKeeperRestriction](../contracts/test/NetworkFeeBurn.t.sol) |
+| X-6 | NetworkFeeBurn enforces its own keeper/adapter/oracle/cap settings, and cap changes preserve current-day usage. | [test_dailyCapAndKeeperRestriction](../contracts/test/NetworkFeeBurn.t.sol) |
 | E-1 | With the scoped one-shot minter binding, aggregate prepaid APIU supply is bounded by remaining recorded commitment capacity across mint, redeem and close paths. This is recorded capacity backing, not proof that inference is delivered. | [invariant_supplyNeverExceedsOpenCapacity](../contracts/test/CapacityCommitInvariants.t.sol) |
 | E-2 | USDG credit exit and settlement solvency additionally require truthful covered spend, pending-withdrawal reservation and durable leaf availability. | [test/contract-path-guards.test.ts](../test/contract-path-guards.test.ts) |
 | E-3 | Every properly funded milestone has one terminal payout split conserving its recorded base units, and an expired dispute has a fixed 50/50 exit independent of oracle/jury cooperation. Token transfer restrictions can still cause payout attempts to revert. | [invariant_everyFundedUnitIsPaidOrHasAReachableExit](../contracts/test/agents/AgreementLiveness.invariant.t.sol) |
@@ -59,7 +55,6 @@ This map accounts for all 39 single-contract, 6 cross-contract and 3 economic ca
 |---|---|
 | Credits | Credits.t.sol: balance identity, exit bounds, omitted-root/top-up obligations |
 | APIU / CapacityCommit | CapacityCommitInvariants.t.sol: supply/capacity, minted-minus-redeemed, exact bond custody |
-| AnyrStaking | AnyrStaking.t.sol: principal, cooling principal and rewards remain backed |
 | PayWithStock | PayWithStockInvariants.t.sol: authorized spend, nonce/allowance/cap bounds and credit custody |
 | AgreementEscrow | AgreementLiveness.invariant.t.sol: every funded unit is paid or retains its tested exit |
 | ProviderBond / HostBond | BondConservation.invariant.t.sol: bonded liabilities, deposits, exits, sanctions, refund-pool receipts and pending counts |

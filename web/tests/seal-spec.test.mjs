@@ -149,7 +149,7 @@ test('a document page has its title, summary, anchors and version',()=>{
  assert.equal(loadDoc('no-such-doc',SPEC),null);
 });
 
-const STATUS={lanes:{public:{available:true,models:376,endpoints:396,attested_bonus:1.25},attested:{available:true,models:1,endpoints:23,attested_bonus:1},unlinkable:{available:false,models:0,endpoints:0,attested_bonus:1},weight:'uptime * quality * attested_bonus / price^2'},onion:{address:'wtck5wjpvkqaonegi4cer6rt64dy56evbmroymvfomroagvtxfu2nmqd.onion',url:'http://wtck5wjpvkqaonegi4cer6rt64dy56evbmroymvfomroagvtxfu2nmqd.onion'},receipts:{key_id:'b601dced5883ffdc',rotation_days:7,anchor_interval_ms:3600000},chain:{chain_id:4663,explorer:'https://robinhoodchain.blockscout.com',contracts:{credits:null,receiptAnchor:null,staking:null}}};
+const STATUS={lanes:{public:{available:true,models:376,endpoints:396,attested_bonus:1.25},attested:{available:true,models:1,endpoints:23,attested_bonus:1},unlinkable:{available:false,models:0,endpoints:0,attested_bonus:1},weight:'uptime * quality * attested_bonus / price^2'},onion:{address:'wtck5wjpvkqaonegi4cer6rt64dy56evbmroymvfomroagvtxfu2nmqd.onion',url:'http://wtck5wjpvkqaonegi4cer6rt64dy56evbmroymvfomroagvtxfu2nmqd.onion'},receipts:{key_id:'b601dced5883ffdc',rotation_days:7,anchor_interval_ms:3600000},chain:{chain_id:4663,explorer:'https://robinhoodchain.blockscout.com',contracts:{credits:null,receiptAnchor:null}}};
 
 test('the live panel shows only what the status reports, and says when something is off',()=>{
  const rows=Object.fromEntries(liveRows(STATUS).map(r=>[r.name,r]));
