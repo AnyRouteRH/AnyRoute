@@ -1,3 +1,4 @@
+import { availabilityFields } from "./model-availability.js"; // ON5
 // Harness: the pure logic behind the one-page workspace for every model and its tools.
 // Catalogue normalisation, capability filters, search and sort, request building with parameter
 // gating (a setting the model does not declare is never sent), and the stream accumulator.
@@ -70,6 +71,7 @@ export function normalizeModel(raw, order = 0) {
   const params = new Set(raw.supported_parameters || []);
   const maker = makerOf(raw.id);
   const m = {
+    ...availabilityFields(raw), // ON5
     id: raw.id,
     name: raw.name && raw.name !== raw.id ? raw.name : String(raw.id).split("/").pop(),
     maker,

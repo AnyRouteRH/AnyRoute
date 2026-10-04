@@ -19010,6 +19010,7 @@
         }
       },
       "Model": {
+        "description": "When UPSTREAM_MONITOR_ENABLED is on, availability is temporarily_unavailable if every eligible provider account has a last successful USD balance at or below UPSTREAM_BALANCE_EXHAUSTED_USD (default 0). This optional field is omitted otherwise. A failed check retains an exhausted state until a later reading exceeds the threshold. Account balances remain operator-only.",
         "type": "object",
         "required": [
           "id",
@@ -19022,6 +19023,7 @@
           "supported_parameters"
         ],
         "properties": {
+          "availability": { "type": "string", "enum": ["temporarily_unavailable"], "description": "Optional; all eligible upstream accounts are exhausted. Omitted otherwise." },
           "capabilities": {
             "type": "array",
             "items": {

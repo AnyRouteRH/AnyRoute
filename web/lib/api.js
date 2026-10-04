@@ -1,3 +1,4 @@
+import { availabilityFields } from "./model-availability.js"; // ON5
 // Live data adapter: the Anyroute API behind the existing interface.
 // The site is normally served by the router itself (same origin). Set NEXT_PUBLIC_ANYROUTE_API_URL at
 // build time to call a router hosted elsewhere. No secret is ever bundled: the API key is supplied by
@@ -169,6 +170,7 @@ const compact = (n) => (n >= 1024 ? Math.round(n / 1024) + "K" : String(n));
 export function toCatalogModel(m) {
   const author = m.id.split("/")[0];
   return {
+    ...availabilityFields(m), // ON5
     id: m.id,
     name: m.name && m.name !== m.id ? m.name : m.id.split("/").slice(1).join("/") || m.id,
     author: author.charAt(0).toUpperCase() + author.slice(1),

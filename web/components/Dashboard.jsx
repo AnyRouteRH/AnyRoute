@@ -14,6 +14,7 @@ import { sectionFromHash, sectionHash } from "./account/account-state.js";
 import TelegramLink from "../app/agents/TelegramLink";
 import { useEffect, useRef, useState } from "react";
 import { models as sampleModels, providers as sampleProviders, initialWorkspace, storageKey, routeCall, validWorkspace, money } from "../lib/demo";
+import { modelUnavailable } from "../lib/model-availability.js"; // ON5
 import { API_BASE, ApiError, api, clearKey, downloadJSON, loadKey, loadWorkspace, setMode, streamChat, toCatalogModel, toProvider, toReceiptRow } from "../lib/api";
 import { connect, ensureChain, hasWallet, sendTransactions, shortAddress, signTypedData, walletApiKey } from "../lib/wallet";
 import { Button, Modal, Code, CopyButton } from "./UI";
@@ -981,6 +982,7 @@ export default function Dashboard() {
     (async () => {
       try {
         if (!k?.secret) throw new Error("Choose a key whose secret is available in this browser (your signed-in key or one created this session).");
+        if (modelUnavailable(catalog.find(m => m.id === modelId))) throw new Error("This model is temporarily unavailable. Choose another model."); // ON5
         if (!prompt.trim()) throw new Error("Enter a prompt before routing a call.");
         const out = await streamChat({ key: k.secret, body: liveRequest.body, headers: liveRequest.headers, signal: ctl.signal, onDelta: setStreamText });
         const g = (await api("/api/v1/generation?id=" + encodeURIComponent(out.id), { key: k.secret })).data;
@@ -1244,8 +1246,8 @@ export default function Dashboard() {
                   <Field label="Model" id="play-model">
                     <select id="play-model" value={modelId} onChange={(e) => setModelId(e.target.value)} disabled={busy}>
                       {playModels.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {live ? m.id : m.name}
+                        <option key={m.id} value={m.id} disabled={modelUnavailable(m)}>
+                          {live ? m.id + (modelUnavailable(m) ? " · temporarily unavailable" : "") : m.name}
                         </option>
                       ))}
                     </select>

@@ -3,6 +3,7 @@
 // No DOM, no storage. The runner takes the stream function and the clock as arguments, so tests drive it
 // with fakes; in the page they default to the same `streamChat` the dashboard playground uses.
 
+import { modelUnavailable } from "./model-availability.js"; // ON5
 import { API_BASE, streamChat, toCatalogModel } from "./api.js";
 import { providerIdFromSearch } from "./verify.js";
 
@@ -61,7 +62,7 @@ export function decodeArena(search = "") {
 // ---------------------------------------------------------------- model search
 
 /** Chat-capable catalog entries only; embeddings cannot answer a prompt. */
-export const chatModels = (catalog) => (catalog || []).filter((m) => m && m.type !== "Embeddings");
+export const chatModels = (catalog) => (catalog || []).filter((m) => m && m.type !== "Embeddings" && !modelUnavailable(m));
 
 /** Every word of the query must appear in the name, id or author. Name-prefix matches come first, then catalog order. */
 export function filterModels(models, query = "", limit = 60) {

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { api, toCatalogModel } from "../lib/api";
+import { modelUnavailable } from "../lib/model-availability.js"; // ON5
 import { MODEL_CAPABILITIES } from "../lib/model-capabilities.js";
 import { CATALOG_SORTS, filterModels, modelTagCounts } from "../lib/model-catalog.js";
 import { CapabilityChips, CapabilityGuide } from "./ModelCapabilities";
@@ -48,7 +49,7 @@ export default function ModelCatalog({ onChoose }) {
         <h3>{model.name}</h3><p>{model.description}</p><CapabilityChips model={raw} />
         <div className="model-meta"><span>{model.context} context</span><span>{model.providers} provider{model.providers === 1 ? "" : "s"}</span></div>
         <div className="model-meta"><span>${perM(model.price)} / 1M input</span><span>${perM(model.output)} / 1M output</span></div>
-        <div className="button-row"><button className="text-button" onClick={() => setSelected(raw)}>Model details →</button>{onChoose ? <button className="text-button" onClick={() => onChoose(model.id)}>Try model →</button> : <a className="text-button" href={chooseHref(model.id)}>Try model →</a>}</div>
+        <div className="button-row"><button className="text-button" onClick={() => setSelected(raw)}>Model details →</button>{modelUnavailable(raw) ? <span role="status">Temporarily unavailable</span> : onChoose ? <button className="text-button" onClick={() => onChoose(model.id)}>Try model →</button> : <a className="text-button" href={chooseHref(model.id)}>Try model →</a>}</div>
         <div className="card-ramp" aria-hidden="true" />
       </article>;
     })}</div>
@@ -69,6 +70,6 @@ function ModelDetails({ raw, onClose, onChoose }) {
       <div><dt>Creator royalty</dt><dd>{model.creator ? `${model.royaltyBps / 100}% to ${model.creator.slice(0, 10)}…` : "None"}</dd></div>
     </dl>
     <div className="note">Providers declare modalities, prices and context limits. Hardware tags reflect the router’s current checks. Ordinary chat is readable by the router in memory; encrypted chat requires the separate gateway setup.</div>
-    {onChoose ? <Button onClick={() => { onClose(); onChoose(model.id); }}>Choose model</Button> : <Button href={"/dashboard/?model=" + encodeURIComponent(model.id) + "#playground"}>Open playground</Button>}
+    {modelUnavailable(raw) ? <p role="status">Temporarily unavailable. Choose another model.</p> : onChoose ? <Button onClick={() => { onClose(); onChoose(model.id); }}>Choose model</Button> : <Button href={"/dashboard/?model=" + encodeURIComponent(model.id) + "#playground"}>Open playground</Button>}
   </Modal>;
 }

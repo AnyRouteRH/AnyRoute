@@ -1,3 +1,4 @@
+import { fundedOffers, modelAvailability, registerBalanceAvailability } from "../rush/availability.ts"; // ON5
 import { cacheModelLists } from "../rush/cache.ts"; // ON3
 import { capabilityJson, catalogOffers } from "./model-capabilities.ts";
 import type { Hono } from "hono";
@@ -136,7 +137,7 @@ export function parseOutputModalities(raw: unknown): Set<string> | null {
 }
 
 export function modelJson(ctx: Ctx, m: ModelRow) {
-  const offers = servable(ctx, m);
+  const available = modelAvailability(ctx, servable(ctx, m)); const offers = fundedOffers(ctx, servable(ctx, m)); // ON5
   const paid = offers.filter((o) => o.pricePrompt > 0n || o.priceCompletion > 0n);
   const ref = [...(paid.length ? paid : offers)].sort((a, b) => blendedPrice(a) - blendedPrice(b))[0];
   const top = [...offers].sort((a, b) => (b.ctx ?? 0) - (a.ctx ?? 0))[0];
@@ -184,6 +185,7 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     royalty_bps: m.creator ? m.royaltyBps : 0,
     ...laneJson(ctx, m),
     ...capabilityJson(ctx, m, offers),
+    ...available, // ON5: only present when every eligible endpoint has exhausted its account.
   };
 }
 
@@ -199,6 +201,7 @@ function gpuAttested(ctx: Ctx, m: ModelRow) {
 }
 
 export function modelsRoutes(app: Hono, ctx: Ctx) {
+  registerBalanceAvailability(app, ctx); // ON5
   cacheModelLists(app, ctx); // ON3
   const list = async (c: import("hono").Context) => {
     await ctx.catalog.ensureFresh();

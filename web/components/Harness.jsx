@@ -30,6 +30,8 @@ import AppShell from "./harness/AppShell";
 import Limits, { ReplyApproval, useHarnessLimits } from "./harness/Limits"; // U77: router-enforced chat controls.
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
+import { modelUnavailable, selectableModels } from "../lib/model-availability.js"; // ON5
+import { useCatalogRefresh } from "./harness/useCatalogRefresh"; // ON5
 import catalogStyles from "./ModelPickerCapabilities.module.css";
 
 const MAX_LANES = 3;
@@ -203,11 +205,12 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
             <ul>
               {g.models.map((m) => (
                 <li key={m.id} className={s.row} data-active={m.id === activeId || undefined}>
-                  <button type="button" className={s.pick} onClick={() => onPick(m.id)} aria-current={m.id === activeId || undefined} title={m.id}>
+                  <button type="button" disabled={modelUnavailable(m)} className={s.pick} onClick={() => onPick(m.id)} aria-current={m.id === activeId || undefined} title={m.id}>
                     <span className={s.rowName}>
                       {/* U76: hardware badge comes from CapabilityChips below. */}
                       {m.name}
                     </span>
+                    {modelUnavailable(m) && <span className={s.rowMeta}>Temporarily unavailable</span>} {/* ON5 */}
                     <span className={s.rowMeta}>
                       {!prefs.group || g.maker === "favs" || g.maker === "all" ? m.makerLabel + " · " : ""}
                       {formatContext(m.context)} · {formatPrice(m.inPrice)}
@@ -238,7 +241,7 @@ function Palette({ models, onPick, onClose, title, onBrowse }) {
   const listRef = useRef(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const list = useMemo(() => filterCatalog(models, { query, sort: "popular" }).slice(0, 60), [models, query]);
+  const list = useMemo(() => filterCatalog(selectableModels(models), { query, sort: "popular" }).slice(0, 60), [models, query]);
   useEffect(() => {
     const dlg = ref.current;
     dlg.showModal();
@@ -789,6 +792,7 @@ export default function Harness() {
       .then((r) => setRaw(r.data || []))
       .catch((e) => setCatalogError(e?.message || "The model catalogue could not be loaded."));
   }, []);
+  useCatalogRefresh(loadCatalog); // ON5
   const shown = priv.on ? priv.models : raw;
   const models = useMemo(() => (shown || []).filter((m) => !(m.architecture?.output_modalities || []).includes("embeddings")).map(normalizeModel), [shown]);
   const byId = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
@@ -838,8 +842,8 @@ export default function Harness() {
   useEffect(() => {
     if (!models.length || lanesRef.current[0].modelId) return;
     const last = read(PREFS, {})?.model;
-    const requested = byId.get(new URLSearchParams(window.location.search).get("model")); if (requested) { setLanes(ls => ls.map((l, i) => i === 0 ? { ...l, modelId: requested.id } : l)); return; } // V80: catalogue-checked model links.
-    const pick = (last && byId.get(last)) || filterCatalog(models, { caps: ["tools"], sort: "popular" })[0] || models[0];
+    const requested = byId.get(new URLSearchParams(window.location.search).get("model")); if (requested && !modelUnavailable(requested)) { setLanes(ls => ls.map((l, i) => i === 0 ? { ...l, modelId: requested.id } : l)); return; } // V80: catalogue-checked model links.
+    const pick = selectableModels(models).find(m => m.id === last) || filterCatalog(selectableModels(models), { caps: ["tools"], sort: "popular" })[0] || selectableModels(models)[0]; if (!pick) return; // ON5
     setLanes((ls) => ls.map((l, i) => (i === 0 ? { ...l, modelId: pick.id } : l)));
   }, [models, byId]);
 
@@ -871,6 +875,7 @@ export default function Harness() {
   const switchVision = () => setPalette({ lane: Math.max(0, lanes.findIndex((l) => !readsImages(find(l.modelId)))), add: false, vision: true });
 
   const pickModel = (id, laneIndex = focus, add = false) => {
+    if (modelUnavailable(find(id))) return; // ON5: covers keyboard and restored selections.
     if (palette?.images) set({ imageOut: true, audioOut: false });
     setPalette(null);
     setSheet(null);
@@ -914,6 +919,7 @@ export default function Harness() {
   async function runLane(laneId, modelId, history, msgId, imageMode = null) {
     const model = find(modelId);
     const key = authRef.current.key;
+    if (modelUnavailable(model)) return patchMsg(laneId, msgId, { status: "error", error: "This model is temporarily unavailable. Choose another model." }); // ON5
     if (!model) return patchMsg(laneId, msgId, { status: "error", error: "Choose a model first." });
     if (imageSendError(model, history)) return patchMsg(laneId, msgId, { status: "error", error: imageSendError(model, history), errorKind: "settings" });
     const { body, notes, error } = buildRequest({ model, settings: imageSettings(model, settingsRef.current, imageMode), system: systemRef.current, messages: history });

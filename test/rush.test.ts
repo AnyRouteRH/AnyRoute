@@ -13,7 +13,7 @@ import { ADMIN, MODELS, startRouter } from "./helpers.ts";
 import type { Ctx } from "../src/context.ts";
 
 test("ON3 flags default off, validate thresholds, and load for production API and worker roles", () => {
-  expect(loadConfig({ ANYROUTE_ENV: "test" }).rush).toEqual({ enabled: false, catalogCache: false, warnUsd: 25, criticalUsd: 5, balanceUrl: undefined });
+  expect(loadConfig({ ANYROUTE_ENV: "test" }).rush).toEqual({ enabled: false, catalogCache: false, warnUsd: 25, criticalUsd: 5, exhaustedUsd: 0, balanceUrl: undefined });
   expect(balanceEndpoint({ baseUrl: "https://relay.example/v1" }, undefined)).toBeNull();
   for (const change of [{ UPSTREAM_BALANCE_WARN_USD: "-1" }, { UPSTREAM_BALANCE_CRITICAL_USD: "30" }, { UPSTREAM_BALANCE_WARN_USD: "Infinity" }]) expect(() => loadConfig({ ANYROUTE_ENV: "test", ...change })).toThrow();
   const address = "0x" + "1".repeat(40);
@@ -22,11 +22,11 @@ test("ON3 flags default off, validate thresholds, and load for production API an
   expect(loadConfig({ ...prod, RUNTIME_ROLE: "worker", WORKER_JOBS: "upstream-monitor" }).workerJobs).toEqual(["upstream-monitor"]);
 });
 
-test("balance thresholds have exact boundaries and balances require explicit USD units", () => {
-  expect([0, 4.99, 5, 24.99, 25].map(n => balanceLevel(n, 25, 5))).toEqual(["critical", "critical", "warning", "warning", "ok"]);
+test("balance thresholds have exact boundaries and configured account balances accept plain USD readings", () => {
+  expect([0, 4.99, 5, 24.99, 25].map(n => balanceLevel(n, 25, 5))).toEqual(["exhausted", "critical", "warning", "warning", "ok"]);
   expect(parseBalance({ amount_usd: "12.50" })).toBe(12.5);
   expect(parseBalance({ data: { balance_usd: 0 } })).toBe(0);
-  for (const v of [{ balance: 500 }, { balance: 20, currency: "EUR" }, { amount_usd: -1 }, { balance_usd: null }, { balance_usd: true }, { balance_usd: "" }]) expect(parseBalance(v)).toBeNull();
+  for (const v of [{ balance: 20, currency: "EUR" }, { balance_usd: null }, { balance_usd: true }, { balance_usd: "" }]) expect(parseBalance(v)).toBeNull();
   expect(balanceEndpoint({ baseUrl: "https://relay.example/v1" }, "https://relay.example/balance")).toBe("https://relay.example/balance");
   for (const baseUrl of ["https://inference.phala.com/v1", "https://relay.example.attacker.invalid", "http://relay.example", "https://relay.example:444/v1", "https://credential@relay.example"]) expect(balanceEndpoint({ baseUrl }, "https://relay.example/balance")).toBeNull();
 });
@@ -85,9 +85,9 @@ test("monitor polls with existing credentials, shares holds across replicas and 
     await initializeUpstreamMonitor({ ...h.ctx, health: replica });
     expect(replica.outage("another/model", "alpha")).toBe(true);
     const checks = await upstreamAlertChecks(h.ctx);
-    expect(Object.entries(checks).filter(([k, v]) => k.endsWith("_critical") && !v)).toHaveLength(1);
+    expect(Object.entries(checks).filter(([k, v]) => k.endsWith("_exhausted") && !v)).toHaveLength(1);
     const view = await upstreamAdminView(h.ctx);
-    expect(view.providers.find(p => p.provider === "alpha")?.status).toBe("critical");
+    expect(view.providers.find(p => p.provider === "alpha")?.status).toBe("exhausted");
     expect(view.providers.find(p => p.provider === "beta")?.balance_usd).toBeNull();
     const publicModels = await (await h.request("/api/v1/models")).text();
     expect(publicModels).not.toContain("balance_usd");
@@ -100,11 +100,11 @@ test("monitor polls with existing credentials, shares holds across replicas and 
     expect(data.funnel).toHaveLength(7); expect(JSON.stringify(data)).not.toContain("fixture-upstream-key");
     expect((await h.request("/trpc/rush?input=" + encodeURIComponent(JSON.stringify({ days: 91 })), { headers: { authorization: `Bearer ${ADMIN}` } })).status).toBe(400);
     await h.ctx.db.update(kv).set({ value: { until: Date.now() - 1 } }).where(eq(kv.key, "upstream-credit-hold:alpha"));
-    // An already-observed hold expires locally; it is not cleared by an older replica snapshot.
+    // Expiring a failure hold cannot undo a successfully observed exhausted balance.
     const fresh = new HealthTracker(); await initializeUpstreamMonitor({ ...h.ctx, health: fresh });
-    expect(fresh.outage("another/model", "alpha")).toBe(false);
+    expect(fresh.outage("another/model", "alpha")).toBe(true);
     await runUpstreamMonitor(h.ctx, async () => Response.json({ unknown: 500 }));
-    expect((await upstreamAdminView(h.ctx)).providers.find(p => p.provider === "alpha")?.status).toBe("unknown");
+    expect((await upstreamAdminView(h.ctx)).providers.find(p => p.provider === "alpha")?.status).toBe("exhausted");
   } finally { await h.close(); }
 });
 

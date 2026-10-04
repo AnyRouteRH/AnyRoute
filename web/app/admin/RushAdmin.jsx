@@ -1,6 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
 import { Button } from '../../components/UI';
+import { balanceDisplay } from '../../lib/model-availability.js'; // ON5
 import styles from './rush.module.css';
 
 export default function RushAdmin() {
@@ -36,8 +37,8 @@ export default function RushAdmin() {
     {data && <>
       <h2>Upstream balances</h2>
       {!data.upstream.enabled ? <p>Upstream monitoring is not switched on yet.</p> : <>
-        <p className={styles.note}>Warn below ${data.upstream.warn_usd}; critical below ${data.upstream.critical_usd}. Unsupported means no balance API is connected. Unknown means a recent balance could not be read.</p>
-        <div className={styles.scroll} tabIndex={0} role="region" aria-label="Upstream balances"><table><thead><tr><th scope="col">Provider</th><th scope="col">USD remaining</th><th scope="col">State</th><th scope="col">Last check</th><th scope="col">Unavailable until</th></tr></thead><tbody>{data.upstream.providers.map(p => <tr key={p.provider}><th scope="row">{p.provider}</th><td>{p.balance_usd == null ? 'Unknown' : p.balance_usd.toFixed(2)}</td><td>{p.status}</td><td>{p.checked_at || 'Not checked'}</td><td>{p.unavailable_until || 'No hold'}</td></tr>)}</tbody></table></div>
+        <p className={styles.note}>Warn below ${data.upstream.warn_usd}; critical below ${data.upstream.critical_usd}; exhausted at or below ${data.upstream.exhausted_usd}. Unsupported means no balance API is connected. The last successful reading is kept if a later check fails. Exhausted accounts stay unavailable until a reading exceeds the exhausted threshold.</p>
+        <div className={styles.scroll} tabIndex={0} role="region" aria-label="Upstream balances"><table><thead><tr><th scope="col">Provider</th><th scope="col">USD remaining</th><th scope="col">State</th><th scope="col">Reading time</th><th scope="col">Latest check</th><th scope="col">Unavailable until</th></tr></thead><tbody>{data.upstream.providers.map(p => <tr key={p.provider}><th scope="row">{p.provider}</th><td>{balanceDisplay(p.balance_usd)}</td><td>{p.status}</td><td>{p.checked_at || 'Not checked'}</td><td>{p.last_check_status} · {p.last_check_at || 'Not checked'}</td><td>{p.status === 'exhausted' ? 'Until balance recovers' : p.unavailable_until || 'No hold'}</td></tr>)}</tbody></table></div>
       </>}
       <h2>Daily account counts</h2>
       <p className={styles.note}>Counts cover first milestones in retained records, once per account. New wallet sign-ins count accounts created with a management key in the same transaction; accounts created earlier by a deposit are excluded. Deposits count the first positive credit. Calls count the first signed generation that was not cancelled and did not finish with an error. These daily totals do not describe a single cohort or a conversion rate.</p>
