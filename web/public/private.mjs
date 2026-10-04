@@ -3142,6 +3142,22 @@ async function chooseOnion(o) {
   }
 }
 
+// src/chain/rpc-redaction.ts
+var configured = new Set;
+var currentRedactor = (text) => text;
+var redactRpcText = (text) => currentRedactor(text);
+function redactRpcFields(value) {
+  if (!configured.size || value instanceof Date)
+    return value;
+  if (typeof value === "string")
+    return redactRpcText(value);
+  if (Array.isArray(value))
+    return value.map(redactRpcFields);
+  if (value && typeof value === "object")
+    return Object.fromEntries(Object.entries(value).map(([key, field]) => [redactRpcText(key), redactRpcFields(field)]));
+  return value;
+}
+
 // src/lib/errors.ts
 class ApiError extends Error {
   status;
@@ -3150,22 +3166,25 @@ class ApiError extends Error {
   headers;
   body;
   constructor(status, message, type = "invalid_request", metadata, headers, body) {
-    super(message);
+    super(redactRpcText(message));
     this.status = status;
     this.type = type;
     this.metadata = metadata;
     this.headers = headers;
     this.body = body;
+    this.metadata = redactRpcFields(metadata);
+    this.headers = redactRpcFields(headers);
+    this.body = redactRpcFields(body);
   }
   toJSON() {
-    return this.body ?? {
+    return redactRpcFields(this.body ?? {
       error: {
         code: this.status,
         message: this.message,
         type: this.type,
         ...this.metadata ? { metadata: this.metadata } : {}
       }
-    };
+    });
   }
 }
 function fail(status, message, type = "invalid_request", metadata, headers) {

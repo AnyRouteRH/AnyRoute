@@ -1,5 +1,6 @@
+import { rpcTransport } from "../chain/rpc-transport.ts"; // RPC1
 import { z } from "zod";
-import { createPublicClient, http, type Hex } from "viem";
+import { createPublicClient, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Config } from "../config.ts";
 import { hostBondAbi } from "./bond-abi.ts";
@@ -26,6 +27,6 @@ export async function guardHostSlasher(cfg: Config, read?: () => Promise<string>
   if (!cfg.hostBonds.slashing) return;
   const key = cfg.chain.slasherKey;
   if (!key) throw new Error("Host slasher signing key is required.");
-  const slasher = await (read ?? (() => createPublicClient({ transport: http(cfg.chain.rpcUrl) }).readContract({ address: cfg.hostBonds.address!, abi: hostBondAbi, functionName: "slasher" })))();
+  const slasher = await (read ?? (() => createPublicClient({ transport: rpcTransport(cfg.chain) }).readContract({ address: cfg.hostBonds.address!, abi: hostBondAbi, functionName: "slasher" })))();
   if (privateKeyToAccount(key).address.toLowerCase() !== slasher.toLowerCase()) throw new Error("SLASHER_PRIVATE_KEY address does not equal HostBond.slasher().");
 }

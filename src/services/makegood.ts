@@ -1,6 +1,7 @@
+import { rpcTransport } from "../chain/rpc-transport.ts"; // RPC1
 import { and, asc, desc, eq, inArray, isNull, like, lte, or, sql } from "drizzle-orm";
 import type { Hono } from "hono";
-import { createWalletClient, encodeFunctionData, erc20Abi, http, keccak256, type Hex } from "viem";
+import { createWalletClient, encodeFunctionData, erc20Abi, keccak256, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Candidate, ModelRow } from "../catalog/catalog.ts";
 import type { Ctx } from "../context.ts";
@@ -279,7 +280,7 @@ export function refundTransport(ctx: Ctx): RefundTransport | null {
   const key = ctx.cfg.makegood.refundKey;
   if (!key) return null;
   const account = privateKeyToAccount(key);
-  const wallet = createWalletClient({ account, chain: ctx.chain.chain, transport: http(ctx.cfg.chain.rpcUrl) });
+  const wallet = createWalletClient({ account, chain: ctx.chain.chain, transport: rpcTransport(ctx.cfg.chain) });
   const usdg = ctx.cfg.chain.usdg as Hex;
   return {
     prepare: async (to, units) => {

@@ -5080,6 +5080,9 @@ function privateKeyToAccount(privateKey, options = {}) {
 // scripts/network-join-credential.ts
 import { open } from "node:fs/promises";
 
+// src/chain/rpc-redaction.ts
+var configured = new Set;
+
 // src/lib/util.ts
 function canonical(value) {
   if (typeof value === "bigint")

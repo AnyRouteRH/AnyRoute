@@ -718,7 +718,7 @@ export const EXTERNAL: ExternalDoc = {
       "Identifiers and counts: provider ids, model ids, job names, hold and generation ids, epochs, block numbers, transaction hashes, hashed key ids and, on rare settlement and escrow events, an account id.",
       "Wallet addresses of payers on pay-per-call and pay-with events (public on chain).",
       "For an unhandled error: the path of the request without its query string, the error message and the first five lines of the stack.",
-      "Error messages from libraries and upstream services, each cut to 200 characters where a call site truncates them.",
+      "Error messages from libraries and upstream services, each cut to 200 characters where a call site truncates them. Configured private chain RPC URLs, including paths and queries on the same host, are redacted before log emission; chain transport failures are redacted before callers truncate them.",
     ],
     neverRecords: [
       noLog("Client network addresses. No log call passes one; the only code that reads an address returns it to a rate limiter.", "src/api/common.ts", "return { id: clientIp(c, cfg.trustProxy), onion: false"),
@@ -727,11 +727,11 @@ export const EXTERNAL: ExternalDoc = {
       noLog("Query strings: only the pathname of a failing request is logged.", "src/app.ts", ".pathname, error: (err as Error)?.message"),
     ],
     caveats: [
-      "The text of an unexpected exception is logged as the library wrote it (src/app.ts unhandled error, src/lib/process-guard.ts uncaught exception, job failures). No code path puts request text into an error message on purpose, but the router does not filter such messages, and a library error could quote a fragment of what it was parsing.",
+      "The text of an unexpected exception is logged as the library wrote it (src/app.ts unhandled error, src/lib/process-guard.ts uncaught exception, job failures). No code path puts request text into an error message on purpose, but only configured private chain RPC URLs are filtered, and a library error could quote a fragment of what it was parsing.",
       "The hosting platform's own network layer sees connection addresses and may keep its own access logs. This inventory covers what the router's code records; it cannot describe the platform's logs.",
     ],
     retention: "The router does not rotate or store its logs: it writes them to standard output and the hosting platform keeps them under its own retention. No log retention is set in this repository.",
-    evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify({ t: new Date().toISOString(), level, msg, ...fields }")],
+    evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify(redactRpcFields({ t: new Date().toISOString(), level, msg, ...fields })")],
   },
   otherStores: [
     ...rushStores, // ON3

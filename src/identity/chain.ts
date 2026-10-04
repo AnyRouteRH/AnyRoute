@@ -1,4 +1,5 @@
-import { createWalletClient, decodeEventLog, http, type Hex } from "viem";
+import { rpcTransport } from "../chain/rpc-transport.ts"; // RPC1
+import { createWalletClient, decodeEventLog, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Ctx } from "../context.ts";
 import { identityRegistryAbi } from "./erc8004.ts";
@@ -40,7 +41,7 @@ export function identityChain(ctx: Ctx): IdentityChain {
     async register(registry, data) {
       const key = ctx.cfg.identity.registrarKey;
       if (!key) throw new Error("registrar key not configured");
-      const wallet = createWalletClient({ account: privateKeyToAccount(key), chain: ctx.chain.chain, transport: http(ctx.cfg.chain.rpcUrl) });
+      const wallet = createWalletClient({ account: privateKeyToAccount(key), chain: ctx.chain.chain, transport: rpcTransport(ctx.cfg.chain) });
       return wallet.sendTransaction({ to: registry, data });
     },
   };

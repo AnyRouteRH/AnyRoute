@@ -1,6 +1,7 @@
+import { rpcTransport } from "../chain/rpc-transport.ts"; // RPC1
 import { publishJuryStatementKey } from "./key-publication.ts";
 import { and, eq } from "drizzle-orm";
-import { createWalletClient, encodeFunctionData, http, keccak256, type Hex } from "viem";
+import { createWalletClient, encodeFunctionData, keccak256, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Ctx } from "../context.ts";
 import { decrypt, encrypt } from "../lib/util.ts";
@@ -27,7 +28,7 @@ export function rulingTransport(ctx: Ctx): RulingTransport {
     },
     prepare: async (id, root, votes) => {
       const account = privateKeyToAccount(cfg.signerKeys?.[0]!);
-      const wallet = createWalletClient({ account, chain: ctx.chain.chain, transport: http(ctx.cfg.chain.rpcUrl) });
+      const wallet = createWalletClient({ account, chain: ctx.chain.chain, transport: rpcTransport(ctx.cfg.chain) });
       const [agreementId, milestone] = id.split(".").map(BigInt);
       const tally = await signAgreementTally(ctx.chain.client, cfg.escrow!, cfg.oracle!, agreementId, milestone, root, cfg.signerKeys!, votes);
       const args = [cfg.escrow!, agreementId, milestone, root, tally] as const;

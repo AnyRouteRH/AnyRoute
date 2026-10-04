@@ -1,3 +1,4 @@
+import { redactRpcFields, redactRpcText } from "../chain/rpc-redaction.ts";
 // OpenRouter-shaped errors: { error: { code: <http status>, message, metadata? } }.
 // `type` carries a stable machine-readable reason (OpenAI SDKs read error.type/code).
 
@@ -11,17 +12,20 @@ export class ApiError extends Error {
     /** Replaces the default error envelope (x402 responses have their own JSON shape). */
     public body?: Record<string, unknown>,
   ) {
-    super(message);
+    super(redactRpcText(message));
+    this.metadata = redactRpcFields(metadata);
+    this.headers = redactRpcFields(headers);
+    this.body = redactRpcFields(body);
   }
   toJSON() {
-    return this.body ?? {
+    return redactRpcFields(this.body ?? {
       error: {
         code: this.status,
         message: this.message,
         type: this.type,
         ...(this.metadata ? { metadata: this.metadata } : {}),
       },
-    };
+    });
   }
 }
 

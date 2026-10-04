@@ -1,3 +1,4 @@
+import { rpcTransport } from "./rpc-transport.ts"; // RPC1
 import {
   BlockNotFoundError,
   TransactionReceiptNotFoundError,
@@ -7,7 +8,6 @@ import {
   defineChain,
   encodeFunctionData,
   hashTypedData,
-  http,
   parseSignature,
   recoverTypedDataAddress,
   size,
@@ -87,11 +87,11 @@ export class ChainService {
       id: cfg.chain.id,
       name: cfg.chain.id === 4663 ? "Robinhood Chain" : `Chain ${cfg.chain.id}`,
       nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-      rpcUrls: { default: { http: [cfg.chain.rpcUrl] } },
+      rpcUrls: { default: { http: [cfg.chain.publicRpcUrl] } },
     });
     // cacheTime 0: viem otherwise caches eth_blockNumber for 4s, which hides fresh blocks from the
     // indexer and payment checks (RHC produces ~10 blocks per second).
-    this.client = createPublicClient({ chain: this.chain, cacheTime: 0, pollingInterval: 250, transport: http(cfg.chain.rpcUrl, { retryCount: 2, timeout: 15_000 }) });
+    this.client = createPublicClient({ chain: this.chain, cacheTime: 0, pollingInterval: 250, transport: rpcTransport(cfg.chain, { retryCount: 2, timeout: 15_000 }) });
     const keys: Record<Role, Hex | undefined> = {
       router: cfg.chain.routerKey,
       settlement: cfg.chain.settlementKey,
@@ -103,7 +103,7 @@ export class ChainService {
       facilitator: cfg.facilitator.relayKey, // v6 F: pays relay gas and nothing else
     };
     for (const [role, key] of Object.entries(keys) as [Role, Hex | undefined][]) {
-      if (key) this.wallets.set(role, createWalletClient({ account: privateKeyToAccount(key), chain: this.chain, transport: http(cfg.chain.rpcUrl) }));
+      if (key) this.wallets.set(role, createWalletClient({ account: privateKeyToAccount(key), chain: this.chain, transport: rpcTransport(cfg.chain) }));
     }
   }
 

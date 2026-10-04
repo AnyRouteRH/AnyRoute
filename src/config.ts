@@ -1,3 +1,4 @@
+import { rpcEnv, rpcSettings } from "./chain/rpc-config.ts"; // RPC1: private transport settings.
 import { identityEnv, identitySettings } from "./identity/config.ts"; // v6 I: receipt-backed identity and reputation.
 import { accountRuntimeSchema } from "./paymaster/account-policy.ts";
 import { rushEnv, rushSettings } from "./rush/config.ts"; // ON3
@@ -122,6 +123,7 @@ const schema = z.object({
   HOST_ANCHOR_INTERVAL_MS: int(3_600_000),
   HOST_ANCHOR_TOKENS: opt, // JSON {"<provider id>": "<that sidecar's SIDECAR_ANCHOR_TOKEN>"}
 
+  ...rpcEnv, // RPC1
   // Chain (Robinhood Chain mainnet by default)
   CHAIN_ID: int(4663),
   RHC_RPC_URL: z.string().default("https://rpc.mainnet.chain.robinhood.com"),
@@ -466,6 +468,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   guardSealed(e);
   if (e.NETWORK_POLICY_ENABLED && !e.TLOG_ENABLED) throw new Error("NETWORK_POLICY_ENABLED needs TLOG_ENABLED.");
   const production = e.ANYROUTE_ENV === "production";
+  const rpc = rpcSettings(e, production || process.env.NODE_ENV === "production"); // RPC1
   const escrowMode = e.PAYMENTS_MODE === "escrow";
   const contractAddresses = {
     CREDITS_ADDRESS: e.CREDITS_ADDRESS,
@@ -671,6 +674,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     chain: {
       id: e.CHAIN_ID,
       rpcUrl: e.RHC_RPC_URL,
+      ...rpc, // RPC1
       publicRpcUrl: e.PUBLIC_RPC_URL,
       explorerUrl: e.EXPLORER_URL,
       confirmations: e.CHAIN_CONFIRMATIONS,

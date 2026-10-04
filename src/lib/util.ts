@@ -1,3 +1,4 @@
+import { redactRpcFields } from "../chain/rpc-redaction.ts";
 import { createHash, randomBytes, createCipheriv, createDecipheriv, createHmac, timingSafeEqual } from "node:crypto";
 
 export const now = () => Date.now();
@@ -60,7 +61,7 @@ let threshold: Level = (process.env.LOG_LEVEL as Level) || "info";
 export const setLogLevel = (l: Level) => (threshold = l);
 function emit(level: Level, msg: string, fields?: Record<string, unknown>) {
   if (order[level] < order[threshold]) return;
-  const line = JSON.stringify({ t: new Date().toISOString(), level, msg, ...fields }, (_k, v) =>
+  const line = JSON.stringify(redactRpcFields({ t: new Date().toISOString(), level, msg, ...fields }), (_k, v) =>
     typeof v === "bigint" ? v.toString() : v,
   );
   (level === "error" || level === "warn" ? console.error : console.log)(line);

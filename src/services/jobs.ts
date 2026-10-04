@@ -1,3 +1,4 @@
+import { redactRpcError, redactRpcText } from "../chain/rpc-redaction.ts";
 import { createHash } from "node:crypto";
 import { log } from "../lib/util.ts";
 
@@ -34,9 +35,9 @@ export class Jobs {
       j.lastSuccess = Date.now();
       return result;
     } catch (e) {
-      j.lastError = (e as Error).message;
+      j.lastError = redactRpcText(e instanceof Error ? e.message : String(e));
       log.error("job failed", { job: name, error: j.lastError });
-      throw e;
+      throw redactRpcError(e);
     } finally {
       j.running = false;
       j.lastRun = t;
