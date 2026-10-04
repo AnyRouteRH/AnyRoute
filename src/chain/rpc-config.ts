@@ -6,8 +6,8 @@ const localHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
 function validateRpcUrl(value: string, name: string, production: boolean) {
   let url: URL;
   try { url = new URL(value); } catch { throw new Error(`${name} must contain valid HTTPS URLs.`); }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && !production && localHosts.has(url.hostname)))
-    throw new Error(`${name} requires HTTPS${production ? " in production" : ""}; HTTP is allowed only for loopback hosts in development or test.`);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && localHosts.has(url.hostname)))
+    throw new Error(`${name} requires HTTPS${production ? " in production" : ""}; HTTP is allowed only for loopback hosts.`);
   if (url.hash) throw new Error(`${name} must not contain URL fragments.`);
 }
 export function rpcSettings(e: { RHC_RPC_URL: string; RHC_RPC_FALLBACK_URLS: string; PUBLIC_RPC_URL: string }, production: boolean) {
