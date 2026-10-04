@@ -3,6 +3,8 @@ import { useEffect, useId, useReducer, useRef, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { connect, ensureChain, sendTransactions } from '../../lib/wallet.js';
 import { fundingAmount, fundingOptions, fundingState, initialFunding, escrowFundingTransaction, validateCreditsTransactions } from '../../lib/add-funds.js';
+import { defaultFundingOption } from '../../lib/funding-display.js'; // V96
+import { FundingQuote, FundingDeposits } from './FundingDetails.js'; // V96
 import { ANYR_CA } from '../ContractAddress';
 import { Button, CopyButton } from '../UI';
 import s from './AddFunds.module.css';
@@ -45,7 +47,7 @@ export default function AddFunds({ apiKey, balance, force = false, onBalance, on
     return () => { alive.current = false; ac.abort(); clearTimeout(timer); };
   }, [apiKey, tracking]);
   const options = fundingOptions({ ...data, officialAnyr: ANYR_CA });
-  const option = options.find(item => item.id === selected) || options[0];
+  const option = options.find(item => item.id === selected) || defaultFundingOption(options, ANYR_CA);
   const available = data?.credits?.available ?? balance;
   const pending = state.phase === 'pending';
   if (!eligible && !['pending', 'credited'].includes(state.phase)) return null;
@@ -73,12 +75,13 @@ export default function AddFunds({ apiKey, balance, force = false, onBalance, on
     {option && <>
       <div className={s.fields}><div><label htmlFor={id + '-token'}>Send token</label><select id={id + '-token'} value={option.id} disabled={busy || pending} onChange={e => { setSelected(e.target.value); setAmount('10'); setError(''); }}>{options.map(item => <option key={item.id} value={item.id}>{item.symbol}</option>)}</select></div><div><label htmlFor={id + '-amount'}>Amount in {option.symbol}</label><input id={id + '-amount'} inputMode="decimal" value={amount} disabled={busy || pending} onChange={e => setAmount(e.target.value)} /></div></div>
       <dl><div><dt>Send</dt><dd>{amount || '0'} {option.symbol}</dd></div><div><dt>Token address</dt><dd><code>{option.address}</code></dd></div><div><dt>{option.kind === 'escrow' ? 'Escrow address' : 'Credits contract'}</dt><dd><code>{option.to}</code></dd></div>{option.keyHash && <div><dt>Key hash</dt><dd><code>{option.keyHash}</code></dd></div>}{option.wallet && <div><dt>Send from</dt><dd><code>{option.wallet}</code></dd></div>}</dl>
-      {option.kind === 'credits' ? <p>Approve {amount} USDG to the Credits contract, then call deposit with this key hash and {amount} USDG (6 decimals). Two wallet transactions. Do not transfer USDG directly to the contract.</p> : <p>One token transfer from the wallet above. Other senders receive the credits in their own accounts. Credits wait for chain finality and a current rate; tokens stay in escrow. {option.credit_usd_per_token > 0 ? `Current credit rate: ${option.credit_usd_per_token} USDG per token, after the ${Number(option.haircut_bps || 0) / 100}% haircut.` : 'No current rate: wait before sending.'} {option.max_usd_per_deposit != null && `Credit limit: ${option.max_usd_per_deposit} USDG per deposit.`}</p>}
+      <FundingQuote option={option} amount={amount} />
+      {option.kind === 'credits' ? <p>Approve {amount} USDG to the Credits contract, then call deposit with this key hash and {amount} USDG (6 decimals). Two wallet transactions. Do not transfer USDG directly to the contract.</p> : <p>One token transfer from the wallet above. Other senders receive the credits in their own accounts. Credits wait for chain finality and a current rate; tokens stay in escrow.</p>}
       <div className={s.actions}><Button type="button" disabled={busy || pending || !!readError || option.kind === 'escrow' && !(option.credit_usd_per_token > 0)} onClick={send}>{busy ? 'Confirm in your wallet…' : pending ? 'Waiting for confirmation…' : 'Add funds with wallet'}</Button><CopyButton text={option.to} label={option.kind === 'escrow' ? 'Copy escrow address' : 'Copy contract address'}/></div>
       {!pending && <button type="button" className="text-button" onClick={() => dispatch({ type: 'pending', total: Number(data.credits.total_credits), status: 'Waiting for confirmation of your deposit…' })}>I sent it from another wallet app · watch for credits</button>} {/* Same sending wallet required for escrow. */}
     </>}
     {state.status && <p className={s.status} role="status" aria-live="polite">{state.status}</p>}
-    {pending && data?.stock?.deposits?.filter(item => !['credited', 'orphaned', 'reversed'].includes(item.stage || item.status)).slice(0, 3).map(item => <p key={item.id} role="status">{item.amount} {item.symbol}: {item.stage === 'awaiting_price' ? 'Waiting for a current credit rate.' : 'Waiting for confirmation and credit.'} {item.note}</p>)}
+    {(pending || state.phase === 'credited' || option?.kind === 'escrow') && <FundingDeposits deposits={data?.stock?.deposits} escrow={data?.escrow} />}
     {error && <p className="error" role="alert">{error}</p>}
     {onResume && Number(available) > 0 && <Button type="button" disabled={disabled || busy} onClick={onResume}>Send now</Button>}
     <p className={s.links}><a className="inline-link" href="/docs/#get-usdg">How do I get USDG?</a> · <a className="inline-link" href="/dashboard/#payments">See all payment options</a></p>

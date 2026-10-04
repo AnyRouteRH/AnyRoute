@@ -1,5 +1,6 @@
 "use client";
 import AddFunds from "./account/AddFunds"; import { fundingError } from "../lib/add-funds.js"; // ON1
+import { defaultFundingOption } from "../lib/funding-display.js"; import { ANYR_CA } from "./ContractAddress"; // V96
 import AccountStatements from "./account/AccountStatements"; import AccountExport from "./account/AccountExport"; // V87
 import AccountInsights from "./account/AccountInsights"; // V88: spend insights.
 import AccountInbox from "./account/AccountInbox"; // U78: account inbox.
@@ -455,7 +456,7 @@ const transferData = (to, raw) => "0xa9059cbb" + to.slice(2).toLowerCase().padSt
 
 function StockDepositDialog({ onClose, escrow, stock, status, onDone }) {
   const tokens = escrow?.tokens || [];
-  const [symbol, setSymbol] = useState(tokens.find((t) => t.credit_usd_per_token)?.symbol || tokens[0]?.symbol || "");
+  const [symbol, setSymbol] = useState(defaultFundingOption(tokens, ANYR_CA)?.symbol || ""); // V96
   const [amount, setAmount] = useState("1");
   const [step, setStep] = useState("");
   const [error, setError] = useState("");
