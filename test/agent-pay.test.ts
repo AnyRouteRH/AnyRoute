@@ -79,6 +79,10 @@ test("off by default, needs Agent Guard, and while off the routes say so and sta
     expect(inferenceRouteAllowed(method, path, false)).toBe(false);
   }
   expect(inferenceRouteAllowed("POST", "/api/v1/agents/pay/id")).toBe(false);
+  // A split worker can run the re-verification job on its own; it needs no signing key.
+  const address = "0x" + "1".repeat(40);
+  const production = { NODE_ENV: "production", ANYROUTE_ENV: "production", RUNTIME_ROLE: "worker", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/fixture", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: address, CALLPAY_ADDRESS: address, PROVIDER_BOND_ADDRESS: address, RECEIPT_ANCHOR_ADDRESS: address, AGENT_POLICY_ENABLED: "true", AGENT_GUARD_ENABLED: "true", AGENT_PAY_ENABLED: "true", WORKER_JOBS: "agent-pay-verify" };
+  expect(loadConfig(production).workerJobs).toEqual(["agent-pay-verify"]);
 });
 
 test("the payer's rulebook decides pay.agent through Agent Guard, and only an allow returns instructions", async () => {

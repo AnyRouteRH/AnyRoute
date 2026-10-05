@@ -544,6 +544,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("agent-alerts", "agent-policy-retention", "agent-ledger-retention", "network-fee-burn", "host-bond-indexer", "host-slasher");
       allowed.push("x402-recovery-expire"); // x402 payment recovery retention
       allowed.push("agent-liveness", "agent-identity"); // v6 I: daily signed endpoint probes; isolated ERC-8004 registrar.
+      allowed.push("agent-pay-verify"); // Pay another agent: re-reads confirmed payments on chain; holds no signing key.
       if (!names.length || names.some((n) => !allowed.includes(n))) throw new Error("Worker requires an explicit valid WORKER_JOBS list.");
       const keyJobs = { settlement: "settlement", anchoring: "receipts-anchor", slashing: "slasher", keeper: "network-fee-burn" };
       if (Object.values(roleKeys).filter(Boolean).length > 1) throw new Error("Privileged worker signing roles must be isolated.");
