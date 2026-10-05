@@ -5,6 +5,7 @@ const sections = [
   ["starter-setups", "Starter setups"],
   ["auto-topup", "Auto top-up"],
   ["replay-rules", "Replay your rules"],
+  ["playbooks", "Playbooks"],
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
   ["agent-pay", "Pay another agent (not switched on)"],

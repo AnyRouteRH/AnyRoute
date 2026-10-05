@@ -57,6 +57,10 @@
       "description": "Deterministic router enforcement for requests through AnyRoute only; AGENT_POLICY_ENABLED defaults to false. No on-chain enforcement."
     },
     {
+      "name": "Playbooks",
+      "description": "One named rulebook that many keys of an account or team follow; a change applies to every following key from its next request. Same switch, roles and validation as the agent rulebook: AGENT_POLICY_ENABLED defaults to false."
+    },
+    {
       "name": "Network host policy",
       "description": "Versioned signed build pins for future network host admission; existing provider admission is unchanged."
     },
@@ -2502,6 +2506,444 @@
             }
           }
         ]
+      }
+    },
+    "/api/v1/playbooks": {
+      "get": {
+        "operationId": "listPlaybooks",
+        "tags": [
+          "Playbooks"
+        ],
+        "summary": "List playbooks",
+        "description": "Management key, or a team owner or admin; viewers, devs, agent keys and session keys are refused. A management key sees every playbook of the account; a team owner or admin sees its team's and the account-wide ones. Each lists how many keys follow it and the following keys the caller manages. Off (AGENT_POLICY_ENABLED false) returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Playbook"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPlaybook",
+        "tags": [
+          "Playbooks"
+        ],
+        "summary": "Create a playbook",
+        "description": "Management key, or a team owner or admin; viewers, devs, agent keys and session keys are refused. A team owner or admin creates a playbook for its own team; a management key creates an account-wide one, or one for a team it owns with team_id. Version starts at 1. Off (AGENT_POLICY_ENABLED false) returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Playbook"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "playbook_name_taken or playbook_limit_reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/playbooks/{id}": {
+      "get": {
+        "operationId": "getPlaybook",
+        "tags": [
+          "Playbooks"
+        ],
+        "summary": "Read a playbook",
+        "description": "Management key, or a team owner or admin; viewers, devs, agent keys and session keys are refused. Adds the latest 50 recorded changes, newest first. Off (AGENT_POLICY_ENABLED false) returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Playbook"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "changes": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/PlaybookChange"
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updatePlaybook",
+        "tags": [
+          "Playbooks"
+        ],
+        "summary": "Change a playbook",
+        "description": "Management key, or a team owner or admin; viewers, devs, agent keys and session keys are refused. Account-wide playbooks change only with a management key. New rules raise version by one and are copied, in the same transaction, to every key that follows the playbook, which uses them from its next request. Unchanged name and rules change nothing (changed false). For a team the change is in the team audit log, and a change of rules is in the inbox of the team's owners and admins. Off (AGENT_POLICY_ENABLED false) returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Playbook"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "changed": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "playbook_name_taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePlaybook",
+        "tags": [
+          "Playbooks"
+        ],
+        "summary": "Delete a playbook",
+        "description": "Management key, or a team owner or admin; viewers, devs, agent keys and session keys are refused. Refused with 409 playbook_followed and metadata.followers while keys follow the playbook, unless unlink=copy: each following key then keeps the playbook's rules as its own rulebook. Off (AGENT_POLICY_ENABLED false) returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unlink",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "copy"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "deleted",
+                        "unlinked"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "deleted": {
+                          "const": true
+                        },
+                        "unlinked": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "playbook_followed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/playbook": {
+      "post": {
+        "operationId": "followPlaybook",
+        "tags": [
+          "Playbooks"
+        ],
+        "summary": "Follow a playbook, or stop following",
+        "description": "Management key or owner/admin of the target key's account and team, with the same permissions as editing that key. With a playbook_id, the key's rules become that playbook's current rules (its stop state is kept); a team playbook takes keys of that team only (409 playbook_team_mismatch). With null, the key stops following and keeps the playbook's current rules as its own. While a key follows a playbook, PUT and DELETE on its own rulebook answer 409 playbook_linked. Off (AGENT_POLICY_ENABLED false) returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookFollow"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PlaybookFollowResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "playbook_team_mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/agents/{key_hash}/kill": {
@@ -18724,6 +19166,246 @@
           }
         }
       },
+      "Playbook": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "team_id",
+          "policy",
+          "sha256",
+          "version",
+          "followers",
+          "keys",
+          "can_edit"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "team_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The owning team, or null for an account-wide playbook."
+          },
+          "policy": {
+            "$ref": "#/components/schemas/AgentPolicy"
+          },
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 of the canonical rules; each following key's rulebook carries the same digest."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 at creation, plus one for each change of rules. A rename keeps it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_by": {
+            "type": "string",
+            "description": "Hash of the key that made the last change."
+          },
+          "followers": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Every key that follows the playbook."
+          },
+          "keys": {
+            "type": "array",
+            "description": "The following keys the caller manages.",
+            "items": {
+              "type": "object",
+              "required": [
+                "key_hash",
+                "name"
+              ],
+              "properties": {
+                "key_hash": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "can_edit": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PlaybookInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "policy"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "policy": {
+            "$ref": "#/components/schemas/AgentPolicy"
+          },
+          "team_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Management keys only: a team the account owns."
+          }
+        }
+      },
+      "PlaybookUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "policy": {
+            "$ref": "#/components/schemas/AgentPolicy"
+          }
+        }
+      },
+      "PlaybookChange": {
+        "type": "object",
+        "required": [
+          "action",
+          "version",
+          "sha256",
+          "name",
+          "followers",
+          "at"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "rename",
+              "delete"
+            ]
+          },
+          "version": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "followers": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PlaybookFollow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "playbook_id"
+        ],
+        "properties": {
+          "playbook_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PlaybookFollowResult": {
+        "type": "object",
+        "required": [
+          "key_hash",
+          "changed",
+          "playbook",
+          "policy",
+          "sha256",
+          "killed",
+          "playbook_id"
+        ],
+        "properties": {
+          "key_hash": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "playbook": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              }
+            }
+          },
+          "policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "killed": {
+            "type": "boolean"
+          },
+          "playbook_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "AgentPolicyResult": {
         "type": "object",
         "required": [
@@ -18757,6 +19439,10 @@
               "string",
               "null"
             ]
+          },
+          "playbook_id": {
+            "type": "string",
+            "description": "Present only while the key follows a playbook (POST /api/v1/agents/{key_hash}/playbook); its rules are then that playbook's current rules."
           }
         }
       },

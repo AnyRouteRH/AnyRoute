@@ -75,6 +75,23 @@ test('Playbooks sits in Keys & limits, with a search task', () => {
   assert.match(read('components/Dashboard.jsx'), /\{tab === "Playbooks" && <Playbooks /);
 });
 
+test('Playbooks has a docs section after starter setups, a feature index link and its API in OpenAPI', () => {
+  assert.match(read('components/DocsFeatureIndex.jsx'), /\["playbooks", "Playbooks"\]/);
+  const page = read('app/docs/page.jsx');
+  assert.match(page, /<SpendingLimitsDocs \/><DefaultRouteDocs \/><StarterSetupsDocs \/>(?:<\w+Docs \/>)*<PlaybooksDocs \/>/); // in the spending limits group
+  assert.equal(page.split('<PlaybooksDocs />').length, 2);
+  const docs = read('components/PlaybooksDocs.jsx');
+  assert.match(docs, /<section id="playbooks"><h2>Playbooks<\/h2>/);
+  for (const phrase of ['GET /api/v1/playbooks', 'POST /api/v1/agents/:key_hash/playbook', '?unlink=copy', 'playbook_followed', 'playbook_linked', 'AGENT_POLICY_ENABLED, which defaults to false', 'Playbook X changed; N keys follow it']) assert.ok(docs.includes(phrase), phrase);
+  const spec = JSON.parse(read('public/openapi.json'));
+  assert.deepEqual(Object.keys(spec.paths['/api/v1/playbooks']), ['get', 'post']);
+  assert.deepEqual(Object.keys(spec.paths['/api/v1/playbooks/{id}']), ['get', 'put', 'delete']);
+  assert.ok(spec.paths['/api/v1/agents/{key_hash}/playbook'].post);
+  assert.deepEqual(spec.paths['/api/v1/playbooks/{id}'].delete.parameters.find(p => p.name === 'unlink').schema.enum, ['copy']);
+  assert.ok(spec.tags.some(t => t.name === 'Playbooks'));
+  assert.doesNotMatch(docs, /\b(?:demo|test|tested|local|mock|simulated|placeholder|fixture|kill|killed|earn|yield|APY|x402)\b/i);
+});
+
 test('every key and agent shows the playbook it follows or offers one; followed rules are read-only but Stop still works', () => {
   for (const file of ['components/limits/KeyLimits.jsx', 'app/agents/Agents.jsx']) assert.match(read(file), /<FollowPlaybook /, file);
   assert.match(read('components/limits/KeyLimits.jsx'), /locked=\{!!playbook\}/);
