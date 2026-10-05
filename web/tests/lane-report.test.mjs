@@ -72,8 +72,23 @@ test('the dashboard shows the card on Statements, before the proof pack, and onl
 });
 
 test('copy names lanes and proven hardware, and stays plain', () => {
-  const files = ['components/account/AccountLaneReport.jsx', 'lib/lane-report.js'];
+  const files = ['components/account/AccountLaneReport.jsx', 'components/LaneReportDocs.jsx', 'lib/lane-report.js'];
   const visible = files.map(read).flatMap(src => [...src.matchAll(/>([^<>{}]+)</g), ...src.matchAll(/'([^'\n]{12,})'/g), ...src.matchAll(/`([^`\n]{12,})`/g)].map(m => m[1])).join(' ');
   assert.match(visible, /proven hardware/);
   assert.doesNotMatch(visible, /\b(?:demo|test|tested|local|mock|simulated|placeholder|fixture|earn|yield|APY|private|x402)\b|no logs|can.t read your prompt/i);
+});
+
+test('the docs section has its anchor, sits after the proof pack, is in the feature index and has a search task', async () => {
+  const docs = read('components/LaneReportDocs.jsx');
+  assert.match(docs, /<section id="lane-report">/);
+  assert.match(docs, /STATEMENTS_ENABLED/);
+  assert.match(docs, /\/api\/v1\/lane-report/);
+  assert.match(docs, /not recorded per call/);
+  const page = read('app/docs/page.jsx');
+  assert.ok(page.indexOf('<ProofPackDocs />') < page.indexOf('<LaneReportDocs />'));
+  assert.equal(page.split('<LaneReportDocs />').length - 1, 1);
+  assert.match(read('components/DocsFeatureIndex.jsx'), /\["lane-report", "Lane report"\]/);
+  assert.match(read('components/ProofPackDocs.jsx'), /lane_report/);
+  const { TASKS } = await import('../lib/site-map.js');
+  assert.deepEqual(TASKS.filter(item => item.id === 'lane-report').map(item => [item.href, item.menu]), [['/dashboard/#statements', false]]);
 });

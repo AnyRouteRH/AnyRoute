@@ -113,6 +113,7 @@ TASKS.push({ ...task('starter-setups', 'agents', 'Start from a setup', 'Fill spe
 TASKS.push({ ...task('request-check', 'agents', 'Check a request against your rules', 'Check agent rules without spending: allow, approval required or deny.', '/agents/#request-check', 'check, try, request, rules'), menu: false }); // V85: search-only.
 TASKS.push({ ...task('prompt-library', 'chat', 'Save and reuse prompts', 'Keep named prompts in this browser and fill in variables before using them.', '/harness/#prompt-library', 'prompts, library, templates, favourites'), menu: false }); // V81: search-only, keeps menus short.
 TASKS.push({ ...task('why-this-route', 'learn', 'Understand a route', 'See why each reply went to its provider, and what that explanation does not show.', '/docs/#why-this-route', 'route explanation, provider, routing, fallback'), menu: false }); // V84: search only.
+TASKS.push({ ...task('lane-report', 'verify', 'See where your calls ran', 'Calls and spend by lane, the share on proven hardware and each provider’s evidence.', '/dashboard/#statements', 'lane, lanes, lane report, attested, unlinkable, public, proven hardware, where, evidence'), menu: false }); // Lane report: search-only, on Statements.
 TASKS.push({ ...task('insights', 'build', 'See where your money goes', 'See spend by model, key and lane, and the same abilities for less.', '/dashboard/#insights', 'spend, insights, cost, model, key, agent, lane'), menu: false }); // V88: search-only.
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 

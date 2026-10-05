@@ -11,6 +11,7 @@ import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
 import StructuredOutputDocs from "../../components/StructuredOutputDocs"; // V83
 import StatementDocs from "../../components/StatementDocs"; // V87
 import ProofPackDocs from "../../components/ProofPackDocs"; // U100
+import LaneReportDocs from "../../components/LaneReportDocs"; // Lane report
 import WebhookDocs from "../../components/WebhookDocs"; // V86: optional signed event delivery.
 import MakeGoodDocs from "../../components/MakeGoodDocs"; // V6 R: make-good refunds.
 import AgentProfileDocs from "../../components/AgentProfileDocs";
@@ -857,7 +858,7 @@ export default function Docs() {
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
           <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
-          <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}
+          <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}<LaneReportDocs /> {/* Lane report */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />
           <WebhookDocs/> {/* V86. */}

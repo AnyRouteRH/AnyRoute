@@ -1,6 +1,7 @@
 const sections = [
   ["spending-limits", "Spending limits"],
   ["default-route", "Default route"],
+  ["lane-report", "Lane report"],
   ["starter-setups", "Starter setups"],
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
