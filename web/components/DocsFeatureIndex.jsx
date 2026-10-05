@@ -9,6 +9,7 @@ const sections = [
   ["agent-approvals", "Ask-first approvals"],
   ["agent-pay", "Pay another agent (not switched on)"],
   ["trading-agents", "Trading agents"],
+  ["decision-tags", "Decision tags (not switched on yet)"],
   ["agent-breakers", "Circuit breakers"],
   ["agent-autonomy", "Progressive autonomy"],
   ["agent-ledger", "Activity & receipts"],

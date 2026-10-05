@@ -43,6 +43,7 @@ import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentCertificateDocs from "../../components/AgentCertificateDocs";
 import AgentApprovalDocs from "../../components/AgentApprovalDocs";
 import TradingAgentDocs from "../../components/TradingAgentDocs"; // B
+import DecisionTagDocs from "../../components/DecisionTagDocs"; // B: decision tags
 import { API_BASE } from "../../lib/api";
 import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
 import OnionAddress from "../../components/OnionAddress";
@@ -871,6 +872,7 @@ export default function Docs() {
           <AgentGuardDocs /> {/* V98 */}
           <AgentPayDocs /> {/* Pay another agent */}
           <TradingAgentDocs /> {/* B */}
+          <DecisionTagDocs /> {/* B: decision tags */}
           <AgentCertificateDocs /><AgentProfileDocs /><AgentIdentityDocs /><SealedAgentDocs />
           <h2 id="quickstart">Make your first API call.</h2> {/* ON2 */}
           <FirstCallDocs /> {/* ON2 */}

@@ -77,3 +77,25 @@ test('the page shows the tag, hashes the order in the browser and says nothing i
  assert.doesNotMatch(visible,/\b(?:demo|test|tested|local|mock|simulated|placeholder|fixture|earn|yield|APY|x402)\b/i);
  assert.doesNotMatch(visible,/\b(?:AAPL|TSLA|NVDA|MSFT|AMZN|GOOGL|META|SPY|QQQ)\b/);
 });
+
+test('the docs section has its anchor and examples, says it is not switched on yet, and is indexed, searchable and linked from Labs',async()=>{
+ const docs=read('components/DecisionTagDocs.jsx');
+ assert.match(docs,/<section id="decision-tags">/);
+ for(const label of ['curl','TypeScript','Python'])assert.match(docs,new RegExp(`<Code label="${label}">`));
+ assert.match(docs,/not switched on at anyroute\.tech yet/);
+ assert.match(docs,/DECISION_TAGS_ENABLED/);
+ for(const name of ['withDecisionTag','with_decision_tag','details_sha256','informed_by','/api/v1/guard/decisions','/api/v1/receipts/verify','decision_tag_valid','--intent',TAG])assert.ok(docs.includes(name),name);
+ const visible=[...docs.matchAll(/>([^<>{}]+)</g),...docs.matchAll(/'([^'\n]{12,})'/g),...docs.matchAll(/`([^`]{12,})`/g)].map(m=>m[1]).join(' ');
+ assert.doesNotMatch(visible,/\b(?:demo|test|tested|local|mock|simulated|placeholder|fixture|earn|yield|APY|x402)\b/i);
+ assert.doesNotMatch(visible,/\b(?:AAPL|TSLA|NVDA|MSFT|AMZN|GOOGL|META|SPY|QQQ)\b/);
+ const page=read('app/docs/page.jsx');
+ assert.equal(page.split('<DecisionTagDocs />').length-1,1);
+ assert.ok(page.indexOf('<TradingAgentDocs />')<page.indexOf('<DecisionTagDocs />'));
+ assert.match(read('components/DocsFeatureIndex.jsx'),/\["decision-tags", "Decision tags \(not switched on yet\)"\]/);
+ assert.match(read('components/TradingAgentDocs.jsx'),/href="#decision-tags"/);
+ assert.match(read('components/ProofPackDocs.jsx'),/decision_tags/);
+ const {TASKS}=await import('../lib/site-map.js');
+ assert.deepEqual(TASKS.filter(t=>t.id==='decision-tags').map(t=>[t.href,t.menu]),[['/docs/#decision-tags',false]]);
+ const {LABS}=await import('../lib/labs.js');
+ assert.deepEqual(LABS.filter(l=>l.id==='decision-tags').map(l=>[l.field,l.href]),[['decision_tags.enabled','/docs/#decision-tags']]);
+});

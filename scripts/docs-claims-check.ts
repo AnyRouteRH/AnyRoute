@@ -77,6 +77,7 @@ export const CAPABILITIES: Capability[] = [
   { id: "host-anchor", label: "per-host receipt anchoring", field: "jobs[host-anchor]", on: job("host-anchor"), mention: /\bper-host receipt anchoring\b|\banchored per host\b/i },
   { id: "onchain-anchor", label: "receipt roots anchored on chain", field: "chain.contracts.receiptAnchor", on: (s) => { const c = get(s, "chain.contracts"); return c && typeof c === "object" ? !!(c as Record<string, unknown>).receiptAnchor : undefined; }, mention: /\banchored on[- ]chain\b|\banchored on chain \d+\b|\bon-chain anchor(?:ing|ed)?\b/i },
   { id: "batches", label: "Batch API", field: "jobs[batches]", on: job("batches"), mention: /\bBatch API\b/i },
+  { id: "decision-tags", label: "decision tags in receipts", field: "decision_tags.enabled", on: field("decision_tags.enabled"), mention: /\bdecision tags?\b|\bX-Anyroute-Decision-Tag\b/i },
 ];
 
 /** Words that make a clause a claim that something is on now. */
