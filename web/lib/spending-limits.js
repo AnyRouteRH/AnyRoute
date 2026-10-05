@@ -115,25 +115,86 @@ export function keyBudgetFrom(value) {
   return Number.isFinite(n) && n > 0 && n <= KEY_BUDGET.max ? { limit: n, errors: [] } : { limit: null, errors: [KEY_BUDGET_WORDS.error] };
 }
 
-/** What Save writes for a key: { limit } for PATCH /api/v1/keys/:hash when the total budget changed, and the rulebook body for
- *  PUT /api/v1/agents/:key_hash/policy unless only the budget changed. Without a readable rulebook (form null), only the budget. */
-export function keySavePlan({ form, loaded, budget, savedBudget }) {
-  const next = keyBudgetFrom(budget);
-  const built = form ? rulebookFromLimits(form) : null;
-  const errors = [...next.errors, ...(built?.errors || [])];
-  const budgetChanged = !next.errors.length && next.limit !== (savedBudget == null ? null : Number(savedBudget));
-  const rulebookChanged = !!built && (!loaded || JSON.stringify(built.policy) !== JSON.stringify(rulebookFromLimits(loaded).policy));
-  return { budget: budgetChanged ? { limit: next.limit } : null, policy: built && (rulebookChanged || !budgetChanged) ? built.policy : null, errors };
+// U113: auto top-up, a row under the total budget. "When this key has less than $X left, add $Y from your account credits, at
+// most $Z per week": the key's `topup` rule, saved with the same PATCH /api/v1/keys/:hash as the budget. The router applies it
+// (src/ledger/topup.ts); nothing here estimates spend. Blank amounts turn it off.
+export const TOPUP = { below: 1_000, add: 1_000, perWeek: 5_000 };
+export const TOPUP_FIELDS = [['below', 'When less than ($) is left', TOPUP.below], ['add', 'Add ($)', TOPUP.add], ['perWeek', 'At most per week ($)', TOPUP.perWeek]];
+export const TOPUP_WORDS = {
+  title: 'Auto top-up',
+  help: 'Optional. No money moves: the total budget is an allowance on your account’s credits, and a top-up never takes it above what the account holds. Weeks run Monday to Sunday, UTC. Caps still apply. Each top-up shows in Activity and your inbox.',
+  off: 'Off. Fill in all three amounts to keep this key going from your credits when its budget runs low.',
+  incomplete: 'Auto top-up: fill in all three amounts, or clear them to turn it off.',
+  range: 'Auto top-up: enter USD from 0.01 up to 1,000 for the threshold and the amount added, and up to 5,000 per week.',
+  order: 'Auto top-up: the amount added cannot be more than the most per week.',
+  needsBudget: 'Auto top-up raises the total budget, so set a total budget too.',
+  resets: 'Auto top-up works with a total budget that does not reset each period.',
+};
+const dollars = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 6 });
+const sameTopup = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** The key's `topup` rule (or null) -> the three amounts as text. */
+export const topupText = rule => rule ? { below: String(rule.below_usd), add: String(rule.add_usd), perWeek: String(rule.max_per_week_usd) } : { below: '', add: '', perWeek: '' };
+
+/** The three amounts -> the `topup` rule (null when all are blank), with readable errors. */
+export function topupFrom(value) {
+  const v = value || {};
+  const filled = TOPUP_FIELDS.filter(([k]) => !blank(v[k]));
+  if (!filled.length) return { topup: null, errors: [] };
+  if (filled.length < TOPUP_FIELDS.length) return { topup: null, errors: [TOPUP_WORDS.incomplete] };
+  const [below, add, perWeek] = TOPUP_FIELDS.map(([k]) => Number(v[k]));
+  if (TOPUP_FIELDS.some(([k, , max]) => { const n = Number(v[k]); return !Number.isFinite(n) || n < 0.01 || n > max; })) return { topup: null, errors: [TOPUP_WORDS.range] };
+  if (add > perWeek) return { topup: null, errors: [TOPUP_WORDS.order] };
+  return { topup: { below_usd: below, add_usd: add, max_per_week_usd: perWeek }, errors: [] };
 }
 
-export const keySaveNotice = plan => plan.budget && plan.policy ? KEY_BUDGET_WORDS.saved.both : plan.budget ? KEY_BUDGET_WORDS.saved.budget : KEY_BUDGET_WORDS.saved.policy;
+/** The one-line summary under the amounts. `week` is what was added this week (topups_this_week_usd), when known. */
+export function topupSummary(value, { week = null, reset = null } = {}) {
+  const { topup, errors } = topupFrom(value);
+  if (errors.length) return errors[0];
+  if (!topup) return TOPUP_WORDS.off;
+  if (reset) return `${TOPUP_WORDS.resets} ${budgetResetText(reset)}`;
+  const line = `When this key has less than ${dollars(topup.below_usd)} left, add ${dollars(topup.add_usd)} from your account credits, at most ${dollars(topup.max_per_week_usd)} per week.`;
+  return week == null ? line : `${line} Added this week: ${dollars(week)}.`;
+}
 
-/** Runs a keySavePlan through the existing calls, the budget first. `request` is api() with the signed-in key; `onBudget`
- *  hears the saved limit, also when the rulebook then fails, so the error can say the budget was saved. */
+/** A short line for the key's card in API keys, or '' when off. */
+export const topupCardText = rule => rule ? `Auto top-up: adds ${dollars(rule.add_usd)} below ${dollars(rule.below_usd)} left, up to ${dollars(rule.max_per_week_usd)} a week.` : '';
+
+/** What Save writes for a key: a body for PATCH /api/v1/keys/:hash with `limit` when the total budget changed and `topup` when
+ *  the auto top-up changed, and the rulebook body for PUT /api/v1/agents/:key_hash/policy unless only the key changed. Without a
+ *  readable rulebook (form null), only the key. Leaving `topup` out leaves the auto top-up as it is. */
+export function keySavePlan({ form, loaded, budget, savedBudget, topup, savedTopup = null, reset = null }) {
+  const next = keyBudgetFrom(budget);
+  const auto = topup === undefined ? null : topupFrom(topup);
+  const built = form ? rulebookFromLimits(form) : null;
+  const errors = [...next.errors, ...(auto?.errors || []), ...(built?.errors || [])];
+  if (auto?.topup && !next.errors.length && next.limit == null) errors.push(TOPUP_WORDS.needsBudget);
+  if (auto?.topup && reset) errors.push(TOPUP_WORDS.resets);
+  const budgetChanged = !next.errors.length && next.limit !== (savedBudget == null ? null : Number(savedBudget));
+  const topupChanged = !!auto && !auto.errors.length && !sameTopup(auto.topup, savedTopup);
+  const body = { ...(budgetChanged ? { limit: next.limit } : {}), ...(topupChanged ? { topup: auto.topup } : {}) };
+  const keyChanged = budgetChanged || topupChanged;
+  const rulebookChanged = !!built && (!loaded || JSON.stringify(built.policy) !== JSON.stringify(rulebookFromLimits(loaded).policy));
+  return { budget: keyChanged ? body : null, policy: built && (rulebookChanged || !keyChanged) ? built.policy : null, errors };
+}
+
+/** What a saved key body is called in notices: the total budget, the auto top-up, or both. */
+const keyWords = body => body && 'topup' in body ? ('limit' in body ? 'Total budget and auto top-up' : 'Auto top-up') : 'Total budget';
+export const keySaveNotice = plan => plan.budget && plan.policy ? (keyWords(plan.budget) === 'Total budget' ? KEY_BUDGET_WORDS.saved.both : `${keyWords(plan.budget)} and spending limits saved.`)
+  : plan.budget ? (keyWords(plan.budget) === 'Total budget' ? KEY_BUDGET_WORDS.saved.budget : `${keyWords(plan.budget)} saved.`) : KEY_BUDGET_WORDS.saved.policy;
+
+/** Runs a keySavePlan through the existing calls, the key first. `request` is api() with the signed-in key; `onBudget`
+ *  hears the saved limit (undefined when unchanged) and the saved body, also when the rulebook then fails, so the error
+ *  can say what was saved. */
 export async function saveKeyLimits(request, keyHash, plan, onBudget) {
   const hash = encodeURIComponent(keyHash);
-  if (plan.budget) { await request('/api/v1/keys/' + hash, { method: 'PATCH', body: plan.budget }); onBudget?.(plan.budget.limit); }
+  if (plan.budget) { await request('/api/v1/keys/' + hash, { method: 'PATCH', body: plan.budget }); onBudget?.(plan.budget.limit, plan.budget); }
   if (!plan.policy) return;
   try { await request('/api/v1/agents/' + hash + '/policy', { method: 'PUT', body: plan.policy }); }
-  catch (error) { if (plan.budget) throw new Error(`${KEY_BUDGET_WORDS.partial} ${error?.message || 'the request could not be completed.'}`); throw error; }
+  catch (error) {
+    if (!plan.budget) throw error;
+    const partial = keyWords(plan.budget) === 'Total budget' ? KEY_BUDGET_WORDS.partial : `${keyWords(plan.budget)} saved. The spending limits were not saved:`;
+    throw new Error(`${partial} ${error?.message || 'the request could not be completed.'}`);
+  }
 }

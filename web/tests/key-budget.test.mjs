@@ -70,7 +70,7 @@ test('the editor shows the total budget beside the caps, and the keys list has n
   assert.match(editor, /max=\{KEY_BUDGET\.max\}/);
   const limits = source('../components/limits/KeyLimits.jsx');
   assert.match(limits, /<SpendingLimits key=\{revision\} id="key-limits"[^>]* budget=\{budgetField\} stop=\{stop\}\/>/);
-  assert.match(limits, /saveKeyLimits\(request, keyHash, plan, limit => \{ setSavedBudget\(limit\); onSaved\?\.\(\); \}\)/);
+  assert.match(limits, /saveKeyLimits\(request, keyHash, plan, \(limit, body\) => \{ if \(limit !== undefined\) setSavedBudget\(limit\); if \(body\.topup !== undefined\) setSavedTopup\(body\.topup\); onSaved\?\.\(\); \}\)/); // U107: auto top-up saves in the same PATCH
   assert.match(limits, /\{!form && view\.off && <form onSubmit=\{save\}>/); // rulebooks switched off: the budget alone
   assert.doesNotMatch(limits, /budget still applies/);
   const dashboard = source('../components/Dashboard.jsx');

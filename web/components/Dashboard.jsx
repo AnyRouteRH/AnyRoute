@@ -39,7 +39,7 @@ import Tracing from "./features/Tracing";
 import Holders from "./features/Holders";
 import PayAnyrDialog from "./PayAnyr";
 import KeyLimits from "./limits/KeyLimits"; // U102: spending limits for any key.
-import { KEY_BUDGET_WORDS } from "../lib/spending-limits"; // U104: a key's total budget lives in its spending limits.
+import { KEY_BUDGET_WORDS, topupCardText } from "../lib/spending-limits"; // U104: a key's total budget lives in its spending limits. U107: auto top-up.
 
 // Account shell: preserve feature sections and their dashboard hashes.
 const tabId = sectionHash;
@@ -952,6 +952,7 @@ export default function Dashboard() {
     token: k.label,
     budget: k.limit,
     reset: k.limit_reset ?? null,
+    topup: k.topup ?? null,
     spent: k.usage_period ?? k.usage ?? 0,
     active: !k.disabled,
     chainKeyHash: k.chain_key_hash,
@@ -1432,6 +1433,7 @@ export default function Dashboard() {
                         <span>{k.budget == null ? "No budget limit" : Math.min(100, (k.spent / k.budget) * 100).toFixed(1) + "% used"}</span>
                       </div>
                       <progress max={k.budget ?? 1} value={k.budget == null ? 0 : Math.min(k.spent, k.budget)} aria-label={"Budget used by " + k.name} />
+                      {k.topup && <p className="help-text">{topupCardText(k.topup)}</p>}
                       <div className="button-row">
                         <CopyButton text={live ? k.chainKeyHash : k.token} label={live ? "Copy deposit hash" : "Copy sample key"} />
                         <button className="text-button" onClick={() => setModal({ type: "key", data: k })}>
@@ -1839,7 +1841,7 @@ export default function Dashboard() {
       </AccountShell>
       {modal?.type === "receipt" && <ReceiptDetails receipt={modal.data} apiKey={apiKey} status={status} onClose={() => setModal(null)} />}
       {modal?.type === "key" && <KeyDialog live={live} existing={modal.data} onClose={() => setModal(null)} onSave={saveKeyValues} />}
-      {modal?.type === "limits" && <KeyLimits apiKey={apiKey} keyHash={modal.data.id} name={modal.data.name} current={modal.data.current} budget={modal.data.budget} reset={modal.data.reset} spent={modal.data.spent} onSaved={() => refresh().catch(() => {})} onClose={() => setModal(null)} />}
+      {modal?.type === "limits" && <KeyLimits apiKey={apiKey} keyHash={modal.data.id} name={modal.data.name} current={modal.data.current} topup={modal.data.topup} budget={modal.data.budget} reset={modal.data.reset} spent={modal.data.spent} onSaved={() => refresh().catch(() => {})} onClose={() => setModal(null)} />}
       {modal?.type === "session" && <SessionDialog live={live} tokens={ws?.tokens || []} paywith={ws?.paywith || {}} existing={modal.data} onClose={() => setModal(null)} onSave={saveSession} />}
       {modal?.type === "provider" && (
         <Modal title={modal.data.name} onClose={() => setModal(null)}>

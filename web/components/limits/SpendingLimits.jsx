@@ -6,7 +6,7 @@ import { Button } from '../UI';
 import { api } from '../../lib/api';
 import { LANES } from '../../lib/agents';
 import { GUARD_LIMIT } from '../../lib/agent-guard';
-import { LIMIT_CAPS, GUARD_CAPS, LIMIT_WORDS as W, KEY_BUDGET, KEY_BUDGET_WORDS, guardForm } from '../../lib/spending-limits';
+import { LIMIT_CAPS, GUARD_CAPS, LIMIT_WORDS as W, KEY_BUDGET, KEY_BUDGET_WORDS, TOPUP_FIELDS, TOPUP_WORDS, guardForm } from '../../lib/spending-limits';
 import RouteDefault from './RouteDefault'; // U101
 import StarterSetups from './StarterSetups'; // U103
 import st from './SpendingLimits.module.css';
@@ -28,8 +28,23 @@ const money = (id, value, set) => <input id={id} type="number" min="0" max="1000
 const lines = (id, value, set) => <textarea id={id} rows={2} value={value ?? ''} onChange={e => set(e.target.value)}/>;
 
 // U104: a key's total budget, shown beside the caps in the dashboard's key editor (and alone when the rulebook is unavailable).
+// U113: with `budget.topup`, the Auto top-up row sits under it.
 export function KeyBudgetField({ id, budget }) {
-  return <Field id={`${id}-budget`} label={KEY_BUDGET_WORDS.label} help={budget.help}><input id={`${id}-budget`} type="number" min="0.000001" max={KEY_BUDGET.max} step="any" inputMode="decimal" placeholder="No total budget" value={budget.value ?? ''} onChange={e => budget.onChange(e.target.value)}/></Field>;
+  return <>
+    <Field id={`${id}-budget`} label={KEY_BUDGET_WORDS.label} help={budget.help}><input id={`${id}-budget`} type="number" min="0.000001" max={KEY_BUDGET.max} step="any" inputMode="decimal" placeholder="No total budget" value={budget.value ?? ''} onChange={e => budget.onChange(e.target.value)}/></Field>
+    {budget.topup && <AutoTopupRow id={id} topup={budget.topup}/>}
+  </>;
+}
+
+// U113: "When this key has less than $X left, add $Y from your account credits, at most $Z per week", with its summary line.
+export function AutoTopupRow({ id, topup }) {
+  const set = (k, v) => topup.onChange({ ...topup.value, [k]: v });
+  return <div className={st.topup} role="group" aria-labelledby={`${id}-topup-title`}>
+    <p id={`${id}-topup-title`} className={st.topupTitle}>{TOPUP_WORDS.title}</p>
+    <div className={st.grid3}>{TOPUP_FIELDS.map(([k, label, max]) => <Field key={k} id={`${id}-topup-${k}`} label={label}><input id={`${id}-topup-${k}`} type="number" min="0.01" max={max} step="any" inputMode="decimal" value={topup.value?.[k] ?? ''} onChange={e => set(k, e.target.value)}/></Field>)}</div>
+    <p className={st.topupSummary} aria-live="polite">{topup.summary}</p>
+    <p className="help-text">{TOPUP_WORDS.help}</p>
+  </div>;
 }
 
 export function StopResume({ id, stop, disabled }) {

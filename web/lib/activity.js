@@ -1,5 +1,5 @@
-export const ACTIVITY_KINDS = ['call', 'approval', 'alert', 'deposit', 'agreement', 'policy', 'balance'];
-export const ACTIVITY_LABELS = { call: 'Calls', approval: 'Approvals', alert: 'Alerts', deposit: 'Deposits', agreement: 'Agreements', policy: 'Agent rules', balance: 'Balance changes' };
+export const ACTIVITY_KINDS = ['call', 'approval', 'alert', 'deposit', 'agreement', 'policy', 'balance', 'topup'];
+export const ACTIVITY_LABELS = { call: 'Calls', approval: 'Approvals', alert: 'Alerts', deposit: 'Deposits', agreement: 'Agreements', policy: 'Agent rules', balance: 'Balance changes', topup: 'Top-ups' };
 export function activityPath(filters = {}, cursor = '', format = 'json', limit = 50) {
   const query = new URLSearchParams({ format, limit: String(limit) });
   for (const name of ['kind', 'key', 'model', 'from', 'to']) if (filters[name]) query.set(name, filters[name]);
