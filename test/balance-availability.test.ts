@@ -1,8 +1,11 @@
 import { expect, spyOn, test } from "bun:test";
-import { eq } from "drizzle-orm";
 import { kv } from "../src/db/schema.ts";
+import { refreshThrottle } from "../src/rush/availability.ts";
+import { refreshUpstreamHealth } from "../src/rush/monitor.ts";
 import { MODELS, startRouter } from "./helpers.ts";
 
+// The throttle and the failure handling are tested on their own inputs: the router's background health job also reads
+// upstream state every five seconds, so counting the shared database's reads in a live router is not deterministic.
 const env = { UPSTREAM_MONITOR_ENABLED: "true", CATALOG_CACHE_ENABLED: "true" };
 const paths = ["/api/v1/models", "/v1/models"];
 const batch = (h: Awaited<ReturnType<typeof startRouter>>) => Promise.all(
@@ -18,90 +21,67 @@ async function balance(h: Awaited<ReturnType<typeof startRouter>>, value: number
   await h.ctx.db.insert(kv).values({ key: "upstream-balance:alpha", value: snapshot })
     .onConflictDoUpdate({ target: kv.key, set: { value: snapshot } });
 }
+const deferred = () => { let resolve!: () => void, reject!: (e: unknown) => void; const promise = new Promise<void>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 
-test("concurrent models requests share one refresh per five seconds and invalidate cached exhaustion and recovery", async () => {
-  const h = await startRouter({ env });
-  let now = 0;
-  const clock = spyOn(performance, "now").mockImplementation(() => now);
-  let selects: ReturnType<typeof spyOn> | undefined;
-  try {
-    const healthy = await (await h.request(paths[0])).text();
-    selects = spyOn(h.ctx.db, "select");
-    await balance(h, 0);
-    now = 4_999;
-    for (const response of await batch(h)) expect(await response.text()).toBe(healthy);
-    expect(selects).toHaveBeenCalledTimes(0);
-    now = 5_000;
-    for (const response of await batch(h)) expect(await availability(response)).toBe("temporarily_unavailable");
-    expect(selects).toHaveBeenCalledTimes(2); // One refresh, two kv reads, even across both aliases.
-    await balance(h, 30);
-    now = 9_999;
-    for (const response of await batch(h)) expect(await availability(response)).toBe("temporarily_unavailable");
-    expect(selects).toHaveBeenCalledTimes(2);
-    now = 10_000;
-    for (const response of await batch(h)) expect(await response.text()).toBe(healthy);
-    expect(selects).toHaveBeenCalledTimes(4);
-  } finally { selects?.mockRestore(); clock.mockRestore(); await h.close(); }
+test("throttle: concurrent callers share one run; no new run inside the window; a new run after it", async () => {
+  let now = 0, runs = 0;
+  const gate = deferred();
+  const refresh = refreshThrottle(() => { runs++; return gate.promise; }, () => now);
+  const calls = Array.from({ length: 24 }, () => refresh());
+  expect(runs).toBe(1);
+  gate.resolve(); await Promise.all(calls);
+  now = 4_999; await refresh(); expect(runs).toBe(1);
+  now = 5_000; await refresh(); expect(runs).toBe(2);
 });
 
-test("requests arriving after five seconds still share the same unfinished refresh without queuing another", async () => {
-  const h = await startRouter({ env });
-  let now = 0;
-  const clock = spyOn(performance, "now").mockImplementation(() => now);
-  const select = h.ctx.db.select.bind(h.ctx.db);
-  let release!: () => void, started!: () => void;
-  const blocked = new Promise<void>(resolve => { release = resolve; });
-  const reading = new Promise<void>(resolve => { started = resolve; });
-  // Count and block only the refresh's reads of upstream state (kv); other reads in the process must not shift the counts.
-  let kvReads = 0;
-  const selects = spyOn(h.ctx.db, "select").mockImplementation(((...args: any[]) => {
-    const query = (select as any)(...args);
-    const from = query.from.bind(query);
-    query.from = (table: unknown) => {
-      if (table !== kv) return from(table);
-      if (++kvReads === 1) return { where: async () => { started(); await blocked; return []; } };
-      return from(table);
-    };
-    return query;
-  }) as any);
-  try {
-    const first = batch(h);
-    await reading;
-    expect(kvReads).toBe(1);
-    now = 6_000;
-    const later = batch(h);
-    await Promise.resolve();
-    expect(kvReads).toBe(1);
-    release();
-    for (const response of [...await first, ...await later]) expect(response.status).toBe(200);
-    expect(kvReads).toBe(2);
-  } finally { release(); selects.mockRestore(); clock.mockRestore(); await h.close(); }
+test("throttle: callers after the window still share an unfinished run instead of queuing another", async () => {
+  let now = 0, runs = 0;
+  const gate = deferred();
+  const refresh = refreshThrottle(() => { runs++; return gate.promise; }, () => now);
+  const first = refresh();
+  now = 6_000;
+  const later = refresh();
+  expect(runs).toBe(1);
+  expect(later).toBe(first);
+  gate.resolve(); await Promise.all([first, later]);
+  expect(runs).toBe(1);
 });
 
-test("a failed refresh preserves availability and holds, serves requests, and retries only after the window", async () => {
+test("throttle: a failed run is swallowed and retried only after the window", async () => {
+  let now = 0, runs = 0;
+  const refresh = refreshThrottle(async () => { runs++; throw new Error("read failed"); }, () => now);
+  await expect(refresh()).resolves.toBeUndefined();
+  now = 4_999; await refresh(); expect(runs).toBe(1);
+  now = 5_000; await refresh(); expect(runs).toBe(2);
+});
+
+test("a failed balance read keeps the last state: a new hold seen in the same refresh is not applied", async () => {
   const h = await startRouter({ env });
-  let now = 0;
-  const clock = spyOn(performance, "now").mockImplementation(() => now);
-  let selects: ReturnType<typeof spyOn> | undefined;
   try {
     await balance(h, 0);
     expect(await availability(await h.request(paths[0]))).toBe("temporarily_unavailable");
-    await balance(h, 30);
-    const select = h.ctx.db.select.bind(h.ctx.db);
-    // A first read with a new hold must not change memory if the balance read fails.
-    selects = spyOn(h.ctx.db, "select")
-      .mockImplementationOnce(() => ({ from: () => ({ where: async () => [{ key: "upstream-credit-hold:beta", value: { until: Date.now() + 60_000 } }] }) }) as any)
-      .mockImplementationOnce(() => { throw new Error("balance read unavailable"); })
-      .mockImplementation(select);
+    // A private stand-in database: first read returns a new hold, the balance read fails.
+    let reads = 0;
+    const db = { select: () => ({ from: () => ({ where: async () => {
+      if (++reads === 1) return [{ key: "upstream-credit-hold:beta", value: { until: Date.now() + 60_000 } }];
+      throw new Error("balance read unavailable");
+    } }) }) } as any;
+    await expect(refreshUpstreamHealth(h.ctx.health, db)).rejects.toThrow("balance read unavailable");
+    expect(h.ctx.health.outage(MODELS.llama.slug, "beta")).toBe(false);
+  } finally { await h.close(); }
+});
+
+test("models requests reflect exhaustion and recovery, refreshed at most every five seconds", async () => {
+  const h = await startRouter({ env });
+  let now = 0;
+  const clock = spyOn(performance, "now").mockImplementation(() => now);
+  try {
+    const healthy = await (await h.request(paths[0])).text();
+    await balance(h, 0);
     now = 5_000;
     for (const response of await batch(h)) expect(await availability(response)).toBe("temporarily_unavailable");
-    expect(selects).toHaveBeenCalledTimes(2);
-    expect(h.ctx.health.outage(MODELS.llama.slug, "beta")).toBe(false);
-    now = 9_999;
-    for (const response of await batch(h)) expect(await availability(response)).toBe("temporarily_unavailable");
-    expect(selects).toHaveBeenCalledTimes(2);
+    await balance(h, 30);
     now = 10_000;
-    for (const response of await batch(h)) expect(await availability(response)).toBeUndefined();
-    expect(selects).toHaveBeenCalledTimes(4);
-  } finally { selects?.mockRestore(); clock.mockRestore(); await h.close(); }
+    for (const response of await batch(h)) expect(await response.text()).toBe(healthy);
+  } finally { clock.mockRestore(); await h.close(); }
 });

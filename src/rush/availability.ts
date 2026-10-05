@@ -3,21 +3,26 @@ import type { Ctx } from "../context.ts";
 import type { Hono } from "hono";
 import { balanceExhausted, refreshUpstreamHealth } from "./monitor.ts";
 
-/** Read replica state at most every five seconds before the catalogue cache, including recovery invalidation. */
-export function registerBalanceAvailability(app: Hono, ctx: Ctx) {
-  if (!ctx.cfg.rush.enabled) return;
+/** At most one run in flight and at most one start per window; failures keep the last state and retry after the window. */
+export function refreshThrottle(run: () => Promise<void>, now: () => number = () => performance.now(), windowMs = 5_000) {
   let startedAt = -Infinity;
   let pending: Promise<void> | undefined;
-  const refresh = () => {
+  return () => {
     if (pending) return pending;
-    const now = performance.now();
-    if (now - startedAt < 5_000) return;
-    startedAt = now;
-    pending = refreshUpstreamHealth(ctx.health, ctx.db)
+    const t = now();
+    if (t - startedAt < windowMs) return;
+    startedAt = t;
+    pending = run()
       .catch(() => { /* Keep the last known state; retry after the window. */ })
       .finally(() => { pending = undefined; });
     return pending;
   };
+}
+
+/** Read replica state at most every five seconds before the catalogue cache, including recovery invalidation. */
+export function registerBalanceAvailability(app: Hono, ctx: Ctx) {
+  if (!ctx.cfg.rush.enabled) return;
+  const refresh = refreshThrottle(() => refreshUpstreamHealth(ctx.health, ctx.db));
   for (const path of ["/api/v1/models", "/v1/models"]) app.use(path, async (_c, next) => {
     await refresh();
     await next();
