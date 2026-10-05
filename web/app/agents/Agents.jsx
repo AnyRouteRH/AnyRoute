@@ -19,6 +19,7 @@ import Alerts from './Alerts';
 import AlertFields from './AlertFields';
 import StarterSetups from '../../components/limits/StarterSetups'; // U103: one entry point for starting values, in place of the V85 and V98 starter lists.
 import RequestCheck from './RequestCheck'; // V85: check the selected agent’s rules.
+import PayAgent from './PayAgent'; // Pay another agent: the rulebook decides, your own wallet sends, Anyroute checks and signs.
 import { agentLink, focusSelector } from '../../lib/site-actions'; // U106: ⌘K links here to an agent's spending limits or default route.
 
 function Field({ label, id, children }) {
@@ -152,6 +153,7 @@ export default function Agents() {
     {!(key && !off && agent) && <StarterSetups id="setup-preview" view="agents" guard={guard}/>} {/* U103: a preview until an agent is selected; then Start from a setup sits in its Spending limits. */}
     {!(key && !off && agent) && <p id="replay-rules" className="note">Select an agent after connecting to replay its spending limits on the last 7 days before you save them. Nothing is saved.</p>} {/* Replay your rules: beside Save once an agent is selected */}
     <div id="request-check">{key && !off && agent ? <RequestCheck key={key+selected} agent={agent} refreshVersion={revision}/> : <p className="note">Select an agent after connecting to check a request against its rules without spending.</p>}</div> {/* V85 */}
+    <PayAgent agent={key && !off ? agent : null}/>
     {error && <p className="note" role="alert">{error}</p>}
     {off ? <section className="empty" role="status"><h2>{FEATURE_OFF}</h2><p>This router is not serving agent rulebooks.</p></section> : <>
       {key && <section aria-label="Agent keys"><div className={s.heading}><h2>Agent keys</h2><button className="text-button" disabled={busy} onClick={() => setRevision(r => r+1)}>Refresh</button></div>{busy && <p role="status">Reading agent keys…</p>}{loaded && !agents.length && <div className="empty"><p>No agent keys returned for this account.</p><a className="inline-link" href="/dashboard/#api-keys">Manage API keys</a></div>}<div className={s.list}>{agents.map(a => <div key={a.key_hash}><button className={s.agent} aria-pressed={selected === a.key_hash} onClick={() => { setSelected(a.key_hash); setError(''); }}><div className={s.heading}><strong>{a.name || 'Unnamed agent'}</strong><span className={s.badges}><span className="badge">Rulebook {a.has_policy ? 'on' : 'off'}</span>{a.killed && <span className="badge dark">Stopped</span>}</span></div><span className={s.hash}>Policy SHA {a.policy_sha256 ? a.policy_sha256.slice(0,12) : 'None'}</span><Spend agent={a}/></button><SealedBadge sealed={a.sealed}/></div>)}</div></section>}

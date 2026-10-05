@@ -1,9 +1,9 @@
 export const PROFILE_CATEGORIES = { spending_caps: 'Has spending caps', ask_first: 'Asks before spending', kill_switch: 'Stop switch state' };
 export const PROFILE_SUMMARY = { has_spending_caps: 'Has spending caps', asks_before_spending: 'Asks before spending', kill_switch_armed: 'Stop switch armed', killed: 'Currently stopped' };
 export function profilePayload(form) {
-  const endpoint = (form.endpoint || '').trim();
+  const endpoint = (form.endpoint || '').trim(), payout = (form.payout_wallet || '').trim();
   return { name: form.name.trim(), description: form.description.trim(), ...(form.homepage.trim() ? { homepage: form.homepage.trim() } : {}),
-    ...(endpoint ? { endpoint } : {}),
+    ...(endpoint ? { endpoint } : {}), ...(payout ? { payout_wallet: payout } : {}),
     capabilities: [...new Set(form.tags.split(',').map(t => t.trim()).filter(Boolean))], show: form.show,
     certificate_claims: [...new Set(form.claims.split(',').map(t => t.trim()).filter(Boolean))] };
 }

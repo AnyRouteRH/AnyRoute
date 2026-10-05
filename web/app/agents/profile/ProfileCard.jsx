@@ -10,6 +10,7 @@ export default function ProfileCard({ card, detail = false }) {
     {(live || reputation) && <p data-live={live?.state}>{live && <strong>{live.text}</strong>}{live && reputation && <br/>}{reputation && <span>{reputation.text}</span>}</p>}
     <p>Capabilities supplied by the owner: {card.capabilities.join(', ') || 'None listed'}</p>
     {homepage && <p style={{ overflowWrap: "anywhere" }}>Owner’s homepage: {homepage}</p>}
+    {card.payout_wallet && <p style={{ overflowWrap: "anywhere" }}>Wallet for payments, supplied by the owner (USDG on Robinhood Chain): {card.payout_wallet}</p>}
     <ul>{Object.entries(card.anyroute.rulebook_summary).map(([key, value]) => <li key={key}>{PROFILE_SUMMARY[key] || key}: {value ? 'Yes' : 'No'}</li>)}</ul>
     <ProofBadge evidence={{ source: "profile", data: card.anyroute }} explain /><p>Sealed hosting: {card.anyroute.status.sealed}.</p>
     <h3>Valid track-record certificates</h3><a href="/verify/#proof-certificates">How to check certificates →</a>
