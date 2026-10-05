@@ -50,4 +50,19 @@ test("replay refusals surface as errors without retries", async () => {
   const c = new AnyRoute({ baseUrl: "https://router.test", apiKey: "key", fetch: (async () => { calls++; return json({ error: { type: "rate_limited", message: "Too many replays from this key. Try again within a minute." } }, 429); }) as Fetch });
   const e = await c.agent.replay("hash", policy).catch(e => e);
   expect(e).toBeInstanceOf(AnyRouteError); expect(e.status).toBe(429); expect(calls).toBe(1);
+
+});
+test("pay asks the rulebook and confirmPay sends the transaction hash, both with the agent's key", async () => {
+  const decision = { decision: "allow", reasons: [], decision_id: "decision-1", policy_sha256: "digest", signed: { payload: {}, alg: "Ed25519", key_id: "kid", sig: "sig" }, payment: { decision_id: "decision-1", status: "awaiting_transfer", to: "0xabababababababababababababababababababab", amount_units: "20000000" } };
+  const payment = { decision_id: "decision-1", status: "seen", status_text: "Seen, waiting for finality", tx_hash: "0x" + "1".repeat(64), receipt: { payload: { type: "anyroute.agent.payment.v1" }, alg: "Ed25519", key_id: "kid", sig: "sig", verify: "/api/v1/receipts/verify" } };
+  const f = stubFetch({
+    "POST /api/v1/agents/pay": ({ init }) => { expect(new Headers(init?.headers).get("authorization")).toBe("Bearer key"); expect(JSON.parse(init?.body as string)).toEqual({ to: "profile-id", amount_usd: "20" }); return json({ data: decision }); },
+    "POST /api/v1/agents/pay/decision%2F1/confirm": ({ init }) => { expect(JSON.parse(init?.body as string)).toEqual({ tx_hash: "0x" + "1".repeat(64) }); return json({ data: payment }); },
+  });
+  const c = new AnyRoute({ baseUrl: "https://router.test", apiKey: "key", fetch: f.fetch });
+  expect(await c.agent.pay({ to: "profile-id", amount_usd: "20" })).toEqual(decision as never);
+  expect(await c.agent.confirmPay("decision/1", "0x" + "1".repeat(64))).toEqual(payment as never);
+  const refused = new AnyRoute({ baseUrl: "https://router.test", apiKey: "key", fetch: (async () => json({ error: { type: "pay_wallet_not_linked", message: "Not linked." } }, 403)) as Fetch });
+  const e = await refused.agent.confirmPay("decision-1", "0x" + "1".repeat(64)).catch(e => e);
+  expect(e).toBeInstanceOf(AnyRouteError); expect(e.code).toBe("pay_wallet_not_linked"); expect(e.status).toBe(403);
 });

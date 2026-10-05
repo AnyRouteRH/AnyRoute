@@ -162,6 +162,47 @@ class AgentReplay(_AgentReplayOptional):
     truncated: bool
     notes: list[str]
 
+class _AgentPayOptional(TypedDict, total=False):
+    memo_sha256: str
+    approval_id: str
+
+
+class AgentPayInput(_AgentPayOptional):
+    """Pay another agent: a public profile id or 0x wallet and a decimal USD amount (USDG, up to 6 decimals)."""
+    to: str
+    amount_usd: str
+
+
+class AgentPayDecision(TypedDict, total=False):
+    """Agent Guard's answer for action pay.agent; `payment` holds the instructions on allow."""
+    decision: Literal["allow", "deny", "approval_required"]
+    reasons: list[dict[str, str]]
+    decision_id: str
+    policy_sha256: str
+    approval_id: str
+    expires_at: str
+    poll: str
+    signed: dict[str, Any]
+    payment: dict[str, Any]
+
+
+class AgentPayment(TypedDict, total=False):
+    """A confirmed payment; `receipt` verifies at POST /api/v1/receipts/verify with payload, sig and key_id."""
+    decision_id: str
+    status: Literal["awaiting_transfer", "seen", "final", "reversed"]
+    status_text: str
+    status_at: str
+    recipient: dict[str, Any]
+    amount: str
+    amount_units: str
+    paid: str | None
+    tx_hash: str | None
+    block_number: str | None
+    payer_wallet: str | None
+    verified_at: str | None
+    reason: str
+    receipt: dict[str, Any] | None
+
 
 class AgentClient:
     def __init__(self, base_url: str, http: httpx.Client, headers: Callable[[], dict[str, str]]):
@@ -195,3 +236,17 @@ class AgentClient:
         if days is not None:
             body["days"] = days
         return self._request(f"{quote(key_hash, safe='')}/replay", body)
+
+    def pay(self, to: str, amount_usd: str, memo_sha256: str | None = None, approval_id: str | None = None) -> AgentPayDecision:
+        """Ask the rulebook before paying another agent (Agent Guard action pay.agent). Anyroute never holds the money:
+        on allow, send payment["transfer_call"] from your own wallet straight to the recipient."""
+        body: AgentPayInput = {"to": to, "amount_usd": amount_usd}
+        if memo_sha256 is not None:
+            body["memo_sha256"] = memo_sha256
+        if approval_id is not None:
+            body["approval_id"] = approval_id
+        return self._request("pay", body)
+
+    def confirm_pay(self, decision_id: str, tx_hash: str) -> AgentPayment:
+        """Confirm with the transaction hash; returns the payment and its signed receipt. Call again to read seen, final or reversed."""
+        return self._request(f"pay/{quote(decision_id, safe='')}/confirm", {"tx_hash": tx_hash})

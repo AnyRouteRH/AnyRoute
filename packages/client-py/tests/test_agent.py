@@ -96,3 +96,38 @@ def test_replay_refusals_surface_as_errors():
         with pytest.raises(AnyRouteError) as e:
             c.agent.replay("hash", {"version": 1, "models": {}, "caps": {}, "on_breach": "deny"})
     assert e.value.status == 429
+
+def test_pay_and_confirm_pay_send_the_agent_key_and_return_data_unchanged():
+    decision = {"decision": "allow", "reasons": [], "decision_id": "decision-1", "policy_sha256": "digest", "payment": {"status": "awaiting_transfer", "amount_units": "20000000"}}
+    payment = {"decision_id": "decision-1", "status": "seen", "status_text": "Seen, waiting for finality", "receipt": {"payload": {"type": "anyroute.agent.payment.v1"}, "sig": "sig", "key_id": "kid"}}
+    tx = "0x" + "1" * 64
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        assert req.headers["authorization"] == "Bearer key"
+        assert req.method == "POST"
+        if req.url.raw_path.decode().endswith("/confirm"):
+            assert req.url.raw_path.decode() == "/api/v1/agents/pay/decision%2F1/confirm"
+            assert json.loads(req.content) == {"tx_hash": tx}
+            return httpx.Response(200, json={"data": payment})
+        assert req.url.path == "/api/v1/agents/pay"
+        assert json.loads(req.content) == {"to": "profile-id", "amount_usd": "20", "approval_id": "approval-1"}
+        return httpx.Response(200, json={"data": decision})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        c = AnyRoute("https://router.test", "key", http=http)
+        assert c.agent.pay("profile-id", "20", approval_id="approval-1") == decision
+        assert c.agent.confirm_pay("decision/1", tx) == payment
+    assert len(calls) == 2
+
+
+def test_confirm_pay_surfaces_the_router_reason():
+    def handler(req):
+        return httpx.Response(403, json={"error": {"type": "pay_wallet_not_linked", "message": "Not linked."}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        c = AnyRoute("https://router.test", "key", http=http)
+        with pytest.raises(AnyRouteError) as caught:
+            c.agent.confirm_pay("decision-1", "0x" + "1" * 64)
+    assert caught.value.status == 403 and caught.value.code == "pay_wallet_not_linked" and str(caught.value) == "Not linked."
