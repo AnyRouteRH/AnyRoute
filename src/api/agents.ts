@@ -11,12 +11,13 @@ import { picoToUsd } from "../lib/money.ts";
 import { requireKey, requireRole, type KeyRow } from "./auth.ts";
 import { readJson } from "./common.ts";
 import { agentIntentSchema, agentPolicySchema } from "../agents/policy.ts";
-import { agentPolicies, agentPolicyEvents } from "../agents/schema.ts";
+import { agentPolicies, agentPolicyEvents, playbooks } from "../agents/schema.ts";
 import { configureAgentPolicies } from "../agents/enforce.ts";
 import { evaluateAgentPolicy, type AgentDecision } from "../agents/evaluate.ts";
-import { appendEvent, changeKill, eventJson, lockAccount, policiesFor, policyState, setPolicy, type PolicyRow } from "../agents/store.ts";
+import { appendEvent, assertOwnRulebook, changeKill, eventJson, lockAccount, policiesFor, policyState, setPolicy, type PolicyRow } from "../agents/store.ts";
 import { loadReplay, replayRulebook, REPLAY } from "../agents/replay.ts";
-const jsonPolicy = (row: PolicyRow) => ({ policy: row.spec, sha256: row.sha256, version: row.version, killed: row.killed, killed_at: row.killedAt?.toISOString() ?? null, killed_reason: row.killedReason });
+// U115: playbook_id, present only while the key follows a playbook, names it; the rules are then that playbook's current rules.
+const jsonPolicy = (row: PolicyRow) => ({ policy: row.spec, sha256: row.sha256, version: row.version, killed: row.killed, killed_at: row.killedAt?.toISOString() ?? null, killed_reason: row.killedReason, ...(row.playbookId ? { playbook_id: row.playbookId } : {}) });
 const killBody = z.strictObject({ reason: z.string().max(160).optional() });
 const replayBody = z.strictObject({ policy: agentPolicySchema, days: z.number().int().min(1).max(REPLAY.maxDays).optional() });
 export async function principal(ctx: Ctx, c: Context) {
@@ -48,6 +49,16 @@ async function describe(ctx: Ctx, key: KeyRow, rows: PolicyRow[], now: Date) {
     return { key_hash: row.keyHash, inherited: row.keyHash !== key.keyHash, ...jsonPolicy(row), spent, remaining, ...(ctx.cfg.agentGuardEnabled ? actionsRemaining(row.spec, state) : {}), ...autonomyDescription(row.spec, state.autonomy, now) };
   }));
 }
+/** U115: the account's playbooks by id, as { id, name, version }, for the keys that follow one. */
+async function playbookNames(ctx: Ctx, accountId: string) {
+  const rows = await ctx.db.select({ id: playbooks.id, name: playbooks.name, version: playbooks.version }).from(playbooks).where(eq(playbooks.accountId, accountId));
+  return new Map(rows.map(row => [row.id, row]));
+}
+/** { playbook } when the key's own rulebook follows one; nothing otherwise, so responses for other keys keep their bytes. */
+const followed = (books: Map<string, { id: string; name: string; version: number }>, own?: { inherited: boolean; playbook_id?: string }) => {
+  const book = own && !own.inherited && own.playbook_id ? books.get(own.playbook_id) : undefined;
+  return book ? { playbook: book } : {};
+};
 export function agentsRoutes(app: Hono, ctx: Ctx) {
   configureAgentPolicies(ctx);
   agentAlertsRoutes(app, ctx);
@@ -57,12 +68,13 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
     const caller = await principal(ctx, c);
     const rows = await ctx.db.select().from(keys).where(eq(keys.accountId, caller.accountId));
     const visible = caller.management ? rows : rows.filter(k => k.teamId === caller.teamId);
+    const books = await playbookNames(ctx, caller.accountId); // U115
     const data = await Promise.all(visible.map(async key => {
       const policies = await policiesFor(ctx.db, key.keyHash);
       const descriptions = await describe(ctx, key, policies, new Date());
       const own = descriptions.find(p => !p.inherited) ?? descriptions[0];
       const uncapped = own ? null : await policyState(ctx.db, { keyHash: key.keyHash, killed: false }, new Date());
-      return { key_hash: key.keyHash, name: key.name, has_policy: !!own, killed: descriptions.some(p => p.killed), policy_sha256: own?.sha256 ?? null, spent: own?.spent ?? Object.fromEntries(Object.entries(uncapped!.spent_pico).map(([w, v]) => [w, picoToUsd(v)])), caps: own?.effective_caps ?? own?.policy.caps ?? {}, policies: descriptions };
+      return { key_hash: key.keyHash, name: key.name, has_policy: !!own, killed: descriptions.some(p => p.killed), policy_sha256: own?.sha256 ?? null, ...followed(books, own), spent: own?.spent ?? Object.fromEntries(Object.entries(uncapped!.spent_pico).map(([w, v]) => [w, picoToUsd(v)])), caps: own?.effective_caps ?? own?.policy.caps ?? {}, policies: descriptions };
     }));
     return c.json({ data });
   });
@@ -74,7 +86,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
       const limits = policies.map(p => p.remaining[window]).filter((v): v is number => typeof v === "number");
       return [window, limits.length ? Math.min(...limits) : null];
     }));
-    return c.json({ data: { key_hash: key.keyHash, name: key.name, policy: own?.policy ?? null, sha256: own?.sha256 ?? null, killed: policies.some(p => p.killed), remaining, policies, ...(ctx.cfg.agentGuardEnabled ? combinedActionsRemaining(policies) : {}), ...(own?.autonomy ? { autonomy: own.autonomy, effective_caps: own.effective_caps } : {}) } });
+    return c.json({ data: { key_hash: key.keyHash, name: key.name, policy: own?.policy ?? null, sha256: own?.sha256 ?? null, ...followed(own?.playbook_id ? await playbookNames(ctx, key.accountId) : new Map(), own), killed: policies.some(p => p.killed), remaining, policies, ...(ctx.cfg.agentGuardEnabled ? combinedActionsRemaining(policies) : {}), ...(own?.autonomy ? { autonomy: own.autonomy, effective_caps: own.effective_caps } : {}) } });
   });
   app.post("/api/v1/agents/check", async c => {
     const key = await requireKey(ctx, c.req.header("authorization"));
@@ -117,6 +129,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
     const key = await ownedKey(ctx, await principal(ctx, c), c.req.param("key_hash"));
     await ctx.db.transaction(async tx => {
       await lockAccount(tx, key.accountId);
+      await assertOwnRulebook(tx, key.keyHash);
       const [row] = await tx.delete(agentPolicies).where(eq(agentPolicies.keyHash, key.keyHash)).returning();
       if (row) await appendEvent(tx, { keyHash: key.keyHash, kind: "policy_set", policySha256: row.sha256 });
     });

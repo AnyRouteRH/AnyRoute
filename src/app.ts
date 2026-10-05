@@ -72,6 +72,7 @@ import { agentCertificatesRoutes } from "./api/agent-certificates.ts";
 import { guardRoutes } from "./api/guard.ts"; // V98
 import { agentPayRoutes } from "./api/agent-pay.ts"; // Pay another agent
 import { agentsRoutes } from "./api/agents.ts";
+import { playbooksRoutes } from "./api/playbooks.ts"; // U115
 import { agentApprovalMiddleware, agentApprovalsRoutes } from "./api/agent-approvals.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
 import { spendRoutes } from "./api/spend.ts";
@@ -227,6 +228,7 @@ export async function createApp(opts: AppOptions = {}) {
   identityRoutes(app, ctx); // v6 I
   agentSealedRoutes(app, ctx);
   agentsRoutes(app, ctx);
+  playbooksRoutes(app, ctx); // U115: after agentsRoutes, whose /api/v1/agents/* switch also covers the follow route.
   guardRoutes(app, ctx); // V98
   agentPayRoutes(app, ctx); // Pay another agent (AGENT_PAY_ENABLED)
   agreementsRoutes(app, ctx);

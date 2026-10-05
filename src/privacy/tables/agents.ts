@@ -8,7 +8,32 @@ export const agentTables: Record<string, TableDoc> = {
     columns: {
       key_hash: "The API key this rulebook governs.", version: "Rulebook schema version, currently 1.",
       spec: { purpose: "Optional agreements.max_escrow_usd and counterparties_allow restrict preparation through the router; they do not enforce transactions sent elsewhere. Strict bounded rulebook: model and tool allow/deny names, lanes, an optional default privacy route (route_default) for requests that name no lane, cost and output caps, UTC windows, approval threshold, optional spend/request/denial/distinct-model circuit breakers and breach action, plus optional action and target allow/deny lists, separate action amount and count caps and an action approval threshold.", review: rv(["type:json"], "config", "A strict schema excludes prompt and answer fields. Model and tool labels are owner-written identifiers of at most 160 characters; their contents are whatever the owner chooses to write.") },
-      sha256: "SHA-256 of the canonical rulebook JSON.", killed: "Whether the router refuses the next request under this rulebook.", killed_at: "When the rulebook was killed, if it is killed.", killed_reason: "A principal-supplied reason of at most 160 characters, or fixed policy reason codes for an automatic kill, including breaker:<field> for circuit breakers.", updated_at: "When the policy or kill state last changed.", updated_by: "The principal key hash or the agent key hash for an automatic kill.",
+      sha256: "SHA-256 of the canonical rulebook JSON.", killed: "Whether the router refuses the next request under this rulebook.", killed_at: "When the rulebook was killed, if it is killed.", killed_reason: "A principal-supplied reason of at most 160 characters, or fixed policy reason codes for an automatic kill, including breaker:<field> for circuit breakers.", updated_at: "When the policy or kill state last changed.", updated_by: "The principal key hash or the agent key hash for an automatic kill.", playbook_id: "The playbook this key follows, or null. While set, spec and sha256 hold a copy of that playbook's current rules, rewritten in the same transaction as every playbook change; stopping following keeps the copy as the key's own rulebook.",
+    },
+  },
+  playbooks: {
+    category: "keys", purpose: "Shared rulebooks (playbooks): one named rulebook that many keys of an account or team follow, so one change applies to all of them.", request: "no",
+    retention: "Until a principal deletes the playbook. Deleting is refused while keys follow it unless they each keep its rules as their own.",
+    notes: ["The rules are the same strict rulebook as agent_policies.spec and carry the same owner-written labels. The name is owner-written text of at most 100 characters. No prompt or answer fields are accepted."],
+    columns: {
+      id: "Random playbook identifier.", account_id: "The account that owns the playbook.", team_id: "The team whose owners and admins may change it, or null for an account-wide playbook that only management keys change.",
+      name: "Owner-chosen name, unique within the account regardless of case.",
+      spec: { purpose: "The playbook's current rulebook, validated by the same strict schema as a key's own rulebook.", review: rv(["type:json"], "config", "The strict rulebook schema excludes prompt and answer fields. Model, tool and action labels are owner-written identifiers of at most 160 characters; their contents are whatever the owner chooses to write.") },
+      sha256: "SHA-256 of the canonical rulebook JSON, the same digest each following key's rulebook carries.", version: "Counts rule changes: 1 at creation, plus one for each change of rules. A rename keeps it.",
+      created_at: "When the playbook was created.", updated_at: "When its name or rules last changed.", updated_by: "Hash of the principal key that made the last change.",
+    },
+  },
+  playbook_changes: {
+    category: "keys", purpose: "A record of every playbook change (create, update, rename, delete) with its version, digest, rules and the number of keys following it; changes to a team's playbooks also appear in the team inbox.", request: "no",
+    retention: "Rows remain until operator deletion, including after the playbook is deleted.",
+    columns: {
+      id: "Monotonically allocated change identifier.", playbook_id: "The playbook changed; kept after the playbook is deleted.", account_id: "The owning account.", team_id: "The owning team, or null for an account-wide playbook.",
+      name: "The playbook's name after this change.", action: "create, update (new rules and version), rename or delete.", version: "The playbook's version after this change.",
+      sha256: "SHA-256 of the canonical rules after this change.",
+      spec: { purpose: "The rules as of this change, so each recorded digest can be checked.", review: rv(["type:json"], "config", "A copy of a playbook's strict rulebook: owner-written configuration validated against a schema that excludes prompt and answer fields.") },
+      followers: "How many keys followed the playbook when it changed.", actor: "Hash of the principal key that made the change.",
+      notify: "Whether the change belongs to a team (a team playbook, or an account-wide one in an account with teams); updates marked so appear in the inbox of the team's owners and admins.",
+      at: "When the change was recorded, at millisecond precision.",
     },
   },
   agent_policy_events: {

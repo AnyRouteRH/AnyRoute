@@ -1,9 +1,11 @@
 import { createHmac } from "node:crypto";
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { roleOf, type KeyRow } from "../api/auth.ts";
 import { accounts, agentSessions, keys, providers } from "../db/schema.ts";
 import { agentApprovals } from "../agents/approval-schema.ts";
+import { playbookChanges } from "../agents/schema.ts";
+import { playbookChangedTitle } from "../agents/playbooks.ts";
 import { readActivity } from "../activity/read.ts";
 import { activityQuery } from "../activity/query.ts";
 import { picoToUsdString } from "../lib/money.ts";
@@ -62,6 +64,16 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
         if (unread(at)) items.push({ id: `payment:${side}:${row.id}`, at, kind: "payment", title: titles[side][status], status, amount: row.paid === null ? undefined : unitsToUsd(row.paid), key_label: row.label, href: "/agents/#pay-agent", unread: true });
       }
     }
+  }
+  if (ctx.cfg.agentPolicyEnabled && scope.whole) {
+    // U115: a changed team playbook, for whoever manages rulebooks there: management keys, and the team's owners and admins.
+    const changes = await ctx.db.select().from(playbookChanges).where(and(
+      eq(playbookChanges.accountId, key.accountId), eq(playbookChanges.action, "update"), eq(playbookChanges.notify, true),
+      key.management ? undefined : or(isNull(playbookChanges.teamId), eq(playbookChanges.teamId, key.teamId!)),
+      since ? gt(playbookChanges.at, new Date(since)) : undefined,
+    )).orderBy(desc(playbookChanges.at), desc(playbookChanges.id)).limit(101);
+    capped ||= changes.length > 100;
+    items.push(...changes.slice(0, 100).map(row => ({ id: `playbook:${row.id}`, at: row.at.toISOString(), kind: "playbook", title: playbookChangedTitle(row.name, row.followers), status: `version ${row.version}`, href: "/dashboard/#playbooks", unread: unread(row.at.toISOString()) })));
   }
   for (const kind of ["alert", "deposit", "agreement", "topup"] as const) {
     // Reuse Activity's account, team, session, wallet-party and spending-alert guards.

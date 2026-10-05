@@ -8,6 +8,7 @@ import type { Db, Tx } from "../db/client.ts";
 import { accounts, holds, keys, ledger } from "../db/schema.ts";
 import { agentPolicies, agentPolicyEvents } from "./schema.ts";
 import { canonicalJson, sha256 } from "../lib/util.ts";
+import { fail } from "../lib/errors.ts";
 import { agentPolicySha256, type AgentPolicy } from "./policy.ts";
 import type { AgentPolicyState } from "./evaluate.ts";
 export type PolicyRow = typeof agentPolicies.$inferSelect;
@@ -66,9 +67,15 @@ async function callsInHour(db: Db | Tx, keyHash: string, scope: ReturnType<typeo
     or (${agentPolicyEvents.keyHash} in ${scope} and ${agentPolicyEvents.kind} = 'approval_used' and coalesce(${agentPolicyEvents.intent}->>'kind', '') <> 'action'))`);
   return Number(row.n);
 }
+/** U115: a key follows a playbook or keeps its own rulebook, not both. Its own rules change only after it stops following. */
+export async function assertOwnRulebook(tx: Db | Tx, keyHash: string) {
+  const [row] = await tx.select({ playbookId: agentPolicies.playbookId }).from(agentPolicies).where(eq(agentPolicies.keyHash, keyHash));
+  if (row?.playbookId) fail(409, "This key follows a playbook. Change the playbook, or stop following it first (POST /api/v1/agents/:key_hash/playbook with playbook_id null); the key then keeps the playbook's rules as its own.", "playbook_linked", { playbook_id: row.playbookId });
+}
 export async function setPolicy(db: Db, accountId: string, keyHash: string, policy: AgentPolicy, actor: string) {
   return db.transaction(async tx => {
     await lockAccount(tx, accountId);
+    await assertOwnRulebook(tx, keyHash);
     const sha256 = agentPolicySha256(policy);
     const [row] = await tx.insert(agentPolicies).values({ keyHash, version: policy.version, spec: policy, sha256, updatedBy: actor }).onConflictDoUpdate({ target: agentPolicies.keyHash, set: { version: policy.version, spec: policy, sha256, updatedBy: actor, updatedAt: new Date() } }).returning();
     await appendEvent(tx, { keyHash, kind: "policy_set", policySha256: sha256 });

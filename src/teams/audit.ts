@@ -6,7 +6,7 @@ import { MerkleTree } from "../tlog/merkle.ts";
 import { canonicalJson } from "../lib/util.ts";
 import type { KeyRow } from "../api/auth.ts";
 
-// An organisation's audit log: who changed what and when (members, keys, budgets, presets, routes, lane settings), never
+// An organisation's audit log: who changed what and when (members, keys, budgets, presets, routes, playbooks, lane settings), never
 // what anyone asked a model. One hash chain per team:
 //   h_0 = 64 zeros,  h_i = sha256( bytes(h_{i-1}) || utf8(canonical(entry_i)) )
 // where canonical(entry) is JSON with keys sorted recursively of { team, seq, at, actor, action, target, detail }.
@@ -35,7 +35,13 @@ export type AuditAction =
   | "preset.delete"
   | "route.create"
   | "route.update"
-  | "route.delete";
+  | "route.delete"
+  | "playbook.create"
+  | "playbook.update"
+  | "playbook.rename"
+  | "playbook.delete"
+  | "playbook.follow"
+  | "playbook.unfollow";
 
 export type AuditDetail = Record<string, string | number | boolean | null | string[]>;
 export type AuditEntry = { team: string; seq: number; at: string; actor: string; action: string; target: string; detail: AuditDetail };
