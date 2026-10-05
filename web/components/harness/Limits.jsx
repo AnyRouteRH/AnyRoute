@@ -37,7 +37,7 @@ function ChatLimits({ limits, signedIn, busy, onStop }) {
     <p>Apply spending limits to chat in this browser tab, across its models and conversations. Calls use the same account balance and signed receipts.</p>
     <p>The router enforces the limits through a dedicated child key. It inherits the creating key’s restrictions. Its key stays in this tab’s session storage, like your sign-in key. Anyone with access to this tab can use it.</p>
     {session && !session.ready && <p>Chat is blocked until this session is revoked.</p>}
-    <SpendingLimits id="chat" compact value={form} onChange={setForm} disabled={changing || (!!session && !session.ready)} stop={stop}>
+    <SpendingLimits id="chat" compact setups="chat" value={form} onChange={setForm} disabled={changing || (!!session && !session.ready)} stop={stop}>
       {(!session || session.ready) && <LimitGroup title="This chat key" disabled={changing}>
         {session ? <p>Total for this chat key: ${session.budget_usd}. Expires {new Date(session.expires_at).toLocaleString()}.</p> : <>
           {field('total', 'Total for this chat key ($)', CHAT_KEY.total, 'Total across all chats until this chat key expires.')}

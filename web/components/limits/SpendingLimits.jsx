@@ -8,6 +8,7 @@ import { LANES } from '../../lib/agents';
 import { GUARD_LIMIT } from '../../lib/agent-guard';
 import { LIMIT_CAPS, GUARD_CAPS, LIMIT_WORDS as W, guardForm } from '../../lib/spending-limits';
 import RouteDefault from './RouteDefault'; // U101
+import StarterSetups from './StarterSetups'; // U103
 import st from './SpendingLimits.module.css';
 
 export function LimitField({ id, label, children, help }) {
@@ -37,10 +38,12 @@ export function StopResume({ id, stop, disabled }) {
   </fieldset>;
 }
 
-export default function SpendingLimits({ id, value, onChange, disabled = false, compact = false, scope = false, guard = false, stop, children }) {
+// U103: `setups` names the editor (chat, key or agents) for Start from a setup, which fills only the values that editor shows.
+export default function SpendingLimits({ id, value, onChange, disabled = false, compact = false, scope = false, guard = false, setups = null, stop, children }) {
   const set = patch => onChange({ ...value, ...patch });
   const g = value.guard, setGuard = patch => set({ guard: { ...g, ...patch } });
   return <div className={st.limits + (compact ? ' ' + st.compact : '')}>
+    {setups && <StarterSetups id={id} view={setups} value={value} onChange={onChange} guard={guard} disabled={disabled}/>}
     <fieldset disabled={disabled} className={st.group}><legend>{W.caps}</legend>
       <div className={st.grid}>{LIMIT_CAPS.map(([k, label]) => <Field key={k} id={`${id}-${k}`} label={label}>{money(`${id}-${k}`, value.caps?.[k], v => set({ caps: { ...value.caps, [k]: v } }))}</Field>)}</div>
       <p className="help-text">{W.capsHelp}</p>

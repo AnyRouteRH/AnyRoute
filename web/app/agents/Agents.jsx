@@ -1,5 +1,4 @@
 'use client';
-import GuardStarters from "./GuardStarters"; // V98
 import AccountShell from '../../components/account/AccountShell';
 import { useAccountKey } from '../../components/account/useAccountKey';
 import { SealedBadge } from './SealedAgent';
@@ -17,7 +16,7 @@ import { BreakersForm, TrippedBadge } from './Breakers';
 import AgentWorkspace from './AgentWorkspace';
 import Alerts from './Alerts';
 import AlertFields from './AlertFields';
-import StarterRulebooks from './StarterRulebooks'; // V85: preview and apply starter rules.
+import StarterSetups from '../../components/limits/StarterSetups'; // U103: one entry point for starting values, in place of the V85 and V98 starter lists.
 import RequestCheck from './RequestCheck'; // V85: check the selected agent’s rules.
 
 function Field({ label, id, children }) {
@@ -39,7 +38,7 @@ function RulebookForm({ policy, onSave, onRemove, busy, hasPolicy, guard, stop }
   const windowSet = (index, patch) => setForm(f => ({ ...f, windows: f.windows.map((w, i) => i === index ? { ...w, ...patch } : w) }));
   const built = rulebookFromLimits(form);
   return <form onSubmit={e => { e.preventDefault(); setErrors(built.errors); if (!built.errors.length) onSave(built.policy); }}>
-    <SpendingLimits id="rulebook" value={form} onChange={setForm} disabled={busy} scope guard={guard || policy?.actions !== undefined} stop={stop}>
+    <SpendingLimits id="rulebook" value={form} onChange={setForm} disabled={busy} setups="agents" scope guard={guard || policy?.actions !== undefined} stop={stop}>
       <LimitGroup title="More rules" disabled={busy}>
         <div className="two-fields"><Field label="Maximum output tokens" id="max_output_tokens"><input id="max_output_tokens" type="number" min="1" max={LIMITS.tokens} step="1" value={form.caps.max_output_tokens} onChange={e => set('caps',{ ...form.caps,max_output_tokens:e.target.value })}/></Field>
         <Field label="Ask me first after calls per hour" id="approval-calls"><input id="approval-calls" type="number" step="1" min="1" max="1000000" value={form.approvalCalls ?? ''} onChange={e => set('approvalCalls',e.target.value)}/></Field></div>
@@ -125,8 +124,7 @@ export default function Agents() {
   }, [key,revision,onError]);
   const agent = agents.find(a => a.key_hash === selected);
   return <AccountShell publicContent current="Agents" apiKey={key} onConnect={value => { setKey(value); setAgents([]); setSelected(''); setOff(false); setError(''); }} onDisconnect={() => { setKey(''); setAgents([]); setSelected(''); setLoaded(false); setOff(false); setError(''); }}><div className={s.body}>
-    <GuardStarters agent={key && !off ? agent : null} request={request} disabled={busy} onApplied={() => setRevision(r => r+1)}/> {/* V98 */}
-    <StarterRulebooks key={key+selected} agent={key && !off ? agent : null} request={request} disabled={busy} onApplied={() => setRevision(r => r+1)}/> {/* V85 */}
+    {!(key && !off && agent) && <StarterSetups id="setup-preview" view="agents" guard={guard}/>} {/* U103: a preview until an agent is selected; then Start from a setup sits in its Spending limits. */}
     <div id="request-check">{key && !off && agent ? <RequestCheck key={key+selected} agent={agent} refreshVersion={revision}/> : <p className="note">Select an agent after connecting to check a request against its rules without spending.</p>}</div> {/* V85 */}
     {error && <p className="note" role="alert">{error}</p>}
     {off ? <section className="empty" role="status"><h2>{FEATURE_OFF}</h2><p>This router is not serving agent rulebooks.</p></section> : <>

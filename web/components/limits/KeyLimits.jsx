@@ -48,7 +48,7 @@ export default function KeyLimits({ apiKey, keyHash, name, current, onClose }) {
     {view.busy && !form && !view.off && <p role="status">Reading spending limits…</p>}
     {view.error && <div className="error" role="alert">{view.error}</div>}
     {form && <form onSubmit={e => { e.preventDefault(); setErrors(built.errors); if (!built.errors.length) mutate(() => request(path + '/policy', { method: 'PUT', body: built.policy }), 'Spending limits saved.'); }}>
-      <SpendingLimits key={revision} id="key-limits" value={form} onChange={setForm} disabled={view.busy} scope guard={guard || own?.policy?.actions !== undefined} stop={stop}/>
+      <SpendingLimits key={revision} id="key-limits" value={form} onChange={setForm} disabled={view.busy} setups="key" scope guard={guard || own?.policy?.actions !== undefined} stop={stop}/>
       {row.inherited > 0 && <p className="help-text">This key also follows {row.inherited === 1 ? 'an inherited rulebook' : `${row.inherited} inherited rulebooks`} from the key that created it. Change those on that key.</p>}
       {errors.length > 0 && <ul className="error" role="alert">{errors.map(error => <li key={error}>{error}</li>)}</ul>}
       <div className="button-row"><Button type="submit" disabled={view.busy}>{W.save}</Button>{own && <Button type="button" secondary disabled={view.busy} onClick={() => { if (window.confirm('Remove these spending limits? Their rules will no longer apply.')) mutate(() => request(path + '/policy', { method: 'DELETE' }), 'Spending limits removed.'); }}>{W.remove}</Button>}</div>

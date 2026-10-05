@@ -1,6 +1,7 @@
 const sections = [
   ["spending-limits", "Spending limits"],
   ["default-route", "Default route"],
+  ["starter-setups", "Starter setups"],
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
   ["trading-agents", "Trading agents"],

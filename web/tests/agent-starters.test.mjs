@@ -83,7 +83,7 @@ test('errors and invalid response shapes are not reported as an allowed request;
 });
 
 test('both tools use the agents map and stay search-only within the menu limit', () => {
-  for (const id of ['rulebook-templates', 'request-check']) {
+  for (const id of ['starter-setups', 'request-check']) { // U103: Start from a setup replaces the rulebook templates entry.
     const task = TASKS.find(item => item.id === id);
     assert.equal(task.group, 'agents'); assert.equal(task.menu, false);
     assert.equal(task.href, '/agents/#' + id);

@@ -34,6 +34,7 @@ import AgentAlertDocs from "../../components/AgentAlertDocs";
 import AgentRulebookDocs from "../../components/AgentRulebookDocs";
 import SpendingLimitsDocs from "../../components/SpendingLimitsDocs";
 import DefaultRouteDocs from "../../components/DefaultRouteDocs";
+import StarterSetupsDocs from "../../components/StarterSetupsDocs"; // U103
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentCertificateDocs from "../../components/AgentCertificateDocs";
 import AgentApprovalDocs from "../../components/AgentApprovalDocs";
@@ -855,7 +856,7 @@ export default function Docs() {
           <KeyProvisioningDocs /> {/* ZK6 */}
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
-          <SpendingLimitsDocs /><DefaultRouteDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
+          <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
           <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />
