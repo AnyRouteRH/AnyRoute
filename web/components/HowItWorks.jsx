@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 
-const STEPS=[['Choose your model.','Use the familiar API request shape. Set your model, provider preferences and budget.','model · provider{} · budget'],['Let Anyroute find the route.','The router filters providers by health, price, data policy and your requirements, with fallbacks ready.','1/price² × uptime × quality'],['Receive a receipt.','Every generation returns itemized usage, cost and a signed receipt, anchored on-chain within the hour.','ed25519 · merkle · 4663']];
+const STEPS=[['Choose your model.','Use the familiar API request shape. Set your model, provider preferences and budget.','model · provider{} · budget'],['Let Anyroute find the route.','The router filters providers by health, price, data policy and your requirements, with fallbacks ready.','1/price² × uptime × quality'],['Receive a receipt.','Every generation returns itemized usage, cost and a signed receipt you can check on /verify.','ed25519 · sha-256 · /verify']];
 
 /** Three steps on a rail that fills as the section scrolls past. */
 export default function HowItWorks(){

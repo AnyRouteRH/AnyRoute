@@ -373,8 +373,8 @@ async function verifyReceiptV1(receipt, { keys, publicKeyHex, ed25519 = ed25519V
   if (proof && Array.isArray(proof.proof) && typeof proof.root === "string" && receipt.leaf) {
     const ok = verifyMerkleProof(receipt.leaf, proof.proof, proof.root);
     anchor = ok ? "proof_valid" : "proof_invalid";
-    checks.push(ok ? pass("anchor_proof", `The receipt is included under anchor root ${proof.root.slice(0, 10)}…`) : fail("anchor_proof", "The inclusion proof does not lead from the receipt to the stated root."));
-  } else checks.push(skip("anchor_proof", "No anchor proof was included. A receipt is anchored within the hour, so fetch it again later to get one."));
+    checks.push(ok ? pass("anchor_proof", `The receipt is included under root ${proof.root.slice(0, 10)}…${proof.tx ? "" : " (a root kept off chain, not posted)"}`) : fail("anchor_proof", "The inclusion proof does not lead from the receipt to the stated root."));
+  } else checks.push(skip("anchor_proof", "No inclusion proof yet. The router adds receipts to a Merkle root on a schedule, so fetch it again later. A root is posted on chain only when its proof names a transaction."));
   return done(anchor);
 }
 
@@ -487,8 +487,8 @@ export async function verifyReceiptV2(coseB64, { keys, publicKeyHex, ed25519 = e
   const leaf = "0x" + bytesToHex(keccak256(keccak256(bytes)));
   if (proof && Array.isArray(proof.proof) && typeof proof.root === "string") {
     const ok = verifyMerkleProof(leaf, proof.proof, proof.root);
-    checks.push(ok ? pass("v2_anchor_proof", `v2: included under root ${proof.root.slice(0, 10)}…${proof.anchored ? "" : " (a root kept off chain, not posted)"}`) : fail("v2_anchor_proof", "v2: the Merkle path does not lead from this receipt to the root."));
-  } else checks.push(skip("v2_anchor_proof", "v2: no Merkle path yet. Roots are built hourly."));
+    checks.push(ok ? pass("v2_anchor_proof", `v2: included under root ${proof.root.slice(0, 10)}…${proof.anchored || proof.tx ? "" : " (a root kept off chain, not posted)"}`) : fail("v2_anchor_proof", "v2: the Merkle path does not lead from this receipt to the root."));
+  } else checks.push(skip("v2_anchor_proof", "v2: no Merkle path yet. Fetch the receipt again later; a root is posted on chain only when its proof names a transaction."));
   return { valid: checks.every((c) => c.status !== "fail") && checks.some((c) => c.id === "v2_signature" && c.status === "pass"), keyId: d.keyId, claims: d.claims, leaf, checks };
 }
 

@@ -5,6 +5,125 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "team-playbooks",
+    "date": "2026-10-05",
+    "title": "One playbook for many agents",
+    "summary": "Write a rulebook once as a playbook and have any number of agent keys follow it. Change the playbook and every key that follows it picks up the new rules.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#playbooks"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/e61e71f0f4b7bfc87eb84e12f1c75406a098ecf9"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "decision-tags",
+    "date": "2026-10-05",
+    "title": "Link a trade to the model call behind it",
+    "summary": "An agent can stamp a model call with the SHA-256 of the order it is about to place. The signed receipt carries that hash, so /verify can show the order matches the call that informed it.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#decision-tags"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/455af02fe3ddbdf3ece61b18e883821f6507bfc6"
+      }
+    ],
+    "tags": [
+      "agents",
+      "verify"
+    ]
+  },
+  {
+    "id": "auto-topup",
+    "date": "2026-10-05",
+    "title": "Key budgets that top themselves up",
+    "summary": "A key's spending budget can refill from your account credits when it runs low, by an amount you choose and within a weekly limit. Each top-up is listed in Activity.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#auto-topup"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/fe28d8c48b8329cbd3d4f429691940b19b7766ed"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "lane-report",
+    "date": "2026-10-05",
+    "title": "See where your calls ran",
+    "summary": "Statements now show your calls lane by lane, the share that ran on hardware with a verified attestation, and each provider's evidence links.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/dashboard/#statements"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/aea0a17c12b3783d3350be34baebccd47c4b7cf6"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/9ea3043f6384073ce02f06a4a242dbb6c52b008f"
+      }
+    ],
+    "tags": [
+      "verify"
+    ]
+  },
+  {
+    "id": "replay-rules",
+    "date": "2026-10-05",
+    "title": "Replay a rulebook before you save it",
+    "summary": "Run a draft rulebook against your agent's decisions from the last 7 days and see what it would have allowed, asked about or denied, and how many decisions would change. Replay only reads; nothing changes until you save.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#replay-rules"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/d2933d856701b6f6ff87b197903f2f9034645093"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "agent-pay",
+    "date": "2026-10-05",
+    "title": "Pay another agent from your own wallet",
+    "summary": "Your agent can pay another agent in USDG straight from your wallet. Your rulebook decides first, the router checks the transfer on chain and the payment gets a signed receipt. Anyroute never holds the money.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#agent-pay"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ddcda0d1de6cf4dc7e04d263230241be96eca162"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
     "id": "account-on-every-page",
     "date": "2026-10-05",
     "title": "Your account, on every page",
