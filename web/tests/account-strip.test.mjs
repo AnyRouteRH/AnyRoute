@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ADD_FUNDS_HREF, INBOX_HREF, POLL_MS, balanceLabel, bellBadge, bellLabel, creditsBalance, formatBalance, nextPollDelay, readAccountStrip, safeHref, stripAlerts, stripApprovals, stripCounts, stripDeposits } from '../lib/account-strip.js';
+import { ADD_FUNDS_HREF, CONFIRM_MS, INBOX_HREF, POLL_MS, approveConfirmText, approveStep, balanceLabel, bellBadge, bellLabel, creditsBalance, formatBalance, nextPollDelay, readAccountStrip, safeHref, stripAlerts, stripApprovals, stripCounts, stripDeposits } from '../lib/account-strip.js';
 import { WAKE_GAP_MS, createPoller, sharedPoller } from '../lib/account-poller.js';
 import { BalanceLink, BellButton } from '../components/nav/AccountTrigger.js';
 
@@ -179,9 +179,26 @@ test('the header mounts the strip once; signed out it renders nothing and starts
 
 test('the drawer is a modal dialog: Escape closes it, Tab stays inside, and it reuses the inbox decisions', () => {
   const drawer = read('components/nav/AccountDrawer.jsx');
-  assert.match(drawer, /showModal\(\)/); assert.match(drawer, /onCancel=\{event => \{ event\.preventDefault\(\); onClose\(\); \}\}/);
+  assert.match(drawer, /showModal\(\)/); assert.match(drawer, /onCancel=\{event => \{ event\.preventDefault\(\); if \(armed\) setArmed\(null\); else onClose\(\); \}\}/);
   assert.match(drawer, /aria-labelledby="account-drawer-title"/); assert.match(drawer, /event\.key !== 'Tab'/);
   assert.match(drawer, /decideInboxApproval\(request, item\.approval_id, choice\)/); assert.match(drawer, /markInboxSeen\(request, window\.localStorage, page\)/);
+});
+
+test('approve is two-step: the confirming text names the approval\'s own amount and agent, and disarms after 5 s', () => {
+  assert.equal(CONFIRM_MS, 5_000);
+  assert.equal(approveConfirmText({ ...approval('one'), approval_limit: '0.42', key_label: 'sample-agent' }), 'Confirm: approve $0.42 for sample-agent');
+  assert.equal(approveConfirmText({ ...approval('two'), approval_limit: '1.5', key_label: null }), 'Confirm: approve $1.50 for Unnamed agent');
+  assert.equal(approveConfirmText({ ...approval('three'), approval_limit: '0.000123456789', key_label: 'sample-agent' }), 'Confirm: approve $0.000123456789 for sample-agent');
+  const armed = { id: 'approval:one', at: now };
+  assert.equal(approveStep(null, 'approval:one', now), 'arm');
+  assert.equal(approveStep(armed, 'approval:one', now + 4_999), 'confirm');
+  assert.equal(approveStep(armed, 'approval:one', now + 5_000), 'arm', 'a late second click arms again, even if the timer was throttled');
+  assert.equal(approveStep(armed, 'approval:two', now + 1), 'arm', 'arming one approval never confirms another');
+  const drawer = read('components/nav/AccountDrawer.jsx');
+  assert.match(drawer, /const approve = item => \{ if \(approveStep\(armed, item\.id\) === 'arm'\) \{ setArmed\(\{ id: item\.id, at: Date\.now\(\) \}\);[^}]*return; \} setArmed\(null\); decide\(item, 'approve'\); \};/);
+  assert.match(drawer, /setTimeout\(\(\) => setArmed\(null\), CONFIRM_MS\)/); assert.match(drawer, /onBlur=\{\(\) => \{ if \(armed\?\.id === item\.id\) setArmed\(null\); \}\}/);
+  assert.match(drawer, /if \(armed\) setArmed\(null\); else onClose\(\);/);
+  assert.match(drawer, /onClick=\{\(\) => \{ setArmed\(null\); decide\(item, 'deny'\); \}\}/);
 });
 
 test('new files store nothing, put no key in a URL and keep to the public wording', () => {

@@ -7,7 +7,7 @@ import { intentSummary } from '../../lib/agents.js';
 import { decideInboxApproval, INBOX_EVENT, markInboxSeen } from '../../lib/inbox.js';
 import { depositProgressView } from '../../lib/deposit-progress.js';
 import { accountPoller } from '../../lib/account-poller.js';
-import { ADD_FUNDS_HREF, APPROVALS_HREF, INBOX_HREF, formatBalance, safeHref, stripAlerts, stripApprovals, stripDeposits } from '../../lib/account-strip.js';
+import { ADD_FUNDS_HREF, APPROVALS_HREF, CONFIRM_MS, INBOX_HREF, approveConfirmText, approveStep, formatBalance, safeHref, stripAlerts, stripApprovals, stripDeposits } from '../../lib/account-strip.js';
 import s from './AccountStrip.module.css';
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 const when = value => <time dateTime={value}>{new Date(value).toLocaleString()}</time>;
@@ -17,6 +17,8 @@ export default function AccountDrawer({ apiKey, snapshot, onClose }) {
   const dialog = useRef(null), approvalsHeading = useRef(null), mounted = useRef(true);
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [decided, setDecided] = useState({}); // approval ids decided here, hidden until the next read drops them
+  const [armed, setArmed] = useState(null); // { id, at }: the approval whose Approve button waits for its confirming click
+  useEffect(() => { if (!armed) return; const timer = setTimeout(() => setArmed(null), CONFIRM_MS); return () => clearTimeout(timer); }, [armed]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { const element = dialog.current; element.showModal(); element.querySelector('button')?.focus(); accountPoller(apiKey).refresh(); return () => element.close(); }, [apiKey]);
   const request = (path, options) => api(path, { ...options, key: apiKey });
@@ -26,6 +28,8 @@ export default function AccountDrawer({ apiKey, snapshot, onClose }) {
     catch (e) { if (mounted.current) setError(e.message); }
     finally { if (mounted.current) setBusy(''); }
   }
+  // Money moves only on a second, explicit click of the same button.
+  const approve = item => { if (approveStep(armed, item.id) === 'arm') { setArmed({ id: item.id, at: Date.now() }); setNotice(''); return; } setArmed(null); decide(item, 'approve'); };
   const decide = (item, choice) => run(item.id, () => decideInboxApproval(request, item.approval_id, choice), () => {
     setDecided(old => ({ ...old, [item.id]: choice })); setNotice(choice === 'approve' ? 'Approved.' : 'Denied.');
     requestAnimationFrame(() => approvalsHeading.current?.focus());
@@ -45,7 +49,7 @@ export default function AccountDrawer({ apiKey, snapshot, onClose }) {
   const deposits = stripDeposits(snapshot?.deposits);
   const readErrors = [snapshot?.balanceError, snapshot?.inboxError, snapshot?.depositsError, snapshot?.readError].filter(Boolean);
   return createPortal(<dialog ref={dialog} className={s.drawer} aria-labelledby="account-drawer-title" onKeyDown={trap}
-    onCancel={event => { event.preventDefault(); onClose(); }} onClose={() => { if (!dialog.current?.open) onClose(); }} onClick={event => { if (event.target === event.currentTarget || event.target.closest?.('a[href]:not([target])')) onClose(); }}>
+    onCancel={event => { event.preventDefault(); if (armed) setArmed(null); else onClose(); }} onClose={() => { if (!dialog.current?.open) onClose(); }} onClick={event => { if (event.target === event.currentTarget || event.target.closest?.('a[href]:not([target])')) onClose(); }}>
     <div className={s.panel}>
       <div className="modal-head"><h2 id="account-drawer-title">Your account</h2><button type="button" className="icon-button" aria-label="Close account updates" onClick={onClose}>×</button></div>
       <section className={s.section} aria-labelledby="account-drawer-balance">
@@ -54,7 +58,7 @@ export default function AccountDrawer({ apiKey, snapshot, onClose }) {
         <a className="inline-link" href={ADD_FUNDS_HREF}>Add funds</a>
       </section>
       {error && <p role="alert" className="error">{error}</p>}
-      <p role="status" className={s.notice}>{notice}</p>
+      <p role="status" className={s.notice}>{armed ? 'Select again within 5 seconds to approve.' : notice}</p>
       {readErrors.length > 0 && <p className="help-text">{readErrors[0]} The next refresh will try again.</p>}
       <section className={s.section} aria-labelledby="account-drawer-approvals">
         <h3 id="account-drawer-approvals" ref={approvalsHeading} tabIndex={-1}>Waiting for you</h3>
@@ -63,8 +67,8 @@ export default function AccountDrawer({ apiKey, snapshot, onClose }) {
           <p>{intentSummary(item.intent)}</p>
           <p className="help-text">Limit {item.approval_limit} USDG · Expires {when(item.expires_at)}</p>
           {item.can_decide ? <div className={s.actions}>
-            <Button type="button" disabled={!!busy || Date.parse(item.expires_at) <= Date.now()} onClick={() => decide(item, 'approve')}>Approve</Button>
-            <Button type="button" secondary disabled={!!busy || Date.parse(item.expires_at) <= Date.now()} onClick={() => decide(item, 'deny')}>Deny</Button>
+            <Button type="button" className={armed?.id === item.id ? s.confirm : undefined} disabled={!!busy || Date.parse(item.expires_at) <= Date.now()} onClick={() => approve(item)} onBlur={() => { if (armed?.id === item.id) setArmed(null); }}>{armed?.id === item.id ? approveConfirmText(item) : 'Approve'}</Button>
+            <Button type="button" secondary disabled={!!busy || Date.parse(item.expires_at) <= Date.now()} onClick={() => { setArmed(null); decide(item, 'deny'); }}>Deny</Button>
           </div> : <p className="help-text">A management or owner/admin key is needed to decide approvals.</p>}
         </li>)}</ul>}
         <a className="inline-link" href={APPROVALS_HREF}>Review approvals on Agents</a>

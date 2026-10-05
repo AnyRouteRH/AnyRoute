@@ -1,6 +1,7 @@
 // U105: the signed-in strip in the site header (balance and a bell). Pure view logic and one read cycle.
 // Account data stays in memory; nothing here touches storage except the inbox seen time the inbox already keeps.
 import { inboxBadge, readInbox } from './inbox.js';
+import { formatUsd } from './agents.js';
 
 export const POLL_MS = 30_000;
 export const MAX_POLL_MS = 300_000;
@@ -30,6 +31,11 @@ export function stripDeposits(data) {
   const all = Array.isArray(data?.deposits) ? data.deposits : [];
   return { pending: all.filter(d => !FINAL.includes(d?.stage)), final: all.filter(d => FINAL.includes(d?.stage)).slice(0, 3) };
 }
+/** Approve is two-step in the drawer: the first click arms it with this text; it disarms after 5 s, on blur or on Escape. */
+export const CONFIRM_MS = 5_000;
+/** First click (or a click after 5 s) arms; a second click on the same armed approval within 5 s confirms. Timer-independent. */
+export const approveStep = (armed, id, now = Date.now()) => armed?.id === id && now - armed.at < CONFIRM_MS ? 'confirm' : 'arm';
+export const approveConfirmText = item => `Confirm: approve ${formatUsd(item?.approval_limit)} for ${item?.key_label || 'Unnamed agent'}`;
 /** Same-site paths only; anything else opens the inbox. */
 export const safeHref = href => typeof href === 'string' && /^\/(?![/\\])/.test(href) ? href : INBOX_HREF;
 
