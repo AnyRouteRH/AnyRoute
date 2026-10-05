@@ -9,6 +9,7 @@ import FirstCallDocs from "../../components/FirstCallDocs"; // ON2
 import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
 import StructuredOutputDocs from "../../components/StructuredOutputDocs"; // V83
 import StatementDocs from "../../components/StatementDocs"; // V87
+import ProofPackDocs from "../../components/ProofPackDocs"; // U100
 import WebhookDocs from "../../components/WebhookDocs"; // V86: optional signed event delivery.
 import MakeGoodDocs from "../../components/MakeGoodDocs"; // V6 R: make-good refunds.
 import AgentProfileDocs from "../../components/AgentProfileDocs";
@@ -853,7 +854,7 @@ export default function Docs() {
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
           <SpendingLimitsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs />
-          <StatementDocs /> {/* V87 */}
+          <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />
           <WebhookDocs/> {/* V86. */}

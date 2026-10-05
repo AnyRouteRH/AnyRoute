@@ -7,6 +7,7 @@ import { depositSender } from '../lib/deposit-progress.js'; // V97B
 import AddFunds from "./account/AddFunds"; import { fundingError } from "../lib/add-funds.js"; // ON1
 import { defaultFundingOption } from "../lib/funding-display.js"; import { ANYR_CA } from "./ContractAddress"; // V96
 import AccountStatements from "./account/AccountStatements"; import AccountExport from "./account/AccountExport"; // V87
+import AccountProofPack from "./account/AccountProofPack"; // U100
 import AccountInsights from "./account/AccountInsights"; // V88: spend insights.
 import AccountInbox from "./account/AccountInbox"; // U78: account inbox.
 import AccountActivity from "./account/AccountActivity";
@@ -1239,6 +1240,7 @@ export default function Dashboard() {
       ) : live && !signedIn && tab !== "Teams" ? null : (
         <div className="tab-panel" key={tab}>
           {tab === "Statements" && apiKey && <AccountStatements key={apiKey} apiKey={apiKey}/>} {tab === "Export your data" && apiKey && <AccountExport key={apiKey} apiKey={apiKey}/>} {/* V87 */}
+          {tab === "Statements" && apiKey && <AccountProofPack key={`proof-pack-${apiKey}`} apiKey={apiKey}/>} {/* U100 */}
           {tab === "Insights" && signedIn && <AccountInsights key={apiKey} apiKey={apiKey}/>} {/* V88: no figures before connection. */}
           {tab === "Inbox" && apiKey && <AccountInbox key={apiKey} apiKey={apiKey}/>}
           {tab === "Activity" && ws && <AccountActivity apiKey={apiKey} keys={ws.keys}/>}
