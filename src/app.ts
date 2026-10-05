@@ -70,6 +70,7 @@ import { characterRoutes } from "./api/characters.ts";
 import { memoryRoutes } from "./api/memory.ts";
 import { agentCertificatesRoutes } from "./api/agent-certificates.ts";
 import { guardRoutes } from "./api/guard.ts"; // V98
+import { agentPayRoutes } from "./api/agent-pay.ts"; // Pay another agent
 import { agentsRoutes } from "./api/agents.ts";
 import { agentApprovalMiddleware, agentApprovalsRoutes } from "./api/agent-approvals.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
@@ -227,6 +228,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentSealedRoutes(app, ctx);
   agentsRoutes(app, ctx);
   guardRoutes(app, ctx); // V98
+  agentPayRoutes(app, ctx); // Pay another agent (AGENT_PAY_ENABLED)
   agreementsRoutes(app, ctx);
   agentCertificatesRoutes(app, ctx);
   agentLedgerRoutes(app, ctx);

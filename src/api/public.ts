@@ -349,6 +349,8 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         // and whether USDG is credited 1:1 (usdg.enabled; its haircut and per-deposit limit are null while off).
         escrow: { enabled: escrowEnabled(ctx), tokens: escrowEnabled(ctx) ? acceptedTokens(ctx).map((t) => t.symbol) : [], haircut_bps: ctx.cfg.escrow.haircutBps, anyr: anyrSummary(ctx), usdg: usdgSummary(ctx) },
         ...(ctx.cfg.agentGuardEnabled ? { agent_guard: { enabled: true } } : {}), // V98: preserve status bytes while off
+        // Pay another agent: Agent Guard decides, the payer's wallet sends USDG straight to the recipient, the router verifies it.
+        agent_pay: { enabled: ctx.cfg.agentPayEnabled },
         per_call: {
           configured: !!ctx.cfg.chain.callPay || x402Enabled(ctx),
           max_usd: ctx.cfg.fees.perCallMaxUsd,

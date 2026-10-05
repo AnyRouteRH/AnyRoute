@@ -1303,6 +1303,7 @@ export const skillInstalls = pgTable(
 
 export { agentPolicies, agentPolicyEvents } from "../agents/schema.ts";
 export { agentActionDecisions } from "../agents/guard-schema.ts"; // V98
+export { agentPayments } from "../agents/pay-schema.ts"; // Pay another agent
 export { agentApprovals } from "../agents/approval-schema.ts";
 export { networkWaitlist } from "../network/schema.ts";
 export { sanctionsAddresses, sanctionsMeta } from "../network/schema.ts";

@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { roleOf, type KeyRow } from "../api/auth.ts";
 import { accounts, agentSessions, keys, providers } from "../db/schema.ts";
@@ -7,6 +7,8 @@ import { agentApprovals } from "../agents/approval-schema.ts";
 import { readActivity } from "../activity/read.ts";
 import { activityQuery } from "../activity/query.ts";
 import { picoToUsdString } from "../lib/money.ts";
+import { agentPayments } from "../agents/pay-schema.ts";
+import { unitsToUsd } from "../agents/pay.ts";
 // Keep approval scope visible without returning unexpected stored fields.
 export function inboxIntent(value: unknown): { intents: Record<string, unknown>[] } {
   const object = value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -41,6 +43,25 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
     )).orderBy(desc(agentApprovals.requestedAt), desc(agentApprovals.id)).limit(101);
     capped ||= pending.length > 100;
     items.push(...pending.slice(0, 100).map(row => ({ id: `approval:${row.id}`, at: row.at.toISOString(), kind: "approval", title: "Approve an agent request", status: "pending", href: "/agents/", key_label: row.label, intent: inboxIntent(row.intent), approval_id: row.id, approval_limit: picoToUsdString(row.limit), expires_at: row.expires.toISOString(), can_decide: scope.canDecide, unread: true })));
+  }
+  if (ctx.cfg.agentPayEnabled) {
+    // Pay another agent: the payer's keys see what they sent; the owner of an agent whose published wallet was paid sees
+    // what it received. Only confirmed transfers appear, with their current status (seen, final or reversed).
+    const p = agentPayments;
+    const titles = { sent: { seen: "Payment sent, waiting for finality", final: "Payment sent and final", reversed: "Sent payment reversed: it left the chain" }, received: { seen: "Payment received, waiting for finality", final: "Payment received and final", reversed: "Received payment reversed: it left the chain" } } as const;
+    for (const side of ["sent", "received"] as const) {
+      const owner = side === "sent" ? p.keyHash : p.recipientKeyHash;
+      const rows = await ctx.db.select({ id: p.decisionId, at: p.statusAt, status: p.status, paid: p.paidUnits, label: keys.name }).from(p).innerJoin(keys, eq(keys.keyHash, owner)).where(and(
+        eq(keys.accountId, key.accountId), scope.whole ? undefined : eq(keys.keyHash, key.keyHash),
+        scope.whole && !key.management ? eq(keys.teamId, key.teamId!) : undefined,
+        inArray(p.status, ["seen", "final", "reversed"]), since ? gt(p.statusAt, new Date(since)) : undefined,
+      )).orderBy(desc(p.statusAt), desc(p.decisionId)).limit(101);
+      capped ||= rows.length > 100;
+      for (const row of rows.slice(0, 100)) {
+        const at = row.at.toISOString(), status = row.status as "seen" | "final" | "reversed";
+        if (unread(at)) items.push({ id: `payment:${side}:${row.id}`, at, kind: "payment", title: titles[side][status], status, amount: row.paid === null ? undefined : unitsToUsd(row.paid), key_label: row.label, href: "/agents/#pay-agent", unread: true });
+      }
+    }
   }
   for (const kind of ["alert", "deposit", "agreement", "topup"] as const) {
     // Reuse Activity's account, team, session, wallet-party and spending-alert guards.

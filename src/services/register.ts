@@ -36,6 +36,7 @@ import { TelegramBot, type RouterCall } from "./telegram.ts";
 import { runBatches, type Dispatch } from "./batches.ts";
 import { runSkillsMirror } from "../skills/service.ts";
 import { expirePaidResults } from "../pay/recovery.ts";
+import { runAgentPayVerify } from "../agents/pay.ts"; // Pay another agent
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
@@ -45,6 +46,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   if (cfg.tools.enabled) { jobs.register("tools-reconcile", 60_000, () => reconcileToolCalls(ctx)); jobs.register("tools-canary", 3_600_000, () => runToolCanaries(ctx)); }
   if (cfg.hostBonds.enabled) { jobs.register("host-bond-indexer", 5_000, () => pollHostBonds(ctx), { atStart: true }); jobs.register("host-slasher", 60_000, () => runHostSlasher(ctx)); }
   if (cfg.agentPolicyEnabled) jobs.register("agent-alerts", 60_000, () => runAgentAlerts(ctx));
+  if (cfg.agentPayEnabled) jobs.register("agent-pay-verify", 60_000, () => runAgentPayVerify(ctx)); // Pay another agent: settle seen payments, re-check final ones.
   // v6 I: a signed probe of each listed agent endpoint (daily); the registrar sends queued ERC-8004 registrations.
   if (cfg.identity.enabled && cfg.agentProfilesEnabled) jobs.register("agent-liveness", cfg.identity.livenessIntervalMs, () => runAgentLiveness(ctx));
   if (cfg.identity.enabled && cfg.identity.mode === "registrar" && cfg.identity.registrarKey) jobs.register("agent-identity", 60_000, () => runAgentIdentity(ctx));

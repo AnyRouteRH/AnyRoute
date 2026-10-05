@@ -13,6 +13,8 @@ import { fail } from "../lib/errors.ts";
 export function inferenceRouteAllowed(method: string, path: string, guardEnabled = true) {
   if (method === "POST" && ((guardEnabled && path === "/mcp") || path === "/api/v1/guard/decide" || /^\/api\/v1\/guard\/decisions\/[^/]+\/outcome$/.test(path))) return true; // V98: internal MCP calls pass this middleware again.
   if (guardEnabled && method === "GET" && (path === "/api/v1/agents/me" || /^\/api\/v1\/agents\/approvals\/[^/]+$/.test(path))) return true;
+  // Pay another agent: decide, confirm and read the key's own payments. The money moves wallet to wallet, never through the router.
+  if (guardEnabled && ((method === "POST" && (path === "/api/v1/agents/pay" || /^\/api\/v1\/agents\/pay\/[^/]+\/confirm$/.test(path))) || (method === "GET" && /^\/api\/v1\/agents\/pay\/[^/]+$/.test(path)))) return true;
   if (method === "POST") return /^\/(api\/)?v1\/(chat\/completions|completions|embeddings|responses|messages)$/.test(path);
   if (method !== "GET") return false;
   // B: paid market-data tools, charged per call like inference (src/data-tools); read-only and account-free.
