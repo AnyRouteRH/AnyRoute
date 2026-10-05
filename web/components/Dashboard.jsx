@@ -812,6 +812,14 @@ export default function Dashboard() {
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     setModal({ type: "anyr" });
   }, [escrowOn, ws?.escrow?.anyr]);
+  // U106: ⌘K's New API key links to /dashboard/?new=key#api-keys; Create key opens once a key is connected.
+  useEffect(() => {
+    if (!live || !apiKey || !ws || new URLSearchParams(window.location.search).get("new") !== "key") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("new");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    setModal({ type: "key" });
+  }, [live, apiKey, ws]);
 
   async function refresh(key = apiKey) {
     const next = await loadWorkspace(key);

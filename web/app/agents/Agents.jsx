@@ -18,6 +18,7 @@ import Alerts from './Alerts';
 import AlertFields from './AlertFields';
 import StarterSetups from '../../components/limits/StarterSetups'; // U103: one entry point for starting values, in place of the V85 and V98 starter lists.
 import RequestCheck from './RequestCheck'; // V85: check the selected agent’s rules.
+import { agentLink, focusSelector } from '../../lib/site-actions'; // U106: ⌘K links here to an agent's spending limits or default route.
 
 function Field({ label, id, children }) {
   return <div className="field"><label htmlFor={id}>{label}</label>{children}</div>;
@@ -123,6 +124,26 @@ export default function Agents() {
     return () => ac.abort();
   }, [key,revision,onError]);
   const agent = agents.find(a => a.key_hash === selected);
+  // U106: /agents/?agent=…&focus=limits|route selects that agent once, then focuses that part of its spending limits.
+  const linked = useRef(null);
+  useEffect(() => { const reread = () => setRevision(r => r+1); window.addEventListener('anyroute:agents-changed', reread); return () => window.removeEventListener('anyroute:agents-changed', reread); }, []); // ⌘K stopped or resumed one
+  useEffect(() => {
+    const link = agentLink(location.search); if (!link) return;
+    linked.current = link; setSelected(link.agent);
+    const url = new URL(location.href); url.searchParams.delete('agent'); url.searchParams.delete('focus'); history.replaceState(null, '', url.pathname + url.search + url.hash);
+  }, []);
+  useEffect(() => {
+    const link = linked.current; if (!link || !loaded) return;
+    linked.current = null;
+    const selector = agent?.key_hash === link.agent && focusSelector(link.focus, 'rulebook'); if (!selector) return;
+    const ready = () => { const el = document.querySelector(selector); return el && !el.matches(':disabled') ? el : null; };
+    const go = el => { el.scrollIntoView({ block: 'center' }); el.focus({ preventScroll: true }); };
+    const found = ready(); if (found) return void go(found);
+    const watch = new MutationObserver(() => { const el = ready(); if (el) { stop(); go(el); } });
+    const timer = setTimeout(() => watch.disconnect(), 15000); const stop = () => { watch.disconnect(); clearTimeout(timer); };
+    watch.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+    return stop;
+  }, [loaded, agent?.key_hash]);
   return <AccountShell publicContent current="Agents" apiKey={key} onConnect={value => { setKey(value); setAgents([]); setSelected(''); setOff(false); setError(''); }} onDisconnect={() => { setKey(''); setAgents([]); setSelected(''); setLoaded(false); setOff(false); setError(''); }}><div className={s.body}>
     {!(key && !off && agent) && <StarterSetups id="setup-preview" view="agents" guard={guard}/>} {/* U103: a preview until an agent is selected; then Start from a setup sits in its Spending limits. */}
     <div id="request-check">{key && !off && agent ? <RequestCheck key={key+selected} agent={agent} refreshVersion={revision}/> : <p className="note">Select an agent after connecting to check a request against its rules without spending.</p>}</div> {/* V85 */}

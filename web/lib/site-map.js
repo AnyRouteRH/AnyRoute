@@ -173,3 +173,18 @@ for (const section of ACCOUNT_SECTIONS) {
 TASKS.push({ ...task('operations', 'build', 'Inspect service operations', 'Use the service operator token to inspect monitoring availability and daily counts.', '/admin/', 'operator, upstream, balance, counts'), menu: false }); // ON3: search-only.
 TASKS.push({ ...task('key-management', 'build', 'Read key provisioning options', 'Read capped-key fields, pagination and inference-only keys.', '/docs/#key-management', 'key, provisioning, scope, inference, management'), menu: false }); // ZK6: search only.
 TASKS.push({ ...task('labs', 'learn', 'See Labs: built but switched off', 'Features built but switched off or in a pilot, each state read live from status.', '/labs/', 'labs, experimental, switched off, pilot, flags, x402, zkapi, host bonds'), menu: true }); // U104: last in Learn.
+
+// U106: things ⌘K can do. Each names the task whose page does it, so search, menus and actions share this one map.
+// signIn: needs a connected key. pick: the step that chooses what to act on (agent, model or receipt id).
+// run: Stop or Resume, called only after the same confirm step /agents asks. focus: the part of the limits editor to open.
+const action = (id, taskId, title, description, keywords, more = {}) => ({ id, task: taskId, title, description, keywords: keywords.split(', '), featured: true, ...more });
+export const ACTIONS = [
+  action('add-funds', 'account-payments', 'Add funds', 'Open Payments to see your balance and how to deposit.', 'add money, top up, deposit, fund, balance, pay, usdg, credit', { signIn: true }),
+  action('new-key', 'account-keys', 'New API key', 'Open API keys with the Create key form ready to fill in.', 'new key, create key, make key, api key, generate', { signIn: true, open: 'new-key' }),
+  action('set-limit', 'rulebook', 'Set a spending limit', 'Choose a key or agent, then edit the caps in its spending limits.', 'limit, budget, cap, spending, maximum, change', { signIn: true, pick: 'agent', focus: 'limits' }),
+  action('stop-agent', 'rulebook', 'Stop an agent', 'Choose an agent and confirm; its new requests are refused until you resume it.', 'stop, pause, halt, freeze, kill, block, agent', { signIn: true, pick: 'agent', run: 'stop' }),
+  action('resume-agent', 'rulebook', 'Resume an agent', 'Choose a stopped agent and confirm to let its requests through again.', 'resume, restart, unpause, start, continue, unblock, agent', { signIn: true, pick: 'agent', run: 'resume' }),
+  action('open-receipt', 'receipt', 'Open a receipt by id', 'Enter a receipt id to read its plain-English label on Verify.', 'receipt, id, lookup, look up, find, verify', { pick: 'receipt' }),
+  action('chat-model', 'chat', 'Switch Chat model', 'Choose a model, then open Chat with it selected.', 'model, switch, change, choose, pick, chat, llm', { pick: 'model' }),
+  action('default-route', 'rulebook', 'Set default route', 'Choose a key or agent, then set the route for requests that name no lane.', 'route, routing, default, lane, change', { signIn: true, pick: 'agent', focus: 'route' }),
+];
