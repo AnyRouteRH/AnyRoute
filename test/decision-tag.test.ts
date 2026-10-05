@@ -98,3 +98,75 @@ describe("DECISION_TAGS_ENABLED unset (the default)", () => {
     expect((await (await h.request("/api/v1/status")).json()).data.decision_tags.enabled).toBe(false);
   });
 });
+
+describe("decision tags linked to Agent Guard (DECISION_TAGS_ENABLED and AGENT_GUARD_ENABLED)", () => {
+  let h: Harness;
+  beforeAll(async () => { h = await startRouter({ env: { DECISION_TAGS_ENABLED: "true", AGENT_POLICY_ENABLED: "true", AGENT_GUARD_ENABLED: "true" } }); });
+  afterAll(async () => { await h?.close(); });
+  type Auth = { hash?: string; auth: Record<string, string> };
+  const rulebook = { version: 1, models: {}, caps: {}, on_breach: "deny", actions: {} };
+  const tag = orderIntentHash(intent);
+  const decide = async (k: Auth, details?: string) => (await (await h.request("/api/v1/guard/decide", { method: "POST", headers: k.auth, json: { action: "trade.order", target: "STOCK_A", amount_usd: "360.00", ...(details ? { details_sha256: details } : {}) } })).json()).data;
+  const ask = async (k: Auth, headers: Record<string, string> = {}) => {
+    const r = await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...k.auth, ...headers }, json: chat() });
+    expect(r.status).toBe(200);
+    return (await r.json()).receipt;
+  };
+  const lookup = async (k: Auth, query: string) => h.request(`/api/v1/guard/decisions?${query}`, { headers: k.auth });
+
+  test("a decision names the calls in the same agent whose receipt carries its order digest, and the reverse lookup finds it", async () => {
+    const parent = await h.fundedKey();
+    expect((await h.request(`/api/v1/agents/${parent.hash}/policy`, { method: "PUT", headers: parent.auth, json: rulebook })).status).toBe(200);
+    const session = (await (await h.request("/api/v1/sessions", { method: "POST", headers: parent.auth, json: { budget_usd: 1 } })).json()).data;
+    const agent: Auth = { auth: { authorization: `Bearer ${session.key}` } };
+    const informing = await ask(agent, decisionHeaders(intent));
+    await ask(agent, decisionHeaders({ ...intent, quantity: "20" }));
+    const untagged = await ask(agent);
+
+    const d = await decide(agent, tag);
+    expect(d.decision).toBe("allow");
+    expect(d.informed_by).toEqual([{ generation_id: informing.id, receipt_id: informing.id, model: informing.payload.model, provider: informing.payload.provider, at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/), receipt_url: `/api/v1/receipts/${informing.id}`, verify_url: `/verify/?r=${informing.id}` }]);
+    // The linked receipt is the signed one, and its tag is the decision's digest.
+    expect((await (await h.request(d.informed_by[0].receipt_url)).json()).data.payload.decision_tag).toBe(d.signed.payload.intent.details_sha256);
+    // The parent key is the same agent; another key in the account is not; no digest, no link field.
+    const parentDecision = await decide(parent, tag);
+    expect(parentDecision.informed_by.map((c: { generation_id: string }) => c.generation_id)).toEqual([informing.id]);
+    const otherKey = await h.request("/api/v1/keys", { method: "POST", headers: parent.auth, json: { name: "other agent" } });
+    const other: Auth = { auth: { authorization: `Bearer ${(await otherKey.json()).key}` } };
+    const otherDecision = await decide(other, tag);
+    expect(otherDecision.informed_by).toEqual([]);
+    expect("informed_by" in (await decide(agent))).toBe(false);
+
+    // The reverse: from a receipt id, or the digest, to the decisions the reader may see, each with its informing calls.
+    const byReceipt = (await (await lookup(parent, `receipt=${informing.id}`)).json()).data;
+    // The harness's first key manages its account, so it reads every decision in it.
+    expect(byReceipt).toMatchObject({ details_sha256: tag, receipt_id: informing.id, scope: "account" });
+    expect(byReceipt.decisions.map((x: { decision_id: string }) => x.decision_id).sort()).toEqual([d.decision_id, parentDecision.decision_id, otherDecision.decision_id].sort());
+    const mine = byReceipt.decisions.find((x: { decision_id: string }) => x.decision_id === d.decision_id);
+    expect(mine).toMatchObject({ action: "trade.order", target: "STOCK_A", amount_pico: "360000000000000", decision: "allow", details_sha256: tag, outcome: null });
+    expect(mine.informed_by.map((c: { generation_id: string }) => c.generation_id)).toEqual([informing.id]);
+    // A session key reads only its own decisions; another key reads only its own.
+    expect((await (await lookup(agent, `details_sha256=${tag}`)).json()).data.decisions.map((x: { decision_id: string }) => x.decision_id)).toEqual([d.decision_id]);
+    const theirs = (await (await lookup(other, `receipt=${informing.id}`)).json()).data;
+    expect([theirs.scope, theirs.decisions.map((x: { decision_id: string; informed_by: unknown[] }) => [x.decision_id, x.informed_by])]).toEqual(["key", [[otherDecision.decision_id, []]]]);
+    // A receipt without a tag links nothing; bad input is refused.
+    expect((await (await lookup(parent, `receipt=${untagged.id}`)).json()).data).toMatchObject({ details_sha256: null, decisions: [] });
+    expect((await lookup(parent, "receipt=gen-missing")).status).toBe(404);
+    for (const q of ["", `details_sha256=${tag.toUpperCase()}`, `details_sha256=${tag}&receipt=${informing.id}`]) expect((await lookup(parent, q)).status).toBe(400);
+  });
+});
+
+describe("Agent Guard with DECISION_TAGS_ENABLED unset", () => {
+  let h: Harness;
+  beforeAll(async () => { h = await startRouter({ env: { AGENT_POLICY_ENABLED: "true", AGENT_GUARD_ENABLED: "true" } }); });
+  afterAll(async () => { await h?.close(); });
+
+  test("a decision carries no link field, and the reverse lookup lists decisions without informing calls", async () => {
+    const key = await h.fundedKey();
+    const d = (await (await h.request("/api/v1/guard/decide", { method: "POST", headers: key.auth, json: { action: "trade.order", amount_usd: "1", details_sha256: orderIntentHash(intent) } })).json()).data;
+    expect("informed_by" in d).toBe(false);
+    const rev = (await (await h.request(`/api/v1/guard/decisions?details_sha256=${orderIntentHash(intent)}`, { headers: key.auth })).json()).data;
+    expect(rev.decisions.map((x: { decision_id: string }) => x.decision_id)).toEqual([d.decision_id]);
+    expect("informed_by" in rev.decisions[0]).toBe(false);
+  });
+});
