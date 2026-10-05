@@ -12,6 +12,7 @@ import httpx
 from .attestation import fetch_router_attestation, verify_provider
 from .errors import AnyRouteError, AttestationRefused, ReceiptInvalid
 from .agent import AgentClient
+from .playbooks import PlaybookClient
 from .agent_errors import request_error
 from .receipts import fetch_receipt_keys, verify_receipt
 from .types import ExpectedDigests, ProviderVerification, ReceiptVerification
@@ -96,6 +97,7 @@ class AnyRoute:
         self._keys = receipt_keys
         self._now_ms = now_ms
         self.agent = AgentClient(self.base_url, self._http, lambda: {**self._headers, **self._auth()})
+        self.playbooks = PlaybookClient(self.base_url, self._http, lambda: {**self._headers, **self._auth()})
         self._verified: dict[str, tuple[float, ProviderVerification]] = {}
 
     def close(self) -> None:

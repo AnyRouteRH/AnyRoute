@@ -49,6 +49,8 @@ if asked["decision"] == "allow":
 
 These methods call `GET /api/v1/agents/me`, `POST /api/v1/agents/check`, `POST /api/v1/agents/pay`, `POST /api/v1/agents/pay/{decision_id}/confirm` and `POST /api/v1/agents/{key_hash}/replay`. Manage rulebooks, single-use approvals, activity, alerts and certificates on [/agents](https://anyroute.tech/agents/); see the [agent API documentation](https://anyroute.tech/docs/#agent-rulebook).
 
+Playbooks share one rulebook across many keys. With a management key or a team owner/admin key, `client.playbooks` has `list()`, `get(id)`, `create(name, policy)`, `update(id, name=..., policy=...)`, `delete(id, unlink="copy")` and `follow(key_hash, playbook_id_or_None)`. A change applies to every key that follows the playbook from its next request; stopping following keeps the playbook's rules as the key's own. See [Playbooks](https://anyroute.tech/docs/#playbooks).
+
 ## Decision tags
 
 Tag the model call that informs an order with the SHA-256 of that order. The router signs the hash into the call's receipt, so the order and the receipt together show which model answered before the decision; the router never sees the order. Decision tags are not switched on at anyroute.tech yet: the router records them only when `DECISION_TAGS_ENABLED` is on (`GET /api/v1/status` reports `decision_tags.enabled`), and ignores the header while it is off.

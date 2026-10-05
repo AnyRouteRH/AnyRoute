@@ -4,6 +4,7 @@ from .attestation import ATTEST_SAN_SUFFIX, attest_san_for, digest_hex, evaluate
 from .canonical import canonical_bytes, canonical_json
 from .agent import AgentPolicy, AgentLane, AgentRouteDefault, AgentIntent, AgentReason, AgentDecision, AgentRemaining, AgentRulebook, AgentReplay, AgentReplayExample, AgentPayInput, AgentPayDecision, AgentPayment
 from .agent_errors import AgentPolicyDenied, AgentKilled, AgentApprovalRequired
+from .playbooks import Playbook, PlaybookChange
 from .client import AnyRoute
 from .decision_tag import DECISION_TAG_HEADER, check_decision_tag, decision_tag, receipt_decision_tag, with_decision_tag
 from .errors import AnyRouteError, AttestationRefused, ReceiptInvalid
@@ -16,6 +17,7 @@ __all__ = [
     "AgentPolicy", "AgentLane", "AgentRouteDefault", "AgentIntent", "AgentReason", "AgentDecision", "AgentRemaining", "AgentRulebook", "AgentReplay", "AgentReplayExample",
     "AgentPayInput", "AgentPayDecision", "AgentPayment",
     "AgentPolicyDenied", "AgentKilled", "AgentApprovalRequired",
+    "Playbook", "PlaybookChange",
     "ATTEST_SAN_SUFFIX",
     "AnyRoute",
     "AnyRouteError",

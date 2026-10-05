@@ -32,7 +32,7 @@ export type AgentReplay = {
   actual: { allowed: number; denied: number; asked: number; not_recorded: number }; changed: number;
   examples: AgentReplayExample[]; truncated: boolean; notes: string[];
 };
-export type AgentRulebook = { key_hash: string; name: string | null; policy: AgentPolicy | null; sha256: string | null; killed: boolean; remaining: AgentRemaining; policies: { key_hash: string; inherited: boolean; policy: AgentPolicy; sha256: string; version: number; killed: boolean; killed_at: string | null; killed_reason: string | null; spent: { hour: number; day: number; week: number }; remaining: AgentRemaining }[] };
+export type AgentRulebook = { key_hash: string; name: string | null; policy: AgentPolicy | null; sha256: string | null; /** Present while this key follows a playbook. */ playbook?: { id: string; name: string; version: number }; killed: boolean; remaining: AgentRemaining; policies: { key_hash: string; inherited: boolean; policy: AgentPolicy; sha256: string; version: number; killed: boolean; killed_at: string | null; killed_reason: string | null; spent: { hour: number; day: number; week: number }; remaining: AgentRemaining }[] };
 
 /** Pay another agent: a public profile id or a 0x wallet, a decimal USD amount (USDG, up to 6 decimals), an optional memo digest, and the approval id once an owner approved. */
 export type AgentPayInput = { to: string; amount_usd: string; memo_sha256?: `sha256:${string}`; approval_id?: string };

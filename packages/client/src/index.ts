@@ -40,6 +40,7 @@ export type { E2eeCompletion, E2eeChatBody, E2eeOptions, E2eeAttestationVerifier
 
 export { AgentPolicyDenied, AgentKilled, AgentApprovalRequired } from "./agent-errors.js";
 export type { AgentPolicy, AgentLane, AgentRouteDefault, AgentIntent, AgentReason, AgentDecision, AgentRemaining, AgentRulebook, AgentReplay, AgentReplayExample, AgentPayInput, AgentPayDecision, AgentPayInstructions, AgentPayment, AgentPaymentStatus, AgentSignedDecision } from "./agent.js";
+export type { Playbook, PlaybookChange, PlaybookFollowResult } from "./playbooks.js";
 
 export { verifyRecordCertificate, isRecordCertificate, RECORD_CERTIFICATE_NOTICE } from "./record-certificate.js";
 export type { RecordCertificate, RecordClaim } from "./record-certificate.js";

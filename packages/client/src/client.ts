@@ -1,5 +1,6 @@
 import { agreementClient } from "./agreements.js";
 import { agentClient } from "./agent.js";
+import { playbookClient } from "./playbooks.js";
 import { requestError } from "./agent-errors.js";
 import { e2eeChat, type E2eeChatBody, type E2eeOptions } from "./e2ee.js";
 import { verifyProvider, fetchRouterAttestation, type AttestFetcher, type ExpectedDigests, type ProviderVerification, type QuoteVerifier, type RouterAttestation } from "./attestation.js";
@@ -93,6 +94,8 @@ export type ChatResult = ChatCompletion & { anyroute: AnyRouteMeta };
 export class AnyRoute {
   e2eeChat(body: E2eeChatBody, options: Omit<E2eeOptions, "baseUrl" | "headers" | "fetch">) { return e2eeChat(body, { ...options, baseUrl: this.baseUrl, headers: this.authHeaders(), fetch: this.f }); }
   readonly agent: ReturnType<typeof agentClient>;
+  /** Playbooks: one rulebook many keys follow (management or team owner/admin keys). */
+  readonly playbooks: ReturnType<typeof playbookClient>;
   readonly agreements: ReturnType<typeof agreementClient>;
   readonly baseUrl: string;
   private readonly f: Fetch;
@@ -108,6 +111,7 @@ export class AnyRoute {
     this.f = opts.fetch ?? ((...a: Parameters<Fetch>) => fetch(...a));
     this.agreements = agreementClient(this.baseUrl, this.f, () => ({ ...this.opts.headers, ...this.authHeaders() }));
     this.agent = agentClient(this.baseUrl, this.f, () => ({ ...this.opts.headers, ...this.authHeaders() }));
+    this.playbooks = playbookClient(this.baseUrl, this.f, () => ({ ...this.opts.headers, ...this.authHeaders() }));
     this.keys = opts.receiptKeys ?? null;
     this.transparency = opts.transparency ? new TransparencyLog({ logUrl: this.baseUrl, ...opts.transparency, fetch: this.f, ed25519: opts.ed25519 }) : null;
   }
