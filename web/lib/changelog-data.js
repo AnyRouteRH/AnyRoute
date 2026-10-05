@@ -5,6 +5,93 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "account-on-every-page",
+    "date": "2026-10-05",
+    "title": "Your account, on every page",
+    "summary": "When you are signed in, the header shows your balance and a bell for approvals, alerts and deposits in progress. Approve, deny or check a deposit without leaving the page.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/dashboard/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/509f8dcda3139f1b4d72492d5532041661afbc25"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/e51c3061b8890b1550ff709f72efa67a52196ca9"
+      }
+    ],
+    "tags": [
+      "build",
+      "agents"
+    ]
+  },
+  {
+    "id": "cmdk-actions",
+    "date": "2026-10-05",
+    "title": "Do anything from Cmd-K",
+    "summary": "The site search now runs actions as well as links: add funds, new API key, set a spending limit, stop or resume an agent, open a receipt, switch the chat model and set a default route. Changes keep the same confirm step as their page.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ecb547c516f88295a20ab026d9b65cdc6ec49f63"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/bf7e05d2c66d08b61e0ca30f359f9cab6b9da257"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "one-ui-pass",
+    "date": "2026-10-05",
+    "title": "Chat, Labs and one account layout",
+    "summary": "Harness is now called Chat, account tabs are grouped into five, Stop replaces kill in the interface, and a new Labs page lists what is switched off, read live from status.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/labs/"
+      },
+      {
+        "label": "Open page",
+        "href": "/harness/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/571b4dcebc0f89dbfffe08e2f64205725737ba08"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4827b09df111322a00cba873cc1245ec0104afac"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/b024bd7cc1c4508289d348cb7f70ad95c351e2ed"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/73c18a813ee93cd301f5dd362d98c08e90e98dd9"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/df64b28fdb83f69fbffc737ead338d3bff8c72c5"
+      }
+    ],
+    "tags": [
+      "build",
+      "chat"
+    ]
+  },
+  {
     "id": "starter-setups",
     "date": "2026-10-05",
     "title": "Start your limits from a setup",
@@ -148,7 +235,7 @@ export default [
     "id": "fast-escrow-credit",
     "date": "2026-10-04",
     "title": "$ANYR and stock-token deposits credit in seconds",
-    "summary": "Escrow deposits are credited from the amount seen on chain within seconds, up to $25 per account, and settle when the chain finalizes. USDG deposits already credit in seconds.",
+    "summary": "Escrow deposits are credited from the amount seen on chain within seconds, up to $25 per account, and settle when the chain finalizes.",
     "links": [
       {
         "label": "Open page",
