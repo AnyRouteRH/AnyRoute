@@ -93,3 +93,47 @@ export function chatFromLimits(form) {
   return { session: { name: CHAT_KEY.name, budget_usd: total, ttl_minutes: minutes }, policy: built.policy, errors: [...errors, ...built.errors] };
 }
 
+
+// U104: a key's total budget sits in its spending limits editor, beside the caps. It is the key's own `limit` (USD; blank
+// means none), saved with PATCH /api/v1/keys/:hash as before; the caps and rules stay the key's rulebook. Save writes each
+// through its own existing call, and only the budget when only the budget changed.
+export const KEY_BUDGET = { max: 100_000 };
+export const KEY_BUDGET_WORDS = {
+  label: 'Total budget ($)', title: 'Total budget', save: 'Save total budget',
+  help: 'Optional; blank means no total budget. The most this key can spend, saved on the key itself. Caps apply within it.',
+  error: 'Total budget: enter USD greater than 0 and up to 100,000, or leave it blank for no total budget.',
+  saved: { both: 'Total budget and spending limits saved.', budget: 'Total budget saved.', policy: 'Spending limits saved.' },
+  partial: 'Total budget saved. The spending limits were not saved:',
+};
+export const keyBudgetText = limit => limit == null ? '' : String(limit);
+export const budgetResetText = reset => ({ daily: 'It resets each day.', weekly: 'It resets each week.', monthly: 'It resets each month.' })[reset] || '';
+
+/** Total budget text -> the key's `limit` (null for none), with a readable error. */
+export function keyBudgetFrom(value) {
+  if (blank(value)) return { limit: null, errors: [] };
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 && n <= KEY_BUDGET.max ? { limit: n, errors: [] } : { limit: null, errors: [KEY_BUDGET_WORDS.error] };
+}
+
+/** What Save writes for a key: { limit } for PATCH /api/v1/keys/:hash when the total budget changed, and the rulebook body for
+ *  PUT /api/v1/agents/:key_hash/policy unless only the budget changed. Without a readable rulebook (form null), only the budget. */
+export function keySavePlan({ form, loaded, budget, savedBudget }) {
+  const next = keyBudgetFrom(budget);
+  const built = form ? rulebookFromLimits(form) : null;
+  const errors = [...next.errors, ...(built?.errors || [])];
+  const budgetChanged = !next.errors.length && next.limit !== (savedBudget == null ? null : Number(savedBudget));
+  const rulebookChanged = !!built && (!loaded || JSON.stringify(built.policy) !== JSON.stringify(rulebookFromLimits(loaded).policy));
+  return { budget: budgetChanged ? { limit: next.limit } : null, policy: built && (rulebookChanged || !budgetChanged) ? built.policy : null, errors };
+}
+
+export const keySaveNotice = plan => plan.budget && plan.policy ? KEY_BUDGET_WORDS.saved.both : plan.budget ? KEY_BUDGET_WORDS.saved.budget : KEY_BUDGET_WORDS.saved.policy;
+
+/** Runs a keySavePlan through the existing calls, the budget first. `request` is api() with the signed-in key; `onBudget`
+ *  hears the saved limit, also when the rulebook then fails, so the error can say the budget was saved. */
+export async function saveKeyLimits(request, keyHash, plan, onBudget) {
+  const hash = encodeURIComponent(keyHash);
+  if (plan.budget) { await request('/api/v1/keys/' + hash, { method: 'PATCH', body: plan.budget }); onBudget?.(plan.budget.limit); }
+  if (!plan.policy) return;
+  try { await request('/api/v1/agents/' + hash + '/policy', { method: 'PUT', body: plan.policy }); }
+  catch (error) { if (plan.budget) throw new Error(`${KEY_BUDGET_WORDS.partial} ${error?.message || 'the request could not be completed.'}`); throw error; }
+}

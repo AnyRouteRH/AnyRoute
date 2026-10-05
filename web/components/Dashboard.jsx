@@ -38,6 +38,7 @@ import Tracing from "./features/Tracing";
 import Holders from "./features/Holders";
 import PayAnyrDialog from "./PayAnyr";
 import KeyLimits from "./limits/KeyLimits"; // U102: spending limits for any key.
+import { KEY_BUDGET_WORDS } from "../lib/spending-limits"; // U104: a key's total budget lives in its spending limits.
 
 // Account shell: preserve feature sections and their dashboard hashes.
 const tabId = sectionHash;
@@ -208,25 +209,28 @@ function ReceiptTable({ receipts, onInspect, emptyAction, live, emptyTitle, empt
   );
 }
 
+// U104: creates a key (with an optional starting total budget) or renames one. A live key's total budget is changed
+// afterwards in its Spending limits, beside the caps.
 function KeyDialog({ existing, onSave, onClose, live }) {
   const [name, setName] = useState(existing?.name || "");
   const [budget, setBudget] = useState(existing?.budget == null ? (existing ? "" : "10") : String(existing.budget));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const noun = live ? "key" : "sample key";
+  const withBudget = !existing || !live;
   return (
-    <Modal title={existing ? "Edit " + noun : "Create a " + noun} onClose={onClose}>
+    <Modal title={existing ? (live ? "Rename key" : "Edit " + noun) : "Create a " + noun} onClose={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
-          const n = budget === "" && live ? null : Number(budget);
+          const n = !withBudget || (budget === "" && live) ? null : Number(budget);
           if (!name.trim() || name.length > 60 || (n !== null && (!Number.isFinite(n) || n <= 0 || n > 100000))) {
-            setError("Enter a name (up to 60 characters) and a budget greater than 0, up to 100,000 USDG" + (live ? " (leave empty for no budget limit)." : "."));
+            setError(withBudget ? "Enter a name (up to 60 characters) and a budget greater than 0, up to 100,000 USDG" + (live ? " (leave empty for no budget limit)." : ".") : "Enter a name of up to 60 characters.");
             return;
           }
           setBusy(true);
           try {
-            await onSave({ name: name.trim(), budget: n });
+            await onSave(withBudget ? { name: name.trim(), budget: n } : { name: name.trim() });
           } catch (err) {
             setError(err.message);
             setBusy(false);
@@ -241,12 +245,14 @@ function KeyDialog({ existing, onSave, onClose, live }) {
         <Field label="Key name" id="key-name">
           <input id="key-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required placeholder="e.g. Research agent" autoFocus />
         </Field>
-        <Field label={live ? "Budget / USDG" : "Total sample budget / USDG"} id="key-budget">
-          <input id="key-budget" type="number" min="0.000001" max="100000" step="any" value={budget} onChange={(e) => setBudget(e.target.value)} required={!live} placeholder={live ? "No limit" : undefined} />
-        </Field>
+        {withBudget && (
+          <Field label={live ? KEY_BUDGET_WORDS.label : "Total sample budget / USDG"} id="key-budget">
+            <input id="key-budget" type="number" min="0.000001" max="100000" step="any" value={budget} onChange={(e) => setBudget(e.target.value)} required={!live} placeholder={live ? "No total budget" : undefined} />
+          </Field>
+        )}
         <div className="note">
           {live
-            ? "Sub-keys share this workspace’s USDG balance and stop at their own budget. The secret is shown once; the router stores only its hash."
+            ? (existing ? "" : "Sub-keys share this workspace’s USDG balance and stop at their own budget. The secret is shown once; the router stores only its hash. ") + "Change a key’s total budget and caps in its Spending limits."
             : "Sample keys work only in this browser preview. They cannot authenticate with an API."}
         </div>
         <Button type="submit" disabled={busy}>
@@ -933,6 +939,7 @@ export default function Dashboard() {
     name: k.name || k.label,
     token: k.label,
     budget: k.limit,
+    reset: k.limit_reset ?? null,
     spent: k.usage_period ?? k.usage ?? 0,
     active: !k.disabled,
     chainKeyHash: k.chain_key_hash,
@@ -1042,8 +1049,8 @@ export default function Dashboard() {
       return;
     }
     if (modal.data) {
-      await api("/api/v1/keys/" + modal.data.id, { key: apiKey, method: "PATCH", body: { name: values.name, limit: values.budget } });
-      setNotice("Key updated.");
+      await api("/api/v1/keys/" + modal.data.id, { key: apiKey, method: "PATCH", body: { name: values.name } }); // U104: the budget saves in Spending limits.
+      setNotice("Key renamed.");
     } else {
       const r = await api("/api/v1/keys", { key: apiKey, method: "POST", body: { name: values.name, limit: values.budget } });
       setSecrets((s) => ({ ...s, [r.data.hash]: r.key }));
@@ -1391,7 +1398,7 @@ export default function Dashboard() {
               <div className="panel-heading">
                 <div>
                   <h2>A key for every workload.</h2>
-                  <p className="help-text">{live ? "Budgeted sub-keys share this workspace’s balance. Secrets are shown once. Any key can also have spending limits." : "Local sample keys with enforced sample budgets."}</p>
+                  <p className="help-text">{live ? "Sub-keys share this workspace’s balance. Secrets are shown once. Set each key’s total budget and caps in its Spending limits." : "Local sample keys with enforced sample budgets."}</p>
                 </div>
                 <Button onClick={() => setModal({ type: "key" })}>Create key</Button>
               </div>
@@ -1415,7 +1422,7 @@ export default function Dashboard() {
                       <div className="button-row">
                         <CopyButton text={live ? k.chainKeyHash : k.token} label={live ? "Copy deposit hash" : "Copy sample key"} />
                         <button className="text-button" onClick={() => setModal({ type: "key", data: k })}>
-                          Edit budget
+                          {live ? "Rename" : "Edit budget"}
                         </button>
                         {live && k.active && (
                           <button className="text-button" onClick={() => setModal({ type: "limits", data: k })}>
@@ -1818,7 +1825,7 @@ export default function Dashboard() {
       </AccountShell>
       {modal?.type === "receipt" && <ReceiptDetails receipt={modal.data} apiKey={apiKey} status={status} onClose={() => setModal(null)} />}
       {modal?.type === "key" && <KeyDialog live={live} existing={modal.data} onClose={() => setModal(null)} onSave={saveKeyValues} />}
-      {modal?.type === "limits" && <KeyLimits apiKey={apiKey} keyHash={modal.data.id} name={modal.data.name} current={modal.data.current} onClose={() => setModal(null)} />}
+      {modal?.type === "limits" && <KeyLimits apiKey={apiKey} keyHash={modal.data.id} name={modal.data.name} current={modal.data.current} budget={modal.data.budget} reset={modal.data.reset} spent={modal.data.spent} onSaved={() => refresh().catch(() => {})} onClose={() => setModal(null)} />}
       {modal?.type === "session" && <SessionDialog live={live} tokens={ws?.tokens || []} paywith={ws?.paywith || {}} existing={modal.data} onClose={() => setModal(null)} onSave={saveSession} />}
       {modal?.type === "provider" && (
         <Modal title={modal.data.name} onClose={() => setModal(null)}>

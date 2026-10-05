@@ -6,7 +6,7 @@ import { Button } from '../UI';
 import { api } from '../../lib/api';
 import { LANES } from '../../lib/agents';
 import { GUARD_LIMIT } from '../../lib/agent-guard';
-import { LIMIT_CAPS, GUARD_CAPS, LIMIT_WORDS as W, guardForm } from '../../lib/spending-limits';
+import { LIMIT_CAPS, GUARD_CAPS, LIMIT_WORDS as W, KEY_BUDGET, KEY_BUDGET_WORDS, guardForm } from '../../lib/spending-limits';
 import RouteDefault from './RouteDefault'; // U101
 import StarterSetups from './StarterSetups'; // U103
 import st from './SpendingLimits.module.css';
@@ -27,6 +27,11 @@ export function useAgentGuard() {
 const money = (id, value, set) => <input id={id} type="number" min="0" max="1000000" step="any" inputMode="decimal" value={value ?? ''} onChange={e => set(e.target.value)}/>;
 const lines = (id, value, set) => <textarea id={id} rows={2} value={value ?? ''} onChange={e => set(e.target.value)}/>;
 
+// U104: a key's total budget, shown beside the caps in the dashboard's key editor (and alone when the rulebook is unavailable).
+export function KeyBudgetField({ id, budget }) {
+  return <Field id={`${id}-budget`} label={KEY_BUDGET_WORDS.label} help={budget.help}><input id={`${id}-budget`} type="number" min="0.000001" max={KEY_BUDGET.max} step="any" inputMode="decimal" placeholder="No total budget" value={budget.value ?? ''} onChange={e => budget.onChange(e.target.value)}/></Field>;
+}
+
 export function StopResume({ id, stop, disabled }) {
   const [reason, setReason] = useState('');
   return <fieldset disabled={disabled || stop.busy} className={st.group}><legend>{W.stopTitle}</legend>
@@ -39,12 +44,13 @@ export function StopResume({ id, stop, disabled }) {
 }
 
 // U103: `setups` names the editor (chat, key or agents) for Start from a setup, which fills only the values that editor shows.
-export default function SpendingLimits({ id, value, onChange, disabled = false, compact = false, scope = false, guard = false, setups = null, stop, children }) {
+export default function SpendingLimits({ id, value, onChange, disabled = false, compact = false, scope = false, guard = false, setups = null, budget = null, stop, children }) {
   const set = patch => onChange({ ...value, ...patch });
   const g = value.guard, setGuard = patch => set({ guard: { ...g, ...patch } });
   return <div className={st.limits + (compact ? ' ' + st.compact : '')}>
     {setups && <StarterSetups id={id} view={setups} value={value} onChange={onChange} guard={guard} disabled={disabled}/>}
     <fieldset disabled={disabled} className={st.group}><legend>{W.caps}</legend>
+      {budget && <KeyBudgetField id={id} budget={budget}/>}
       <div className={st.grid}>{LIMIT_CAPS.map(([k, label]) => <Field key={k} id={`${id}-${k}`} label={label}>{money(`${id}-${k}`, value.caps?.[k], v => set({ caps: { ...value.caps, [k]: v } }))}</Field>)}</div>
       <p className="help-text">{W.capsHelp}</p>
     </fieldset>
