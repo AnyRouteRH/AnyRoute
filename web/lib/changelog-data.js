@@ -5,6 +5,232 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "starter-setups",
+    "date": "2026-10-05",
+    "title": "Start your limits from a setup",
+    "summary": "Pick a setup (careful chatbot, trading agent, batch jobs, or proven hardware by default) and it fills the spending limits editor for you to review and save.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#starter-setups"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/09e68c58320b19ae997d9cddf610f0b045daf4b8"
+      }
+    ],
+    "tags": [
+      "agents",
+      "build"
+    ]
+  },
+  {
+    "id": "one-spending-limits-editor",
+    "date": "2026-10-04",
+    "title": "One spending limits editor for chat, agents and API keys",
+    "summary": "Budgets, ask-first amounts and the stop switch use the same editor in the chat, on /agents and for API keys, over the existing rulebook.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#spending-limits"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/fc1dc5f5923434eaf7254bce8d0828d822dbacd6"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "default-privacy-route",
+    "date": "2026-10-05",
+    "title": "Each key can choose its default privacy route",
+    "summary": "A key or agent can send requests that name no route to standard, proven hardware first, or proven hardware only. The x-anyroute-default-route header shows when it applied.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#default-route"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/a53cda264c397a2fa8bdf616142ae6ca5b623d0a"
+      }
+    ],
+    "tags": [
+      "privacy",
+      "build"
+    ]
+  },
+  {
+    "id": "proof-pack",
+    "date": "2026-10-05",
+    "title": "Download a proof pack",
+    "summary": "One download of your calls, signed receipts, refunds and statements for a date range, with a script that checks it offline.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#proof-pack"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/8253073bfa6d41cba60e4176605e948c0841d718"
+      }
+    ],
+    "tags": [
+      "verify"
+    ]
+  },
+  {
+    "id": "route-cards",
+    "date": "2026-10-04",
+    "title": "Route cards where you pick a model",
+    "summary": "The chat model picker and /models show price, routes, health and hardware proof for each model before you choose.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/models/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/9419ee319023de42c26f7c58ffb0874e451b8601"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "request-limits",
+    "date": "2026-10-05",
+    "title": "Clear request limits",
+    "summary": "Request bodies are capped (256 KB on /mcp, up to 20 messages per MCP batch) and traffic without a key is limited per client, with clear 413 and 429 answers. Limits for keys are unchanged.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#limits"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/46f7993ae35d7f4b37c86d426cc188de1671c2dc"
+      }
+    ],
+    "tags": [
+      "build",
+      "fix"
+    ]
+  },
+  {
+    "id": "agent-guard",
+    "date": "2026-10-04",
+    "title": "Agent Guard: agents ask before acting with money",
+    "summary": "Before a payment, trade or other action, an agent asks its rulebook and gets allow, deny or ask the owner; the owner approves on /agents or Telegram and can stop it. Rules apply to actions the agent checks first.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#agent-guard"
+      },
+      {
+        "label": "Open page",
+        "href": "/agents/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/1fc8d32579d105cdd75536ba5b057bdca06b5bf8"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "fast-escrow-credit",
+    "date": "2026-10-04",
+    "title": "$ANYR and stock-token deposits credit in seconds",
+    "summary": "Escrow deposits are credited from the amount seen on chain within seconds, up to $25 per account, and settle when the chain finalizes. USDG deposits already credit in seconds.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#payments"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4359a95eed6d46e8b8233610a41700644fa97493"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "add-funds-plain-words",
+    "date": "2026-10-04",
+    "title": "Add funds says what you will get",
+    "summary": "The add-funds card shows the credit rate in plain words, an estimate for the amount you type and the per-deposit limit.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/docs/#payments"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ffa3b73eeb9efa02aee264cd1939afe038cd8b43"
+      }
+    ],
+    "tags": [
+      "fix"
+    ]
+  },
+  {
+    "id": "models-temporarily-unavailable",
+    "date": "2026-10-04",
+    "title": "Models show when their provider is out of credit",
+    "summary": "When an upstream provider account runs out of credit, its models are marked temporarily unavailable instead of failing when you send, and requests use another provider where one exists.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/models/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/808eb9003d67324067ebaa35352580621226c0ba"
+      }
+    ],
+    "tags": [
+      "chat",
+      "fix"
+    ]
+  },
+  {
+    "id": "pay-with-zkapi",
+    "date": "2026-10-04",
+    "title": "Pay with zkAPI on Sepolia (pilot)",
+    "summary": "A Sepolia pilot: fund an ETH note with testnet ETH, prove the payment in your browser, make one capped call and withdraw. Your funding wallet is kept apart from your AI calls; calls within a lease are linked. Unaudited.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/zkapi/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/7e652dd074cda57a109b936c0d248c22576ca9a3"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/2e96827dfe9d6b15aecbfbaaa8c0529b1b09f228"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/7b208f2e81d3a2d091c05dd880edfe36d309d18a"
+      }
+    ],
+    "tags": [
+      "build",
+      "privacy"
+    ]
+  },
+  {
     "id": "docs-match-status",
     "date": "2026-10-03",
     "title": "Status reports agreements, and the docs follow status",
