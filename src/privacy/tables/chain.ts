@@ -37,7 +37,7 @@ export const chainTables: Record<string, TableDoc> = {
 
   escrow_deposits: {
     category: "chain",
-    purpose: "Stock Token and $ANYR transfers into the escrow wallet: one row per transfer, its price, its status and whether it was credited.",
+    purpose: "Stock Token, $ANYR and USDG transfers into the escrow wallet: one row per transfer, its price, its status and whether it was credited.",
     request: "no",
     retention: KEPT,
     columns: {
@@ -55,7 +55,7 @@ export const chainTables: Record<string, TableDoc> = {
       status: "pending_finality, pending, provisional (credited while settling), credited, orphaned or reversed.",
       block_hash: "The block hash when recorded; the credit is checked against it.",
       account_id: "The account it was credited to.",
-      price18: "USD per whole token at 18 decimals, as read from the price feed.",
+      price18: "USD per whole token at 18 decimals, as read from the price feed (USDG: exactly 1, credited at par).",
       price_updated_at: "When the feed last updated.",
       credited: "The pico-USD credited after the haircut.",
       error: {

@@ -20,7 +20,7 @@ import { holdersStatus } from "../holders/tiers.ts";
 import { laneSummary } from "./models.ts";
 import { allowanceProposal, allowanceView, chargeProposals, fairPrice, forgetAllowance, openDebt, rawToPico, saveAllowance, signCharge, statement, typedDataJson } from "../pay/paywith.ts";
 import { PayWithStockAbi, erc20Abi } from "../chain/abis.ts";
-import { acceptedTokens, anyrSummary, escrowEnabled } from "../pay/escrow.ts";
+import { acceptedTokens, anyrSummary, escrowEnabled, usdgSummary } from "../pay/escrow.ts";
 import { X402_VERSIONS, x402Enabled } from "../pay/x402.ts";
 import { RECOVERY_TTL_MS, recoveryMessage } from "../pay/recovery.ts";
 import { facilitatorStatus } from "../facilitator/routes.ts"; // v6 F
@@ -345,8 +345,9 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         settlement: { spent_root_interval_ms: ctx.cfg.workers.settlementIntervalMs },
         fees: { prepaid_bps: 0, per_call_margin_bps: ctx.cfg.fees.perCallMarginBps, provider_fee_bps: ctx.cfg.fees.providerFeeBps, byok_fee_bps: ctx.cfg.fees.byokFeeBps },
         paywith: { tokens: ctx.cfg.paywith.tokens.map((t) => t.symbol), configured: !!ctx.cfg.chain.payWithStock },
-        // Escrow payments: the tokens it credits, the Stock Token haircut, and $ANYR's own terms (null when not accepted).
-        escrow: { enabled: escrowEnabled(ctx), tokens: escrowEnabled(ctx) ? acceptedTokens(ctx).map((t) => t.symbol) : [], haircut_bps: ctx.cfg.escrow.haircutBps, anyr: anyrSummary(ctx) },
+        // Escrow payments: the tokens it credits, the Stock Token haircut, $ANYR's own terms (null when not accepted)
+        // and whether USDG is credited 1:1 (usdg.enabled; its haircut and per-deposit limit are null while off).
+        escrow: { enabled: escrowEnabled(ctx), tokens: escrowEnabled(ctx) ? acceptedTokens(ctx).map((t) => t.symbol) : [], haircut_bps: ctx.cfg.escrow.haircutBps, anyr: anyrSummary(ctx), usdg: usdgSummary(ctx) },
         ...(ctx.cfg.agentGuardEnabled ? { agent_guard: { enabled: true } } : {}), // V98: preserve status bytes while off
         per_call: {
           configured: !!ctx.cfg.chain.callPay || x402Enabled(ctx),

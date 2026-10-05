@@ -213,6 +213,14 @@ const schema = z.object({
   ANYR_ESCROW_MAX_USD_PER_DEPOSIT: num(250),
   ANYR_ESCROW_MAX_DEVIATION: opt, // no price while spot is further than this from the average; default BUYBACK_MAX_DEVIATION
 
+  // Add funds with USDG in escrow (off unless USDG_ESCROW_ENABLED). USDG (USDG_ADDRESS, 6 decimals, checked against the
+  // token contract before anything is credited) sent to ESCROW_ADDRESS is credited 1:1 at par, with no price feed, under
+  // the same finality, reorganization and idempotency rules, minus USDG_ESCROW_HAIRCUT_BPS, and credited at most
+  // USDG_ESCROW_MAX_USD_PER_DEPOSIT per deposit (the rest is flagged for operator review, as for ANYR).
+  USDG_ESCROW_ENABLED: bool.default(false),
+  USDG_ESCROW_HAIRCUT_BPS: int(0),
+  USDG_ESCROW_MAX_USD_PER_DEPOSIT: num(1000),
+
   // Routing / health
   OUTAGE_WINDOW_MS: int(30_000),
   HEALTH_PROBE_INTERVAL_MS: int(15_000),
@@ -619,6 +627,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   if (councilModels.length && (councilModels.length < 2 || councilModels.length > 5 || new Set(councilModels).size !== councilModels.length))
     throw new Error("ANYROUTE_COUNCIL_MODELS must list 2 to 5 distinct model ids.");
   const anyrEscrow = anyrEscrowConfig(e, lower);
+  const usdgEscrow = usdgEscrowConfig(e, lower, anyrEscrow);
   const holders = holderSettings(e, anyrEscrow);
   return {
     fastCredit: fastCreditSettings(e), // V97
@@ -737,6 +746,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       reorgHorizonBlocks: e.ESCROW_REORG_HORIZON_BLOCKS,
     },
     anyrEscrow, // null unless ANYR_TOKEN_ADDRESS is set
+    usdgEscrow, // null unless USDG_ESCROW_ENABLED
     routing: {
       outageWindowMs: e.OUTAGE_WINDOW_MS,
       probeIntervalMs: e.HEALTH_PROBE_INTERVAL_MS,
@@ -1353,6 +1363,27 @@ function anyrEscrowConfig(e: Env, stockAddresses: string[]): AnyrEscrow | null {
   }
   if (at !== e.USDG_ADDRESS?.toLowerCase()) throw new Error("ANYR_POOL_LEGS must end in USDG (USDG_ADDRESS).");
   return { address, symbol: e.ANYR_TOKEN_SYMBOL, decimals: e.ANYR_TOKEN_DECIMALS, haircutBps: e.ANYR_ESCROW_HAIRCUT_BPS, maxUsdPerDeposit: e.ANYR_ESCROW_MAX_USD_PER_DEPOSIT, maxDeviation, legs };
+}
+
+// ---- Add funds with USDG in escrow -------------------------------------------------------------
+// Balances are USDG-denominated, so USDG is credited 1:1 at par: no feed or pool is read. Its decimals are fixed
+// at 6 and checked against the token contract before anything is credited, like every escrow token.
+export const USDG_ESCROW_DECIMALS = 6;
+export type UsdgEscrow = { address: `0x${string}`; symbol: "USDG"; decimals: number; haircutBps: number; maxUsdPerDeposit: number };
+
+function usdgEscrowConfig(e: Env, stockAddresses: string[], anyr: AnyrEscrow | null): UsdgEscrow | null {
+  if (e.USDG_ESCROW_HAIRCUT_BPS < 0 || e.USDG_ESCROW_HAIRCUT_BPS >= 10_000) throw new Error("USDG_ESCROW_HAIRCUT_BPS must be between 0 and 9999.");
+  if (!(e.USDG_ESCROW_MAX_USD_PER_DEPOSIT > 0) || !Number.isFinite(e.USDG_ESCROW_MAX_USD_PER_DEPOSIT)) throw new Error("USDG_ESCROW_MAX_USD_PER_DEPOSIT must be a positive USD amount.");
+  if (!e.USDG_ESCROW_ENABLED) return null;
+  if (!e.USDG_ADDRESS || /^0x0{40}$/.test(e.USDG_ADDRESS)) throw new Error("USDG_ESCROW_ENABLED requires USDG_ADDRESS.");
+  const address = e.USDG_ADDRESS.toLowerCase() as `0x${string}`;
+  // A feed-priced copy would credit USDG at whatever the feed says instead of at par.
+  if (stockAddresses.includes(address)) throw new Error("USDG_ADDRESS is also listed in ESCROW_TOKENS; with USDG_ESCROW_ENABLED it is credited at par, never through a price feed.");
+  if (anyr?.address === address) throw new Error("USDG_ADDRESS and ANYR_TOKEN_ADDRESS must be different tokens.");
+  // Every USDG transfer into ESCROW_ADDRESS is credited to its sender, so x402 settlements must land elsewhere.
+  if (e.ESCROW_ADDRESS && e.X402_PAY_TO && e.ESCROW_ADDRESS.toLowerCase() === e.X402_PAY_TO.toLowerCase())
+    throw new Error("USDG_ESCROW_ENABLED needs X402_PAY_TO to differ from ESCROW_ADDRESS: x402 payments sent there would also be credited as deposits.");
+  return { address, symbol: "USDG", decimals: USDG_ESCROW_DECIMALS, haircutBps: e.USDG_ESCROW_HAIRCUT_BPS, maxUsdPerDeposit: e.USDG_ESCROW_MAX_USD_PER_DEPOSIT };
 }
 
 // ---- Contract-path launch guards ---------------------------------------------------------------

@@ -14,10 +14,10 @@ export async function readFunnel(db: Db, days = 30, now = new Date()): Promise<F
         AND EXISTS (SELECT 1 FROM keys k WHERE k.account_id = a.id AND k.management AND k.created_at = a.created_at)
       UNION ALL
       SELECT date_trunc('day', l.created_at AT TIME ZONE 'UTC')::date, 'deposit'
-      FROM ledger l WHERE l.kind IN ('deposit', 'stock_deposit', 'anyr_deposit') AND l.amount > 0
+      FROM ledger l WHERE l.kind IN ('deposit', 'stock_deposit', 'anyr_deposit', 'usdg_deposit') AND l.amount > 0
         AND l.created_at >= ${start} AND l.created_at < ${end}
         AND NOT EXISTS (SELECT 1 FROM ledger old WHERE old.account_id = l.account_id
-          AND old.kind IN ('deposit', 'stock_deposit', 'anyr_deposit') AND old.amount > 0
+          AND old.kind IN ('deposit', 'stock_deposit', 'anyr_deposit', 'usdg_deposit') AND old.amount > 0
           AND (old.created_at, old.id) < (l.created_at, l.id))
       UNION ALL
       SELECT date_trunc('day', g.ts AT TIME ZONE 'UTC')::date, 'call'

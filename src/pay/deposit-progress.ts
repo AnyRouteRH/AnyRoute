@@ -88,7 +88,7 @@ export async function accountDeposits(ctx: Ctx, accountId: string) {
       const verdict = await verifyForCredit(ctx, row);
       if (!verdict.ok) stage = verdict.unknown ? "checking" : "orphaned";
     }
-    deposits.push({ ...base("escrow", row.txHash, row.logIndex, row.blockNumber), symbol: row.symbol === "ANYR" ? "$ANYR" : row.symbol, amount: tok ? formatUnits(BigInt(row.rawAmount), tok.decimals) : null, from_address: row.fromAddress, worth_usd: worth, worth_fixed: !!row.price18, credited_usd: row.credited != null ? picoToUsd(row.credited) : 0, stage, note: row.error, capped: d?.capped || !!row.reviewReason });
+    deposits.push({ ...base("escrow", row.txHash, row.logIndex, row.blockNumber), symbol: row.symbol === "ANYR" ? "$ANYR" : row.symbol, amount: tok ? formatUnits(BigInt(row.rawAmount), tok.decimals) : null, from_address: row.fromAddress, worth_usd: worth, worth_fixed: !!row.price18 || tok?.kind === "usdg", credited_usd: row.credited != null ? picoToUsd(row.credited) : 0, stage, note: row.error, capped: d?.capped || !!row.reviewReason });
   }
   for (const e of [...usdLogs.values()].sort((a, b) => a.blockNumber > b.blockNumber ? -1 : 1).slice(0, 50)) {
     const [posted] = await ctx.db.select({ amount: ledger.amount }).from(ledger).where(and(eq(ledger.accountId, accountId), eq(ledger.ref, `dep:${e.txHash}:${e.logIndex}`)));

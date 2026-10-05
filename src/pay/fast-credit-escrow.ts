@@ -1,7 +1,7 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import { escrowDeposits } from "../db/schema.ts";
-import { acceptedTokens, escrowCredit, escrowAccountId, tokenPrice, verifyForCredit, type EscrowFinal } from "./escrow.ts";
+import { acceptedTokens, depositKinds, escrowCredit, escrowAccountId, tokenPrice, verifyForCredit, type EscrowFinal } from "./escrow.ts";
 import { applyFastDeposit, fastCreditActive, fastDepositKey, readFastDeposit, reverseFastDeposit, type FastDeposit } from "./fast-credit-state.ts";
 
 /** Uses the final path's allowlist, decimals guard, receipt check, price and per-deposit ceiling. */
@@ -30,8 +30,8 @@ export async function creditFastEscrow(ctx: Ctx, fin: EscrowFinal) {
       id, lane: "escrow", accountId: escrowAccountId(row.fromAddress), wallet: row.fromAddress,
       txHash: row.txHash, logIndex: row.logIndex, block: row.blockNumber.toString(), hash: verdict.blockHash,
       total: total.toString(), provisional: "0", status: "provisional", price18: price.price18.toString(), priceAt: price.updatedAt, capped: total < full,
-      ref: `escrow:${row.id}`, kind: token.kind === "anyr" ? "anyr_deposit" : "stock_deposit",
-      reversalRef: `escrow-reversal:${row.id}`, reversalKind: token.kind === "anyr" ? "anyr_deposit_reversal" : "stock_deposit_reversal",
+      ref: `escrow:${row.id}`, kind: depositKinds(token.kind).credit,
+      reversalRef: `escrow-reversal:${row.id}`, reversalKind: depositKinds(token.kind).reversal,
     };
     await applyFastDeposit(ctx, candidate, final, async (tx, d) => {
       const [current] = await tx.select().from(escrowDeposits).where(eq(escrowDeposits.id, row.id)).for("update");

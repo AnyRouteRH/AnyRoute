@@ -3,7 +3,7 @@ import { fastCreditFields } from "./fast-credit-state.ts"; // V97
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { Hex } from "viem";
 import type { Ctx } from "../context.ts";
-import type { AnyrEscrow } from "../config.ts";
+import type { AnyrEscrow, UsdgEscrow } from "../config.ts";
 import type { EscrowFinality, EscrowTransfer } from "../chain/service.ts";
 import { TwapError, v4Twap } from "../chain/twap.ts";
 import type { Db, Tx } from "../db/client.ts";
@@ -24,6 +24,10 @@ import { rawToPico } from "./paywith.ts";
 // lower of spot and the time-weighted average), minus its own ANYR_ESCROW_HAIRCUT_BPS. No trustworthy
 // price leaves the deposit pending. One deposit is credited at most ANYR_ESCROW_MAX_USD_PER_DEPOSIT: the
 // rest is not credited, and the deposit is flagged for operator review (refund or credit it by hand).
+//
+// USDG (when USDG_ESCROW_ENABLED) is accepted the same way too, and credited 1:1 at par: balances are USDG-denominated,
+// so no feed or pool is read. It has its own USDG_ESCROW_HAIRCUT_BPS (default 0) and per-deposit limit
+// (USDG_ESCROW_MAX_USD_PER_DEPOSIT), with the same operator review above it.
 //
 // A credit must never outlive the transfer that paid for it, so:
 // - Only blocks at or below the chain's finality point (ESCROW_FINALITY, with CHAIN_CONFIRMATIONS as an
@@ -53,21 +57,31 @@ type Deposit = typeof escrowDeposits.$inferSelect;
 type Checkpoint = { block: bigint; hash: string };
 type Verdict = { ok: true; blockNumber: bigint; blockHash: string } | { ok: false; reason: string; unknown?: boolean };
 
-export const escrowEnabled = (ctx: Ctx) => !!ctx.cfg.escrow.address && (ctx.cfg.escrow.tokens.length > 0 || !!ctx.cfg.anyrEscrow);
+export const escrowEnabled = (ctx: Ctx) => !!ctx.cfg.escrow.address && (ctx.cfg.escrow.tokens.length > 0 || !!ctx.cfg.anyrEscrow || !!ctx.cfg.usdgEscrow);
 export const escrowAccountId = (wallet: string) => `w_${wallet.toLowerCase().slice(2)}`;
 
-/** A token escrow accepts: a Stock Token priced by its Chainlink feed, or $ANYR priced from its pools. */
+/** A token escrow accepts: a Stock Token priced by its Chainlink feed, $ANYR priced from its pools, or USDG at par. */
 export type AcceptedToken = { symbol: string; address: string; decimals: number; haircutBps: number } & (
   | { kind: "stock"; feed: string; maxCredit: null }
   | { kind: "anyr"; anyr: AnyrEscrow; maxCredit: Pico }
+  | { kind: "usdg"; usdg: UsdgEscrow; maxCredit: Pico }
 );
 
 export function acceptedTokens(ctx: Ctx): AcceptedToken[] {
-  const stocks: AcceptedToken[] = ctx.cfg.escrow.tokens.map((t) => ({ symbol: t.symbol, address: t.address, decimals: t.decimals, haircutBps: ctx.cfg.escrow.haircutBps, kind: "stock", feed: t.feed, maxCredit: null }));
+  const tokens: AcceptedToken[] = ctx.cfg.escrow.tokens.map((t) => ({ symbol: t.symbol, address: t.address, decimals: t.decimals, haircutBps: ctx.cfg.escrow.haircutBps, kind: "stock", feed: t.feed, maxCredit: null }));
   const a = ctx.cfg.anyrEscrow;
-  if (!a) return stocks;
-  return [...stocks, { symbol: a.symbol, address: a.address, decimals: a.decimals, haircutBps: a.haircutBps, kind: "anyr", anyr: a, maxCredit: usdToPico(a.maxUsdPerDeposit, "floor") }];
+  if (a) tokens.push({ symbol: a.symbol, address: a.address, decimals: a.decimals, haircutBps: a.haircutBps, kind: "anyr", anyr: a, maxCredit: usdToPico(a.maxUsdPerDeposit, "floor") });
+  const u = ctx.cfg.usdgEscrow;
+  if (u) tokens.push({ symbol: u.symbol, address: u.address, decimals: u.decimals, haircutBps: u.haircutBps, kind: "usdg", usdg: u, maxCredit: usdToPico(u.maxUsdPerDeposit, "floor") });
+  return tokens;
 }
+
+/** Ledger kinds for a token's credit and its reversal (USDG has its own, so statements and counts can tell them apart). */
+export const depositKinds = (kind: AcceptedToken["kind"]) =>
+  kind === "anyr" ? { credit: "anyr_deposit", reversal: "anyr_deposit_reversal" } : kind === "usdg" ? { credit: "usdg_deposit", reversal: "usdg_deposit_reversal" } : { credit: "stock_deposit", reversal: "stock_deposit_reversal" };
+
+/** USDG is worth exactly $1: balances are USDG-denominated, so it is never priced through a feed or pool. */
+export const usdgParPrice = (): EscrowPrice => ({ price18: 10n ** 18n, updatedAt: Math.floor(Date.now() / 1000) });
 const acceptedToken = (ctx: Ctx, address: string) => acceptedTokens(ctx).find((t) => t.address.toLowerCase() === address.toLowerCase());
 
 type PriceEntry = { at: number; price: EscrowPrice | null; quote?: AnyrQuote };
@@ -225,11 +239,13 @@ export function peekAnyrQuote(ctx: Ctx): AnyrQuote | null {
   return hit?.quote ?? null;
 }
 
-export const tokenPrice = (ctx: Ctx, t: AcceptedToken) => (t.kind === "anyr" ? anyrEscrowPrice(ctx, t.anyr) : escrowPrice(ctx, t.feed));
+export const tokenPrice = async (ctx: Ctx, t: AcceptedToken): Promise<EscrowPrice | null> =>
+  t.kind === "usdg" ? usdgParPrice() : t.kind === "anyr" ? anyrEscrowPrice(ctx, t.anyr) : escrowPrice(ctx, t.feed);
 
 export type PriceReason = { code: AnyrPriceFailure | "feed_stale"; message: string };
 /** A token's price and, when there is none, why (so a deposit that waits can say what it waits for). */
 async function tokenPricing(ctx: Ctx, t: AcceptedToken): Promise<{ price: EscrowPrice | null; reason: PriceReason | null }> {
+  if (t.kind === "usdg") return { price: usdgParPrice(), reason: null };
   if (t.kind === "anyr") {
     const { price, quote } = await anyrEscrowQuote(ctx, t.anyr);
     return { price, reason: quote.available ? null : { code: quote.code, message: quote.message } };
@@ -517,7 +533,7 @@ export async function creditEscrowDeposits(ctx: Ctx, fin?: EscrowFinal) {
         await post(tx, {
           accountId,
           amount,
-          kind: tok.kind === "anyr" ? "anyr_deposit" : "stock_deposit",
+          kind: depositKinds(tok.kind).credit,
           ref: `escrow:${d.id}`,
           description: `${formatRaw(raw, tok.decimals)} ${tok.symbol} sent to escrow (${d.txHash})${over ? `; credited up to the $${over.limit} per-deposit limit` : ""}`,
         });
@@ -541,6 +557,12 @@ export async function creditEscrowDeposits(ctx: Ctx, fin?: EscrowFinal) {
   return { credited, waiting, orphaned };
 }
 
+/** The kind a recorded deposit was credited as; USDG keeps its own after USDG_ESCROW_ENABLED is switched off. */
+const recordedKind = (ctx: Ctx, token: string): AcceptedToken["kind"] =>
+  token === ctx.cfg.anyrEscrow?.address ? "anyr"
+  : ctx.cfg.escrow.tokens.some((t) => t.address.toLowerCase() === token) ? "stock"
+  : token === (ctx.cfg.usdgEscrow?.address ?? ctx.cfg.chain.usdg?.toLowerCase()) ? "usdg" : "stock";
+
 /** Post the compensating debit for a credit whose transfer left the canonical chain. Idempotent. */
 async function reverse(ctx: Ctx, d: Deposit, reason: string) {
   const out = await ctx.db.transaction(async (tx) => {
@@ -550,7 +572,7 @@ async function reverse(ctx: Ctx, d: Deposit, reason: string) {
     const accountId = row.accountId ?? escrowAccountId(row.fromAddress);
     if (amount > 0n) {
       await ensureAccount(tx, accountId, "wallet", row.fromAddress);
-      const kind = row.token === ctx.cfg.anyrEscrow?.address ? "anyr_deposit_reversal" : "stock_deposit_reversal";
+      const kind = depositKinds(recordedKind(ctx, row.token)).reversal;
       await post(tx, { accountId, amount: -amount, kind, ref: `escrow-reversal:${row.id}`, description: `Reversed ${row.symbol} escrow credit: ${reason} (${row.txHash})` });
     }
     await tx
@@ -645,8 +667,8 @@ export async function escrowInfo(ctx: Ctx) {
           symbol: t.symbol,
           address: t.address.toLowerCase(),
           decimals: t.decimals,
-          // chainlink: the token's feed; twap: the lower of spot and the time-weighted average of its pools
-          price_source: t.kind === "anyr" ? ("twap" as const) : ("chainlink" as const),
+          // chainlink: the token's feed; twap: the lower of spot and the time-weighted average of its pools; par: USDG, 1:1
+          price_source: t.kind === "anyr" ? ("twap" as const) : t.kind === "usdg" ? ("par" as const) : ("chainlink" as const),
           price_usd: price ? Number(rawToPico(one, t.decimals, price.price18)) / 1e12 : null,
           credit_usd_per_token: price ? Number(escrowCredit(ctx, one, t.decimals, price.price18, t.haircutBps)) / 1e12 : null,
           price_updated_at: price ? new Date(price.updatedAt * 1000).toISOString() : null,
@@ -654,7 +676,7 @@ export async function escrowInfo(ctx: Ctx) {
           price_reason: reason,
           haircut_bps: t.haircutBps,
           // The most one deposit is credited (null: no limit); the rest is held for operator review.
-          max_usd_per_deposit: t.kind === "anyr" ? t.anyr.maxUsdPerDeposit : null,
+          max_usd_per_deposit: t.kind === "anyr" ? t.anyr.maxUsdPerDeposit : t.kind === "usdg" ? t.usdg.maxUsdPerDeposit : null,
         };
       }),
     ),
@@ -718,6 +740,13 @@ export async function escrowDepositsFor(ctx: Ctx, accountId: string, limit = 50)
       at: (d.reversedAt ?? d.creditedAt ?? d.createdAt).toISOString(),
     };
   });
+}
+
+/** USDG escrow terms for public status: whether USDG sent to escrow is credited 1:1, its haircut and per-deposit limit. */
+export function usdgSummary(ctx: Ctx) {
+  const u = ctx.cfg.usdgEscrow;
+  if (!u || !escrowEnabled(ctx)) return { enabled: false, haircut_bps: null, max_usd_per_deposit: null };
+  return { enabled: true, haircut_bps: u.haircutBps, max_usd_per_deposit: u.maxUsdPerDeposit };
 }
 
 /** $ANYR escrow terms for public status and payment instructions; null when ANYR is not accepted. */
