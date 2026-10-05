@@ -4,6 +4,7 @@ const sections = [
   ["lane-report", "Lane report"],
   ["starter-setups", "Starter setups"],
   ["auto-topup", "Auto top-up"],
+  ["replay-rules", "Replay your rules"],
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
   ["trading-agents", "Trading agents"],

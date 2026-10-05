@@ -2635,6 +2635,91 @@
         ]
       }
     },
+    "/api/v1/agents/{key_hash}/replay": {
+      "post": {
+        "operationId": "replayAgentPolicy",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Replay a draft rulebook on the last days of recorded activity",
+        "description": "Same permissions as setting that key’s rulebook. Evaluates the draft against up to 5,000 of the key’s recorded calls (its own and its session keys’: model, lane, cost, tokens and time, never the text) and Agent Guard checks in the window, oldest first, with running caps, calls per hour, windows, breakers, autonomy and Stop. Read only: nothing is saved, charged or changed. Ten a minute per calling key. What the record cannot tell is listed in notes. Off returns 404.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "policy"
+                ],
+                "properties": {
+                  "policy": {
+                    "$ref": "#/components/schemas/AgentPolicy"
+                  },
+                  "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 7,
+                    "default": 7
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/AgentReplay"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
     "/api/v1/agents/{key_hash}/events": {
       "get": {
         "operationId": "agentEvents",
@@ -17286,6 +17371,197 @@
       }
     },
     "schemas": {
+      "AgentReplay": {
+        "type": "object",
+        "required": [
+          "window",
+          "evaluated",
+          "allowed",
+          "denied",
+          "asked",
+          "by_reason",
+          "actual",
+          "changed",
+          "examples",
+          "truncated",
+          "notes"
+        ],
+        "properties": {
+          "window": {
+            "type": "object",
+            "required": [
+              "from",
+              "to",
+              "days"
+            ],
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "days": {
+                "type": "integer"
+              }
+            }
+          },
+          "evaluated": {
+            "type": "integer"
+          },
+          "allowed": {
+            "type": "integer"
+          },
+          "denied": {
+            "type": "integer"
+          },
+          "asked": {
+            "type": "integer",
+            "description": "Sent to ask me first; counted as not run."
+          },
+          "stopped_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Present when the draft would have stopped the key; every later call is refused."
+          },
+          "stopped_reason": {
+            "type": "string"
+          },
+          "by_reason": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "actual": {
+            "type": "object",
+            "description": "What happened to the same calls and actions. not_recorded counts calls that ran with no rulebook decision.",
+            "required": [
+              "allowed",
+              "denied",
+              "asked",
+              "not_recorded"
+            ],
+            "properties": {
+              "allowed": {
+                "type": "integer"
+              },
+              "denied": {
+                "type": "integer"
+              },
+              "asked": {
+                "type": "integer"
+              },
+              "not_recorded": {
+                "type": "integer"
+              }
+            }
+          },
+          "changed": {
+            "type": "integer",
+            "description": "Calls and actions whose replayed decision differs from the recorded one."
+          },
+          "examples": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "required": [
+                "time",
+                "kind",
+                "model",
+                "lane",
+                "action",
+                "cost_usd",
+                "decision",
+                "reason",
+                "actual"
+              ],
+              "properties": {
+                "time": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "kind": {
+                  "enum": [
+                    "call",
+                    "action"
+                  ]
+                },
+                "model": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "lane": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "action": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cost_usd": {
+                  "type": "number"
+                },
+                "decision": {
+                  "enum": [
+                    "allow",
+                    "deny",
+                    "approval_required"
+                  ]
+                },
+                "reason": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "actual": {
+                  "enum": [
+                    "allow",
+                    "deny",
+                    "approval_required",
+                    null
+                  ]
+                }
+              }
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "FacilitatorPaymentRequest": {
         "type": "object",
         "required": [

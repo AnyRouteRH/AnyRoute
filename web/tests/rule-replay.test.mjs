@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { REPLAY_DAYS, REPLAY_WORDS as W, REPLAY_OUTCOMES, replayActualText, replayBar, replayCompareText, replayExamples, replayHeadline, replayReasonText, replayReasons, replayStale, replayStopText, runReplay } from '../lib/rule-replay.js';
+import { TASKS } from '../lib/site-map.js';
 
 // Replay your rules: the display logic for POST /api/v1/agents/:key_hash/replay in the shared spending limits editor.
 const read = file => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
@@ -96,6 +97,7 @@ test('Replay last 7 days sits beside Save wherever the editor edits a saved key 
   assert.match(agents, /<Button type="submit" disabled=\{busy\}>\{W\.save\}<\/Button><ReplayButton replay=\{replay\}/);
   assert.match(agents, /<SpendingLimits id="rulebook"[^>]* onReplay=\{replaySetup\}>/);
   assert.match(agents, /<ReplayResult id="replay-rules" replay=\{replay\} current=\{built\.policy\}\/>/);
+  assert.match(agents, /<p id="replay-rules" className="note">/); // the search task's anchor before an agent is selected
   const key = read('components/limits/KeyLimits.jsx');
   assert.match(key, /<Button type="submit" disabled=\{view\.busy\}>\{W\.save\}<\/Button><ReplayButton replay=\{replay\}/);
   assert.match(key, /<SpendingLimits key=\{revision\}[^>]* onReplay=\{replaySetup\}/);
@@ -109,10 +111,24 @@ test('Replay last 7 days sits beside Save wherever the editor edits a saved key 
   assert.match(component, /aria-live="polite"/); assert.doesNotMatch(component, /method:|fetch\(/); // only runReplay calls the router
 });
 
+test('docs, the feature index and search point at Replay your rules', () => {
+  const page = read('app/docs/page.jsx');
+  assert.match(page, /<SpendingLimitsDocs \/><DefaultRouteDocs \/><StarterSetupsDocs \/>(?:<\w+Docs \/>)*<ReplayRulesDocs \/>/); // in the spending limits group
+  assert.equal(page.split('<ReplayRulesDocs />').length - 1, 1);
+  assert.match(read('components/DocsFeatureIndex.jsx'), /\["starter-setups", "Starter setups"\],\n(?: {2}\[[^\n]*\],\n)* {2}\["replay-rules", "Replay your rules"\]/);
+  const docs = read('components/ReplayRulesDocs.jsx');
+  assert.match(docs, /<section id="replay-rules"><h2>Replay your rules<\/h2>/);
+  for (const phrase of ['POST /api/v1/agents/:key_hash/replay', '5,000', 'read-only database transaction', 'ten replays a minute per key', 'client.agent.replay(keyHash, policy)', '{W.done}', '{W.setup}']) assert.ok(docs.includes(phrase), phrase);
+  const task = TASKS.find(item => item.id === 'replay-rules');
+  assert.deepEqual([task.title, task.href, task.group, task.menu], ['Replay a rulebook on last week', '/agents/#replay-rules', 'agents', false]);
+});
+
 test('public wording: replay, Stop, nothing that sounds unreal or like a return', () => {
   const banned = new RegExp(String.raw`\b(?:${['de' + 'mo', 'te' + 'st', 'te' + 'sted', 'mo' + 'ck', 'simu' + 'lated', 'simu' + 'lation', 'place' + 'holder', 'fix' + 'ture', 'lo' + 'cal', 'ki' + 'll', 'ki' + 'lled', 'ea' + 'rn', 'yi' + 'eld', 'A' + 'PY', 'ret' + 'urns', 'pri' + 'vate', 'x4' + '02'].join('|')})\b|no lo` + 'gs', 'i');
-  for (const file of ['lib/rule-replay.js', 'components/limits/ReplayRules.jsx']) {
+  for (const file of ['lib/rule-replay.js', 'components/limits/ReplayRules.jsx', 'components/ReplayRulesDocs.jsx']) {
     const copy = read(file).replace(/import[^\n]*\n/g, '').replace(/'killed'|killed:/g, ''); // the router's reason code, shown in words
     assert.doesNotMatch(copy, banned, file);
   }
+  const task = TASKS.find(item => item.id === 'replay-rules');
+  assert.doesNotMatch([task.title, task.description, ...task.keywords].join(' '), banned);
 });
