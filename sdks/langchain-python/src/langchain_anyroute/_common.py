@@ -7,7 +7,7 @@ import os
 from collections.abc import Mapping
 from typing import Any, Literal
 
-ANYROUTE_BASE_URL = "https://api-production-70da.up.railway.app/api/v1"
+ANYROUTE_BASE_URL = "https://anyroute.tech/api/v1"
 """The public Anyroute router. Point `base_url` (or ANYROUTE_BASE_URL) elsewhere to use a self-hosted router."""
 
 Lane = Literal["public", "attested", "unlinkable"]

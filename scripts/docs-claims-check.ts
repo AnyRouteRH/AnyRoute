@@ -11,7 +11,7 @@
 // Usage:
 //   bun scripts/docs-claims-check.ts                      offline, against test/fixtures/docs-claims/status.json
 //   bun scripts/docs-claims-check.ts --status file.json   against another snapshot ({ data, config })
-//   bun scripts/docs-claims-check.ts --live https://api-production-70da.up.railway.app
+//   bun scripts/docs-claims-check.ts --live https://anyroute.tech
 //                                                         against that router's live GET /api/v1/status, and reports
 //                                                         where the fixture has drifted from it
 // Exit code 1 when any doc claims a switched-off feature is live (or the live status cannot be read).

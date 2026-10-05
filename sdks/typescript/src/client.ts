@@ -37,7 +37,7 @@ import {
   type ResponseMeta,
 } from "./types.js";
 
-export const DEFAULT_BASE_URL = "https://api-production-70da.up.railway.app";
+export const DEFAULT_BASE_URL = "https://anyroute.tech";
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504]);
 
 export type AnyrouteOptions = {

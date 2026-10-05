@@ -334,6 +334,12 @@ export const MODELS = {
   embed: { id: "embed-small", slug: "acme/embed-small", prompt: "0.00000002", completion: "0", output: ["embeddings"] },
 };
 
+export function fixtureEdgeInit(h: { ctx: Ctx }, init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers);
+  if (h.ctx.cfg.hardening.originLockEnabled && !headers.has("x-origin-lock")) headers.set("x-origin-lock", h.ctx.cfg.hardening.originLockSecret!);
+  return { ...init, headers };
+}
+
 export type Harness = Awaited<ReturnType<typeof startRouter>>;
 
 type ApiTypedData = { domain: Record<string, unknown>; types: Record<string, { name: string; type: string }[]>; primaryType: string; message: Record<string, string> };
@@ -408,6 +414,7 @@ export async function startRouter(opts: { providers?: (MockConfig & { id: string
     ALLOW_DEV_ATTESTATION: "true",
     NEW_KEYS_PER_HOUR: "100000",
     UNAUTH_RPM: "100000",
+    ANON_RATE_PER_MIN: "100000", // Dedicated hardening cases override this workload allowance.
     ...opts.env,
   };
   const chain = opts.fakeChain === false ? undefined : new FakeChain(env);
@@ -435,6 +442,7 @@ export async function startRouter(opts: { providers?: (MockConfig & { id: string
   await runRegistry(ctx);
   const request = (path: string, init: RequestInit & { json?: unknown } = {}) => {
     const headers = new Headers(init.headers);
+    if (ctx.cfg.hardening.originLockEnabled && !headers.has("x-origin-lock")) headers.set("x-origin-lock", ctx.cfg.hardening.originLockSecret!); // Emulate the configured public edge.
     if (init.json !== undefined) headers.set("content-type", "application/json");
     return app.request(path, { ...init, headers, body: init.json !== undefined ? JSON.stringify(init.json) : init.body });
   };

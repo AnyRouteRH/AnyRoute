@@ -1,3 +1,4 @@
+import { hardeningEnv, hardeningSettings } from "./hardening/config.ts"; // HD1
 import { rpcEnv, rpcSettings } from "./chain/rpc-config.ts"; // RPC1: private transport settings.
 import { fastCreditEnv, fastCreditSettings } from "./pay/fast-credit-config.ts"; // V97
 import { identityEnv, identitySettings } from "./identity/config.ts"; // v6 I: receipt-backed identity and reputation.
@@ -68,6 +69,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  ...hardeningEnv, // HD1
   ...fastCreditEnv, // V97
   ...identityEnv, // v6 I
   ...zkapiPageEnv, // ZK10
@@ -669,6 +671,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     networkPolicyEnabled: e.NETWORK_POLICY_ENABLED,
     logLevel: e.LOG_LEVEL,
     trustProxy: e.TRUST_PROXY,
+    hardening: hardeningSettings(e), // HD1
     release: { commit: contractPath.releaseCommit, deployment: contractPath.deployment },
     receipts: {
       signingKey: e.RECEIPT_SIGNING_KEY,

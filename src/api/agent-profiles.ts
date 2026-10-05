@@ -1,3 +1,4 @@
+import { cleanProfile } from "../hardening/profile-text.ts";
 import type { Hono } from "hono";
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -31,7 +32,7 @@ export function agentProfilesRoutes(app: Hono, ctx: Ctx) {
     guard(); c.header("cache-control", "no-store");
     const key = await ownedKey(ctx, await principal(ctx, c), c.req.param("key_hash"));
     const [row] = await ctx.db.select().from(agentProfiles).where(eq(agentProfiles.keyHash, key.keyHash));
-    return c.json({ data: row ? { ...row.settings, id: row.slug, certificate_claims: row.certificates[0]?.payload.claims ?? [] } : null });
+    return c.json({ data: row ? { ...cleanProfile(row.settings), id: row.slug, certificate_claims: row.certificates[0]?.payload.claims ?? [] } : null });
   });
   app.put("/api/v1/agents/:key_hash/profile", async c => {
     guard(); c.header("cache-control", "no-store");

@@ -1,3 +1,4 @@
+import { anonymousRateFamily, hardeningAddresses, hardeningBodies } from "./hardening.ts"; // HD1
 import { fastCreditLogRecords } from "./fast-credit.ts";
 import { depositProgressReader } from "./deposit-progress.ts"; // V97B
 import { rushStores } from "./rush.ts"; // ON3
@@ -54,6 +55,7 @@ function limit(o: { prefix: string; shape: string; purpose: string; holds: Redis
 const ADDRESS_NOTE = "The caller's network address is part of the key. Over Tor the address is replaced by the word onion, so no address is used.";
 
 const redisFamilies: RedisFamily[] = [
+  anonymousRateFamily, // HD1
   ...toolsRateFamilies, // v6 T
   limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate and track-record issuance attempts: five per minute per account, shared across standalone, profile and track-record issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym, claims or stats.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/identity/track-record.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
   feedbackLimit, // v6 I
@@ -285,13 +287,14 @@ const redisFamilies: RedisFamily[] = [
 ];
 
 const addressReaders: Touchpoint[] = [
+  ...hardeningAddresses, // HD1
   facilitatorAddressReader, // v6 F
   { file: "src/api/network-hosts.ts", reads: "The caller address bucket on host signup and credential writes.", then: "Counts attempts through the existing per-address limiter; trusted proxy and onion rules apply.", kept: "Raw address in the limiter key for 61 seconds in Redis, or until the memory limiter sweeps; never in the host row or application log.", evidence: [ev("src/api/network-hosts.ts", "const from = addressBucket(c, ctx.cfg);")] },
   { file: "src/network/waitlist.ts", reads: "Address bucket for a waitlist POST or DELETE; onion requests use the shared onion bucket.", then: "A secret-keyed HMAC of the address and current minute is passed to the existing limiter; onion stays the word onion.", kept: "Only a minute-specific keyed digest and counter: 61 seconds in Redis, or up to six minutes without Redis until the memory limiter sweeps old windows. No raw IP or user agent, and no address-derived value in the waitlist table.", evidence: [ev("src/network/waitlist.ts", "const from = addressBucket(c, ctx.cfg);")] },
   { file: "src/api/e2ee.ts", reads: "The address only for encrypted calls without a key outside the Oblivious HTTP gateway; over Tor the fixed onion bucket is used.", then: "Uses the existing blind-ip rate-limit family.", kept: "Only the counter key, for 61 seconds; no address in a generation, receipt or log.", evidence: [ev("src/api/e2ee.ts", "const from = addressBucket(c, ctx.cfg);")] },
   {
     file: "src/api/common.ts",
-    reads: "The socket address of the connection or, only when TRUST_PROXY is on, the right-most X-Forwarded-For entry (clientIp).",
+    reads: "The selected client address from the shared ingress helper: socket by default, the trusted hop counted from the right when TRUST_PROXY is on, or CF-Connecting-IP when the enabled origin lock secret is valid.",
     then: "Returned to a caller as the key of a per-address rate limit. Requests that arrived over Tor get the fixed word onion instead of an address (addressBucket).",
     kept: "Not written to Postgres and not logged. It exists in Redis only as part of the rate-limit keys listed above, for at most an hour.",
     evidence: [ev("src/api/common.ts", "export function clientIp(c: Context, trustProxy = false)"), ev("src/api/common.ts", "return { id: \"onion\", onion: true")],
@@ -404,6 +407,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  ...hardeningBodies, // HD1
   { file: "src/api/guard.ts", carries: "settings", reads: "A strict bounded action name, optional target label and order digest, decimal amount and approval identifier, or a reported outcome.", then: "Authenticates the deciding key and serializes checks and reports with the account lock. Action and target are readable caller-chosen labels; targets can name a wallet or host. No full order details are accepted.", kept: "Decision metadata and reported outcomes in agent_action_decisions, with action decisions and outcomes on agent_policy_events and action approval projections in agent_approvals. Reported amounts are not verified execution.", evidence: [ev("src/api/guard.ts", "guardDecideInput.parse(await readJson(c))")] }, // V98
   depositProgressReader, // V97B
   toolsBodyReader, // v6 T
@@ -493,7 +497,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     reads: "The JSON-RPC body of a tool call for the MCP endpoint, which can include a prompt.",
     then: "Chat is forwarded to the router's own chat route. Rulebook tools forward caller authentication and prompt-free intent identifiers to the existing agents routes; token estimates use catalog prices. Reading and checking rules does not create policy events.",
     kept: "Nothing beyond what src/api/chat.ts and its existing policy enforcement keep. Rulebook reads and dry runs add no stored data.",
-    evidence: [ev("src/api/mcp.ts", "const raw = await c.req.text();")],
+    evidence: [ev("src/api/mcp.ts", "msg = JSON.parse(await c.req.text())")],
   },
   {
     file: "src/api/rag.ts",
@@ -720,6 +724,7 @@ export const EXTERNAL: ExternalDoc = {
     records: [
       ...fastCreditLogRecords,
       "The time, the level and a message written in the code.",
+      "Anonymous limiter failure: fixed warning that a request was allowed; no exception, address, header, key or body.",
       "Host slash dry-run intent: provider id, evidence commitment root, proposeSlash function name, whole-bond USDG amount, numeric contract reason, contract and chain id, bytes32 host id and delist flag. Logged once per evidence root; no signed bytes, key, raw quote or receipt envelope.",
       "Sanctions refresh counts (distinct EVM entries, ignored formats and digital currency entries), publication date and source hash; screening skip/refusal reasons and provider ids. Freshness exceptions for previously paid addresses and refresh failures use fixed reason codes. No payout wallet or identity fields are added to these logs.",
       "Identifiers and counts: provider ids, model ids, job names, hold and generation ids, epochs, block numbers, transaction hashes, hashed key ids and, on rare settlement and escrow events, an account id.",
@@ -728,7 +733,7 @@ export const EXTERNAL: ExternalDoc = {
       "Error messages from libraries and upstream services, each cut to 200 characters where a call site truncates them. Configured private chain RPC URLs, including paths and queries on the same host, are redacted before log emission; chain transport failures are redacted before callers truncate them.",
     ],
     neverRecords: [
-      noLog("Client network addresses. No log call passes one; the only code that reads an address returns it to a rate limiter.", "src/api/common.ts", "return { id: clientIp(c, cfg.trustProxy), onion: false"),
+      noLog("Client network addresses. No log call passes one; addresses are used for rate limits and direct private-network ingress checks.", "src/api/common.ts", "return { id: clientIp(c, cfg.trustProxy), onion: false"),
       noLog("Request or response bodies and prompts. The unhandled-error line takes the path and the error, not the body.", "src/app.ts", "log.error(\"unhandled error\", { path: new URL(c.req.url).pathname"),
       noLog("Request headers, cookies and API keys. The Telegram bot states the same rule for its own lines.", "src/services/telegram.ts", "Never logged: keys, message text, the bot token"),
       noLog("Query strings: only the pathname of a failing request is logged.", "src/app.ts", ".pathname, error: (err as Error)?.message"),

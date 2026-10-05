@@ -1,3 +1,6 @@
+import { dispatchMcp } from "../hardening/mcp-batch.ts";
+import { labelDirectory } from "../hardening/profile-text.ts";
+import { internalEnv } from "../hardening/client.ts";
 import { mcpScopeMiddleware, withMcpScope } from "./mcp-scope.ts"; // V98
 import { directoryMcpArgs, directoryMcpTools, directoryMcpPath } from "./mcp-agent-directory.ts";
 import { agreementMcpTools, agreementMcpArgs, callAgreementMcp } from "../agreements/mcp.ts";
@@ -10,7 +13,6 @@ import type { Ctx } from "../context.ts";
 import { ApiError } from "../lib/errors.ts";
 import { picoToUsdString, usdToPico } from "../lib/money.ts";
 import { log } from "../lib/util.ts";
-import { MAX_BODY_BYTES } from "./common.ts";
 import { bearer } from "./auth.ts";
 import { verifyReceipt } from "./generation.ts";
 import { labelForReceipt } from "../privacy/resolve.ts";
@@ -187,7 +189,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
   app.use("/mcp", mcpScopeMiddleware(ctx)); // V98: every internal hop retains the original key scope.
   /** Call one of the router's own REST routes in-process, turning its error body back into an ApiError. */
   const internal = async (path: string, init?: RequestInit, c?: Context) => {
-    const res = await app.request(path, withMcpScope(init));
+    const res = await app.request(path, withMcpScope(init), internalEnv());
     for (const name of ["X-Receipt-Id", "X-Anyroute-Lane", "X-Anyroute-Policy-Hash"]) { const value = res.headers.get(name); if (c && value !== null) c.header(name, value); }
     const body = (await res.json().catch(() => null)) as { id?: unknown; error?: { message?: string; type?: string; metadata?: Record<string, unknown> } } | null;
     if (!res.ok) {
@@ -395,11 +397,11 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
     if (!schema) throw new RpcError(INVALID_PARAMS, `Unknown tool: ${p.name}.`);
     const parsed = schema.safeParse(args);
     if (!parsed.success) throw new RpcError(INVALID_PARAMS, `Invalid arguments for ${p.name}: ${issues(parsed.error)}.`);
-    if (!Object.hasOwn(agentMcpArgs, p.name) && !Object.hasOwn(guardMcpArgs, p.name)) await enforceAgentTool(ctx, c.req.header("authorization"), p.name);
+    if (!Object.hasOwn(agentMcpArgs, p.name) && !Object.hasOwn(guardMcpArgs, p.name)) await enforceAgentTool(ctx, c.req.header("authorization") ?? (c.req.header("x-api-key") ? `Bearer ${c.req.header("x-api-key")}` : undefined), p.name);
     try {
       if (NEEDS_KEY.has(p.name) && !bearer(c.req.header("authorization")))
         throw new ApiError(401, `The ${p.name} tool needs an AnyRoute API key. Send it as \`Authorization: Bearer sk-ar-v1-...\` in this MCP server's HTTP headers. list_models, get_receipt and verify_receipt work without one.`, "missing_key");
-      if (p.name === "anyroute_agent_directory") return ok(await internal(directoryMcpPath(parsed.data as Json), { signal: c.req.raw.signal }, c));
+      if (p.name === "anyroute_agent_directory") return ok(labelDirectory(await internal(directoryMcpPath(parsed.data as Json), { signal: c.req.raw.signal }, c)));
       if (Object.hasOwn(agreementMcpArgs, p.name)) return ok(await callAgreementMcp(p.name, parsed.data, c, internal));
       if (Object.hasOwn(toolsMcpArgs, p.name)) return await callToolsMcp(p.name, parsed.data, c, internal); // v6 T
       if (Object.hasOwn(guardMcpArgs, p.name)) return ok(await callGuardMcp(p.name, parsed.data, c, internal)); // V98
@@ -443,15 +445,11 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
   app.post("/mcp", async (c) => {
     c.header("cache-control", "no-store");
     if (!sameOrigin(c)) return c.json(rpcError(null, INVALID_REQUEST, "Cross-origin requests to /mcp are not allowed."), 403);
-    if (Number(c.req.header("content-length") ?? 0) > MAX_BODY_BYTES) return c.json(rpcError(null, INVALID_REQUEST, "Request body is too large (16 MB max)."), 413);
-    const raw = await c.req.text();
-    if (raw.length > MAX_BODY_BYTES) return c.json(rpcError(null, INVALID_REQUEST, "Request body is too large (16 MB max)."), 413);
     let msg: unknown;
-    try {
-      msg = JSON.parse(raw);
-    } catch {
-      return c.json(rpcError(null, PARSE_ERROR, "Parse error: the body must be valid JSON."), 400);
-    }
+    try { msg = JSON.parse(await c.req.text()); } catch { return c.json(rpcError(null, PARSE_ERROR, "Parse error: the body must be valid JSON."), 400); }
+    return dispatchMcp(c, msg, handleMessage);
+  });
+  async function handleMessage(c: Context, msg: unknown): Promise<Response> {
     if (!msg || typeof msg !== "object" || Array.isArray(msg)) return c.json(rpcError(null, INVALID_REQUEST, "Invalid Request: send one JSON-RPC 2.0 message per POST."), 400);
     const m = msg as { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: unknown };
     if (m.jsonrpc !== "2.0") return c.json(rpcError(null, INVALID_REQUEST, 'Invalid Request: "jsonrpc" must be "2.0".'), 400);
@@ -498,7 +496,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
       log.error("mcp request failed", { method: m.method, error: (e as Error)?.message });
       return c.json(rpcError(id, INTERNAL_ERROR, "Internal router error."));
     }
-  });
+  }
   // Stateless: there is no server-to-client SSE stream to open and no session to delete.
   app.on(["GET", "DELETE"], "/mcp", (c) => c.json(rpcError(null, INVALID_REQUEST, "Method not allowed: POST JSON-RPC messages to /mcp."), 405, { allow: "POST" }));
 }

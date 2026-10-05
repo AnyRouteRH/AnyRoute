@@ -321,7 +321,7 @@ export function publicRoutes(app: Hono, ctx: Ctx) {
         // hourly counters, at /api/v1/stats.
         launch: await launchMetrics(),
         private_lanes: { lanes: PRIVATE_LANES, stats: "/api/v1/stats", epsilon_spent_today: privateLaneStats(ctx).budget().epsilon_spent_today },
-        router: ctx.cfg.publicUrl,
+        router: "https://anyroute.tech", // HD1: canonical public router address.
         network: { hosts_open: ctx.cfg.networkHosts.enabled === true, payouts_open: ctx.cfg.networkPayouts.enabled === true, fee_bps: ctx.cfg.networkPayouts.feeBps },
         // v6 I: ERC-8004 identity, paid feedback and liveness probes; each says whether it is switched on here.
         identity: identityStatus(ctx),

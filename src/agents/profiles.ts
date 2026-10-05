@@ -1,3 +1,4 @@
+import { cleanProfile, profileText } from "../hardening/profile-text.ts";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
@@ -11,12 +12,12 @@ import type { agentProfiles } from "./profile-schema.ts";
 import { cardExtras } from "../identity/card.ts"; // v6 I: identity links, liveness, track record, reputation
 
 export const profileSlug = z.string().regex(/^[A-Za-z0-9_-]{24}$/);
-export const profileTag = z.string().trim().min(1).max(40);
+export const profileTag = profileText(40, 1);
 export const profileBody = z.strictObject({
-  name: z.string().trim().min(1).max(80), description: z.string().trim().max(280),
-  homepage: z.url().max(500).refine(v => { const u = new URL(v); return ["http:", "https:"].includes(u.protocol) && !u.username && !u.password; }).optional(),
+  name: profileText(80, 1), description: profileText(280),
+  homepage: profileText(500).pipe(z.url()).refine(v => { const u = new URL(v); return ["http:", "https:"].includes(u.protocol) && !u.username && !u.password; }).optional(),
   // v6 I: the agent's own HTTPS endpoint, probed daily for liveness when AGENT_IDENTITY_ENABLED is on.
-  endpoint: z.url().max(500).refine(v => { const u = new URL(v); return u.protocol === "https:" && !u.username && !u.password && !u.hash; }, "must be an https URL without credentials or fragment").optional(),
+  endpoint: profileText(500).pipe(z.url()).refine(v => { const u = new URL(v); return u.protocol === "https:" && !u.username && !u.password && !u.hash; }, "must be an https URL without credentials or fragment").optional(),
   capabilities: z.array(profileTag).max(16).default([]),
   show: z.array(z.enum(["spending_caps", "ask_first", "kill_switch"])).max(3).default([]),
   certificate_claims: z.array(z.custom<RecordClaim>(validRecordClaim)).max(16).refine(v => new Set(v).size === v.length).default([]),
@@ -42,7 +43,7 @@ export async function profileCertificates(ctx: Ctx, key: KeyRow, claims: RecordC
 }
 
 export async function profileCard(ctx: Ctx, row: typeof agentProfiles.$inferSelect, nowMs = Date.now()) {
-  const { name, description, homepage, endpoint, capabilities, show } = row.settings;
+  const { name, description, homepage, endpoint, capabilities, show } = cleanProfile(row.settings);
   const summary: Record<string, boolean> = {};
   // Read policy state only for categories explicitly chosen by the owner. Exact numbers and reasons stay private.
   if (show.length && ctx.cfg.agentPolicyEnabled) {

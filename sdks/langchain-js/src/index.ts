@@ -22,7 +22,7 @@ import {
 } from "@langchain/openai";
 
 /** The public Anyroute router. Point `baseURL` (or ANYROUTE_BASE_URL) elsewhere to use a self-hosted router. */
-export const ANYROUTE_BASE_URL = "https://api-production-70da.up.railway.app/api/v1";
+export const ANYROUTE_BASE_URL = "https://anyroute.tech/api/v1";
 
 /**
  * Where a call may run. "public": any provider. "attested": only providers whose enclave the router has

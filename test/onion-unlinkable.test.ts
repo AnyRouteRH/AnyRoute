@@ -1,3 +1,4 @@
+import { fixtureEdgeInit } from "./helpers.ts";
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Hono } from "hono";
 import { privateKeyToAccount } from "viem/accounts";
@@ -56,7 +57,7 @@ const PRODUCTION = {
 const shim = (h: Harness): typeof fetch =>
   (async (input: unknown, init?: RequestInit) => {
     const u = new URL(String(input), "http://router.test");
-    return h.app.request(u.pathname + u.search, init);
+    return h.app.request(u.pathname + u.search, fixtureEdgeInit(h, init));
   }) as never;
 
 const tokenAuth = (token: string) => ({ authorization: authorizationHeader(decodeBase64(token)!) });
@@ -64,7 +65,7 @@ const tokenAuth = (token: string) => ({ authorization: authorizationHeader(decod
 /** A request as the onion proxy hands it to the router (the secret set, from the proxy's address), or from the clearnet. */
 function send(h: Harness, via: "onion" | "clearnet", body: unknown, headers: Record<string, string> = {}, path = "/api/v1/chat/completions") {
   const init = { method: "POST", headers: { "content-type": "application/json", ...(via === "onion" ? ONION : {}), ...headers }, body: JSON.stringify(body) };
-  return h.app.request(path, init, via === "onion" ? PROXY_PEER : PUBLIC_PEER);
+  return h.app.request(path, fixtureEdgeInit(h, init), via === "onion" ? PROXY_PEER : PUBLIC_PEER);
 }
 
 async function attestEnclave(h: Harness) {

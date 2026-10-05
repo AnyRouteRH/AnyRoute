@@ -542,10 +542,10 @@ describe("POST /v1/messages", () => {
       });
     });
 
-    test("a request over the size limit is request_too_large", async () => {
+    test("the global size guard returns payload_too_large and its byte cap", async () => {
       const res = await h.request("/v1/messages", { method: "POST", headers: { "x-api-key": secret, "content-type": "application/json", "content-length": String(17 * 1024 * 1024) }, body: "{}" });
       expect(res.status).toBe(413);
-      expect(((await res.json()) as any).error.type).toBe("request_too_large");
+      expect((await res.json()).error).toEqual({ type: "payload_too_large", message: "Request body exceeds 16777216 bytes.", max_bytes: 16 * 1024 * 1024 });
     });
   });
 

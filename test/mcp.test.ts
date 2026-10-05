@@ -118,8 +118,8 @@ describe("AnyRoute MCP server", () => {
     expect(parse.status).toBe(400);
     expect(((await parse.json()) as any).error.code).toBe(-32700);
     const batch = await rpc([{ jsonrpc: "2.0", id: 1, method: "ping" }]);
-    expect(batch.status).toBe(400);
-    expect(((await batch.json()) as any).error.code).toBe(-32600);
+    expect(batch.status).toBe(200);
+    expect(await batch.json()).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }]);
     expect((await rpc({ id: 1, method: "ping" })).status).toBe(400);
   });
 

@@ -1,3 +1,4 @@
+import { internalEnv } from "../hardening/client.ts";
 import type { Context, Hono } from "hono";
 import { ZodError } from "zod";
 import type { Ctx } from "../context.ts";
@@ -77,7 +78,7 @@ export function ollamaRoutes(app: Hono, ctx: Ctx) {
     }
     // The inner request has no socket of its own: hand it the caller's address so per-address limits count the caller.
     const from = clientIp(c, ctx.cfg.trustProxy);
-    return app.request(path, { method: "POST", headers, body: JSON.stringify(body), signal: c.req.raw.signal }, { requestIP: () => ({ address: from }) });
+    return app.request(path, { method: "POST", headers, body: JSON.stringify(body), signal: c.req.raw.signal }, internalEnv({ requestIP: () => ({ address: from }) }));
   };
 
   /** The router's refusal, in Ollama's shape, with its headers. */

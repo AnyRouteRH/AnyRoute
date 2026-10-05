@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MODELS, startRouter, type Harness } from "./helpers.ts";
+import { MODELS, startRouter, fixtureEdgeInit, type Harness } from "./helpers.ts";
 import { loadConfig } from "../src/config.ts";
 import { matchesOnionSecret, ONION_HEADER, parseOnionAddress, parseOnionSecrets } from "../src/lib/onion.ts";
 
@@ -16,7 +16,7 @@ const PROVIDERS = [{ id: "alpha", name: "Alpha", models: [MODELS.llama, MODELS.e
 const PROXY_PEER = { requestIP: () => ({ address: "10.20.30.40" }) };
 
 const post = (h: Harness, path: string, headers: Record<string, string> = {}, json: unknown = chat) =>
-  h.app.request(path, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(json) }, PROXY_PEER);
+  h.app.request(path, fixtureEdgeInit(h, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(json) }), PROXY_PEER);
 const statuses = async (n: number, f: () => Promise<Response>) => {
   const out: number[] = [];
   for (let i = 0; i < n; i++) out.push((await f()).status);
@@ -222,7 +222,7 @@ describe("rate limits for requests that arrive over Tor", () => {
     const h = await startRouter({ env: { ANYROUTE_FEATURE_BLIND: "true", OHTTP_ENABLED: "true", OHTTP_DIRECT_RPM: "1", ONION_POOL_MULTIPLIER: "3", ONION_ADDRESS: ADDRESS, ONION_PROXY_SECRET: SECRET }, providers: PROVIDERS });
     try {
       const send = (headers: Record<string, string>) => () =>
-        h.app.request("/api/v1/ohttp/gateway", { method: "POST", headers: { "content-type": "message/ohttp-req", ...headers }, body: new Uint8Array(4) }, PROXY_PEER);
+        h.app.request("/api/v1/ohttp/gateway", fixtureEdgeInit(h, { method: "POST", headers: { "content-type": "message/ohttp-req", ...headers }, body: new Uint8Array(4) }), PROXY_PEER);
       // Too short to be a request: 400 once past the limiter, 429 when limited.
       expect(await statuses(2, send({}))).toEqual([400, 429]);
       expect(await statuses(4, send(ONION))).toEqual([400, 400, 400, 429]);

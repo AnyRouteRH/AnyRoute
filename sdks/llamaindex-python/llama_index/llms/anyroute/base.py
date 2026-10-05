@@ -10,7 +10,7 @@ from llama_index.core.base.llms.types import ChatMessage, ChatResponse, ChatResp
 from llama_index.core.bridge.pydantic import Field
 from llama_index.llms.openai_like import OpenAILike
 
-ANYROUTE_BASE_URL = "https://api-production-70da.up.railway.app/api/v1"
+ANYROUTE_BASE_URL = "https://anyroute.tech/api/v1"
 """The public Anyroute router. Point `api_base` (or ANYROUTE_BASE_URL) elsewhere to use a self-hosted router."""
 
 Lane = Literal["public", "attested", "unlinkable"]

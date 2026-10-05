@@ -20,7 +20,7 @@ import (
 const Version = "0.1.0"
 
 // DefaultBaseURL is the hosted router.
-const DefaultBaseURL = "https://api-production-70da.up.railway.app"
+const DefaultBaseURL = "https://anyroute.tech"
 
 // Lane is the privacy lane a request is served on.
 type Lane string

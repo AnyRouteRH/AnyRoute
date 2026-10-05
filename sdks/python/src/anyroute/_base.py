@@ -17,7 +17,7 @@ from .lanes import DISCLOSURE_HEADER, LANE_HEADER, check_disclosure, check_lane,
 from .receipts import decode_receipt_v2, parse_key_set
 from .types import AnyrouteMeta, APIResponse, DataList
 
-DEFAULT_BASE_URL = "https://api-production-70da.up.railway.app"
+DEFAULT_BASE_URL = "https://anyroute.tech"
 API_PREFIX = "/api/v1"
 RECEIPT_KEYS_PATH = "/.well-known/anyroute-receipt-keys.json"
 DEFAULT_TIMEOUT = 120.0

@@ -1,3 +1,4 @@
+import { internalEnv } from "../hardening/client.ts";
 import type { Context, Hono } from "hono";
 import type { Ctx } from "../context.ts";
 import { ApiError } from "../lib/errors.ts";
@@ -42,7 +43,7 @@ export function responsesRoutes(app: Hono, ctx: Ctx) {
     }
     // The inner request has no socket of its own: hand it the caller's address so per-address limits count the caller.
     const from = clientIp(c, ctx.cfg.trustProxy);
-    const res = await app.request(CHAT, { method: "POST", headers, body: JSON.stringify(chat), signal: c.req.raw.signal }, { requestIP: () => ({ address: from }) });
+    const res = await app.request(CHAT, { method: "POST", headers, body: JSON.stringify(chat), signal: c.req.raw.signal }, internalEnv({ requestIP: () => ({ address: from }) }));
 
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;

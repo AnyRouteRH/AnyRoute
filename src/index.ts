@@ -11,7 +11,7 @@ const server = Bun.serve({
   port: ctx.cfg.port,
   fetch: app.fetch,
   idleTimeout: 255, // seconds; streams also send keep-alive comments every 5s
-  maxRequestBodySize: 16 * 1024 * 1024,
+  maxRequestBodySize: Number.MAX_SAFE_INTEGER, // HD1: streamed middleware supplies the route-specific JSON 413.
 });
 log.info("anyroute listening", { url: `http://${server.hostname}:${server.port}`, db: ctx.dbKind, chain: ctx.cfg.chain.id, env: ctx.cfg.env });
 

@@ -1,3 +1,4 @@
+import { derivedClientIp } from "../hardening/client.ts";
 import type { Context } from "hono";
 import type { Config } from "../config.ts";
 import { fail } from "../lib/errors.ts";
@@ -22,18 +23,10 @@ export async function readJson(c: Context): Promise<Record<string, unknown>> {
 }
 
 /** Client address for rate limits. X-Forwarded-For is spoofable, so it is only read behind a trusted
- *  proxy (TRUST_PROXY=true), and then only its right-most entry — the hop the proxy itself saw. */
+ *  proxy (TRUST_PROXY=true), counting TRUST_PROXY_HOPS from the right. A valid enabled origin lock permits CF-Connecting-IP. */
 export function clientIp(c: Context, trustProxy = false) {
-  if (trustProxy) {
-    const hops = (c.req.header("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    if (hops.length) return hops[hops.length - 1];
-  }
-  const env = c.env as { requestIP?: (r: Request) => { address: string } | null } | undefined;
-  try {
-    return env?.requestIP?.(c.req.raw)?.address ?? "unknown";
-  } catch {
-    return "unknown";
-  }
+  if (c.get("onionIngress")) return "onion";
+  return derivedClientIp(c, trustProxy, c.get("hardening"));
 }
 
 /** True when the onion proxy forwarded this request: it carries the secret the proxy shares with the router. A request that

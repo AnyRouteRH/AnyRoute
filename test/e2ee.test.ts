@@ -14,7 +14,7 @@ import { privacyLabel } from "../src/privacy/label.ts";
 import { privacyLabel as clientLabel } from "../packages/client/src/privacy.ts";
 import { e2eeChat, e2eeKeyPair, e2eePublicKey, sealE2eeField, openE2eeField, e2eeAad, verifyE2eeReport } from "../packages/client/src/e2ee.ts";
 import { validateEnvelope, inputBound } from "../src/e2ee/protocol.ts";
-import { ADMIN, startRouter, type Harness } from "./helpers.ts";
+import { ADMIN, startRouter, fixtureEdgeInit, type Harness } from "./helpers.ts";
 import { standInGateway } from "./e2ee-gateway.ts";
 import { gatewayReport } from "./aci-fixtures.ts";
 import { buyTokens } from "../src/blind/client.ts";
@@ -30,7 +30,7 @@ let h: Harness; let gw: ReturnType<typeof standInGateway>; let auth: Record<stri
 const body = (stream = false) => ({ model: MODEL, messages: [{ role: "user" as const, content: "confidential question" }, { role: "system" as const, content: "answer briefly" }], max_tokens: 16, stream });
 let seenResponse: Response | undefined;
 const shim: typeof fetch = (async (input: any, init?: RequestInit) => {
-  const u = new URL(String(input)); const r = await h.app.request(u.pathname + u.search, init);
+  const u = new URL(String(input)); const r = await h.app.request(u.pathname + u.search, fixtureEdgeInit(h, init));
   if (u.pathname.endsWith("/chat/completions")) { seenResponse = r; if (!r.ok) throw new Error(`Router ${r.status}: ${await r.clone().text()}`); }
   return r;
 }) as typeof fetch;

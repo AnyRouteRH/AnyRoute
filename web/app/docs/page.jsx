@@ -1,3 +1,4 @@
+import RouterLimits from "../../components/RouterLimits"; // HD1
 import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
 import FastCreditDocs from '../../components/FastCreditDocs'; // V97
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
@@ -1817,7 +1818,8 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
               </tbody>
             </table>
           </div>
-          <h2 id="limits">Limits and guarantees.</h2>
+          <RouterLimits /> {/* HD1 */}
+          <h2>Limits and guarantees.</h2>
           <p>
             Each call holds its worst-case cost before routing and settles the metered usage after, so a key never goes past its balance or budget. Keys have a per-minute request limit, and optional token-per-minute limits; n and best_of are capped at 16. If every
             provider fails, nothing is charged. A cancelled stream is billed only for what was generated.
