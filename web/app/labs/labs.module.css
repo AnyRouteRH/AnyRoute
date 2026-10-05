@@ -1,0 +1,27 @@
+/* Labs. Global tokens only (app/globals.css): ink, paper, the signal green, warn, Host Grotesk and Martian Mono. */
+
+.board { display: grid; gap: 18px; min-width: 0; }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font: 500 11px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.head code { text-transform: none; letter-spacing: 0; color: var(--ink); overflow-wrap: anywhere; }
+.dot { width: 8px; height: 8px; flex: none; background: var(--muted-dark); }
+.dot[data-phase="ready"] { background: var(--signal-deep); }
+.dot[data-phase="error"] { background: var(--warn); }
+.note { max-width: 760px; margin: 0; font-size: 14px; line-height: 1.55; color: var(--muted); }
+
+.rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; margin: 0; padding: 0; list-style: none; }
+@media (max-width: 800px) { .rows { grid-template-columns: minmax(0, 1fr); } }
+.row { display: grid; grid-template-rows: auto 1fr auto; gap: 12px; min-width: 0; padding: clamp(16px, 2.6vw, 26px); background: var(--white); }
+.row[data-state="on"] { background: var(--paper); }
+.rowHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.rowHead h2 { margin: 0; font-size: clamp(19px, 2.2vw, 24px); line-height: 1.15; letter-spacing: -.03em; min-width: 0; overflow-wrap: anywhere; }
+.row p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--muted); }
+.meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; font: 500 11px/1.4 var(--mono); color: var(--muted); }
+.meta code { overflow-wrap: anywhere; color: var(--ink); }
+.meta a { color: var(--signal-deep); text-underline-offset: 3px; }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 4px 8px; background: var(--paper-3); font: 500 10px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: var(--muted); }
+.pill::before { content: ""; width: 6px; height: 6px; flex: none; background: currentColor; }
+.pill[data-state="on"] { background: var(--signal-tint); color: var(--signal-deep); }
+.pill[data-state="pilot"] { background: var(--ink); color: var(--paper); }
+.pill[data-state="unknown"] { background: var(--paper-2); color: var(--ink); white-space: normal; }
+.pill[data-state="loading"] { background: var(--paper-2); }

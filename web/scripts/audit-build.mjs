@@ -16,6 +16,7 @@ routes.push('/admin/'); // ON3: operator shell contains no account data.
 routes.push('/cost/'); // V80: public cost estimates.
 routes.push('/zkapi/'); // ZK9: Sepolia payment page.
 routes.push('/commerce/'); // v6 L: public commerce ledger.
+routes.push('/labs/'); // U104: built but switched off, read live from status.
 auditNetwork(root);
 let count=0;
 for(const route of routes){

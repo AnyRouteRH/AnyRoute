@@ -172,3 +172,4 @@ for (const section of ACCOUNT_SECTIONS) {
 
 TASKS.push({ ...task('operations', 'build', 'Inspect service operations', 'Use the service operator token to inspect monitoring availability and daily counts.', '/admin/', 'operator, upstream, balance, counts'), menu: false }); // ON3: search-only.
 TASKS.push({ ...task('key-management', 'build', 'Read key provisioning options', 'Read capped-key fields, pagination and inference-only keys.', '/docs/#key-management', 'key, provisioning, scope, inference, management'), menu: false }); // ZK6: search only.
+TASKS.push({ ...task('labs', 'learn', 'See Labs: built but switched off', 'Features built but switched off or in a pilot, each state read live from status.', '/labs/', 'labs, experimental, switched off, pilot, flags, x402, zkapi, host bonds'), menu: true }); // U104: last in Learn.
