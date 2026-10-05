@@ -1,5 +1,5 @@
-export const PROFILE_CATEGORIES = { spending_caps: 'Has spending caps', ask_first: 'Asks before spending', kill_switch: 'Kill switch state' };
-export const PROFILE_SUMMARY = { has_spending_caps: 'Has spending caps', asks_before_spending: 'Asks before spending', kill_switch_armed: 'Kill switch armed', killed: 'Currently killed' };
+export const PROFILE_CATEGORIES = { spending_caps: 'Has spending caps', ask_first: 'Asks before spending', kill_switch: 'Stop switch state' };
+export const PROFILE_SUMMARY = { has_spending_caps: 'Has spending caps', asks_before_spending: 'Asks before spending', kill_switch_armed: 'Stop switch armed', killed: 'Currently stopped' };
 export function profilePayload(form) {
   const endpoint = (form.endpoint || '').trim();
   return { name: form.name.trim(), description: form.description.trim(), ...(form.homepage.trim() ? { homepage: form.homepage.trim() } : {}),

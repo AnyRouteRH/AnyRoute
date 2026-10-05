@@ -1,7 +1,7 @@
 export function alertLabel(alert) {
   if (alert.kind === 'cap') return `${alert.percent}% of the rolling ${alert.window} cap`;
   if (alert.kind === 'denials') return `${alert.count} denied request batches in 10 minutes`;
-  return ({killed:'Agent killed',approval:'Agent requested approval'})[alert.kind] || 'Agent alert';
+  return ({killed:'Agent stopped',approval:'Agent requested approval'})[alert.kind] || 'Agent alert';
 }
 export function alertSettingsErrors(alerts) {
   if (alerts === undefined) return [];

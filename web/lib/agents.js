@@ -11,7 +11,7 @@ export const LIMITS = { entries: 64, string: 160, usd: 1_000_000, tokens: 10_000
 export const FEATURE_OFF = "Agent rulebooks aren't switched on yet.";
 
 export const reasonText = reason => reason?.message || ({
-  killed: 'This agent is killed.', model_not_allowed: 'The model is outside the rulebook.',
+  killed: 'This agent is stopped.', model_not_allowed: 'The model is outside the rulebook.',
   lane_not_allowed: 'The lane is outside the rulebook.', over_per_request: 'The request exceeds its cost cap.',
   over_per_hour: 'The rolling hour cap would be exceeded.', over_per_day: 'The rolling day cap would be exceeded.',
   over_per_week: 'The rolling week cap would be exceeded.', max_tokens: 'The output token cap would be exceeded.',
@@ -121,7 +121,7 @@ export function buildPolicy(form) {
   }
   buildBreakers(form.breakers, policy, errors);
   if (form.agreements !== undefined) policy.agreements = structuredClone(form.agreements);
-  if (!['deny', 'kill'].includes(form.onBreach)) errors.push('On breach, choose deny or kill.');
+  if (!['deny', 'kill'].includes(form.onBreach)) errors.push('If a limit is reached, choose refuse that request or stop this key.');
   if (form.alerts !== undefined) { policy.alerts = structuredClone(form.alerts); errors.push(...alertSettingsErrors(form.alerts)); }
   return { policy, errors: [...new Set(errors)] };
 }

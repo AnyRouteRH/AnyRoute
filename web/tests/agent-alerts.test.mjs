@@ -10,6 +10,6 @@ test('alert opt-in round trips without adding defaults or dropping settings', ()
 });
 test('feed uses fixed metadata labels', () => {
   assert.equal(alertLabel({kind:'cap',percent:80,window:'hour'}),'80% of the rolling hour cap');
-  assert.equal(alertLabel({kind:'killed'}),'Agent killed');
+  assert.equal(alertLabel({kind:'killed'}),'Agent stopped');
   assert.equal(alertLabel({kind:'approval'}),'Agent requested approval');
 });
