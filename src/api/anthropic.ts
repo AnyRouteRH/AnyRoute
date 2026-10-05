@@ -25,7 +25,7 @@ const PEEK_MS = 4_000;
 /** Response headers of a chat call that ride on the Anthropic reply. */
 const FORWARDED = ["x-generation-id", "x-receipt-id", "inference-id", "x-anyroute-lane", "x-anyroute-policy-hash", "x-anyroute-disclosure", "x-anyroute-cache", "x-payment-response", "payment-response", "retry-after", "www-authenticate"];
 /** Request headers passed to the chat call: routing options, not credentials. */
-const PASSED = ["x-anyroute-lane", "x-anyroute-disclosure-max", "x-anyroute-cache", "x-pay-with", "http-referer", "x-title", "traceparent"];
+const PASSED = ["x-anyroute-lane", "x-anyroute-disclosure-max", "x-anyroute-cache", "x-pay-with", "http-referer", "x-title", "traceparent", "x-anyroute-decision-tag"];
 /** The statuses Anthropic itself uses. Any other client error is not one an SDK should retry. */
 const ANTHROPIC_STATUSES = new Set([400, 401, 402, 403, 404, 413, 429]);
 

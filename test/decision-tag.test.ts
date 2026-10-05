@@ -79,6 +79,24 @@ describe("DECISION_TAGS_ENABLED=true", () => {
     expect(await balanceOf(h.ctx.db, account)).toEqual(before);
   });
 
+  test("the Responses, Anthropic and Ollama adapters pass the tag through, and a browser may send it", async () => {
+    const key = await h.fundedKey();
+    const tagged = { ...decisionHeaders(intent) };
+    const calls = [
+      await h.request("/v1/responses", { method: "POST", headers: { ...key.auth, ...tagged }, json: { model: MODELS.llama.slug, input: "buy or wait?" } }),
+      await h.request("/v1/messages", { method: "POST", headers: { "x-api-key": key.secret, ...tagged }, json: { model: MODELS.llama.slug, max_tokens: 32, messages: [{ role: "user", content: "buy or wait?" }] } }),
+      await h.request("/ollama/api/chat", { method: "POST", headers: { ...key.auth, ...tagged }, json: { model: MODELS.llama.slug, stream: false, messages: [{ role: "user", content: "buy or wait?" }] } }),
+    ];
+    for (const res of calls) {
+      expect(res.status).toBe(200);
+      const id = res.headers.get("x-receipt-id");
+      expect(id).toBeTruthy();
+      expect((await (await h.request(`/api/v1/receipts/${id}`)).json()).data.payload.decision_tag).toBe(orderIntentHash(intent));
+    }
+    const preflight = await h.request("/api/v1/chat/completions", { method: "OPTIONS", headers: { origin: "https://app.example", "access-control-request-method": "POST", "access-control-request-headers": "authorization,content-type,x-anyroute-decision-tag" } });
+    expect(preflight.headers.get("access-control-allow-headers")?.toLowerCase()).toContain("x-anyroute-decision-tag");
+  });
+
   test("/api/v1/status says decision tags are on", async () => {
     expect((await (await h.request("/api/v1/status")).json()).data.decision_tags).toEqual({ enabled: true, header: "X-Anyroute-Decision-Tag" });
   });
