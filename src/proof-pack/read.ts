@@ -18,9 +18,9 @@ import { summarizeLanes } from "../lane-report/read.ts";
 // U100: a proof pack. One JSON file for a date range that anyone can check with no network: the account's calls with
 // their signed receipts (the same objects GET /api/v1/receipts/:id serves, with their Merkle paths), the refund receipts
 // issued in the range, the signed monthly statements covering it, the router's published receipt keys and a manifest the
-// router signs over exactly which receipts it listed, with a lane report of those calls (src/lane-report/read.ts). It reads
-// existing records only and keeps nothing. Receipts carry hashes, buckets and amounts, never prompt or answer text, and
-// nothing else in the pack is read from a request.
+// router signs over exactly which receipts it listed, with a lane report of those calls (src/lane-report/read.ts) and the
+// decision tags their receipts carry. It reads existing records only and keeps nothing. Receipts carry hashes, buckets and
+// amounts, never prompt or answer text, and nothing else in the pack is read from a request.
 
 export const PROOF_PACK_TYPE = "anyroute.proof-pack.v1";
 export const PROOF_PACK_MANIFEST_TYPE = "anyroute.proof-pack.manifest.v1";
@@ -109,14 +109,17 @@ const LIMITS = [
   "The manifest signature is the router's statement of which receipts it listed for this range and scope. It is not an independent audit of the router's records.",
   "Keys are the router's published receipt keys at download time. Pin them independently against /.well-known/anyroute-receipt-keys.json or the ReceiptAnchor contract.",
   "The lane report counts the calls in this file by the lane each receipt records. The attested and unlinkable lanes ran on proven hardware; each provider row links to that provider's attestation record.",
+  "decision_tags lists each call whose signed receipt carries a decision tag: the SHA-256 its caller sent, usually of an order. This file holds the hashes, never the orders; to match an order to its call, hash the order on your side or run the verifier with --intent.",
 ];
 const VERIFY = {
   script: "scripts/verify-proof-pack.mjs",
   command: "node verify-proof-pack.mjs anyroute-proof-pack.json",
+  intent_command: "node verify-proof-pack.mjs anyroute-proof-pack.json --intent order.json",
   steps: [
     "Save this file and the verifier script scripts/verify-proof-pack.mjs from the Anyroute source. It needs Node 18 or later and no packages or network.",
     "Run: node verify-proof-pack.mjs <this file>. It exits 0 only when every check passes.",
-    "It checks that each key id matches its key bytes, every receipt, refund receipt, statement and manifest signature against the keys in this file, every receipt's anchor leaf, every Merkle path present, each statement's arithmetic, that the lane report adds up and matches the calls (and each call's lane, provider and model match its signed receipt), and that the signed manifest lists exactly the receipts in this file.",
+    "It checks that each key id matches its key bytes, every receipt, refund receipt, statement and manifest signature against the keys in this file, every receipt's anchor leaf, every Merkle path present, each statement's arithmetic, that the lane report adds up and matches the calls (and each call's lane, provider and model match its signed receipt), that decision_tags lists exactly the tags the signed receipts carry, and that the signed manifest lists exactly the receipts in this file.",
+    "With --intent order.json (repeatable) it hashes each order as the decision-receipt helpers do and names the calls whose signed receipt carries that hash; it fails when none does.",
     "One receipt at a time can also be checked in a browser at /verify/.",
   ],
 };
@@ -173,6 +176,11 @@ export async function readProofPack(ctx: Ctx, key: KeyRow, q: ProofPackQuery, no
       v2: r.receipt_cose ? { alg: "EdDSA", kid: r.receipt_key_id, content_type: COSE_CONTENT_TYPE, cose: r.receipt_cose, claims: r.receipt_v2, leaf: r.receipt_leaf_v2, anchor: proofOf(r.anchor_index, r.leaf_index_v2) } : null,
     } : null,
   }));
+  // B: the decision tags these receipts carry, one row per tagged call; the verifier checks each against the signed receipt.
+  const decisionTags = calls.flatMap((c) => {
+    const tag = (c.receipt?.payload as { decision_tag?: unknown } | null | undefined)?.decision_tag ?? (c.receipt?.v2?.claims as { decision_tag?: unknown } | null | undefined)?.decision_tag;
+    return typeof tag === "string" ? [{ id: c.id, decision_tag: tag }] : [];
+  });
   // The lane report of exactly these calls; the verifier recomputes it from the list.
   const laneReport = { covers: "calls_in_this_file", ...summarizeLanes(rows.map((r) => ({ lane: r.lane, provider: r.provider_id, model: r.model_id, calls: 1, pico: BigInt(r.cost) }))) };
   const last = rows.at(-1);
@@ -212,6 +220,7 @@ export async function readProofPack(ctx: Ctx, key: KeyRow, q: ProofPackQuery, no
     statements: statements.map((s) => ({ month: s.payload.month, key_id: s.key_id, sig: s.sig })),
     key_ids: keys.keys.map((k) => k.kid),
     lane_report: laneReport,
+    decision_tags: decisionTags,
   };
   const signed = ctx.signer.sign(manifest);
   const receipts = calls.filter((c) => c.receipt);
@@ -220,9 +229,9 @@ export async function readProofPack(ctx: Ctx, key: KeyRow, q: ProofPackQuery, no
     part, truncated, next_cursor: nextCursor,
     counts: {
       calls: calls.length, receipts: receipts.length, without_receipt: calls.length - receipts.length, v2_receipts: receipts.filter((c) => c.receipt!.v2).length,
-      merkle_paths: receipts.reduce((n, c) => n + (c.receipt!.anchor ? 1 : 0) + (c.receipt!.v2?.anchor ? 1 : 0), 0), refunds: refunds.length, statements: statements.length,
+      merkle_paths: receipts.reduce((n, c) => n + (c.receipt!.anchor ? 1 : 0) + (c.receipt!.v2?.anchor ? 1 : 0), 0), refunds: refunds.length, statements: statements.length, decision_tags: decisionTags.length,
     },
-    calls, lane_report: laneReport, refunds, statements, statements_unavailable: unavailable, keys,
+    calls, lane_report: laneReport, decision_tags: decisionTags, refunds, statements, statements_unavailable: unavailable, keys,
     manifest: { payload: manifest, alg: "Ed25519", key_id: signed.keyId, sig: signed.sig },
     limits: LIMITS, verify: VERIFY,
   };

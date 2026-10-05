@@ -39,7 +39,7 @@ export default function AccountProofPack({ apiKey }) {
     </form>
     <p className="help-text">Up to {limits.max_days} days per pack. A range with more than {limits.max_calls.toLocaleString('en-US')} calls downloads in parts.</p>
     {error && <p role="alert" className="error">{error}</p>}
-    {saved && <div role="status"><p>Saved part {saved.part}: {saved.calls} calls, {saved.refunds} refund receipts, {saved.statements} statements, {saved.paths} Merkle paths.</p>
+    {saved && <div role="status"><p>Saved part {saved.part}: {saved.calls} calls, {saved.refunds} refund receipts, {saved.statements} statements, {saved.paths} Merkle paths{saved.decisionTags > 0 ? `, ${saved.decisionTags} decision tags` : ''}.</p>
       {saved.next && <Button secondary disabled={busy} onClick={() => download(saved.next)}>Download the next part</Button>}</div>}
     <p className="help-text">Check it with <code>{PROOF_PACK_VERIFY_COMMAND}</code> using scripts/verify-proof-pack.mjs from the Anyroute source, or one receipt at a time in <a href="/verify/">Verify</a>.</p>
   </section>;

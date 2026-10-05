@@ -27,7 +27,9 @@ test('ranges are checked before a request: real dates, order, not in the future,
 
 test('a response is checked before it is saved, and parts are named', () => {
   const pack = { type: 'anyroute.proof-pack.v1', range: { from: '2026-09-01', to: '2026-09-30' }, part: 1, scope: 'key', calls: [{ id: 'one' }], refunds: [], statements: [{}], counts: { merkle_paths: 2 }, keys: { keys: [{ kid: 'k' }] }, manifest: { sig: 'signature' }, next_cursor: 'more' };
-  assert.deepEqual(proofPackSummary({ data: pack }), { pack, part: 1, calls: 1, refunds: 0, statements: 1, paths: 2, scope: 'key', next: 'more' });
+  assert.deepEqual(proofPackSummary({ data: pack }), { pack, part: 1, calls: 1, refunds: 0, statements: 1, paths: 2, decisionTags: 0, scope: 'key', next: 'more' });
+  // B: a pack lists the decision tags its receipts carry; the summary counts them.
+  assert.equal(proofPackSummary({ data: { ...pack, decision_tags: [{ id: 'one', decision_tag: 'sha256:' + 'ab'.repeat(32) }] } }).decisionTags, 1);
   assert.equal(proofPackFilename(pack), 'anyroute-proof-pack-2026-09-01-to-2026-09-30.json');
   assert.equal(proofPackFilename({ ...pack, part: 3 }), 'anyroute-proof-pack-2026-09-01-to-2026-09-30-part-3.json');
   for (const bad of [null, {}, { data: { ...pack, type: 'anyroute.statement.v1' } }, { data: { ...pack, manifest: {} } }]) assert.throws(() => proofPackSummary(bad), /could not be read/);

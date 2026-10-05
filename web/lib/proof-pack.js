@@ -34,5 +34,5 @@ export function proofPackFilename(pack) {
 export function proofPackSummary(value) {
   const pack = value?.data ?? value;
   if (pack?.type !== PROOF_PACK_TYPE || !Array.isArray(pack.calls) || !pack.manifest?.sig || !Array.isArray(pack.keys?.keys)) throw new Error('The proof pack could not be read.');
-  return { pack, part: pack.part, calls: pack.calls.length, refunds: pack.refunds?.length ?? 0, statements: pack.statements?.length ?? 0, paths: pack.counts?.merkle_paths ?? 0, scope: pack.scope, next: pack.next_cursor || null };
+  return { pack, part: pack.part, calls: pack.calls.length, refunds: pack.refunds?.length ?? 0, statements: pack.statements?.length ?? 0, paths: pack.counts?.merkle_paths ?? 0, decisionTags: Array.isArray(pack.decision_tags) ? pack.decision_tags.length : 0, scope: pack.scope, next: pack.next_cursor || null };
 }

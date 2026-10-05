@@ -2,13 +2,17 @@
 // Verify an Anyroute proof pack offline, with nothing but Node (18 or later) and this file.
 //
 //   node scripts/verify-proof-pack.mjs anyroute-proof-pack-<from>-to-<to>.json
+//   node scripts/verify-proof-pack.mjs anyroute-proof-pack-<from>-to-<to>.json --intent order.json [--intent other.json]
 //
 // Checks: every key in the pack has the id its bytes give (first 16 hex of sha256); every call receipt (v1: Ed25519 over
 // canonical JSON; v2: COSE_Sign1 with EdDSA), refund receipt, monthly statement and the pack's manifest verifies against
 // the keys in the pack; each receipt's anchor leaf is keccak256(keccak256(...)) of what was signed; every Merkle path
 // present leads from that leaf to its root (sorted-pair keccak256, as OpenZeppelin MerkleProof); each statement's amounts
 // reconcile exactly; the lane report adds up and matches the calls listed, and each call's lane, provider and model match
-// its signed receipt; and the signed manifest lists exactly the receipts, statements, keys and lane report in the file. It makes no
+// its signed receipt; the decision tag list names exactly the tags the signed receipts carry; and the signed manifest lists
+// exactly the receipts, statements, keys, lane report and decision tags in the file. With --intent, each order JSON file is
+// hashed as the decision-receipt helpers hash it (sha256 of canonical JSON) and the calls whose signed receipt carries that
+// hash are named; no such call is a failure. It makes no
 // network request and deliberately shares no code with the router. Whether a root was posted on chain, and whether the
 // keys are the router's, are checked against the ReceiptAnchor contract and /.well-known/anyroute-receipt-keys.json.
 
@@ -291,6 +295,30 @@ function signedFacts(label, call, facts, fail) {
   for (const [name, value] of Object.entries(facts)) if (value !== undefined && value !== null && value !== call[name]) fail(`${label}: the listed ${name} ${call[name]} is not the signed ${value}`);
 }
 
+export const DECISION_TAG = /^sha256:[0-9a-f]{64}$/;
+/** sha256:<hex> of an order's canonical JSON: the hash the decision-receipt helpers and the SDKs send as a decision tag. */
+export const orderIntentHash = (order) => `sha256:${hex(sha256(Buffer.from(canonicalJson(order))))}`;
+
+/**
+ * The pack's decision tag list against the tags its signed receipts carry (`signed`: call id -> tag or null, for every call
+ * whose receipt verified): one row per tagged call, each tag the signed one, and no tagged call left out. A list of problems.
+ */
+export function decisionTagProblems(list, signed) {
+  if (!Array.isArray(list)) return ["it is not a list"];
+  const problems = [];
+  const seen = new Set();
+  for (const row of list) {
+    const id = row?.id, label = `call ${id}`;
+    if (seen.has(id)) problems.push(`${label} is listed twice`);
+    seen.add(id);
+    if (typeof row?.decision_tag !== "string" || !DECISION_TAG.test(row.decision_tag)) problems.push(`${label}: ${row?.decision_tag} is not sha256: and 64 lowercase hex characters`);
+    else if (!signed.has(id)) problems.push(`${label}: no call with a verified receipt has this id`);
+    else if (signed.get(id) !== row.decision_tag) problems.push(`${label}: the listed tag is not the one its signed receipt carries (${signed.get(id) ?? "none"})`);
+  }
+  for (const [id, tag] of signed) if (tag && !seen.has(id)) problems.push(`call ${id}: its signed receipt carries ${tag}, but the list leaves it out`);
+  return problems;
+}
+
 function keyring(jwks, fail) {
   const keys = new Map();
   for (const k of Array.isArray(jwks?.keys) ? jwks.keys : []) {
@@ -328,11 +356,11 @@ function signedJson(doc, keys) {
  * Check a proof pack (the parsed file, or its { data } envelope). Returns { ok, failures, summary, lines }: ok is true only when
  * nothing failed and the manifest verified.
  */
-export function verifyProofPack(input) {
+export function verifyProofPack(input, { intents = [] } = {}) {
   const pack = input && typeof input === "object" && input.data && !input.type ? input.data : input;
   const failures = [];
   const fail = (m) => failures.push(m);
-  const s = { lane_report: "absent", proven_calls: 0, proven_share_of_calls: null, calls: 0, receipts: 0, without_receipt: 0, v1_valid: 0, v2: 0, v2_valid: 0, paths: 0, paths_valid: 0, onchain_roots: new Set(), offchain_roots: new Set(), unrooted: 0, refunds: 0, refunds_valid: 0, statements: 0, statements_valid: 0, keys: 0, manifest: false };
+  const s = { lane_report: "absent", proven_calls: 0, proven_share_of_calls: null, calls: 0, receipts: 0, without_receipt: 0, v1_valid: 0, v2: 0, v2_valid: 0, paths: 0, paths_valid: 0, onchain_roots: new Set(), offchain_roots: new Set(), unrooted: 0, refunds: 0, refunds_valid: 0, statements: 0, statements_valid: 0, keys: 0, manifest: false, decision_tags: "absent", tagged_calls: 0, intents: [] };
   if (!pack || pack.type !== PACK_TYPE) {
     fail(`not an Anyroute proof pack (type ${pack?.type ?? "missing"}; expected ${PACK_TYPE})`);
     return finish(pack, s, failures);
@@ -349,6 +377,8 @@ export function verifyProofPack(input) {
   };
 
   const ids = new Set();
+  // Decision tags read from signature-verified contents only: call id -> tag (null when the receipt carries none).
+  const signedTags = new Map();
   for (const call of Array.isArray(pack.calls) ? pack.calls : []) {
     s.calls++;
     const label = `call ${call?.id}`;
@@ -367,6 +397,7 @@ export function verifyProofPack(input) {
       if (!v.ok) fail(`${label}: v1 ${v.why}`);
       else {
         s.v1_valid++;
+        signedTags.set(call.id, r.payload.decision_tag ?? null);
         if (r.payload.id !== undefined && r.payload.id !== call.id) fail(`${label}: the signed receipt names call ${r.payload.id}`);
         signedFacts(label, call, { lane: r.payload.lane, provider: r.payload.provider, model: r.payload.model }, fail);
         const leaf = leafOf(Buffer.concat([v.bytes, v.sig]));
@@ -400,6 +431,9 @@ export function verifyProofPack(input) {
       }
       if (ok) {
         s.v2_valid++;
+        const v2Tag = d.claims?.decision_tag ?? null;
+        if (signedTags.has(call.id) && signedTags.get(call.id) !== v2Tag) fail(`${label}: the signed v1 and v2 receipts carry different decision tags`);
+        else signedTags.set(call.id, v2Tag);
         if (d.claims?.rid !== call.id) fail(`${label}: the signed v2 claims name call ${d.claims?.rid}`);
         if (r.v2.claims && canonicalJson(r.v2.claims) !== canonicalJson(d.claims)) fail(`${label}: the readable v2 claims differ from the signed claims`);
         signedFacts(`${label} v2`, call, { lane: d.claims?.lane, provider: d.claims?.node?.provider, model: d.claims?.model?.id }, fail);
@@ -421,6 +455,21 @@ export function verifyProofPack(input) {
     s.lane_report = problems.length ? "failed" : "matches";
     s.proven_calls = Number(pack.lane_report?.proven?.calls) || 0;
     s.proven_share_of_calls = pack.lane_report?.proven?.share_of_calls ?? null;
+  }
+
+  // The decision tag list (absent from packs made before it existed): exactly the tags the signed receipts carry.
+  if (pack.decision_tags !== undefined) {
+    const problems = decisionTagProblems(pack.decision_tags, signedTags);
+    for (const p of problems) fail(`decision tags: ${p}`);
+    s.decision_tags = problems.length ? "failed" : "matches";
+    s.tagged_calls = [...signedTags.values()].filter(Boolean).length;
+  }
+  // Orders given with --intent: which calls' signed receipts carry each order's hash.
+  for (const intent of intents) {
+    const tag = orderIntentHash(intent.order);
+    const calls = [...signedTags].filter(([, t]) => t === tag).map(([id]) => id);
+    s.intents.push({ name: intent.name, tag, calls });
+    if (!calls.length) fail(`order ${intent.name}: no signed receipt in this file carries its hash ${tag}`);
   }
 
   for (const r of Array.isArray(pack.refunds) ? pack.refunds : []) {
@@ -466,6 +515,7 @@ export function verifyProofPack(input) {
       statements: (pack.statements ?? []).map((x) => ({ month: x.payload?.month, key_id: x.key_id, sig: x.sig })),
       key_ids: (pack.keys?.keys ?? []).map((k) => k.kid),
       lane_report: pack.lane_report ?? null,
+      decision_tags: pack.decision_tags ?? null,
     };
     const differs = Object.keys(listed).filter((k) => !same(p[k] ?? null, listed[k] ?? null));
     if (differs.length) fail(`manifest: the signed manifest does not match this file (${differs.join(", ")})`);
@@ -488,6 +538,8 @@ function finish(pack, s, failures) {
       ? "Lane report: none in this file."
       : `Lane report: ${s.lane_report === "matches" ? "adds up and matches the calls in this file" : "does not match the calls in this file"} · ${s.proven_calls} call(s) on proven hardware (the attested and unlinkable lanes)${s.proven_share_of_calls === null ? "" : `, ${(s.proven_share_of_calls * 100).toFixed(2)}% of calls`}.`,
   ];
+  if (s.decision_tags !== "absent") lines.push(`Decision tags: ${s.tagged_calls} call(s) whose signed receipt carries one · the list ${s.decision_tags === "matches" ? "names exactly those tags" : "does not match the signed receipts"}.`);
+  for (const i of s.intents) lines.push(i.calls.length ? `Order ${i.name} (${i.tag}): carried by the signed receipt of ${i.calls.join(", ")}.` : `Order ${i.name} (${i.tag}): no signed receipt in this file carries it.`);
   for (const u of Array.isArray(pack?.statements_unavailable) ? pack.statements_unavailable : []) lines.push(`No statement for ${u.month}: ${u.reason}`);
   if (pack?.next_cursor) lines.push("More calls in this range are in the next part (next_cursor).");
   if (s.onchain_roots.size) lines.push("To finish, compare each posted root with the ReceiptAnchor contract on chain.");
@@ -507,10 +559,21 @@ const isMain = (() => {
 })();
 
 if (isMain) {
-  const file = process.argv.slice(2).find((a) => !a.startsWith("--"));
-  if (!file) {
-    console.error("usage: node scripts/verify-proof-pack.mjs <anyroute-proof-pack.json>");
+  const args = process.argv.slice(2);
+  const intentFiles = args.flatMap((a, i) => (a === "--intent" ? [args[i + 1]] : []));
+  const file = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--intent");
+  if (!file || intentFiles.some((f) => !f || f.startsWith("--"))) {
+    console.error("usage: node scripts/verify-proof-pack.mjs <anyroute-proof-pack.json> [--intent <order.json>]...");
     process.exit(2);
+  }
+  const intents = [];
+  for (const f of intentFiles) {
+    try {
+      intents.push({ name: f, order: JSON.parse(readFileSync(f, "utf8")) });
+    } catch (e) {
+      console.error(`Could not read ${f} as JSON: ${e.message}`);
+      process.exit(2);
+    }
   }
   let parsed;
   try {
@@ -519,7 +582,7 @@ if (isMain) {
     console.error(`Could not read ${file} as JSON: ${e.message}`);
     process.exit(2);
   }
-  const result = verifyProofPack(parsed);
+  const result = verifyProofPack(parsed, { intents });
   for (const line of result.lines) (line.startsWith("FAIL") ? console.error : console.log)(line);
   process.exit(result.ok ? 0 : 1);
 }

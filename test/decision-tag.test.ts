@@ -5,6 +5,12 @@ import { balanceOf } from "../src/ledger/ledger.ts";
 import { decodeClaims, decodeCoseSign1 } from "../src/receipts/v2.ts";
 import { decisionTagOf, parseDecisionTag } from "../src/receipts/decision-tag.ts";
 import { DECISION_TAG_HEADER, decisionHeaders, orderIntentHash, verifyDecisionReceipt } from "../integrations/robinhood-agents/decision-receipt.ts";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { proofPackRoutes } from "../src/api/proof-pack.ts";
+import { decisionTagProblems, orderIntentHash as packIntentHash, verifyProofPack } from "../scripts/verify-proof-pack.mjs";
 import { startRouter, sse, MODELS, type Harness } from "./helpers.ts";
 
 // B: X-Anyroute-Decision-Tag. The digest of an order intent, signed into the v1 and v2 receipts of the model call that
@@ -208,5 +214,74 @@ describe("Agent Guard with DECISION_TAGS_ENABLED unset", () => {
     const rev = (await (await h.request(`/api/v1/guard/decisions?details_sha256=${orderIntentHash(intent)}`, { headers: key.auth })).json()).data;
     expect(rev.decisions.map((x: { decision_id: string }) => x.decision_id)).toEqual([d.decision_id]);
     expect("informed_by" in rev.decisions[0]).toBe(false);
+  });
+});
+
+describe("decision tags in a proof pack (DECISION_TAGS_ENABLED and STATEMENTS_ENABLED)", () => {
+  let h: Harness;
+  beforeAll(async () => {
+    h = await startRouter({ env: { DECISION_TAGS_ENABLED: "true", STATEMENTS_ENABLED: "true" } });
+    proofPackRoutes(h.app, h.ctx); // as app.ts registers it, before the first request
+  });
+  afterAll(async () => { await h?.close(); });
+  const today = () => new Date().toISOString().slice(0, 10);
+  const second = { ...intent, side: "sell", client_order_id: "7f3d" };
+
+  test("the pack lists each tagged call with its signed tag, and the offline verifier checks the list and finds an order's call", async () => {
+    const key = await h.fundedKey();
+    const tagged = (await (await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...key.auth, ...decisionHeaders(intent) }, json: chat() })).json()).receipt;
+    const streamed = (await sse(await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...key.auth, ...decisionHeaders(second) }, json: chat({ stream: true }) }))).events.find((e) => e.receipt).receipt;
+    const plain = (await (await h.request("/api/v1/chat/completions", { method: "POST", headers: key.auth, json: chat() })).json()).receipt;
+    const r = await h.request(`/api/v1/proof-pack?from=${today()}&to=${today()}`, { headers: key.auth });
+    expect(r.status).toBe(200);
+    const pack = (await r.json()).data;
+    const rows = [{ id: tagged.id, decision_tag: orderIntentHash(intent) }, { id: streamed.id, decision_tag: orderIntentHash(second) }];
+    expect([...pack.decision_tags].sort((a, b) => a.id.localeCompare(b.id))).toEqual(rows.sort((a, b) => a.id.localeCompare(b.id)));
+    expect(pack.decision_tags.map((t: { id: string }) => t.id)).not.toContain(plain.id);
+    expect(pack.counts.decision_tags).toBe(2);
+    expect(pack.manifest.payload.decision_tags).toEqual(pack.decision_tags);
+    expect(packIntentHash(intent)).toBe(orderIntentHash(intent)); // the verifier hashes orders as the helpers do
+
+    const ok = verifyProofPack({ data: pack }, { intents: [{ name: "order.json", order: intent }] });
+    expect(ok.failures).toEqual([]);
+    expect(ok.summary).toMatchObject({ decision_tags: "matches", tagged_calls: 2, intents: [{ name: "order.json", tag: orderIntentHash(intent), calls: [tagged.id] }] });
+    expect(ok.lines.join("\n")).toContain(`Order order.json (${orderIntentHash(intent)}): carried by the signed receipt of ${tagged.id}.`);
+    // An order no receipt carries fails.
+    const missing = verifyProofPack({ data: pack }, { intents: [{ name: "other.json", order: { ...intent, quantity: "20" } }] });
+    expect(missing.ok).toBe(false);
+    expect(missing.failures).toEqual([`order other.json: no signed receipt in this file carries its hash ${orderIntentHash({ ...intent, quantity: "20" })}`]);
+    // A list that drops, changes or invents a tag fails on its own, as well as against the signed manifest.
+    const edits = [pack.decision_tags.slice(1), pack.decision_tags.map((t: object, i: number) => (i ? t : { ...t, decision_tag: orderIntentHash({ ...intent, quantity: "20" }) })), [...pack.decision_tags, { id: plain.id, decision_tag: orderIntentHash(intent) }]];
+    for (const decision_tags of edits) {
+      const bad = verifyProofPack({ data: { ...pack, decision_tags } });
+      expect(bad.ok).toBe(false);
+      expect(bad.failures.some((f: string) => f.startsWith("decision tags: "))).toBe(true);
+      expect(bad.failures.some((f: string) => f.startsWith("manifest: ") && f.includes("decision_tags"))).toBe(true);
+    }
+
+    // From the command line, with --intent.
+    const dir = mkdtempSync(join(tmpdir(), "decision-tags-"));
+    try {
+      writeFileSync(join(dir, "pack.json"), JSON.stringify({ data: pack }));
+      writeFileSync(join(dir, "order.json"), JSON.stringify(second));
+      const out = execFileSync("node", ["scripts/verify-proof-pack.mjs", join(dir, "pack.json"), "--intent", join(dir, "order.json")], { cwd: join(import.meta.dir, ".."), encoding: "utf8" });
+      expect(out).toContain(`carried by the signed receipt of ${streamed.id}.`);
+      expect(out).toContain("Decision tags: 2 call(s) whose signed receipt carries one");
+      expect(out).toContain("Result: every check passed.");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the list check on its own: duplicates, malformed tags and unknown calls", () => {
+    const t = orderIntentHash(intent);
+    const signed = new Map<string, string | null>([["a", t], ["b", null]]);
+    expect(decisionTagProblems([{ id: "a", decision_tag: t }], signed)).toEqual([]);
+    expect(decisionTagProblems({}, signed)).toEqual(["it is not a list"]);
+    expect(decisionTagProblems([], signed)).toEqual([`call a: its signed receipt carries ${t}, but the list leaves it out`]);
+    expect(decisionTagProblems([{ id: "a", decision_tag: t }, { id: "a", decision_tag: t }], signed)).toEqual(["call a is listed twice"]);
+    expect(decisionTagProblems([{ id: "a", decision_tag: t.toUpperCase() }], signed)[0]).toContain("is not sha256:");
+    expect(decisionTagProblems([{ id: "a", decision_tag: t }, { id: "c", decision_tag: t }], signed)).toEqual(["call c: no call with a verified receipt has this id"]);
+    expect(decisionTagProblems([{ id: "a", decision_tag: t }, { id: "b", decision_tag: t }], signed)).toEqual(["call b: the listed tag is not the one its signed receipt carries (none)"]);
   });
 });
