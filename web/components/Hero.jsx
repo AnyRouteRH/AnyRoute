@@ -34,7 +34,7 @@ export default function Hero(){
       <div className="hero-copy">
         <div className="hero-kicker"><b>▲</b> OpenRouter-compatible · Robinhood Chain</div>
         <h1 className="hero-title"><span className="brackets" aria-hidden="true"/>{words.map((line,l)=><span className="line" key={l}>{line.map((w,k)=><span key={k}><span className={'w'+(l===2?' accent':'')} style={{'--i':i++}}>{w}</span>{k<line.length-1?' ':''}</span>)}</span>)}</h1>
-        <div className="hero-sub"><p>Route AI calls through <strong>one API, one USDG balance</strong> and a signed receipt for every generation. Choose your model. Keep control of the route.</p><p>Encrypted chat, an agent rulebook and a network open for early hosts. Built on Robinhood Chain.</p></div>
+        <div className="hero-sub"><p>Route AI calls through <strong>one API, one prepaid balance</strong> and a signed receipt for every generation. Choose your model. Keep control of the route.</p><p>Encrypted chat, an agent rulebook and a network open for early hosts. Built on Robinhood Chain.</p></div>
         <div className="button-row"><Button href="/dashboard/">Open dashboard</Button><Button href="/docs/" secondary>Read the docs</Button></div>
         <a className="hero-harness" href="/harness/">Or try every model and its tools on one page<b aria-hidden="true">→</b></a>
         <a className="hero-harness" href="/seal/">Read SEAL, the privacy protocol, and its public spec<b aria-hidden="true">→</b></a>
@@ -42,6 +42,6 @@ export default function Hero(){
       </div>
       <LiveCard route={route}/>
     </div>
-    <div className="hero-status"><div className="container"><span><i/>Robinhood Chain · 4663</span><span>Settlement · USDG</span><span>Receipts · Ed25519, anchored hourly</span><span>Prepaid router fee · 0%</span></div></div>
+    <div className="hero-status"><div className="container"><span><i/>Robinhood Chain · 4663</span><span>Prices · USD</span><span>Receipts · Ed25519, signed per call</span><span>Prepaid router fee · 0%</span></div></div>
   </section>;
 }

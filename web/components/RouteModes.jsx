@@ -12,7 +12,7 @@ const MODES=[
 
 res.provider;        // who served it
 res.usage.cost;      // what it cost, in USDG
-res.receipt.sig;     // Ed25519, anchored hourly`,
+res.receipt.sig;     // Ed25519 signature`,
     flow:[['Filter','health, price, data policy'],['Route','best provider, fallbacks ready'],['Receipt','signed, itemized, anchored']]},
   {tag:'Privacy',title:'Attested private route',attrs:['TEE evidence','Fail-closed','Receipt'],label:'private route',
     code:`const res = await client.chat.completions.create({
