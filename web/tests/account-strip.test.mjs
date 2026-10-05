@@ -9,7 +9,8 @@ import { BalanceLink, BellButton } from '../components/nav/AccountTrigger.js';
 
 const read = file => fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const now = Date.parse('2026-10-05T12:00:00.000Z');
-const later = '2026-10-05T13:00:00.000Z', earlier = '2026-10-05T11:00:00.000Z';
+// Approvals are filtered against the real clock, so "later" must stay in the future whenever the suite runs.
+const later = new Date(Math.max(now, Date.now()) + 3_600_000).toISOString(), earlier = '2026-10-05T11:00:00.000Z';
 const scope = 'a'.repeat(64);
 const inbox = (data = []) => ({ data, count: data.length, as_of: '2026-10-05T12:00:00.000Z', seen_scope: scope, scope: 'account' });
 const approval = (id, expires_at = later) => ({ id: `approval:${id}`, kind: 'approval', approval_id: id, expires_at, at: earlier, can_decide: true, unread: true, href: '/agents/' });

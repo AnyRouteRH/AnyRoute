@@ -52,20 +52,29 @@ test("requests arriving after five seconds still share the same unfinished refre
   let release!: () => void, started!: () => void;
   const blocked = new Promise<void>(resolve => { release = resolve; });
   const reading = new Promise<void>(resolve => { started = resolve; });
-  const selects = spyOn(h.ctx.db, "select").mockImplementationOnce(() => ({
-    from: () => ({ where: async () => { started(); await blocked; return []; } }),
-  }) as any).mockImplementation(select);
+  // Count and block only the refresh's reads of upstream state (kv); other reads in the process must not shift the counts.
+  let kvReads = 0;
+  const selects = spyOn(h.ctx.db, "select").mockImplementation(((...args: any[]) => {
+    const query = (select as any)(...args);
+    const from = query.from.bind(query);
+    query.from = (table: unknown) => {
+      if (table !== kv) return from(table);
+      if (++kvReads === 1) return { where: async () => { started(); await blocked; return []; } };
+      return from(table);
+    };
+    return query;
+  }) as any);
   try {
     const first = batch(h);
     await reading;
-    expect(selects).toHaveBeenCalledTimes(1);
+    expect(kvReads).toBe(1);
     now = 6_000;
     const later = batch(h);
     await Promise.resolve();
-    expect(selects).toHaveBeenCalledTimes(1);
+    expect(kvReads).toBe(1);
     release();
     for (const response of [...await first, ...await later]) expect(response.status).toBe(200);
-    expect(selects).toHaveBeenCalledTimes(2);
+    expect(kvReads).toBe(2);
   } finally { release(); selects.mockRestore(); clock.mockRestore(); await h.close(); }
 });
 
