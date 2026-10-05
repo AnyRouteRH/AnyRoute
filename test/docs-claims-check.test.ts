@@ -62,6 +62,13 @@ describe("docs claims check", () => {
     expect(judge(live, { data: { agreements: { enabled: false }, jobs: [{ name: "agreement-indexer" }] } }).map((f) => f.capability.id)).toEqual(["agreements"]);
   });
 
+  test("USDG credited 1:1 follows escrow.usdg.enabled, and the fixture has it off", () => {
+    const claim = { file: "doc.md", line: 1, text: "USDG sent to the escrow address is credited 1:1, live at anyroute.tech.", implicit: false };
+    expect(judge(claim, fixture).map((f) => [f.capability.id, f.value])).toEqual([["usdg-escrow", false]]);
+    expect(judge({ ...claim, text: "USDG sent to the escrow address is credited 1:1 at anyroute.tech once switched on." }, fixture)).toEqual([]);
+    expect(judge(claim, { data: { escrow: { enabled: true, usdg: { enabled: true } } } })).toEqual([]);
+  });
+
   test("calling an on feature off is a warning, not a failure", () => {
     expect(at("The agreement contracts are not switched on yet.").map((f) => [f.level, f.capability.id])).toEqual([["warn", "agreements"]]);
   });

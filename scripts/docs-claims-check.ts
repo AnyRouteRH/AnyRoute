@@ -50,6 +50,7 @@ export const CAPABILITIES: Capability[] = [
   { id: "per-call", label: "per-call payment (CallPay or x402)", field: "per_call.configured", on: field("per_call.configured"), mention: /\bper[- ]call (?:payments?|pay)\b|\bCallPay\b/i },
   { id: "paywith", label: "Stock Token pay-with sessions", field: "paywith.configured", on: field("paywith.configured"), mention: /\bpay[- ]with (?:a )?Stock Tokens?\b|\bStock Token pay-with\b|\bPayWithStock\b/i },
   { id: "escrow", label: "Stock Token escrow deposits", field: "escrow.enabled", on: field("escrow.enabled"), mention: /\bescrow deposits?\b|\bStock Token escrow\b/i },
+  { id: "usdg-escrow", label: "USDG deposits credited 1:1 through escrow", field: "escrow.usdg.enabled", on: field("escrow.usdg.enabled"), mention: /\bUSDG\b[^.;]*\bcredited 1:1\b/i },
   {
     // Routers from before the agreements status section show it only through the registered agreement-indexer job.
     id: "agreements", label: "agent agreements (API, MCP tools, indexing)", field: "agreements.enabled", on: (s) => (s.agreements && typeof s.agreements === "object" ? field("agreements.enabled")(s) : job("agreement-indexer")(s)),

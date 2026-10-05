@@ -1,5 +1,5 @@
 {
-  "_about": "Production as GET /api/v1/status reported it at anyroute.tech on 2026-10-03 (release 7e652dd), trimmed to the fields scripts/docs-claims-check.ts reads. The agreements, facilitator, tools, commerce and makegood sections are what the router reports from the release that adds it, given the production configuration on 2026-10-03: agreements on, the isolated agreement-jury worker posting rulings, and the v6 facilitator, tool market, commerce ledger and make-good refunds off. Updated 2026-10-04: agent_guard.enabled is true (release 4359a95). config holds flags that status does not expose. When production changes, update this file and the docs in the same change; bun scripts/docs-claims-check.ts --live <router> shows the drift.",
+  "_about": "Production as GET /api/v1/status reported it at anyroute.tech on 2026-10-03 (release 7e652dd), trimmed to the fields scripts/docs-claims-check.ts reads. The agreements, facilitator, tools, commerce and makegood sections are what the router reports from the release that adds it, given the production configuration on 2026-10-03: agreements on, the isolated agreement-jury worker posting rulings, and the v6 facilitator, tool market, commerce ledger and make-good refunds off. Updated 2026-10-04: agent_guard.enabled is true (release 4359a95). Updated 2026-10-05: escrow.usdg.enabled is false (USDG escrow deposits are built and off until USDG_ESCROW_ENABLED is set). config holds flags that status does not expose. When production changes, update this file and the docs in the same change; bun scripts/docs-claims-check.ts --live <router> shows the drift.",
   "data": {
     "agent_guard": { "enabled": true },
     "release": {
@@ -24,7 +24,8 @@
       "configured": false
     },
     "escrow": {
-      "enabled": true
+      "enabled": true,
+      "usdg": { "enabled": false }
     },
     "per_call": {
       "configured": false,

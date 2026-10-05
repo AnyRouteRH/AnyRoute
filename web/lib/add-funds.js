@@ -17,7 +17,9 @@ export function fundingState(state, event) {
   }
   return state;
 }
-export function fundingOptions({ credits, escrow, stock, chain, officialAnyr }) {
+// USDG sent to escrow is credited at par; GET /api/v1/status escrow.usdg.enabled says whether the router takes it.
+export const USDG_ESCROW_NOTE = 'Send USDG to this address; it’s credited 1:1.';
+export function fundingOptions({ credits, escrow, stock, chain, officialAnyr, usdgEscrow }) {
   if (credits?.session || Number(chain?.chain_id) !== 4663) return [];
   const deposit = credits?.deposit;
   const options = [];
@@ -25,12 +27,22 @@ export function fundingOptions({ credits, escrow, stock, chain, officialAnyr }) 
   if (escrow?.enabled && Number(escrow.chain_id) === 4663 && isAddress(escrow.address) && isAddress(stock?.wallet)) {
     for (const token of escrow.tokens || []) {
       const anyr = token.symbol === 'ANYR' || token.address?.toLowerCase() === escrow.anyr?.address?.toLowerCase();
+      const par = token.price_source === 'par';
       if (!isAddress(token.address) || !Number.isInteger(token.decimals) || token.decimals < 0 || token.decimals > 36) continue;
       if (anyr && token.address.toLowerCase() !== officialAnyr?.toLowerCase()) continue;
-      options.push({ ...token, id: token.address, symbol: anyr ? '$ANYR' : token.symbol, to: escrow.address, kind: 'escrow', wallet: stock.wallet, fast_credit: escrow.fast_credit });
+      // USDG at par is offered only while status says it is switched on, and then first.
+      if (par && (usdgEscrow?.enabled !== true || token.symbol !== 'USDG' || token.decimals !== 6)) continue;
+      const option = { ...token, id: token.address, symbol: anyr ? '$ANYR' : token.symbol, to: escrow.address, kind: 'escrow', wallet: stock.wallet, fast_credit: escrow.fast_credit, ...(par ? { note: USDG_ESCROW_NOTE } : {}) };
+      if (par) options.unshift(option); else options.push(option);
     }
   }
-  return options;
+  // Two USDG routes (escrow and the Credits contract) get distinct labels.
+  return options.map(item => item.kind === 'credits' && options.some(o => o.symbol === 'USDG' && o.kind === 'escrow') ? { ...item, label: 'USDG (Credits contract)' } : item);
+}
+/** Escrow tokens in the order offered: USDG at par first while status says it is switched on, otherwise left out. */
+export function escrowTokenChoices(tokens, usdgEscrow) {
+  const list = (tokens || []).filter(t => t.price_source !== 'par' || usdgEscrow?.enabled === true);
+  return [...list.filter(t => t.price_source === 'par'), ...list.filter(t => t.price_source !== 'par')];
 }
 export function fundingAmount(amount, option) {
   if (!option) throw new Error('Choose an available payment option.');

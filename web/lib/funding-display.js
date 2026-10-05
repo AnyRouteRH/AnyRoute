@@ -19,7 +19,7 @@ export function fundingQuote(option, amount, now = Date.now()) {
     rate: rate > 0 ? `1 ${option.symbol} = ${formatUsd(rate)} in credits${margin}` : 'No current credit rate: wait before sending.',
     estimate: estimate.ok && estimate.credit != null
       ? `${formatUnits(estimate.raw, option.decimals, option.decimals)} ${option.symbol} ≈ ${formatUsd(estimate.credit)} in credits${estimate.capped ? ' (per-deposit limit)' : ''}` : '',
-    note: option.kind === 'escrow' ? `This is an estimate. The deposit is priced again when credited${option.fast_credit?.enabled ? '' : ', after chain finality'}. The rate can change.` : '',
+    note: option.kind === 'escrow' && option.price_source !== 'par' ? `This is an estimate. The deposit is priced again when credited${option.fast_credit?.enabled ? '' : ', after chain finality'}. The rate can change.` : '',
     limit: limit != null ? `Up to ${formatUsd(limit).replace(/\.00$/, '')} per deposit.` : '',
     freshness: when ? `Stock price from ${when}.` : '',
     reason: option.price_reason?.message || '',

@@ -4,7 +4,7 @@ import DepositProgress from './account/DepositProgress'; // V97B
 import DepositNextLine from './account/DepositNextLine'; // V97B
 import TrackDeposit from './account/TrackDeposit'; // V97B
 import { depositSender } from '../lib/deposit-progress.js'; // V97B
-import AddFunds from "./account/AddFunds"; import { fundingError } from "../lib/add-funds.js"; // ON1
+import AddFunds from "./account/AddFunds"; import { USDG_ESCROW_NOTE, escrowTokenChoices, fundingError } from "../lib/add-funds.js"; // ON1
 import { defaultFundingOption } from "../lib/funding-display.js"; import { ANYR_CA } from "./ContractAddress"; // V96
 import AccountStatements from "./account/AccountStatements"; import AccountExport from "./account/AccountExport"; // V87
 import AccountProofPack from "./account/AccountProofPack"; // U100
@@ -471,8 +471,9 @@ const DEPOSIT_STAGE = {
 /** ERC-20 transfer(to, raw) calldata, built without a library. */
 const transferData = (to, raw) => "0xa9059cbb" + to.slice(2).toLowerCase().padStart(64, "0") + BigInt(raw).toString(16).padStart(64, "0");
 
-function StockDepositDialog({ onClose, escrow, stock, status, onDone, apiKey }) {
-  const tokens = escrow?.tokens || [];
+function StockDepositDialog({ onClose, escrow, stock, status, onDone, apiKey, usdg = false }) {
+  // Opened from "Add funds with USDG" while status says it is on, USDG is listed first; "Pay with stock" lists the others.
+  const tokens = escrowTokenChoices(escrow?.tokens, usdg ? status?.escrow?.usdg : null);
   const [symbol, setSymbol] = useState(defaultFundingOption(tokens, ANYR_CA)?.symbol || ""); // V96
   const [amount, setAmount] = useState("1");
   const [step, setStep] = useState("");
@@ -486,7 +487,7 @@ function StockDepositDialog({ onClose, escrow, stock, status, onDone, apiKey }) 
   const estimate = value != null && limit != null ? Math.min(value, limit) : value;
   const discount = (escrow?.haircut_bps ?? 0) / 100;
   return (
-    <Modal title={anyr ? `Pay with stock or $${anyr.symbol}` : "Pay with stock"} onClose={onClose}>
+    <Modal title={tokens.some((t) => t.price_source === "par") ? `Add funds with USDG, stock${anyr ? ` or $${anyr.symbol}` : ""}` : anyr ? `Pay with stock or $${anyr.symbol}` : "Pay with stock"} onClose={onClose}>
       <p>
         Send a listed Stock Token{anyr ? ` or $${anyr.symbol}` : ""} on {chainOf(status).name} to the escrow wallet. Your balance is credited {finalityWait(escrow)}. Stock Tokens are
         valued at the live Chainlink price{discount ? ` minus ${discount}%` : ""}.{anyr ? " " + anyrTerms(anyr) : ""} Credits are spent on API calls and are not withdrawable.
@@ -521,6 +522,7 @@ function StockDepositDialog({ onClose, escrow, stock, status, onDone, apiKey }) 
               <input id="stock-amount" type="number" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={!!step} />
             </Field>
           </div>
+          {token?.price_source === "par" && <p className="help-text">{USDG_ESCROW_NOTE}</p>}
           <dl className="detail-list">
             <div>
               <dt>You receive</dt>
@@ -804,6 +806,7 @@ export default function Dashboard() {
   stateRef.current = state;
   const live = mode === "live";
   const escrowOn = live && !!ws?.escrow; // PAYMENTS_MODE=escrow: Stock Tokens sent to an escrow wallet become credits
+  const usdgOn = escrowOn && escrowTokenChoices(ws.escrow.tokens, status?.escrow?.usdg).some((t) => t.price_source === "par"); // USDG credited 1:1
   // A link to /dashboard/?pay=anyr#payments opens the $ANYR payment dialog once the workspace is loaded.
   useEffect(() => {
     if (!escrowOn || !ws.escrow.anyr || new URLSearchParams(window.location.search).get("pay") !== "anyr") return;
@@ -1547,15 +1550,16 @@ export default function Dashboard() {
                   <p>{`Held for calls in progress: $${money(ws?.credits?.held ?? 0, 6)} · Credited in total: $${money(ws?.credits?.total_credits ?? 0, 2)}.`}</p>
                 </div>
                 <div className="button-row">
+                  {usdgOn && <Button onClick={() => setModal({ type: "stock", usdg: true })}>Add funds with USDG</Button>}
                   {ws.escrow.anyr ? (
                     <>
-                      <Button onClick={() => setModal({ type: "anyr" })}>{`Pay with $${ws.escrow.anyr.symbol}`}</Button>
+                      <Button secondary={usdgOn} onClick={() => setModal({ type: "anyr" })}>{`Pay with $${ws.escrow.anyr.symbol}`}</Button>
                       <Button secondary onClick={() => setModal({ type: "stock" })}>
                         Pay with stock
                       </Button>
                     </>
                   ) : (
-                    <Button onClick={() => setModal({ type: "stock" })}>Pay with stock</Button>
+                    <Button secondary={usdgOn} onClick={() => setModal({ type: "stock" })}>Pay with stock</Button>
                   )}
                 </div>
               </div>
@@ -1910,6 +1914,7 @@ export default function Dashboard() {
       {modal?.type === "stock" && (
         <StockDepositDialog
           apiKey={apiKey} // V97B
+          usdg={!!modal.usdg}
           escrow={ws?.escrow}
           stock={ws?.stock}
           status={status}
