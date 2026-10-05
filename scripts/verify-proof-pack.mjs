@@ -7,7 +7,8 @@
 // canonical JSON; v2: COSE_Sign1 with EdDSA), refund receipt, monthly statement and the pack's manifest verifies against
 // the keys in the pack; each receipt's anchor leaf is keccak256(keccak256(...)) of what was signed; every Merkle path
 // present leads from that leaf to its root (sorted-pair keccak256, as OpenZeppelin MerkleProof); each statement's amounts
-// reconcile exactly; and the signed manifest lists exactly the receipts, statements and keys in the file. It makes no
+// reconcile exactly; the lane report adds up and matches the calls listed, and each call's lane, provider and model match
+// its signed receipt; and the signed manifest lists exactly the receipts, statements, keys and lane report in the file. It makes no
 // network request and deliberately shares no code with the router. Whether a root was posted on chain, and whether the
 // keys are the router's, are checked against the ReceiptAnchor contract and /.well-known/anyroute-receipt-keys.json.
 
@@ -199,6 +200,97 @@ export function statementReconciles(p) {
   }
 }
 
+// The lanes whose endpoints all hold a fresh hardware attestation the router verified: "proven hardware".
+export const PROVEN_LANES = ["attested", "unlinkable"];
+const LANE_ORDER = ["public", "attested", "unlinkable"];
+/** part / whole to four decimal places, rounded half up; null when whole is 0. The router computes shares the same way. */
+export const shareOf = (part, whole) => (whole === 0n ? null : Number((part * 20000n + whole) / (2n * whole)) / 10000);
+const evidenceUrl = (provider) => `/verify/?p=${encodeURIComponent(provider)}`;
+const attestationUrl = (provider) => `/api/v1/attestation/${encodeURIComponent(provider)}`;
+
+/**
+ * Recompute a lane report from the calls it covers and compare: totals, every lane (calls, spend, shares), the proven
+ * share, and every provider and model row on the proven lanes with its evidence links. Returns a list of problems.
+ */
+export function laneReportProblems(report, calls) {
+  const problems = [];
+  const bad = (m) => problems.push(m);
+  if (!report || typeof report !== "object") return ["it is missing or not an object"];
+  try {
+    let total = 0n, spend = 0n;
+    const lanes = new Map(LANE_ORDER.map((l) => [l, { calls: 0n, spend: 0n }]));
+    const rows = new Map();
+    for (const c of calls) {
+      const lane = c?.lane ?? null, amount = pico(c?.cost);
+      total += 1n;
+      spend += amount;
+      const t = lanes.get(lane) ?? { calls: 0n, spend: 0n };
+      t.calls += 1n;
+      t.spend += amount;
+      lanes.set(lane, t);
+      if (!PROVEN_LANES.includes(lane)) continue;
+      const id = JSON.stringify([lane, c.provider, c.model]);
+      const r = rows.get(id) ?? { calls: 0n, spend: 0n };
+      r.calls += 1n;
+      r.spend += amount;
+      rows.set(id, r);
+    }
+    if (report.totals?.calls !== Number(total) || pico(report.totals?.spend) !== spend) bad(`the totals (${report.totals?.calls} calls, ${report.totals?.spend}) are not the ${total} calls and ${spend} pico-USDG listed`);
+
+    const listedLanes = Array.isArray(report.lanes) ? report.lanes : [];
+    if (!Array.isArray(report.lanes)) bad("it has no lane list");
+    let laneCalls = 0n, laneSpend = 0n;
+    const seen = new Set();
+    for (const row of listedLanes) {
+      const lane = row?.lane ?? null, name = lane ?? "not recorded";
+      if (seen.has(lane)) bad(`lane ${name} is listed twice`);
+      seen.add(lane);
+      const want = lanes.get(lane) ?? { calls: 0n, spend: 0n };
+      const got = { calls: BigInt(row.calls), spend: pico(row.spend) };
+      laneCalls += got.calls;
+      laneSpend += got.spend;
+      if (got.calls !== want.calls || got.spend !== want.spend) bad(`lane ${name}: ${row.calls} calls and ${row.spend} listed, but the calls in this file give ${want.calls} and ${want.spend} pico-USDG`);
+      if (row.share_of_calls !== shareOf(got.calls, total) || row.share_of_spend !== shareOf(got.spend, spend)) bad(`lane ${name}: its shares do not match its calls and spend`);
+      if (row.proven !== PROVEN_LANES.includes(lane)) bad(`lane ${name}: marked ${row.proven ? "proven" : "not proven"}`);
+    }
+    for (const [lane, t] of lanes) if (t.calls > 0n && !seen.has(lane)) bad(`lane ${lane ?? "not recorded"} has calls in this file but is not listed`);
+    if (laneCalls !== total || laneSpend !== spend) bad("the lanes do not add up to the totals");
+
+    const p = report.proven ?? {};
+    const provenCalls = PROVEN_LANES.reduce((n, l) => n + (lanes.get(l)?.calls ?? 0n), 0n), provenSpend = PROVEN_LANES.reduce((n, l) => n + (lanes.get(l)?.spend ?? 0n), 0n);
+    if (canonicalJson(p.lanes) !== canonicalJson(PROVEN_LANES)) bad("the proven share does not name the attested and unlinkable lanes");
+    if (BigInt(p.calls ?? -1) !== provenCalls || pico(p.spend) !== provenSpend) bad(`the proven share (${p.calls} calls, ${p.spend}) is not the ${provenCalls} calls and ${provenSpend} pico-USDG on the proven lanes`);
+    if (p.share_of_calls !== shareOf(provenCalls, total) || p.share_of_spend !== shareOf(provenSpend, spend)) bad("the proven shares do not match");
+
+    const providers = Array.isArray(report.providers) ? report.providers : [];
+    if (!Array.isArray(report.providers)) bad("it has no provider list");
+    let rowCalls = 0n, rowSpend = 0n;
+    const listed = new Set();
+    for (const row of providers) {
+      const id = JSON.stringify([row?.lane, row?.provider, row?.model]), name = `${row?.provider} ${row?.model} on ${row?.lane}`;
+      if (listed.has(id)) bad(`provider ${name} is listed twice`);
+      listed.add(id);
+      if (!PROVEN_LANES.includes(row?.lane)) bad(`provider ${name}: provider rows cover only the proven lanes`);
+      const want = rows.get(id) ?? { calls: 0n, spend: 0n };
+      const got = { calls: BigInt(row.calls), spend: pico(row.spend) };
+      rowCalls += got.calls;
+      rowSpend += got.spend;
+      if (got.calls !== want.calls || got.spend !== want.spend) bad(`provider ${name}: ${row.calls} calls and ${row.spend} listed, but the calls in this file give ${want.calls} and ${want.spend} pico-USDG`);
+      if (row.evidence_url !== evidenceUrl(row.provider) || row.attestation_url !== attestationUrl(row.provider)) bad(`provider ${name}: its evidence links do not point at its own attestation record`);
+    }
+    for (const id of rows.keys()) if (!listed.has(id)) bad(`provider ${JSON.parse(id).slice(1).join(" ")} on ${JSON.parse(id)[0]} has calls in this file but is not listed`);
+    if (rowCalls !== provenCalls || rowSpend !== provenSpend) bad("the provider rows do not add up to the proven share");
+  } catch {
+    bad("it holds a value that is not a count or an amount");
+  }
+  return problems;
+}
+
+/** The lane, provider and model a call lists must be the ones its signed receipt states, where the receipt states them. */
+function signedFacts(label, call, facts, fail) {
+  for (const [name, value] of Object.entries(facts)) if (value !== undefined && value !== null && value !== call[name]) fail(`${label}: the listed ${name} ${call[name]} is not the signed ${value}`);
+}
+
 function keyring(jwks, fail) {
   const keys = new Map();
   for (const k of Array.isArray(jwks?.keys) ? jwks.keys : []) {
@@ -240,7 +332,7 @@ export function verifyProofPack(input) {
   const pack = input && typeof input === "object" && input.data && !input.type ? input.data : input;
   const failures = [];
   const fail = (m) => failures.push(m);
-  const s = { calls: 0, receipts: 0, without_receipt: 0, v1_valid: 0, v2: 0, v2_valid: 0, paths: 0, paths_valid: 0, onchain_roots: new Set(), offchain_roots: new Set(), unrooted: 0, refunds: 0, refunds_valid: 0, statements: 0, statements_valid: 0, keys: 0, manifest: false };
+  const s = { lane_report: "absent", proven_calls: 0, proven_share_of_calls: null, calls: 0, receipts: 0, without_receipt: 0, v1_valid: 0, v2: 0, v2_valid: 0, paths: 0, paths_valid: 0, onchain_roots: new Set(), offchain_roots: new Set(), unrooted: 0, refunds: 0, refunds_valid: 0, statements: 0, statements_valid: 0, keys: 0, manifest: false };
   if (!pack || pack.type !== PACK_TYPE) {
     fail(`not an Anyroute proof pack (type ${pack?.type ?? "missing"}; expected ${PACK_TYPE})`);
     return finish(pack, s, failures);
@@ -276,6 +368,7 @@ export function verifyProofPack(input) {
       else {
         s.v1_valid++;
         if (r.payload.id !== undefined && r.payload.id !== call.id) fail(`${label}: the signed receipt names call ${r.payload.id}`);
+        signedFacts(label, call, { lane: r.payload.lane, provider: r.payload.provider, model: r.payload.model }, fail);
         const leaf = leafOf(Buffer.concat([v.bytes, v.sig]));
         if (r.leaf && leaf !== String(r.leaf).toLowerCase()) fail(`${label}: the v1 anchor leaf does not match the signed receipt`);
         else if (r.leaf) path(`${label} v1`, leaf, r.anchor);
@@ -309,6 +402,7 @@ export function verifyProofPack(input) {
         s.v2_valid++;
         if (d.claims?.rid !== call.id) fail(`${label}: the signed v2 claims name call ${d.claims?.rid}`);
         if (r.v2.claims && canonicalJson(r.v2.claims) !== canonicalJson(d.claims)) fail(`${label}: the readable v2 claims differ from the signed claims`);
+        signedFacts(`${label} v2`, call, { lane: d.claims?.lane, provider: d.claims?.node?.provider, model: d.claims?.model?.id }, fail);
         const leaf = leafOf(bytes);
         if (r.v2.leaf && leaf !== String(r.v2.leaf).toLowerCase()) fail(`${label}: the v2 anchor leaf does not match the signed receipt`);
         else if (r.v2.leaf) path(`${label} v2`, leaf, r.v2.anchor);
@@ -318,6 +412,15 @@ export function verifyProofPack(input) {
     }
     if (!r.payload && !r.v2) fail(`${label}: the receipt has neither a v1 payload nor a v2 encoding`);
     if (!rooted) s.unrooted++;
+  }
+
+  // The lane report section (absent from packs made before it existed): recomputed from the calls in this file.
+  if (pack.lane_report !== undefined) {
+    const problems = laneReportProblems(pack.lane_report, Array.isArray(pack.calls) ? pack.calls : []);
+    for (const p of problems) fail(`lane report: ${p}`);
+    s.lane_report = problems.length ? "failed" : "matches";
+    s.proven_calls = Number(pack.lane_report?.proven?.calls) || 0;
+    s.proven_share_of_calls = pack.lane_report?.proven?.share_of_calls ?? null;
   }
 
   for (const r of Array.isArray(pack.refunds) ? pack.refunds : []) {
@@ -362,6 +465,7 @@ export function verifyProofPack(input) {
       refunds: (pack.refunds ?? []).map((r) => ({ id: r.id, leaf: r.leaf ?? null })),
       statements: (pack.statements ?? []).map((x) => ({ month: x.payload?.month, key_id: x.key_id, sig: x.sig })),
       key_ids: (pack.keys?.keys ?? []).map((k) => k.kid),
+      lane_report: pack.lane_report ?? null,
     };
     const differs = Object.keys(listed).filter((k) => !same(p[k] ?? null, listed[k] ?? null));
     if (differs.length) fail(`manifest: the signed manifest does not match this file (${differs.join(", ")})`);
@@ -380,6 +484,9 @@ function finish(pack, s, failures) {
     `Signatures: v1 ${s.v1_valid} valid · v2 ${s.v2_valid} of ${s.v2} valid · refunds ${s.refunds_valid} of ${s.refunds} valid · statements ${s.statements_valid} of ${s.statements} valid and reconciled.`,
     `Merkle paths: ${s.paths_valid} of ${s.paths} valid, under ${s.onchain_roots.size} root(s) posted on chain and ${s.offchain_roots.size} kept off chain · ${s.unrooted} receipt(s) not yet rooted.`,
     `Manifest: ${s.manifest ? "signed, and lists exactly the receipts, statements and keys in this file." : "not verified."}`,
+    s.lane_report === "absent"
+      ? "Lane report: none in this file."
+      : `Lane report: ${s.lane_report === "matches" ? "adds up and matches the calls in this file" : "does not match the calls in this file"} · ${s.proven_calls} call(s) on proven hardware (the attested and unlinkable lanes)${s.proven_share_of_calls === null ? "" : `, ${(s.proven_share_of_calls * 100).toFixed(2)}% of calls`}.`,
   ];
   for (const u of Array.isArray(pack?.statements_unavailable) ? pack.statements_unavailable : []) lines.push(`No statement for ${u.month}: ${u.reason}`);
   if (pack?.next_cursor) lines.push("More calls in this range are in the next part (next_cursor).");

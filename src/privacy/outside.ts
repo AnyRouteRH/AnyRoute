@@ -8,6 +8,7 @@ import { provisioningBodyReader, inferenceModelReader } from "./provisioning.ts"
 import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { statementStores } from "./statements.ts"; // V87
 import { proofPackLimit, proofPackStores } from "./proof-pack.ts"; // U100
+import { laneReportLimit, laneReportStores } from "./lane-report.ts"; // Lane report
 import { insightsStores } from "./insights.ts"; // V88: read-only aggregates.
 import { dataToolStores } from "./data-tools.ts"; // B: market-data tools and decision tags.
 import { webhookBodyReader, webhookStores } from "./webhooks.ts"; // V86: event delivery.
@@ -60,6 +61,7 @@ const redisFamilies: RedisFamily[] = [
   limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate and track-record issuance attempts: five per minute per account, shared across standalone, profile and track-record issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym, claims or stats.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/identity/track-record.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
   feedbackLimit, // v6 I
   proofPackLimit, // U100
+  laneReportLimit, // Lane report
   telegramLinkRate,
   ...facilitatorRedisFamilies, // v6 F
   limit({ prefix: "network-host-wallet:", shape: "network-host-wallet:<operator wallet>", purpose: "Wallet-authenticated host signup and credential updates, three per minute per wallet. Links attempts by the public operator wallet.", holds: "wallet", seconds: 60, evidence: [ev("src/api/network-hosts.ts", "await ctx.limiter.take(`network-host-wallet:${auth.wallet}`")] }),
@@ -754,6 +756,7 @@ export const EXTERNAL: ExternalDoc = {
     ...activityStores,
     ...statementStores, // V87
     ...proofPackStores, // U100
+    ...laneReportStores, // Lane report
     ...insightsStores, // V88: spend insights.
     ...dataToolStores, // B
     ...inboxStores,

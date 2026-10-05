@@ -13,12 +13,14 @@ import { COSE_CONTENT_TYPE } from "../receipts/v2.ts";
 import { refundReceipt } from "../services/makegood.ts";
 import { makegoodRefunds } from "../services/makegood-schema.ts";
 import { readStatement } from "../statements/read.ts";
+import { summarizeLanes } from "../lane-report/read.ts";
 
 // U100: a proof pack. One JSON file for a date range that anyone can check with no network: the account's calls with
 // their signed receipts (the same objects GET /api/v1/receipts/:id serves, with their Merkle paths), the refund receipts
 // issued in the range, the signed monthly statements covering it, the router's published receipt keys and a manifest the
-// router signs over exactly which receipts it listed. It reads existing records only and keeps nothing. Receipts carry
-// hashes, buckets and amounts, never prompt or answer text, and nothing else in the pack is read from a request.
+// router signs over exactly which receipts it listed, with a lane report of those calls (src/lane-report/read.ts). It reads
+// existing records only and keeps nothing. Receipts carry hashes, buckets and amounts, never prompt or answer text, and
+// nothing else in the pack is read from a request.
 
 export const PROOF_PACK_TYPE = "anyroute.proof-pack.v1";
 export const PROOF_PACK_MANIFEST_TYPE = "anyroute.proof-pack.manifest.v1";
@@ -106,6 +108,7 @@ const LIMITS = [
   "A Merkle path is present once the receipt's hour has been rooted. A path shows inclusion under a root; whether that root was posted on chain is checked against the ReceiptAnchor contract, not by this file.",
   "The manifest signature is the router's statement of which receipts it listed for this range and scope. It is not an independent audit of the router's records.",
   "Keys are the router's published receipt keys at download time. Pin them independently against /.well-known/anyroute-receipt-keys.json or the ReceiptAnchor contract.",
+  "The lane report counts the calls in this file by the lane each receipt records. The attested and unlinkable lanes ran on proven hardware; each provider row links to that provider's attestation record.",
 ];
 const VERIFY = {
   script: "scripts/verify-proof-pack.mjs",
@@ -113,7 +116,7 @@ const VERIFY = {
   steps: [
     "Save this file and the verifier script scripts/verify-proof-pack.mjs from the Anyroute source. It needs Node 18 or later and no packages or network.",
     "Run: node verify-proof-pack.mjs <this file>. It exits 0 only when every check passes.",
-    "It checks that each key id matches its key bytes, every receipt, refund receipt, statement and manifest signature against the keys in this file, every receipt's anchor leaf, every Merkle path present, each statement's arithmetic, and that the signed manifest lists exactly the receipts in this file.",
+    "It checks that each key id matches its key bytes, every receipt, refund receipt, statement and manifest signature against the keys in this file, every receipt's anchor leaf, every Merkle path present, each statement's arithmetic, that the lane report adds up and matches the calls (and each call's lane, provider and model match its signed receipt), and that the signed manifest lists exactly the receipts in this file.",
     "One receipt at a time can also be checked in a browser at /verify/.",
   ],
 };
@@ -170,6 +173,8 @@ export async function readProofPack(ctx: Ctx, key: KeyRow, q: ProofPackQuery, no
       v2: r.receipt_cose ? { alg: "EdDSA", kid: r.receipt_key_id, content_type: COSE_CONTENT_TYPE, cose: r.receipt_cose, claims: r.receipt_v2, leaf: r.receipt_leaf_v2, anchor: proofOf(r.anchor_index, r.leaf_index_v2) } : null,
     } : null,
   }));
+  // The lane report of exactly these calls; the verifier recomputes it from the list.
+  const laneReport = { covers: "calls_in_this_file", ...summarizeLanes(rows.map((r) => ({ lane: r.lane, provider: r.provider_id, model: r.model_id, calls: 1, pico: BigInt(r.cost) }))) };
   const last = rows.at(-1);
   const nextCursor = truncated && last ? Buffer.from(JSON.stringify({ at: last.at, id: last.id, part: part + 1, filter })).toString("base64url") : null;
 
@@ -206,6 +211,7 @@ export async function readProofPack(ctx: Ctx, key: KeyRow, q: ProofPackQuery, no
     refunds: refunds.map((r) => ({ id: r.id, leaf: r.leaf ?? null })),
     statements: statements.map((s) => ({ month: s.payload.month, key_id: s.key_id, sig: s.sig })),
     key_ids: keys.keys.map((k) => k.kid),
+    lane_report: laneReport,
   };
   const signed = ctx.signer.sign(manifest);
   const receipts = calls.filter((c) => c.receipt);
@@ -216,7 +222,7 @@ export async function readProofPack(ctx: Ctx, key: KeyRow, q: ProofPackQuery, no
       calls: calls.length, receipts: receipts.length, without_receipt: calls.length - receipts.length, v2_receipts: receipts.filter((c) => c.receipt!.v2).length,
       merkle_paths: receipts.reduce((n, c) => n + (c.receipt!.anchor ? 1 : 0) + (c.receipt!.v2?.anchor ? 1 : 0), 0), refunds: refunds.length, statements: statements.length,
     },
-    calls, refunds, statements, statements_unavailable: unavailable, keys,
+    calls, lane_report: laneReport, refunds, statements, statements_unavailable: unavailable, keys,
     manifest: { payload: manifest, alg: "Ed25519", key_id: signed.keyId, sig: signed.sig },
     limits: LIMITS, verify: VERIFY,
   };
