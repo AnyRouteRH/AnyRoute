@@ -15,19 +15,20 @@ const MOVED = {
   Agents: { rulebook: 'Keys & limits', sessions: 'Keys & limits', directory: 'Keys & limits' },
   Money: { insights: 'Overview', 'account-activity': 'Overview', statements: 'Billing', 'account-payments': 'Billing', holders: 'Billing', spend: 'Keys & limits', 'api-receipts': 'Billing' },
   Account: { 'account-keys': 'Keys & limits', 'account-export': 'Settings', teams: 'Keys & limits', providers: 'Build', settings: 'Settings', webhooks: 'Settings', keep: 'Settings' },
+  New: { playbooks: 'Keys & limits' }, // U115
 };
 
 test('one account map includes every section once in five tabs', () => {
   assert.deepEqual(ACCOUNT_GROUPS.map(group => group.title), ['Overview', 'Build', 'Keys & limits', 'Billing', 'Settings']);
   assert.deepEqual(ACCOUNT_GROUPS.map(group => group.id), ['overview', 'build', 'keys', 'billing', 'settings']);
   const ids = ACCOUNT_GROUPS.flatMap(group => group.ids);
-  assert.equal(ids.length, 27); assert.equal(new Set(ids).size, 27);
+  assert.equal(ids.length, 28); assert.equal(new Set(ids).size, 28);
   assert.deepEqual(new Set(ids), new Set(ACCOUNT_SECTIONS.map(section => section.taskId)));
-  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'keys').ids, ['account-keys', 'rulebook', 'sessions', 'spend', 'teams', 'directory']);
+  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'keys').ids, ['account-keys', 'rulebook', 'playbooks', 'sessions', 'spend', 'teams', 'directory']);
   assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'billing').ids, ['account-payments', 'api-receipts', 'statements', 'holders']);
   assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'settings').ids, ['settings', 'account-export', 'webhooks', 'keep']);
   const moved = Object.assign({}, ...Object.values(MOVED));
-  assert.equal(Object.keys(moved).length, 27);
+  assert.equal(Object.keys(moved).length, 28);
   for (const [id, title] of Object.entries(moved)) assert.equal(ACCOUNT_GROUPS.find(group => group.ids.includes(id))?.title, title, id);
   // Each tab opens on a dashboard section, so a tab click stays on the page.
   for (const group of ACCOUNT_GROUPS) assert.ok(groupSections(group)[0].hash, group.id);
@@ -39,7 +40,7 @@ test('one account map includes every section once in five tabs', () => {
 
 test('every legacy dashboard deep link selects its view; overview and unknown hashes select Home', () => {
   const legacy = ['playground','saved-routes','presets','characters','eval-lab','batch-studio','models','api-keys','agent-sessions','teams','skills','receipts','spend-watch','payments','holders','providers','settings'];
-  assert.equal(dashboardSections.length, 23);
+  assert.equal(dashboardSections.length, 24);
   for (const hash of legacy) {
     const title = sectionFromHash('#' + hash);
     assert.notEqual(title, 'Home', hash);

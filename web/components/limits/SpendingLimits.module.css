@@ -79,3 +79,11 @@
 .replayExamples li :global(.help-text) { margin: 0 !important; }
 .replayExampleHead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 0 0 4px; font: 500 12px var(--mono); }
 .replayExampleHead time { color: var(--muted); font-weight: 400; }
+/* U115: Playbooks */
+.playbooks { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 12px; }
+.playbook { min-width: 0; padding: 16px; border: 1px solid var(--line); background: var(--paper); overflow-wrap: anywhere; }
+.playbook h3 { margin: 0 0 8px; font-size: 16px; }
+.playbook ul { margin: 8px 0; padding-left: 18px; font-size: 14px; }
+.playbook a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.json { overflow: auto; max-height: 420px; max-width: 100%; padding: 16px; background: var(--paper-2); font: 12px/1.6 var(--mono); }

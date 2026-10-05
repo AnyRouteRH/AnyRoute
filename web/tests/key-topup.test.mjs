@@ -80,7 +80,7 @@ test('the editor shows Auto top-up under the total budget and saves it with the 
   assert.match(editor, /TOPUP_FIELDS\.map\(\(\[k, label, max\]\)/);
   assert.match(editor, /aria-live="polite">\{topup\.summary\}/);
   const limits = source('../components/limits/KeyLimits.jsx');
-  assert.match(limits, /keySavePlan\(\{ form, loaded, budget: budgetValue, savedBudget, topup: topupValue, savedTopup, reset \}\)/);
+  assert.match(limits, /keySavePlan\(\{ form(?:: playbook \? null : form)?, loaded, budget: budgetValue, savedBudget, topup: topupValue, savedTopup, reset \}\)/);
   assert.match(limits, /topup: \{ value: topupValue, onChange: setTopupValue, summary: topupSummary\(topupValue, \{ week, reset \}\) \}/);
   assert.match(limits, /request\('\/api\/v1\/keys\/' \+ encodeURIComponent\(keyHash\)/);
   assert.match(limits, /setWeek\(r\.data\.topups_this_week_usd \?\? null\)/);

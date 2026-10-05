@@ -121,6 +121,7 @@ TASKS.push({ ...task('insights', 'build', 'See where your money goes', 'See spen
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 
 TASKS.push({ ...task('webhooks', 'build', 'Manage webhook destinations', 'Inspect signing availability, event subscriptions and delivery history.', '/dashboard/webhooks/', 'webhooks, events, signature'), menu: false }); // V86: search-only account tool.
+TASKS.push({ ...task('playbooks', 'agents', 'Share one rulebook across agents', 'Keep one playbook of rules that many agents and keys follow, and change it once.', '/dashboard/#playbooks', 'playbook, shared rules, rulebook, team, agents, keys, limits'), menu: false }); // U115: search-only; the Agents menu is full.
 TASKS.push({ ...task('commerce', 'verify', 'Read the commerce ledger', 'See anchored settlements without self-dealing, beside the gross figures.', '/commerce/', 'commerce, settlements, volume, self-dealing, dune'), menu: false }); // v6 L: search-only.
 
 // Account sections share the task map; existing dashboard hashes remain stable.
@@ -128,7 +129,7 @@ TASKS.push({ ...task('commerce', 'verify', 'Read the commerce ledger', 'See anch
 export const ACCOUNT_GROUPS = [
   { id: 'overview', title: 'Overview', ids: ['dashboard', 'inbox', 'account-activity', 'insights'] },
   { id: 'build', title: 'Build', ids: ['playground', 'models', 'routing', 'presets', 'characters', 'evals', 'batches', 'skills', 'providers'] },
-  { id: 'keys', title: 'Keys & limits', ids: ['account-keys', 'rulebook', 'sessions', 'spend', 'teams', 'directory'] },
+  { id: 'keys', title: 'Keys & limits', ids: ['account-keys', 'rulebook', 'playbooks', 'sessions', 'spend', 'teams', 'directory'] },
   { id: 'billing', title: 'Billing', ids: ['account-payments', 'api-receipts', 'statements', 'holders'] },
   { id: 'settings', title: 'Settings', ids: ['settings', 'account-export', 'webhooks', 'keep'] },
 ];
@@ -152,6 +153,7 @@ export const ACCOUNT_SECTIONS = [
   accountSection('batches', 'Batch Studio', 'batch-studio', 'Submit groups of requests and follow their progress.', 'Connect your key to submit a batch.'),
   accountSection('skills', 'Skills', 'skills', 'Read skill scan reports and installation details.', 'Connect your key to inspect a skill.'),
   accountSection('rulebook', 'Agents', null, 'Set budgets and rules, stop agents and review requests waiting for approval.', 'Connect a management key or an owner/admin key to manage agents.'),
+  accountSection('playbooks', 'Playbooks', 'playbooks', 'Keep one set of rules that many agents and keys follow, and change it once.', 'Connect a management key or a team owner/admin key to manage playbooks.'), // U115
   accountSection('sessions', 'Agent Sessions', 'agent-sessions', 'Give an agent a spending budget and a time limit.', 'Connect your key to open a session.'),
   accountSection('directory', 'Public directory', null, 'Browse opt-in agent profiles and owner-supplied capabilities.', 'Open the public directory to find an agent; no key is needed.'),
   accountSection('account-payments', 'Payments', 'payments', 'See your balance, deposit instructions and payment options.', 'Connect your key to add funds.'),

@@ -94,12 +94,12 @@ test('Replay last 7 days sits beside Save wherever the editor edits a saved key 
   assert.equal(W.button, 'Replay last 7 days'); assert.equal(W.setup, 'Replay it first');
   assert.equal(W.done, 'Replayed against your last 7 days. Nothing was saved.');
   const agents = read('app/agents/Agents.jsx');
-  assert.match(agents, /<Button type="submit" disabled=\{busy\}>\{W\.save\}<\/Button><ReplayButton replay=\{replay\}/);
+  assert.match(agents, /<Button type="submit" disabled=\{busy\}>\{W\.save\}<\/Button>\}?<ReplayButton replay=\{replay\}/);
   assert.match(agents, /<SpendingLimits id="rulebook"[^>]* onReplay=\{replaySetup\}>/);
   assert.match(agents, /<ReplayResult id="replay-rules" replay=\{replay\} current=\{built\.policy\}\/>/);
   assert.match(agents, /<p id="replay-rules" className="note">/); // the search task's anchor before an agent is selected
   const key = read('components/limits/KeyLimits.jsx');
-  assert.match(key, /<Button type="submit" disabled=\{view\.busy\}>\{W\.save\}<\/Button><ReplayButton replay=\{replay\}/);
+  assert.match(key, /<Button type="submit" disabled=\{view\.busy\}>\{(?:playbook \? KB\.save : )?W\.save\}<\/Button>(?:\{!playbook && )?<ReplayButton replay=\{replay\}/);
   assert.match(key, /<SpendingLimits key=\{revision\}[^>]* onReplay=\{replaySetup\}/);
   assert.match(key, /<ReplayResult id="key-limits-replay"/);
   assert.doesNotMatch(read('components/harness/Limits.jsx'), /Replay|onReplay/); // a chat key is made per tab, not saved

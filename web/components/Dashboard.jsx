@@ -39,6 +39,7 @@ import Tracing from "./features/Tracing";
 import Holders from "./features/Holders";
 import PayAnyrDialog from "./PayAnyr";
 import KeyLimits from "./limits/KeyLimits"; // U102: spending limits for any key.
+import Playbooks from "./limits/Playbooks"; // U115: one rulebook many keys follow.
 import { KEY_BUDGET_WORDS, topupCardText } from "../lib/spending-limits"; // U104: a key's total budget lives in its spending limits. U107: auto top-up.
 
 // Account shell: preserve feature sections and their dashboard hashes.
@@ -1267,6 +1268,7 @@ export default function Dashboard() {
           {tab === "Statements" && apiKey && <AccountProofPack key={`proof-pack-${apiKey}`} apiKey={apiKey}/>} {/* U100 */}
           {tab === "Insights" && signedIn && <AccountInsights key={apiKey} apiKey={apiKey}/>} {/* V88: no figures before connection. */}
           {tab === "Inbox" && apiKey && <AccountInbox key={apiKey} apiKey={apiKey}/>}
+          {tab === "Playbooks" && <Playbooks key={apiKey} live={live && signedIn} apiKey={apiKey}/>} {/* U115 */}
           {tab === "Activity" && ws && <AccountActivity apiKey={apiKey} keys={ws.keys}/>}
           {tab === "Home" && ws && <AccountHome apiKey={apiKey} workspace={ws} onRefresh={() => refresh()} onReceipt={receipt => setModal({ type: "receipt", data: receipt })}/>}
           {tab === "Playground" && (

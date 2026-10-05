@@ -24,7 +24,7 @@ export function useAgentGuard() {
   useEffect(() => { const ac = new AbortController(); api('/api/v1/status', { signal: ac.signal }).then(r => { if (!ac.signal.aborted) setEnabled(r.data?.agent_guard?.enabled === true); }).catch(() => {}); return () => ac.abort(); }, []);
   return enabled;
 }
-const money = (id, value, set) => <input id={id} type="number" min="0" max="1000000" step="any" inputMode="decimal" value={value ?? ''} onChange={e => set(e.target.value)}/>;
+const money = (id, value, set, readOnly = false) => <input id={id} type="number" min="0" max="1000000" step="any" inputMode="decimal" disabled={readOnly} value={value ?? ''} onChange={e => set(e.target.value)}/>;
 const lines = (id, value, set) => <textarea id={id} rows={2} value={value ?? ''} onChange={e => set(e.target.value)}/>;
 
 // U104: a key's total budget, shown beside the caps in the dashboard's key editor (and alone when the rulebook is unavailable).
@@ -60,20 +60,22 @@ export function StopResume({ id, stop, disabled }) {
 
 // U103: `setups` names the editor (chat, key or agents) for Start from a setup, which fills only the values that editor shows.
 // `onReplay`, where the editor edits a saved key or agent, lets a picked setup offer Replay it first.
-export default function SpendingLimits({ id, value, onChange, disabled = false, compact = false, scope = false, guard = false, setups = null, budget = null, stop, onReplay = null, children }) {
+// U115: `locked` shows rules a key follows from a playbook: the rules are read-only here, while Stop and Resume still work.
+export default function SpendingLimits({ id, value, onChange, disabled: busy = false, locked = false, compact = false, scope = false, guard = false, setups = null, budget = null, stop, onReplay = null, children }) {
+  const disabled = busy || locked;
   const set = patch => onChange({ ...value, ...patch });
   const g = value.guard, setGuard = patch => set({ guard: { ...g, ...patch } });
   return <div className={st.limits + (compact ? ' ' + st.compact : '')}>
     {setups && <StarterSetups id={id} view={setups} value={value} onChange={onChange} guard={guard} disabled={disabled} onReplay={onReplay}/>}
-    <fieldset disabled={disabled} className={st.group}><legend>{W.caps}</legend>
+    <fieldset disabled={busy} className={st.group}><legend>{W.caps}</legend> {/* U115: when locked, the caps are read-only and the key's own total budget stays editable */}
       {budget && <KeyBudgetField id={id} budget={budget}/>}
-      <div className={st.grid}>{LIMIT_CAPS.map(([k, label]) => <Field key={k} id={`${id}-${k}`} label={label}>{money(`${id}-${k}`, value.caps?.[k], v => set({ caps: { ...value.caps, [k]: v } }))}</Field>)}</div>
+      <div className={st.grid}>{LIMIT_CAPS.map(([k, label]) => <Field key={k} id={`${id}-${k}`} label={label}>{money(`${id}-${k}`, value.caps?.[k], v => set({ caps: { ...value.caps, [k]: v } }), locked)}</Field>)}</div>
       <p className="help-text">{W.capsHelp}</p>
     </fieldset>
     <fieldset disabled={disabled} className={st.group}><legend>Ask me first</legend>
       <Field id={`${id}-ask`} label={W.ask} help={W.askHelp}>{money(`${id}-ask`, value.approval, v => set({ approval: v }))}</Field>
     </fieldset>
-    {stop && <StopResume id={id} stop={stop} disabled={disabled}/>}
+    {stop && <StopResume id={id} stop={stop} disabled={busy}/>}
     {scope && <fieldset disabled={disabled} className={st.group}><legend>{W.scope}</legend><p className="help-text">{W.scopeHelp}</p>
       <div className={st.grid}>{[['modelAllow', 'Allowed models'], ['modelDeny', 'Denied models'], ['toolAllow', 'Allowed tools'], ['toolDeny', 'Denied tools']].map(([k, label]) => <Field key={k} id={`${id}-${k}`} label={label}>{lines(`${id}-${k}`, value[k], v => set({ [k]: v }))}</Field>)}</div>
       <label className="check-label"><input type="checkbox" checked={!!value.restrictTools} onChange={e => set({ restrictTools: e.target.checked })}/>Deny all declared tools when the allowed list is blank</label>

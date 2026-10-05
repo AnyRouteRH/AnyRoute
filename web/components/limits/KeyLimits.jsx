@@ -7,6 +7,7 @@ import { FEATURE_OFF, confirmKill, errorState, formatUsd, utcTime } from '../../
 import { LIMIT_WORDS as W, KEY_BUDGET_WORDS as KB, budgetResetText, keyBudgetText, keySaveNotice, keySavePlan, limitsFromRulebook, rulebookFromLimits, saveKeyLimits, topupSummary, topupText } from '../../lib/spending-limits';
 import ReplayResult, { ReplayButton, useRuleReplay } from './ReplayRules'; // Replay your rules
 import SpendingLimits, { KeyBudgetField, LimitGroup, useAgentGuard } from './SpendingLimits';
+import FollowPlaybook from './FollowPlaybook'; // U115
 import { Button, Modal } from '../UI';
 
 // U104: the key's total budget (its own limit) is set here too, beside the caps. Save writes the budget with PATCH
@@ -39,7 +40,7 @@ export default function KeyLimits({ apiKey, keyHash, name, current, budget = nul
       const found = Array.isArray(r.data) ? r.data.find(a => a.key_hash === keyHash) : null;
       if (!found) throw new Error('The signed-in key cannot manage this key’s spending limits.');
       const own = found.policies?.find(p => !p.inherited && p.key_hash === keyHash) ?? null;
-      setRow({ inherited: (found.policies || []).filter(p => p.inherited).length, own });
+      setRow({ inherited: (found.policies || []).filter(p => p.inherited).length, own, playbook: found.playbook ?? null });
       const initial = limitsFromRulebook(own?.policy ?? null);
       setForm(initial); setLoaded(initial); setErrors([]);
       setView(v => ({ ...v, busy: false }));
@@ -60,6 +61,7 @@ export default function KeyLimits({ apiKey, keyHash, name, current, budget = nul
     catch (e) { setView(v => ({ ...v, busy: false, error: e.message || 'The request could not be completed.' })); }
   };
   const own = row?.own;
+  const playbook = row?.playbook ?? null; // U115: rules from a playbook are read-only here; the total budget and Stop still work.
   const stop = { stopped: !!own?.killed, ready: !!own, busy: view.busy, reason: true,
     detail: own?.killed ? `Since ${utcTime(own.killed_at)}. Reason: ${own.killed_reason || 'Not recorded'}.` : null,
     onStop: reason => mutate(() => confirmKill({ key_hash: keyHash, name }, reason, message => window.confirm(message), request), 'Stopped.'),
@@ -68,7 +70,7 @@ export default function KeyLimits({ apiKey, keyHash, name, current, budget = nul
     topup: { value: topupValue, onChange: setTopupValue, summary: topupSummary(topupValue, { week, reset }) } };
   const save = e => {
     e.preventDefault();
-    const plan = keySavePlan({ form, loaded, budget: budgetValue, savedBudget, topup: topupValue, savedTopup, reset });
+    const plan = keySavePlan({ form: playbook ? null : form, loaded, budget: budgetValue, savedBudget, topup: topupValue, savedTopup, reset });
     setErrors(plan.errors);
     if (plan.errors.length) return;
     mutate(() => saveKeyLimits(request, keyHash, plan, (limit, body) => { if (limit !== undefined) setSavedBudget(limit); if (body.topup !== undefined) setSavedTopup(body.topup); onSaved?.(); }), keySaveNotice(plan));
@@ -80,10 +82,11 @@ export default function KeyLimits({ apiKey, keyHash, name, current, budget = nul
     {view.busy && !form && !view.off && <p role="status">Reading spending limits…</p>}
     {view.error && <div className="error" role="alert">{view.error}</div>}
     {form && <form onSubmit={save}>
-      <SpendingLimits key={revision} id="key-limits" value={form} onChange={setForm} disabled={view.busy} setups="key" scope guard={guard || own?.policy?.actions !== undefined} onReplay={replaySetup} budget={budgetField} stop={stop}/>
+      <FollowPlaybook id="key-limits" keyHash={keyHash} playbook={playbook} request={request} disabled={view.busy} onChanged={() => { setView(v => ({ ...v, notice: '' })); setRevision(r => r + 1); onSaved?.(); }}/>
+      <SpendingLimits key={revision} id="key-limits" value={form} onChange={setForm} disabled={view.busy} locked={!!playbook} setups="key" scope guard={guard || own?.policy?.actions !== undefined} onReplay={replaySetup} budget={budgetField} stop={stop}/>
       {row.inherited > 0 && <p className="help-text">This key also follows {row.inherited === 1 ? 'an inherited rulebook' : `${row.inherited} inherited rulebooks`} from the key that created it. Change those on that key.</p>}
       {failed}
-      <div className="button-row"><Button type="submit" disabled={view.busy}>{W.save}</Button><ReplayButton replay={replay} disabled={view.busy} onRun={replayNow}/>{own && <Button type="button" secondary disabled={view.busy} onClick={() => { if (window.confirm('Remove these spending limits? Their rules will no longer apply.')) mutate(() => request(path + '/policy', { method: 'DELETE' }), 'Spending limits removed.'); }}>{W.remove}</Button>}</div>
+      <div className="button-row"><Button type="submit" disabled={view.busy}>{playbook ? KB.save : W.save}</Button>{!playbook && <ReplayButton replay={replay} disabled={view.busy} onRun={replayNow}/>}{own && !playbook && <Button type="button" secondary disabled={view.busy} onClick={() => { if (window.confirm('Remove these spending limits? Their rules will no longer apply.')) mutate(() => request(path + '/policy', { method: 'DELETE' }), 'Spending limits removed.'); }}>{W.remove}</Button>}</div>
       <ReplayResult id="key-limits-replay" replay={replay} current={draft?.policy}/>
     </form>}
     {!form && view.off && <form onSubmit={save}>
