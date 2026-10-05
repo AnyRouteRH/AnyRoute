@@ -79,11 +79,11 @@ test('the page shows the tag, hashes the order in the browser and says nothing i
  for(const m of block.matchAll(/symbol\\?"?\s*:\s*\\?"([^"\\]+)/g))assert.match(m[1],/^(?:STOCK|INDEX_FUND)_[A-Z]$/);
 });
 
-test('the docs section has its anchor and examples, says it is not switched on yet, and is indexed, searchable and linked from Labs',async()=>{
+test('the docs section has its anchor and examples, says it is switched on at anyroute.tech, and is indexed, searchable and linked from Labs',async()=>{
  const docs=read('components/DecisionTagDocs.jsx');
  assert.match(docs,/<section id="decision-tags">/);
  for(const label of ['curl','TypeScript','Python'])assert.match(docs,new RegExp(`<Code label="${label}">`));
- assert.match(docs,/not switched on at anyroute\.tech yet/);
+ assert.match(docs,/Decision tags are switched on at anyroute\.tech\./);
  assert.match(docs,/DECISION_TAGS_ENABLED/);
  for(const name of ['withDecisionTag','with_decision_tag','details_sha256','informed_by','/api/v1/guard/decisions','/api/v1/receipts/verify','decision_tag_valid','--intent',TAG])assert.ok(docs.includes(name),name);
  const visible=[...docs.matchAll(/>([^<>{}]+)</g),...docs.matchAll(/'([^'\n]{12,})'/g),...docs.matchAll(/`([^`]{12,})`/g)].map(m=>m[1]).join(' ');
@@ -94,7 +94,7 @@ test('the docs section has its anchor and examples, says it is not switched on y
  const page=read('app/docs/page.jsx');
  assert.equal(page.split('<DecisionTagDocs />').length-1,1);
  assert.ok(page.indexOf('<TradingAgentDocs />')<page.indexOf('<DecisionTagDocs />'));
- assert.match(read('components/DocsFeatureIndex.jsx'),/\["decision-tags", "Decision tags \(not switched on yet\)"\]/);
+ assert.match(read('components/DocsFeatureIndex.jsx'),/\["decision-tags", "Decision tags"\]/);
  assert.match(read('components/TradingAgentDocs.jsx'),/href="#decision-tags"/);
  assert.match(read('components/ProofPackDocs.jsx'),/decision_tags/);
  const {TASKS}=await import('../lib/site-map.js');

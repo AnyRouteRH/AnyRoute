@@ -1,5 +1,5 @@
 import { Code } from './UI';
-// B: decision tags. Built and not switched on at anyroute.tech yet: the copy says what happens when it is switched on.
+// B: decision tags. Switched on at anyroute.tech.
 const curl = `# The order, written as canonical JSON: keys sorted, no spaces, prices and quantities as strings.
 ORDER='{"client_order_id":"7f3c","limit_price":"180.00","quantity":"2","side":"buy","symbol":"STOCK_A"}'
 TAG="sha256:$(printf '%s' "$ORDER" | shasum -a 256 | cut -d' ' -f1)"   # sha256sum on most Linux systems
@@ -59,7 +59,7 @@ details_sha256 = decision_tag(order)`;
 export default function DecisionTagDocs() {
   return <section id="decision-tags"><h2>Decision tags</h2>
     <p>A decision tag ties an order to the model call that informed it. Your agent sends the SHA-256 of the order with the call, and the router signs that hash into the call&apos;s receipt next to the model, provider and the hashes of the request and the answer. Later, the order and the receipt together show which model answered before the decision. The router only ever sees the hash, never the order.</p>
-    <p>Decision tags are not switched on at anyroute.tech yet. Self-hosted routers switch them on with <code>DECISION_TAGS_ENABLED</code> (default <code>false</code>), and <code>GET /api/v1/status</code> reports <code>decision_tags.enabled</code>. While it is off the header is ignored and no receipt carries a tag, so check the first receipt you store; the <a href="/labs/">Labs</a> page reads the same field.</p>
+    <p>Decision tags are switched on at anyroute.tech. Self-hosted routers switch them on with <code>DECISION_TAGS_ENABLED</code> (default <code>false</code>), and <code>GET /api/v1/status</code> reports <code>decision_tags.enabled</code>. While it is off the header is ignored and no receipt carries a tag, so check the first receipt you store; the <a href="/labs/">Labs</a> page reads the same field.</p>
     <h3>Send a tag</h3>
     <p>Send <code>X-Anyroute-Decision-Tag: sha256:&lt;64 hex&gt;</code> on <code>POST /api/v1/chat/completions</code>, <code>/completions</code>, <code>/responses</code>, <code>/v1/messages</code> or the Ollama-compatible chat and generate routes. When tags are switched on, the router signs it into the v1 receipt as <code>payload.decision_tag</code> and into the v2 claims as <code>claims.decision_tag</code>; a streamed call carries it in its closing receipt. The hash is SHA-256 of the order&apos;s canonical JSON: keys sorted, no spaces. Write prices and quantities as strings so every language hashes the same bytes. The SDKs and the helpers in <code>integrations/robinhood-agents</code> all compute it the same way; the order <code>{'{"symbol":"STOCK_A","side":"buy","quantity":"2","limit_price":"180.00","client_order_id":"7f3c"}'}</code> hashes to <code>sha256:c6a5490500b12be3787fadaa8d87982c369b158af7f5cdfdc8643b5177477c8d</code>.</p>
     <Code label="curl">{curl}</Code>

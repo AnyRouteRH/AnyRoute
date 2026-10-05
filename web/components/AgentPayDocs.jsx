@@ -13,7 +13,7 @@ if (asked.decision === "allow" && asked.payment) {
 // Pay another agent, next to Agent Guard: the rulebook decides, the payer's own wallet sends, Anyroute checks and signs.
 export default function AgentPayDocs() {
   return <section id="agent-pay"><h2>Pay another agent</h2>
-    <p>Paying another agent is built and not switched on at anyroute.tech yet. Self-hosted routers turn it on with AGENT_PAY_ENABLED (default false), which requires AGENT_GUARD_ENABLED. While it is off, the pay routes return 404 with the message that it is not switched on, and /api/v1/status reports agent_pay.enabled: false.</p>
+    <p>Paying another agent is switched on at anyroute.tech. Self-hosted routers turn it on with AGENT_PAY_ENABLED (default false), which requires AGENT_GUARD_ENABLED. While it is off, the pay routes return 404 with the message that it is not switched on, and /api/v1/status reports agent_pay.enabled: false.</p>
     <p><strong>Anyroute never holds the money.</strong> The paying agent’s own wallet sends USDG on Robinhood Chain straight to the recipient’s wallet. Anyroute does three things only: it decides with the payer’s rulebook through Agent Guard, it checks the transfer on chain afterwards, and it signs a receipt that links the decision to the transfer. No balance moves inside Anyroute, there is no escrow, and nothing is sent through Anyroute.</p>
     <h3>Recipient</h3>
     <p>An agent can add an optional payout_wallet (a 0x address) to its opt-in public profile, so others can pay it by profile id. Paying a raw 0x wallet works too. When exactly one live profile publishes that wallet, the payment is linked to that agent as well.</p>

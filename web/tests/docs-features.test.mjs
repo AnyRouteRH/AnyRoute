@@ -49,7 +49,7 @@ test('hosted enablement keeps self-host defaults and accurately separates unavai
   assert.match(read('components/AgentIdentityDocs.jsx'), /default to false/);
   assert.match(read('components/AgentIdentityDocs.jsx'), /Not switched on at anyroute.tech yet\./);
   assert.match(read('components/CommerceStatsDocs.jsx'), /it defaults to false and is not switched on at anyroute.tech yet/); // v6 L
-  assert.match(read('components/AgentPayDocs.jsx'), /is built and not switched on at anyroute.tech yet\. Self-hosted routers turn it on with AGENT_PAY_ENABLED \(default false\)/); // Pay another agent
+  assert.match(read('components/AgentPayDocs.jsx'), /is switched on at anyroute.tech\. Self-hosted routers turn it on with AGENT_PAY_ENABLED \(default false\)/); // Pay another agent
   assert.match(read('components/AgentPayDocs.jsx'), /Anyroute never holds the money\./);
   assert.match(read('components/SealedAgentDocs.jsx'), /hosting is available at anyroute.tech, but no sealed agent is registered there yet/);
   const featureHtml = renderToStaticMarkup(createElement(DocsFeatureIndex));

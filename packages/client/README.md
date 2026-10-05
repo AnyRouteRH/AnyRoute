@@ -49,7 +49,7 @@ if (asked.decision === "allow" && asked.payment) {
 }
 ```
 
-`pay()` returns Agent Guard's decision for action `pay.agent` (allow, deny or approval_required with `approval_id` and `poll`); send `approval_id` with the same fields once approved. `confirmPay()` fails with the router's reason when the transfer is missing, short, from a wallet not linked to the account, or to another wallet. Verify `receipt` at `POST /api/v1/receipts/verify`. The operator must enable `AGENT_PAY_ENABLED` (default false), which needs `AGENT_GUARD_ENABLED`; while off the routes return 404. Not switched on at anyroute.tech yet.
+`pay()` returns Agent Guard's decision for action `pay.agent` (allow, deny or approval_required with `approval_id` and `poll`); send `approval_id` with the same fields once approved. `confirmPay()` fails with the router's reason when the transfer is missing, short, from a wallet not linked to the account, or to another wallet. Verify `receipt` at `POST /api/v1/receipts/verify`. The operator must enable `AGENT_PAY_ENABLED` (default false), which needs `AGENT_GUARD_ENABLED`; while off the routes return 404. It is switched on at anyroute.tech.
 
 These methods call `GET /api/v1/agents/me`, `POST /api/v1/agents/check`, `POST /api/v1/agents/:key_hash/replay`, `POST /api/v1/agents/pay` and `POST /api/v1/agents/pay/:decision_id/confirm`. Manage rulebooks, single-use approvals, activity, alerts and certificates on [/agents](https://anyroute.tech/agents/); see the [agent API documentation](https://anyroute.tech/docs/#agent-rulebook).
 
@@ -57,7 +57,7 @@ Playbooks share one rulebook across many keys. With a management key or a team o
 
 ## Decision tags
 
-Tag the model call that informs an order with the SHA-256 of that order. The router signs the hash into the call's receipt, so the order and the receipt together show which model answered before the decision; the router never sees the order. Decision tags are not switched on at anyroute.tech yet: the router records them only when `DECISION_TAGS_ENABLED` is on (`GET /api/v1/status` reports `decision_tags.enabled`), and ignores the header while it is off.
+Tag the model call that informs an order with the SHA-256 of that order. The router signs the hash into the call's receipt, so the order and the receipt together show which model answered before the decision; the router never sees the order. Decision tags are switched on at anyroute.tech; a router records them only when `DECISION_TAGS_ENABLED` is on (`GET /api/v1/status` reports `decision_tags.enabled`), and ignores the header while it is off.
 
 ```ts
 import { AnyRoute, checkDecisionTag, decisionTag, withDecisionTag } from "@anyroute/client";
