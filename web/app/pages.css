@@ -51,6 +51,7 @@
 .route-tag.off::before{background:none;border:1px solid var(--muted)}
 .docs-table td:first-child{font-weight:560;white-space:nowrap}
 .docs-table td{vertical-align:top;line-height:1.5}
+.docs-table td code{overflow-wrap:anywhere}
 .endpoint-table td.mono{width:46%;font-size:12px;line-height:1.6;white-space:normal;overflow-wrap:anywhere;font-weight:400}
 .endpoint-table td:last-child{color:var(--muted)}
 

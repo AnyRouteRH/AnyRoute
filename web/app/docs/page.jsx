@@ -1759,7 +1759,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             </a>{" "}
             shows what the router has recorded for a provider (/verify/?p=&lt;provider id&gt;), the privacy label of a receipt id (/verify/?r=&lt;receipt id&gt;) and checks a pasted receipt in your browser. It reads the router’s record only; use an SDK to check the provider itself.
           </p>
-          <HostsDocs /><NetworkHostsDocs /><HostBondsDocs />
+          <HostsDocs /><NetworkHostsDocs /><HostBondsDocs /><NetworkPayoutDocs />
           <NetworkStatsDocs />
           <CommerceStatsDocs /> {/* v6 L */}
           <RouteExplanationDocs /> {/* V84 */}
@@ -1848,7 +1848,6 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           </div>
         </article>
         </div>
-      <NetworkPayoutDocs />
       </main>
     </PageFrame>
   );
