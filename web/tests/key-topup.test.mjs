@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { KEY_BUDGET_WORDS as KB, TOPUP, TOPUP_FIELDS, TOPUP_WORDS as TW, keySaveNotice, keySavePlan, limitsFromRulebook, saveKeyLimits, topupCardText, topupFrom, topupSummary, topupText } from '../lib/spending-limits.js';
 import { ACTIVITY_KINDS, ACTIVITY_LABELS } from '../lib/activity.js';
+import { TASKS } from '../lib/site-map.js';
+import { searchAll } from '../lib/site-actions.js';
 
 // U113: auto top-up sits under a key's total budget in its spending limits, and saves in the same PATCH.
 const source = file => fs.readFileSync(new URL(file, import.meta.url), 'utf8');
@@ -89,6 +91,22 @@ test('the editor shows Auto top-up under the total budget and saves it with the 
   assert.match(source('../components/limits/SpendingLimits.module.css'), /@media \(max-width: 560px\) \{ \.grid3 \{ grid-template-columns: 1fr; \} \}/);
 });
 
-test('top-ups have their own Activity filter', () => {
+test('top-ups have an Activity filter, a docs section after Spending limits, an index link and a site-map task', () => {
   assert.ok(ACTIVITY_KINDS.includes('topup')); assert.equal(ACTIVITY_LABELS.topup, 'Top-ups');
+  const page = source('../app/docs/page.jsx');
+  assert.ok(page.includes('<SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs />')); // after spending limits and its setups
+  assert.equal(page.split('<AutoTopupDocs />').length - 1, 1);
+  const docs = source('../components/AutoTopupDocs.jsx');
+  assert.match(docs, /<section id="auto-topup">/);
+  for (const phrase of ['No money moves.', 'Monday 00:00 to Sunday 24:00 UTC', 'Auto top-up is not a cap.', 'topups_this_week_usd', '“Topped up Research agent by $10; $40 left this week”']) assert.ok(docs.includes(phrase), phrase);
+  assert.match(source('../components/DocsFeatureIndex.jsx'), /\["auto-topup", "Auto top-up"\]/);
+  assert.match(source('../components/SpendingLimitsDocs.jsx'), /<a href="#auto-topup">Auto top-up<\/a>/);
+  const task = TASKS.find(item => item.id === 'auto-topup');
+  assert.deepEqual([task.title, task.href, task.group, task.menu], ['Refill a key’s budget from your credits', '/dashboard/#api-keys', 'agents', false]);
+  assert.ok(task.description.startsWith('Top up a key automatically from your credits'));
+  // “top up” alone still means Add funds; the key's refill is found by its own words.
+  assert.equal(searchAll('top up')[0].id, 'add-funds'); assert.equal(searchAll('refill budget')[0].id, 'auto-topup'); assert.equal(searchAll('auto top-up')[0].id, 'auto-topup');
+  // Wording: plain benefit copy, none of the words kept off public pages.
+  const copy = [docs, JSON.stringify(TW), task.title, task.description].join(' ');
+  assert.doesNotMatch(copy, /\b(?:demo|test|tested|local|mock|simulated|placeholder|fixture|earn|yield|APY|returns|kill|x402)\b/i);
 });
