@@ -259,11 +259,11 @@ The router evaluates applicable policies when reserving spending capacity and se
 
 ### 7.2 Stop and ask-first controls
 
-The kill switch stops the next admitted request. The owner resumes the agent. It is not a mechanism for recalling an answer already delivered or guaranteeing cancellation of every in-flight computation. A request already admitted can complete, so operators should distinguish future admission from cancellation and final settlement.
+Stop refuses the next admitted request. The owner resumes the agent. It is not a mechanism for recalling an answer already delivered or guaranteeing cancellation of every in-flight computation. A request already admitted can complete, so operators should distinguish future admission from cancellation and final settlement.
 
 Ask-first approvals appear on `/agents`; owners can link Telegram there with a one-time code and approve or deny through Anyroute's bot. Approval details pass through Telegram. The same approvals are single use and expire after fifteen minutes under the current default. The stored approval projection contains intent metadata such as model, lane, output bound, declared tools and cost bound. It does not store the prompt or tool arguments. The approval must match the projected intent and remain within its permitted cost when consumed.
 
-Approving an intent does not authorize arbitrary instructions hidden inside the content. Because prompts are absent from the approval binding, two bodies can share the same projected intent. The feature controls router-visible resource authority; it is not a content review signature. Approval also cannot bypass an independent denial or a circuit-breaker kill.
+Approving an intent does not authorize arbitrary instructions hidden inside the content. Because prompts are absent from the approval binding, two bodies can share the same projected intent. The feature controls router-visible resource authority; it is not a content review signature. Approval also cannot bypass an independent denial or a circuit-breaker stop.
 
 ### 7.3 Self-check, ledger and alerts
 
@@ -275,13 +275,13 @@ Alerts are available in the `/agents` feed, through the existing spend-alert web
 
 ### 7.4 Circuit breakers and progressive autonomy
 
-Optional breakers constrain minute-level spending and request volume, denials over ten minutes and distinct models over an hour. They use recorded state and open holds, and a trip records the kill state and refuses admission. Breakers restrict authority; they do not create permission. An owner approval cannot override a breaker trip, and resuming does not erase ordinary budget-cap obligations.
+Optional breakers constrain minute-level spending and request volume, denials over ten minutes and distinct models over an hour. They use recorded state and open holds, and a trip records the stop state and refuses admission. Breakers restrict authority; they do not create permission. An owner approval cannot override a breaker trip, and resuming does not erase ordinary budget-cap obligations.
 
 Progressive autonomy can increase configured spending caps through rulebook rungs, up to a factor of ten. Advancement depends on the configured time and clean-request thresholds; demotion follows the configured events. Replayed events and retained checkpoints provide the state rather than an agent's assertion that it has behaved well. Rulebooks without autonomy do not acquire automatic cap increases.
 
 ### 7.5 Track-record certificates and scope
 
-Track-record certificates are router-signed statements with a fresh pseudonym and a seven-day validity window. Their claims can describe request-count thresholds, active days or periods without recorded denials or kills. Verification checks the signed format, trusted receipt key and time window. It does not independently recreate the router's observations.
+Track-record certificates are router-signed statements with a fresh pseudonym and a seven-day validity window. Their claims can describe request-count thresholds, active days or periods without recorded denials or stops. Verification checks the signed format, trusted receipt key and time window. It does not independently recreate the router's observations.
 
 These certificates are not zero-knowledge proofs and are not anonymous credentials. The router sees the activity and signs the statement. A fresh pseudonym reduces reuse of one public identifier, but does not prevent correlation by claim combinations, issuance timing or information held by the router. A relying party must trust the issuer for the facts asserted.
 

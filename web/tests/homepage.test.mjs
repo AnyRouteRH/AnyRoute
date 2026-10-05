@@ -41,7 +41,7 @@ test('homepage content, header and footer link agents, network and hosts',()=>{
 });
 
 test('homepage describes the live rulebook and preserves enforcement and privacy limits',()=>{
-  for(const phrase of ['per request, hour, day and week','models, lanes, tools and working hours','kill switch stops the next request; the owner resumes','Approve once on /agents within 15 minutes','signed receipts','CSV or JSON','alert feed','spend-alert webhook','Telegram via Anyroute’s bot','Circuit breakers and progressive autonomy','spending caps up to 10x','fresh pseudonym','seven days','not anonymous','requests through Anyroute only','router forwards ciphertext on this path','router reads request text in memory','not prompt or answer text'])assert.ok(text.includes(phrase),phrase);
+  for(const phrase of ['per request, hour, day and week','models, lanes, tools and working hours','Stop refuses the next request; the owner resumes','Approve once on /agents within 15 minutes','signed receipts','CSV or JSON','alert feed','spend-alert webhook','Telegram via Anyroute’s bot','Circuit breakers and progressive autonomy','spending caps up to 10x','fresh pseudonym','seven days','not anonymous','requests through Anyroute only','router forwards ciphertext on this path','router reads request text in memory','not prompt or answer text'])assert.ok(text.includes(phrase),phrase);
   assert.doesNotMatch(main,/\b(?:demo|test|tested|mock|simulated|placeholder)\b|local[ -]build|zero[- ]knowledge|can(?:not|’t|'t) read your prompts/i);
 });
 

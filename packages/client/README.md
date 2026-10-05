@@ -28,10 +28,10 @@ if (decision.decision === "allow") {
 } else { console.error(decision.reasons); }
 ```
 
-`rules()` returns own and inherited policies, kill state, and remaining rolling hour/day/week caps in USD. `check(intent)` returns the router's decision and reasons. Costs are decimal strings in pico USD (10^12 per USD). Exported types include `AgentPolicy`, `AgentIntent`, `AgentRulebook` and `AgentDecision`.
+`rules()` returns own and inherited policies, stop state, and remaining rolling hour/day/week caps in USD. `check(intent)` returns the router's decision and reasons. Costs are decimal strings in pico USD (10^12 per USD). Exported types include `AgentPolicy`, `AgentIntent`, `AgentRulebook` and `AgentDecision`.
 
 Dry runs send no prompt, record no policy event, and reserve no budget. A later call is evaluated again and may be refused. Typed refusals preserve the router's message, `reasons`, `policy_sha256`, status and complete metadata in `details`. `AgentApprovalRequired` exposes `approval_id` and `poll` when present; no automatic retries or polling occur. Chat streaming refusals use the same error types.
 
-The operator must enable `AGENT_POLICY_ENABLED` (default false); disabled routes return 404. Switched on at anyroute.tech. Rulebook reads and checks remain available when killed. Anyroute's router reads ordinary chat text in memory; these methods do not alter that path.
+The operator must enable `AGENT_POLICY_ENABLED` (default false); disabled routes return 404. Switched on at anyroute.tech. Rulebook reads and checks remain available when the key is stopped. Anyroute's router reads ordinary chat text in memory; these methods do not alter that path.
 
 These methods call `GET /api/v1/agents/me` and `POST /api/v1/agents/check`. Manage rulebooks, single-use approvals, activity, alerts and certificates on [/agents](https://anyroute.tech/agents/); see the [agent API documentation](https://anyroute.tech/docs/#agent-rulebook).

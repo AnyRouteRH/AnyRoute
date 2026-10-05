@@ -2,7 +2,7 @@
 import {useState} from 'react';
 import {highlight} from './UI';
 
-const POINTS=[['Bring your own workflow','Keep your SDK, choose providers and configure fallbacks. Cache and guardrails are opt-in.'],['Budget, rules and a kill switch','Set request/hour/day/week caps, models, lanes, tools and working hours. The kill switch stops the next request; the owner resumes.'],['Ask first, then inspect','Approve once on /agents within 15 minutes. Read signed receipts in the per-agent ledger and export CSV or JSON.'],['Alerts, breakers and autonomy','Follow the /agents alert feed, spend-alert webhook or Telegram via Anyroute’s bot. Circuit breakers and progressive autonomy support spending caps up to 10x.']];
+const POINTS=[['Bring your own workflow','Keep your SDK, choose providers and configure fallbacks. Cache and guardrails are opt-in.'],['Budget, rules and a stop switch','Set request/hour/day/week caps, models, lanes, tools and working hours. Stop refuses the next request; the owner resumes.'],['Ask first, then inspect','Approve once on /agents within 15 minutes. Read signed receipts in the per-agent ledger and export CSV or JSON.'],['Alerts, breakers and autonomy','Follow the /agents alert feed, spend-alert webhook or Telegram via Anyroute’s bot. Circuit breakers and progressive autonomy support spending caps up to 10x.']];
 
 const TOGGLES=[
   ['fallbacks','Fallbacks','routing.provider',true],
