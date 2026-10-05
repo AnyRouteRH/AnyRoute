@@ -52,6 +52,11 @@
 .docs-table td:first-child{font-weight:560;white-space:nowrap}
 .docs-table td{vertical-align:top;line-height:1.5}
 .docs-table td code{overflow-wrap:anywhere}
+.prose pre,.prose .code-panel{max-width:100%;min-width:0}
+.prose pre{overflow-x:auto}
+.prose p code,.prose li code{overflow-wrap:anywhere}
+.prose .code-bar{flex-wrap:wrap;row-gap:8px}
+.prose .code-bar>span{min-width:0;overflow-wrap:anywhere}
 .endpoint-table td.mono{width:46%;font-size:12px;line-height:1.6;white-space:normal;overflow-wrap:anywhere;font-weight:400}
 .endpoint-table td:last-child{color:var(--muted)}
 
@@ -263,6 +268,7 @@
   .router-status{min-height:0}
 }
 @media (max-width:640px){
+  .prose table{display:block;overflow-x:auto}
   .table-wrap:has(.data-table){overflow:visible;border:0;background:none}
   .data-table,.data-table tbody,.data-table tr,.data-table td{display:block}
   .data-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
