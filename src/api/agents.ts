@@ -15,8 +15,10 @@ import { agentPolicies, agentPolicyEvents } from "../agents/schema.ts";
 import { configureAgentPolicies } from "../agents/enforce.ts";
 import { evaluateAgentPolicy, type AgentDecision } from "../agents/evaluate.ts";
 import { appendEvent, changeKill, eventJson, lockAccount, policiesFor, policyState, setPolicy, type PolicyRow } from "../agents/store.ts";
+import { loadReplay, replayRulebook, REPLAY } from "../agents/replay.ts";
 const jsonPolicy = (row: PolicyRow) => ({ policy: row.spec, sha256: row.sha256, version: row.version, killed: row.killed, killed_at: row.killedAt?.toISOString() ?? null, killed_reason: row.killedReason });
 const killBody = z.strictObject({ reason: z.string().max(160).optional() });
+const replayBody = z.strictObject({ policy: agentPolicySchema, days: z.number().int().min(1).max(REPLAY.maxDays).optional() });
 export async function principal(ctx: Ctx, c: Context) {
   const key = await requireKey(ctx, c.req.header("authorization"));
   if ((await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, key.keyHash)).limit(1)).length) fail(403, "Session keys cannot manage rulebooks.", "forbidden");
@@ -98,6 +100,18 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
     const key = await ownedKey(ctx, caller, c.req.param("key_hash"));
     const policy = agentPolicySchema.parse(await readJson(c));
     return c.json({ data: jsonPolicy(await setPolicy(ctx.db, key.accountId, key.keyHash, policy, caller.keyHash)) });
+  });
+  // Replay a draft rulebook on the key's last days of recorded calls and Guard action checks. Same permissions as saving
+  // the rulebook; read only, in a read-only transaction, so nothing is saved, charged or changed.
+  app.post("/api/v1/agents/:key_hash/replay", async c => {
+    const caller = await principal(ctx, c);
+    const key = await ownedKey(ctx, caller, c.req.param("key_hash"));
+    const limit = await ctx.limiter.take(`agent-replay:${caller.keyHash}`, 1, REPLAY.perMinute, 60_000);
+    if (!limit.ok) fail(429, "Too many replays from this key. Try again within a minute.", "rate_limited", { retry_after_ms: limit.retryAfterMs }, { "retry-after": String(Math.max(1, Math.ceil(limit.retryAfterMs / 1000))) });
+    const body = replayBody.parse(await readJson(c));
+    c.header("cache-control", "no-store");
+    const data = await ctx.db.transaction(async tx => replayRulebook(body.policy, await loadReplay(tx, key.keyHash, { days: body.days ?? REPLAY.maxDays, now: new Date(), actions: ctx.cfg.agentGuardEnabled })), { isolationLevel: "repeatable read", accessMode: "read only" });
+    return c.json({ data });
   });
   app.delete("/api/v1/agents/:key_hash/policy", async c => {
     const key = await ownedKey(ctx, await principal(ctx, c), c.req.param("key_hash"));
