@@ -109,3 +109,11 @@ test("production config loader accepts profiles on and defaults off without weak
   const cfg = loadConfig({ NODE_ENV: "production", ANYROUTE_ENV: "production", RUNTIME_ROLE: "api", AUTO_MIGRATE: "false", HOST: "0.0.0.0", APP_SECRET: "fixture-".repeat(6), ADMIN_TOKEN: "fixture-admin-".repeat(3), PUBLIC_BASE_URL: "https://router.example", DATABASE_URL: "postgres://fixture:fixture-only-credential@localhost/fixture", REDIS_URL: "redis://:fixture-only-credential@localhost:6379", CREDITS_ADDRESS: address, CALLPAY_ADDRESS: address, PROVIDER_BOND_ADDRESS: address, RECEIPT_ANCHOR_ADDRESS: address, ROUTER_PRIVATE_KEY: "0x" + "3".repeat(64), ...env, TLOG_SIGNING_KEY: generateKeyPairSync("ed25519").privateKey.export({ format: "der", type: "pkcs8" }).toString("base64") });
   expect(cfg.production).toBe(true); expect(cfg.agentProfilesEnabled).toBe(true);
 });
+test("a profile can publish a payout wallet other agents pay directly; it is stored lowercase and labelled owner text", async () => {
+  const k = await h.fundedKey();
+  const id = (await (await publish(k, { ...body, payout_wallet: "0xABABABABABABABABABABABABABABABABABABABAB" })).json()).data.id;
+  expect((await (await card(id)).json()).payout_wallet).toBe("0xabababababababababababababababababababab");
+  expect((await (await h.request(`/api/v1/agents/${k.hash}/profile`, { headers: k.auth })).json()).data.payout_wallet).toBe("0xabababababababababababababababababababab");
+  for (const payout_wallet of ["0x1234", "0x" + "0".repeat(40), "not-a-wallet"]) expect((await publish(k, { ...body, payout_wallet })).status).toBe(400);
+  expect((await (await card((await (await publish(k)).json()).data.id)).json())).not.toHaveProperty("payout_wallet");
+});

@@ -18,6 +18,8 @@ export const profileBody = z.strictObject({
   homepage: profileText(500).pipe(z.url()).refine(v => { const u = new URL(v); return ["http:", "https:"].includes(u.protocol) && !u.username && !u.password; }).optional(),
   // v6 I: the agent's own HTTPS endpoint, probed daily for liveness when AGENT_IDENTITY_ENABLED is on.
   endpoint: profileText(500).pipe(z.url()).refine(v => { const u = new URL(v); return u.protocol === "https:" && !u.username && !u.password && !u.hash; }, "must be an https URL without credentials or fragment").optional(),
+  // Pay another agent: an optional USDG wallet on Robinhood Chain that other agents can pay directly (never through Anyroute).
+  payout_wallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be a 0x wallet address").transform(v => v.toLowerCase()).refine(v => !/^0x0{40}$/.test(v), "must not be the zero address").optional(),
   capabilities: z.array(profileTag).max(16).default([]),
   show: z.array(z.enum(["spending_caps", "ask_first", "kill_switch"])).max(3).default([]),
   certificate_claims: z.array(z.custom<RecordClaim>(validRecordClaim)).max(16).refine(v => new Set(v).size === v.length).default([]),
@@ -43,7 +45,7 @@ export async function profileCertificates(ctx: Ctx, key: KeyRow, claims: RecordC
 }
 
 export async function profileCard(ctx: Ctx, row: typeof agentProfiles.$inferSelect, nowMs = Date.now()) {
-  const { name, description, homepage, endpoint, capabilities, show } = cleanProfile(row.settings);
+  const { name, description, homepage, endpoint, payout_wallet, capabilities, show } = cleanProfile(row.settings);
   const summary: Record<string, boolean> = {};
   // Read policy state only for categories explicitly chosen by the owner. Exact numbers and reasons stay private.
   if (show.length && ctx.cfg.agentPolicyEnabled) {
@@ -56,7 +58,7 @@ export async function profileCard(ctx: Ctx, row: typeof agentProfiles.$inferSele
   const certificates = [];
   for (const c of row.certificates) if (await verifyRecordCertificate(c, { keys, nowMs })) certificates.push({ ...c, valid: true });
   return { name, description, url: `${ctx.cfg.publicUrl}/agents/profile/?id=${row.slug}`, capabilities,
-    provider: { organization: "AnyRoute" }, ...(homepage ? { homepage } : {}), ...(endpoint ? { endpoint } : {}),
+    provider: { organization: "AnyRoute" }, ...(homepage ? { homepage } : {}), ...(endpoint ? { endpoint } : {}), ...(payout_wallet ? { payout_wallet } : {}),
     anyroute: { id: row.slug, rulebook_summary: summary, certificates, status: { sealed: "unavailable", attested: "unavailable" }, ...(await cardExtras(ctx, row)),
       notice: "Owner-supplied profile and tags. Rulebook enforcement and router-signed records cover requests through AnyRoute only. Publishing links the selected certificates to this profile. Host sealing and attestation are not established by a rulebook or certificate." } };
 }
