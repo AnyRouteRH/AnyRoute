@@ -393,7 +393,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
               <li>It shows a privacy label under each reply, or the lane its signed receipt records when the router has no label.</li>
               <li>It keeps history only in this browser, encrypted with your passphrase. Nothing is uploaded.</li>
               <li>
-                <b>It does not hide the prompt from AnyRoute.</b> The router still reads it in memory to route it.
+                <b>It does not hide the prompt from Anyroute.</b> The router still reads it in memory to route it.
               </li>
               <li>It does not hide who you are. Your key names your account, and the router sees your network address unless you reach it over Tor.</li>
             </ul>

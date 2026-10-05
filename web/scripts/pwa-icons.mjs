@@ -28,6 +28,6 @@ for (const [size, purpose] of [[180, 'apple'], [192, 'any'], [512, 'any'], [192,
   if (purpose !== 'apple') icons.push({ src: `/pwa/${name}`, sizes: `${size}x${size}`, type: 'image/png', purpose });
 }
 await fs.writeFile(new URL('public/manifest.webmanifest', root), JSON.stringify({
-  id: '/harness/', name: 'AnyRoute', short_name: 'AnyRoute', description: 'Install AnyRoute on your phone or desktop',
+  id: '/harness/', name: 'Anyroute', short_name: 'Anyroute', description: 'Install Anyroute on your phone or desktop',
   start_url: '/harness/', scope: '/', display: 'standalone', background_color: paper, theme_color: ink, icons,
 }, null, 2) + '\n');

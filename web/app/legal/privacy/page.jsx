@@ -6,7 +6,7 @@ export default function Privacy(){return <PageFrame><main className="page-main" 
     <nav className="side-nav" aria-label="Legal pages" data-reveal="fade"><span className="side-nav-label">Legal</span><a href="/legal/privacy/" aria-current="page">Data notice</a><a href="/legal/terms/">Service notes</a></nav>
     <article className="page-body prose legal-body" data-reveal>
       <h2>Preview and contact details</h2>
-      <p>AnyRoute’s public preview uses fictional workspace data. The support email, retention periods and process for requesting deletion are not finalized; they must be published before the live payment service launches.</p>
+      <p>Anyroute’s public preview uses fictional workspace data. The support email, retention periods and process for requesting deletion are not finalized; they must be published before the live payment service launches.</p>
       <h2>What the router stores</h2>
       <p>The router stores what it needs to route and account for calls: API key hashes (never the keys), balances and ledger entries, receipts with token counts, costs and SHA-256 hashes of each request and response, the wallet addresses you link or pay from, and encrypted bring-your-own provider keys. The accounting database does not store prompt or response text. If the optional response cache is enabled, it temporarily retains encrypted response content, separated by API key and policy, until expiry. Providers can have their own retention policies.</p>
       <h2>Where your prompts go</h2>

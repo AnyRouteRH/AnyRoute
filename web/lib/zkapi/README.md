@@ -1,7 +1,7 @@
 # Sepolia browser payments
 
 The page is disabled by default. No operator URL, proving key or manifest is
-bundled. It contains AnyRoute's wrapper and bindings generated directly from
+bundled. It contains Anyroute's wrapper and bindings generated directly from
 the pinned MIT OR Apache-2.0 Rust crate, without upstream SDK JavaScript.
 
 Build with Rust/Cargo 1.96.0, the wasm32-unknown-unknown target, and
@@ -106,7 +106,7 @@ memory. Notes, witnesses and exports never cross the network. Chain transaction
 calldata carries only the registration commitment, amount, public inputs,
 proof and public Merkle siblings. Operator requests carry public proofs,
 nullifiers, request IDs and quote metadata. Chat sends ordinary plaintext
-prompts to AnyRoute; its IP, account linkage and provider limits still apply.
+prompts to Anyroute; its IP, account linkage and provider limits still apply.
 
 Exports contain plaintext secrets and a corruption checksum. They are neither
 encrypted nor authenticated backups. Restore refuses to overwrite an existing

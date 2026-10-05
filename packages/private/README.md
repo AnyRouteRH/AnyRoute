@@ -2,7 +2,7 @@
 
 Make any AI app private in one command.
 
-A small program that runs on your computer and looks like the OpenAI API. Point any app that has a base-URL setting at it, and every call goes to AnyRoute through Tor, on the unlinkable lane, paid with a blind token.
+A small program that runs on your computer and looks like the OpenAI API. Point any app that has a base-URL setting at it, and every call goes to Anyroute through Tor, on the unlinkable lane, paid with a blind token.
 
 ```sh
 brew install tor && brew services start tor     # or leave Tor Browser open
@@ -14,7 +14,7 @@ export OPENAI_BASE_URL=http://127.0.0.1:8788/v1
 export OPENAI_API_KEY=anyroute-private          # any non-empty value; it is discarded
 ```
 
-`private.mjs` is one file: download it from the AnyRoute site (`/private.mjs`), check its SHA-256 against the one on the documentation page, and run it with Node 20 or later. It has no dependencies to install. The package's `anyroute-private` command is the same file.
+`private.mjs` is one file: download it from the Anyroute site (`/private.mjs`), check its SHA-256 against the one on the documentation page, and run it with Node 20 or later. It has no dependencies to install. The package's `anyroute-private` command is the same file.
 
 ## What this hides, and what it does not
 

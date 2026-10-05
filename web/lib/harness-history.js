@@ -3,7 +3,7 @@ import { MAX_BYTES, MAX_CHATS, snapshotLanes, titleOf } from "./private-history.
 export const EXPORT_FORMAT = "anyroute-harness-history";
 export const EXPORT_VERSION = 1;
 const bytes = (value) => new TextEncoder().encode(value).length;
-const bad = () => { throw new Error("Choose an AnyRoute history JSON export with valid conversations."); };
+const bad = () => { throw new Error("Choose an Anyroute history JSON export with valid conversations."); };
 const text = (value, max, optional = false) => {
   if (optional && value === undefined) return undefined;
   if (typeof value !== "string" || value.length > max) bad();

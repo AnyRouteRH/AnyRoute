@@ -83,8 +83,8 @@ export default function SealPage() {
           </p>
           <div className="button-row">
             <Button href="/spec/">Read the spec</Button>
-            <Button href="/whitepaper/" secondary>AnyRoute Whitepaper</Button>
-            <Button href="/network/" secondary>AnyRoute Network · open for early hosts</Button>
+            <Button href="/whitepaper/" secondary>Anyroute Whitepaper</Button>
+            <Button href="/network/" secondary>Anyroute Network · open for early hosts</Button>
             <Button href="/hosts/" secondary>Hosts</Button>
             <Button href="/seal/status.json" secondary>
               status.json

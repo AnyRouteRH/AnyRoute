@@ -6,7 +6,7 @@ export default function Terms(){return <PageFrame><main className="page-main" id
     <nav className="side-nav" aria-label="Legal pages" data-reveal="fade"><span className="side-nav-label">Legal</span><a href="/legal/privacy/">Data notice</a><a href="/legal/terms/" aria-current="page">Service notes</a></nav>
     <article className="page-body prose legal-body" data-reveal>
       <h2>Launch status</h2>
-      <p>AnyRoute’s public preview uses sample data and does not accept deposits or live payments. Customer support details and final service terms will be published before payments are enabled.</p>
+      <p>Anyroute’s public preview uses sample data and does not accept deposits or live payments. Customer support details and final service terms will be published before payments are enabled.</p>
       <h2>Routing and fees</h2>
       <p>Anyroute routes AI requests to third-party model providers and settles usage in USDG on Robinhood Chain. Prepaid calls carry a 0% router fee; per-call payments carry a margin of at most 1%; providers are paid their list price minus a settlement fee. Model output comes from the provider that served the call.</p>
       <h2>Paying with a Stock Token</h2>

@@ -1216,7 +1216,7 @@ export default function Dashboard() {
       {!loaded ? (
         <div className="empty loading-state" role="status">
           <span className="loading-bar" aria-hidden="true" />
-          Connecting to AnyRoute…
+          Connecting to Anyroute…
         </div>
       ) : live && connection === "unreachable" ? (
         <section className="router-status dark" aria-labelledby="router-status-title">

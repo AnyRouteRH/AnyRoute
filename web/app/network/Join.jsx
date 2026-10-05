@@ -12,6 +12,6 @@ export default function Join({ sha }) {
     <p><strong>Use a dedicated operator wallet, not a wallet holding funds.</strong> The command signs wallet-auth messages, submits your host details, then supplies the sidecar credential to the router. It sends no transactions. <code>--dry-run</code> prints canonical signup and credential bodies without reading keys or sending requests; api_key is shown as &lt;redacted&gt; and the signup-assigned provider id as &lt;provider_id&gt;. <code>--status PROVIDER_ID</code> polls status five times; <code>--help</code> lists options.</p>
     <p>Omit the API key source to register first, then use <code>node join.mjs --credential-only PROVIDER_ID --key-file /path/to/operator.key --api-key-file /path/to/sidecar.key</code>. <code>--api-key-env NAME</code> selects an environment variable instead. The trimmed API key must contain 16–500 characters; POSIX files must not be group or world readable. The router stores the credential encrypted and can decrypt it to call your sidecar.</p>
     <dl className={s.digest}><dt>join.mjs SHA-256</dt><dd><code data-network-join-sha256={sha}>{sha}</code></dd></dl>
-    <p>Your signup details go to the router, including your operator wallet, endpoint, payout address, model ids and any contact you supply. AnyRoute’s router still reads inference requests in memory.</p>
+    <p>Your signup details go to the router, including your operator wallet, endpoint, payout address, model ids and any contact you supply. Anyroute’s router still reads inference requests in memory.</p>
   </section>;
 }

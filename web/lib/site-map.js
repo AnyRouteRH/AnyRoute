@@ -55,13 +55,13 @@ export const TASKS = [
   task('mcp', 'build', 'Connect agent tools', 'Read the MCP tool interface and connection instructions.', '/docs/#mcp', 'mcp, tools, agent'),
 
   task('agent-guard', 'agents', 'Read about action rules', 'Read the action checks and execution limits; not switched on yet.', '/docs/#agent-guard', 'agent guard, order, trade, swap, action'), // V98
-  task('rulebook', 'agents', 'Give an agent a budget', 'Set caps, models, lanes, tools and hours for requests through AnyRoute.', '/agents/', 'agent, rulebook, budget, limits', true),
+  task('rulebook', 'agents', 'Give an agent a budget', 'Set caps, models, lanes, tools and hours for requests through Anyroute.', '/agents/', 'agent, rulebook, budget, limits', true),
   task('sessions', 'agents', 'Give an agent a session', 'Open Agent Sessions in the dashboard to set a session budget and lifetime.', '/dashboard/', 'agent sessions, session, ttl'),
   task('approvals', 'agents', "Approve an agent’s payment", 'Review how approvals work, then connect a key to approve or deny a request.', '/agents/', 'approval, approve, deny, payment', true),
   task('telegram', 'agents', 'Link Telegram approvals', 'Connect Telegram from Agents for approvals and alerts.', '/agents/', 'telegram, bot, notification'),
   task('activity', 'agents', 'Review agent activity', 'Open Activity for calls and agent events; Agents keeps the per-agent ledger.', '/dashboard/#activity', 'activity, ledger, receipts, csv, json'),
   task('alerts', 'agents', 'Set agent alerts', 'Configure the alert feed, spend webhook or linked Telegram notifications.', '/agents/', 'alerts, notification, webhook'),
-  task('breakers', 'agents', 'Set circuit breakers', 'Configure rulebook breakers that stop subsequent requests through AnyRoute.', '/agents/', 'breaker, kill switch, stop, safety'),
+  task('breakers', 'agents', 'Set circuit breakers', 'Configure rulebook breakers that stop subsequent requests through Anyroute.', '/agents/', 'breaker, kill switch, stop, safety'),
   task('autonomy', 'agents', 'Adjust agent autonomy', 'Review progressive autonomy and spending caps for a selected agent.', '/agents/', 'autonomy, spending, caps'),
   task('certificates', 'agents', 'Check an agent’s track record', 'Read the router-signed certificate format, lifetime and verification limits.', '/docs/#agent-certificates', 'certificate, track record, reputation'),
   task('directory', 'agents', 'Find an agent', 'Browse opt-in public profiles and owner-supplied capabilities.', '/agents/directory/', 'directory, discover, agent card', true),
@@ -85,14 +85,14 @@ export const TASKS = [
   task('badge', 'verify', 'Embed a provider badge', 'Read how to show a provider’s verification status and receipt evidence.', '/docs/#badge', 'badge, embed, status'),
   task('proof-time', 'verify', 'Inspect proof freshness', 'Read proof-time observations and what they establish.', '/status/#proof-time', 'proof time, freshness, evidence'),
 
-  task('docs', 'learn', 'Read the docs', 'Browse guides and reference sections for AnyRoute tools.', '/docs/', 'documentation, guide, help', true),
+  task('docs', 'learn', 'Read the docs', 'Browse guides and reference sections for Anyroute tools.', '/docs/', 'documentation, guide, help', true),
   task('changelog', 'learn', "See what's new", 'Follow shipped changes with links to their pages and public commits.', '/changelog/', 'changelog, updates, shipped, rss, atom'), // V89: page, menu, footer and search.
   task('whitepaper', 'learn', 'Read the whitepaper', 'Read the architecture, payment design and routing model.', '/whitepaper/', 'whitepaper, paper, architecture', true),
   task('case-study', 'learn', 'Read the case study', 'Follow an application integration and its routing choices.', '/case-study/', 'case study, example, integration'),
   task('roadmap', 'learn', 'See the roadmap', 'See what is available and what comes next.', '/#roadmap', 'roadmap, planned, future'),
-  task('about', 'learn', 'Learn about AnyRoute', 'Read the project’s purpose and approach.', '/#about', 'about, purpose, project'),
+  task('about', 'learn', 'Learn about Anyroute', 'Read the project’s purpose and approach.', '/#about', 'about, purpose, project'),
   task('privacy-notice', 'learn', 'Read the data notice', 'Read the site’s data-handling notice and privacy limits.', '/legal/privacy/', 'legal, privacy notice, data notice'),
-  task('terms', 'learn', 'Read the terms', 'Read the terms for using AnyRoute.', '/legal/terms/', 'legal, terms, conditions'),
+  task('terms', 'learn', 'Read the terms', 'Read the terms for using Anyroute.', '/legal/terms/', 'legal, terms, conditions'),
 ];
 
 // Tools that live inside a page tab are found through search; menus, the mobile menu and the footer stay short.

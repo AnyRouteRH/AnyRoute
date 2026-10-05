@@ -21,8 +21,8 @@ test('manifest uses site colours, stable Harness identity and opaque PNG icons',
   for (const [field, token] of [['theme_color', 'ink'], ['background_color', 'paper']]) {
     assert.equal(manifest[field], css.match(new RegExp(`--${token}:(#[a-f0-9]{6})`))[1]);
   }
-  assert.equal(manifest.name, 'AnyRoute');
-  assert.equal(manifest.short_name, 'AnyRoute');
+  assert.equal(manifest.name, 'Anyroute');
+  assert.equal(manifest.short_name, 'Anyroute');
   assert.equal(manifest.id, '/harness/');
   assert.equal(manifest.start_url, '/harness/');
   assert.equal(manifest.scope, '/');
@@ -77,14 +77,14 @@ function worker(contents, responseFor = (_path, text) => new Response(text)) {
 }
 
 test('install verifies exact exported bytes and fetch uses only those static responses', async () => {
-  const w = worker({ '/harness/': '<html>AnyRoute</html>', '/offline.html': '<html>Offline</html>', '/_next/static/chunks/app.js': 'app()' });
+  const w = worker({ '/harness/': '<html>Anyroute</html>', '/offline.html': '<html>Offline</html>', '/_next/static/chunks/app.js': 'app()' });
   await w.install();
   assert.equal(w.writes.length, 3);
   for (const req of w.calls) { assert.equal(req.credentials, 'omit'); assert.equal(req.cache, 'no-store'); }
   w.env.fetch = async () => { throw new Error('offline'); };
   const nav = request('/harness/');
   Object.defineProperty(nav, 'mode', { value: 'navigate' });
-  assert.equal(await (await w.fetch(nav)).text(), '<html>AnyRoute</html>');
+  assert.equal(await (await w.fetch(nav)).text(), '<html>Anyroute</html>');
   assert.equal(await (await w.fetch(request('/_next/static/chunks/app.js'))).text(), 'app()');
   for (const url of ['/api/chat', '/trpc/keys', '/v1/chat/completions', '/harness/?query=sample-message']) {
     const nav = request(url); Object.defineProperty(nav, 'mode', { value: 'navigate' });

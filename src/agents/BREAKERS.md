@@ -54,6 +54,6 @@ rolling caps remain independent. Event counters depend on retained events; the
 existing retention worker keeps events for 90 days. No additional tables, Redis
 families, logs, prompt fields or response fields are introduced.
 
-Enforcement is by AnyRoute's router for requests through AnyRoute only, with no
+Enforcement is by Anyroute's router for requests through Anyroute only, with no
 on-chain enforcement. Ordinary inference paths still read request text in router
 memory and at the answering provider. Breaker events never store that text.

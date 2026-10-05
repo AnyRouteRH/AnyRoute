@@ -33,7 +33,7 @@ test('submitted has no amount claim and becomes an actionable warning after thre
   assert.match(depositProgressView(d, 180_000).status, /not detected.*few minutes.*Check the transaction/);
 });
 test('send copy uses API delay and caps; fast-credit-off copy never promises seconds', () => {
-  assert.equal(depositNextText({ expected_credit_delay_s: 1200 }), 'Your tokens go to AnyRoute’s deposit address. Credits are added when Robinhood Chain finalises the transfer, usually about 20 minutes.');
+  assert.equal(depositNextText({ expected_credit_delay_s: 1200 }), 'Your tokens go to Anyroute’s deposit address. Credits are added when Robinhood Chain finalises the transfer, usually about 20 minutes.');
   assert.match(depositNextText({ expected_credit_delay_s: 780, fast_credit: { enabled: true, account_max_usd: 25 } }), /seconds \(up to \$25.00\).*about 13 minutes/);
   assert.doesNotMatch(depositNextText({ fast_credit: { enabled: false }, expected_credit_delay_s: null }), /seconds|20 minutes/);
   assert.match(depositNextText(), /timing varies/);

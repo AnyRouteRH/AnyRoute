@@ -1,6 +1,6 @@
 # Approved host build: Intel TDX + llama.cpp + Qwen2.5 0.5B (host policy v1)
 
-This is the one build the AnyRoute Network's published host policy admits today
+This is the one build the Anyroute Network's published host policy admits today
 (`GET https://anyroute.tech/api/v1/network/policy`). A host that runs anything else — including a build made with the
 general installer (`deploy/seal/install.sh`) — is refused at admission, with the reason, until the policy lists it.
 
@@ -17,7 +17,7 @@ The compose hash is not pinned, so the file can carry your own router key hash.
 ## Steps
 
 1. **Check your machine** (optional on Phala Cloud): see https://anyroute.tech/network#readiness.
-2. **Make the router key** the AnyRoute router will use to call your sidecar, and fill in the template:
+2. **Make the router key** the Anyroute router will use to call your sidecar, and fill in the template:
    ```sh
    umask 077 && openssl rand -hex 32 | tr -d '\n' > sidecar.key
    KEY_SHA=$(printf %s "$(cat sidecar.key)" | shasum -a 256 | cut -d' ' -f1)

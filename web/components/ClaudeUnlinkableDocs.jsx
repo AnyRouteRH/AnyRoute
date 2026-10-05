@@ -3,7 +3,7 @@ import { Code } from "./UI";
 export default function ClaudeUnlinkableDocs() {
   return <>
     <h2 id="claude-unlinkable">Claude Code, unlinkable.</h2>
-    <p>Claude Code can use the proxy’s Anthropic Messages API over Tor, paid with blind tokens. Start Tor on your computer, download and check <a href="#private-get" className="inline-link">private.mjs</a>, and buy tokens with a funded AnyRoute key. The purchase uses the key; inference sends only tokens.</p>
+    <p>Claude Code can use the proxy’s Anthropic Messages API over Tor, paid with blind tokens. Start Tor on your computer, download and check <a href="#private-get" className="inline-link">private.mjs</a>, and buy tokens with a funded Anyroute key. The purchase uses the key; inference sends only tokens.</p>
     <Code label="Buy tokens and start the proxy">{`export ANYROUTE_API_KEY=sk-ar-v1-…
 node private.mjs buy --count 20 --denomination 10000
 node private.mjs start

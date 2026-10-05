@@ -14,7 +14,7 @@ export function depositNextText(info, lane = 'escrow') {
   const minutes = delay != null && Number(delay) > 0 ? Math.max(1, Math.round(Number(delay) / 60)) : null;
   const timing = minutes ? `, usually about ${minutes} minute${minutes === 1 ? '' : 's'}` : '; timing varies';
   const fast = info?.fast_credit;
-  return `Your tokens go to AnyRoute’s deposit address. ${fast?.enabled ? `Eligible credits appear in seconds (up to ${dollars(fast.account_max_usd)}); anything above that is added when` : 'Credits are added when'} Robinhood Chain finalises the transfer${timing}.`;
+  return `Your tokens go to Anyroute’s deposit address. ${fast?.enabled ? `Eligible credits appear in seconds (up to ${dollars(fast.account_max_usd)}); anything above that is added when` : 'Credits are added when'} Robinhood Chain finalises the transfer${timing}.`;
 }
 export function depositProgressView(d, now = Date.now()) {
   // Keep the exact base-unit-derived decimal string, including amounts beyond Number's precision.

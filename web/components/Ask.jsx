@@ -531,7 +531,7 @@ export default function Ask() {
             <b>Read here.</b> Files are opened in this browser and turned into plain text ({SUPPORTED.join(", ")}). A PDF is read by a reader that this site serves, in a background worker in your browser, and only when you add one; it asks no other site for anything. File names stay here: the router receives documents called doc-1, doc-2 and so on.
           </li>
           <li>
-            <b>Sent over TLS.</b> The text and your question go to AnyRoute. The router reads them in memory to cut them into chunks, embed them and rank them against your question, and asks a chat model to answer from the best few. It writes none of it to a database, cache or log.
+            <b>Sent over TLS.</b> The text and your question go to Anyroute. The router reads them in memory to cut them into chunks, embed them and rank them against your question, and asks a chat model to answer from the best few. It writes none of it to a database, cache or log.
           </li>
           <li>
             <b>Then to models.</b> The chunks and the question go to the embedding model's provider, and the question and the best chunks go to the chat model's provider. On the attested lane the router sends them only to providers whose hardware attestation it has verified and holds fresh. That shows what code is running, not what it does with your text. On the public lane a provider's documented policy applies.
@@ -686,7 +686,7 @@ export default function Ask() {
         <div className={styles.send}>
           <p className={styles.sendLine} role="status">
             {fileCount
-              ? `You are about to send ${fileCount} file${fileCount === 1 ? "" : "s"} (${formatBytes(plan.bytes)} of text, ${plan.chunks.toLocaleString("en-US")} chunk${plan.chunks === 1 ? "" : "s"}) and your question to AnyRoute over TLS, ${lane === "auto" ? "on the lane the router chooses" : `on the ${lane} lane`}${model ? `, answered by ${model}` : ""}.`
+              ? `You are about to send ${fileCount} file${fileCount === 1 ? "" : "s"} (${formatBytes(plan.bytes)} of text, ${plan.chunks.toLocaleString("en-US")} chunk${plan.chunks === 1 ? "" : "s"}) and your question to Anyroute over TLS, ${lane === "auto" ? "on the lane the router chooses" : `on the ${lane} lane`}${model ? `, answered by ${model}` : ""}.`
               : "Nothing is sent until you press Ask."}
           </p>
           <div className="button-row">

@@ -136,6 +136,6 @@ export default function Agents() {
       {key && agent && <Alerts key={"alerts"+key+agent.key_hash} /* U102: a key distinct from AgentWorkspace’s, so switching agents leaves no stale panel. */ keyHash={agent.key_hash} request={request} refreshVersion={revision} onError={onError}/>}
       {!key && <p className="note">Connect your key to read and manage agent rulebooks.</p>}
     </>}
-    <p className="help-text">For ordinary requests on every lane today, AnyRoute’s router reads request text in memory to route it, and the provider that answers reads it too. Rulebooks constrain requests through AnyRoute; they do not control calls sent elsewhere.</p>
+    <p className="help-text">For ordinary requests on every lane today, Anyroute’s router reads request text in memory to route it, and the provider that answers reads it too. Rulebooks constrain requests through Anyroute; they do not control calls sent elsewhere.</p>
   </div></AccountShell>;
 }

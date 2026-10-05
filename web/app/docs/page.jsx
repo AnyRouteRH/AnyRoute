@@ -308,7 +308,7 @@ const mcpCurl = `curl -s ${BASE}/mcp \\
 const claudeCodeEnv = `export ANTHROPIC_BASE_URL=${BASE}
 export ANTHROPIC_AUTH_TOKEN=$ANYROUTE_API_KEY        # sent as Authorization: Bearer. ANTHROPIC_API_KEY sends x-api-key instead; either works.
 
-# Anthropic model names are not served here: name AnyRoute models.
+# Anthropic model names are not served here: name Anyroute models.
 export ANTHROPIC_MODEL=meta-llama/llama-3.3-70b-instruct
 export ANTHROPIC_DEFAULT_SONNET_MODEL=meta-llama/llama-3.3-70b-instruct
 export ANTHROPIC_DEFAULT_OPUS_MODEL=meta-llama/llama-3.3-70b-instruct
@@ -623,7 +623,7 @@ agent = Agent(name="Assistant", instructions="Answer briefly.", model="<model fr
 
 
 async def main():
-    result = await Runner.run(agent, "Hello, AnyRoute.")
+    result = await Runner.run(agent, "Hello, Anyroute.")
     print(result.final_output)
 
 
@@ -633,7 +633,7 @@ model = "<model id from GET /api/v1/models>"
 model_provider = "anyroute"
 
 [model_providers.anyroute]
-name = "AnyRoute"
+name = "Anyroute"
 base_url = "${BASE}/v1"
 env_key = "ANYROUTE_API_KEY"
 wire_api = "responses"
@@ -784,7 +784,7 @@ const endpoints = [
   ["GET /api/v1/badge/:id.svg", "Attestation badge image for a provider id or a model id (attested, policy, vendor-forwarded or unverified), with the measurement and policy hash while attested and the share of 7 days with a fresh attestation; ?theme=dark. An unknown id is Unverified with a 404"],
   ["GET /api/v1/attestation/summary · /attestation/:providerId/history", "Proof-time: per attesting provider, the share of the last 24 hours and 7 days with a fresh attestation the router verified itself, measurement changes and the last failed check; and a provider’s recorded attestor, canary and probe events, newest first, paged by cursor. Failures are codes with fixed messages, never the provider’s own text. Kept for ATTESTATION_HISTORY_DAYS (30); 501 when it is 0"],
   ["GET /api/v1/measurements/key · /measurements/bundles/:providerId", "Where enabled: the key that signs measurement bundles (compose hash, source commit and tarball hash, model and image digests, MRTD allow-list), and a provider’s bundles with the transparency-log entry the router verified for each"],
-  ["POST /mcp", "AnyRoute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
+  ["POST /mcp", "Anyroute MCP: list_models, list_attested_models, chat (optionally on the attested lane), verify_provider, get_receipt and verify_receipt as tools for Claude, Cursor or any MCP client"],
   ["POST /v1/messages · /messages/count_tokens", "Anthropic Messages API (also under /api/v1) for the Anthropic SDKs and Claude Code: x-api-key or Authorization: Bearer; tools, images and streaming; the lane in X-Anyroute-Lane or provider.lane; the receipt in the reply and in X-Receipt-Id"],
   ["GET /ollama/api/tags · POST /ollama/api/chat · /generate · /embed", "Ollama API for Ollama clients (Open WebUI, Continue, the ollama libraries, LangChain): set the host to <router>/ollama and send the key as Authorization: Bearer; NDJSON streaming, tools, images, format and options; also /api/show, /api/version, /api/ps and /api/embeddings; the lane in X-Anyroute-Lane; the receipt in X-Receipt-Id and the closing line"],
   ["POST /v1/responses · /api/v1/responses", "OpenAI Responses API for the OpenAI Agents SDK, the Codex CLI and other Responses clients: the chat route’s billing, lanes and signed receipts behind the Responses shape and event stream. Stateless: store must be false, there is no previous_response_id and no GET; function and custom tools only"],
@@ -812,7 +812,7 @@ export default function Docs() {
         <div className="side-layout">
           <nav className="side-nav" aria-label="Documentation sections" data-reveal="fade">
             <span className="side-nav-label">On this page</span>
-            <a href="/whitepaper/">AnyRoute Whitepaper</a>
+            <a href="/whitepaper/">Anyroute Whitepaper</a>
             <a href="#whats-new">What’s new</a><DocsFeatureLinks />
             <a href="#quickstart">Quickstart</a>
             <a href="#routing">Routing</a>
@@ -1078,7 +1078,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
               2,
             )}
           </Code>
-          <h2 id="tor">Reach AnyRoute over Tor.</h2>
+          <h2 id="tor">Reach Anyroute over Tor.</h2>
           <p>
             Where the router runs an onion service, you can call it through Tor and keep your network address from the router and from the network it runs on. GET /api/v1/status publishes the address as onion.address, and it is shown below. Use it as
             http://&lt;address&gt; from Tor Browser or any client that can use a SOCKS5 proxy and lets the proxy resolve names (curl --socks5-hostname, or torsocks); the API is the same, under /api/v1 on that host. The onion service itself
@@ -1320,7 +1320,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             transaction of its measured image, each only once the router checked it. policy_hash is the attested classifier policy. Anything the router has not verified is null, never filled in; exec_profile_id stays null until an attestation reports
             one. datacenter_region is set only when every endpoint reports the same single region.
           </p>
-          <p>Both GET /api/v1/models and /v1/models add provider_names and capabilities: vision (Reads images), imageOut (Makes images), audio, tools, longContext (at least 128,000 tokens), attested (Proven hardware), network (AnyRoute network) and encrypted (Encrypted chat). Network tags require a live, freshly attested host offer for its admitted model. Encrypted chat requires the separate enabled gateway path with fresh evidence and the exact model ID; ordinary Harness chat remains readable by the router. Older responses derive only the tags their fields establish.</p>
+          <p>Both GET /api/v1/models and /v1/models add provider_names and capabilities: vision (Reads images), imageOut (Makes images), audio, tools, longContext (at least 128,000 tokens), attested (Proven hardware), network (Anyroute network) and encrypted (Encrypted chat). Network tags require a live, freshly attested host offer for its admitted model. Encrypted chat requires the separate enabled gateway path with fresh evidence and the exact model ID; ordinary Harness chat remains readable by the router. Older responses derive only the tags their fields establish.</p>
           <Code label="GET /api/v1/models (new fields)">{modelAttestation}</Code>
           <h2 id="what-we-saw">What we saw: a privacy label for every receipt.</h2>
           <p>The output facet reads usage.unit_type and usage.units: token (the default for older receipts) covers text and embeddings, image_mp images, video_sec video, audio_sec voice and audio, call tools or search, and gpu_sec computation or fine-tuning. Units describe metering, not every input modality or which operation ran. A token call can include image references. Ordinary chat reads request text in router memory on every lane; the encrypted-chat adapter forwards ciphertext. For media, generation records keep request and output hashes, not the media itself; metering does not establish retention outside that record or by a provider. A call unit alone does not prove a search query was sent, and GPU time does not prove training data or weights were deleted. Unfamiliar units report content and address handling as unrecorded. Council labels include members and the judge; RAG has separate embedding and chat receipts. The response cache keeps the encrypted reply, never the prompt itself; semantic caching keeps a hashed word vector. Batch content is kept sealed outside the database; requests are deleted when the batch finishes and answers when results expire. Failed-provider errors can retain a short sanitized fragment of a rejected request, and unexpected library errors can quote fragments in logs. See <a href="/keep/" className="inline-link">What we keep</a> for these limits.</p>
@@ -1337,7 +1337,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
               withheld a reply because that check failed, the label says the provider had already read the prompt.
             </li>
             <li>
-              <b>Who saw your address.</b> On the unlinkable lane, nobody at AnyRoute: the lane is served only to requests that arrive over Tor (or through an independent relay), and a direct request is refused before it is served. On any other lane AnyRoute’s servers saw the
+              <b>Who saw your address.</b> On the unlinkable lane, nobody at Anyroute: the lane is served only to requests that arrive over Tor (or through an independent relay), and a direct request is refused before it is served. On any other lane Anyroute’s servers saw the
               address the request came from. Its software writes that address to no table: the record of a call has no column for it. A call with no API key (a blind token, a wallet or an x402 payment) is rate-limited per address, so for about a minute the address is the key of a
               counter; a call with a key is limited per key and uses no address. What the network provider that hosts the router logs is outside what a receipt can show, and the label says so.
             </li>
@@ -1430,7 +1430,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             The Telegram bot follows the same rule. /private on sends every chat with lane attested, /models attested lists the models with a proven enclave and /model accepts only those while private mode is on. Each answer’s footer says attested, or attested · GPU when the gateway’s receipt asserts GPU attestation,
             taken from the signed receipt, with a link to the provider’s verify page; an answer whose receipt does not show an attested provider is not delivered. When no attested provider can answer, the bot says nothing was sent and nothing was charged.
           </p>
-          <h2 id="anthropic">Use AnyRoute from Claude Code and the Anthropic SDKs.</h2>
+          <h2 id="anthropic">Use Anyroute from Claude Code and the Anthropic SDKs.</h2>
           <p>
             The router speaks the Anthropic Messages API: POST /v1/messages (also under /api/v1) and POST /v1/messages/count_tokens. A client written for that API, such as the Anthropic SDKs or Claude Code, works with an Anyroute key and an Anyroute
             model. The request is converted to a chat completion and sent through /api/v1/chat/completions inside the router, so the key, its balance and limits, the lane, the signed receipt and the response headers are those of a chat call. Anyroute serves open models, not
@@ -1530,7 +1530,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             Every error has Anthropic’s shape, {`{"type":"error","error":{"type","message"},"request_id"}`}, plus an anyroute object with the router’s own error type, its metadata, and the receipt id when a refused call was billed. Every response has a request-id header. A browser
             can call the endpoint directly: the router allows the x-api-key, anthropic-version, anthropic-beta and anthropic-dangerous-direct-browser-access headers.
           </p>
-          <h2 id="ollama">Use AnyRoute from any Ollama client.</h2>
+          <h2 id="ollama">Use Anyroute from any Ollama client.</h2>
           <p>
             The router speaks the Ollama API under /ollama: GET /ollama/api/tags, /api/version and /api/ps, and POST /api/show, /api/chat, /api/generate, /api/embed and the older /api/embeddings. Point an Ollama client (Open WebUI, Continue, the ollama Python and JavaScript libraries, LangChain’s ChatOllama, editor and
             notes plugins) at this router’s address followed by /ollama, and give it your Anyroute key. Each call is converted and sent through /api/v1/chat/completions (or /api/v1/embeddings) inside the router, so the key’s balance and limits, the lane, the signed receipt and the response headers are those of a chat call.
@@ -1578,7 +1578,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             Every error is Ollama’s {`{"error":"..."}`} with the router’s status: 400 for a bad field (the message names it), 401 or 402 without a usable key, 404 for an unknown model (the message names one to use), 409 or 503 when the requested lane cannot be served, and 429 with Retry-After. A request every
             provider fails before any output is an HTTP error; a failure after output has begun ends the stream with an {`{"error"}`} line and no closing line.
           </p>
-          <h2 id="responses">Use AnyRoute with the OpenAI Agents SDK and Codex.</h2>
+          <h2 id="responses">Use Anyroute with the OpenAI Agents SDK and Codex.</h2>
           <p>
             POST /v1/responses (also /api/v1/responses) is the OpenAI Responses API, so the OpenAI Agents SDK, the Codex CLI and other Responses clients work with a change of base URL and key. The base URL is this router’s address followed by /v1 (or /api/v1: the two are the same), and the key is the
             one you use for chat completions. The endpoint is an adapter: it sends your request to /api/v1/chat/completions inside the router with your credentials and your routing headers, so balance, limits, disclosure ceilings, lanes and signed receipts are exactly those of a chat call, and the answer comes back as a Response object,
@@ -1598,7 +1598,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           <Code label="Response (abridged)">{responsesResult}</Code>
           <h3>Stateless by design</h3>
           <p>
-            AnyRoute keeps no conversation or response on the server, so there is nothing to continue from or fetch back. Send the whole conversation in input on every request, including the function_call and function_call_output items of a tool round trip; the Agents SDK and Codex already do this. store defaults to false and store: true is refused with a 400, as are previous_response_id,
+            Anyroute keeps no conversation or response on the server, so there is nothing to continue from or fetch back. Send the whole conversation in input on every request, including the function_call and function_call_output items of a tool round trip; the Agents SDK and Codex already do this. store defaults to false and store: true is refused with a 400, as are previous_response_id,
             conversation, background, stored prompts and references to stored items or files. GET, DELETE and cancel under /v1/responses/:id answer 404 and say why. A call’s signed receipt, which holds no prompt or answer, is at GET /api/v1/receipts/:id with the id from X-Receipt-Id.
           </p>
           <Code label="A refusal">{responsesRefusal}</Code>
@@ -1606,12 +1606,12 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           <p>
             Request: model, instructions, input (text, or message items with input_text and input_image, function_call and function_call_output items, custom_tool_call and custom_tool_call_output items; earlier reasoning items are ignored), function and custom tools with tool_choice and parallel_tool_calls, max_output_tokens, temperature, top_p, text.format (text, json_object or json_schema, which
             needs a model and provider that support it), reasoning.effort, metadata (echoed back, never sent to a provider), user, and provider for routing. Other options, such as include, truncation and service_tier, are accepted and ignored. Response: a message with output_text and one function_call or custom_tool_call item per tool call, and usage with
-            input_tokens, output_tokens and total_tokens (plus cost in USD). Tools that run on the API provider’s servers (web_search, file_search, code_interpreter, computer_use, image_generation, hosted mcp) are refused with a 400 that names the tool, because AnyRoute hosts none: give the model a function tool and run the work in your own code, and switch off
+            input_tokens, output_tokens and total_tokens (plus cost in USD). Tools that run on the API provider’s servers (web_search, file_search, code_interpreter, computer_use, image_generation, hosted mcp) are refused with a 400 that names the tool, because Anyroute hosts none: give the model a function tool and run the work in your own code, and switch off
             any client feature, such as web search in Codex, that depends on one. File inputs are also refused.
           </p>
           <h3>Codex and apply_patch: custom tools</h3>
           <p>
-            The Codex CLI offers apply_patch as a custom tool: freeform text, not JSON fields, with an optional grammar. AnyRoute passes a custom tool to the model as a function with one string argument, input, and puts the tool’s description, a line saying the tool takes freeform text, and the grammar if there is one into the function’s description. The grammar
+            The Codex CLI offers apply_patch as a custom tool: freeform text, not JSON fields, with an optional grammar. Anyroute passes a custom tool to the model as a function with one string argument, input, and puts the tool’s description, a line saying the tool takes freeform text, and the grammar if there is one into the function’s description. The grammar
             is guidance for the model only: nothing checks or enforces it, and a model can still produce input that does not follow it, which the client then reports as a failed call. When the model calls the function, the call comes back as a custom_tool_call item with the text as input (in a stream, response.custom_tool_call_input.delta as it is generated and response.custom_tool_call_input.done with
             the whole text), and the custom_tool_call_output item you send on the next turn goes back to the model as the tool result. Models differ in how well they follow a tool description, so how reliably apply_patch works depends on the model you choose. Codex’s shell and plan tools are ordinary function tools.
           </p>

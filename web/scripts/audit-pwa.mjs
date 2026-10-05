@@ -6,8 +6,8 @@ import { shellRoute } from '../lib/harness-sw.js';
 
 export function auditPwa(root) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
-  assert.equal(manifest.name, 'AnyRoute');
-  assert.equal(manifest.short_name, 'AnyRoute');
+  assert.equal(manifest.name, 'Anyroute');
+  assert.equal(manifest.short_name, 'Anyroute');
   assert.equal(manifest.start_url, '/harness/');
   assert.equal(manifest.id, '/harness/');
   assert.equal(manifest.display, 'standalone');

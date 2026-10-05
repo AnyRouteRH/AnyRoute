@@ -7,7 +7,7 @@ export const MODEL_CAPABILITIES = [
   { key: "tools", label: "Tools", explanation: "Can request tool calls; the calling app must run the tools and return their results." },
   { key: "longContext", label: "Long context", explanation: "Lists a context window of at least 128,000 tokens; the chosen provider may have a lower limit." },
   { key: "attested", label: "Proven hardware", explanation: "Has an endpoint with a fresh hardware attestation checked by the router; this does not prove answer quality or encrypt ordinary chat." },
-  { key: "network", label: "AnyRoute network", explanation: "Has a live offer on an AnyRoute network host for a model admitted on that host; routing may choose another provider.", href: "/network/" },
+  { key: "network", label: "Anyroute network", explanation: "Has a live offer on an Anyroute network host for a model admitted on that host; routing may choose another provider.", href: "/network/" },
   { key: "encrypted", label: "Encrypted chat", explanation: "Available through the separate device-encryption gateway setup; ordinary Harness chat still sends readable requests to the router.", href: "/docs/#e2ee-phala" },
 ];
 

@@ -44,7 +44,7 @@ export default function PublishProfile() {
       <button disabled={busy}>{busy ? 'Updating…' : 'Publish selected fields'}</button> <button type="button" disabled={busy} onClick={() => mutate(true)}>Unpublish</button>
     </form>}
     {loaded && choices && <fieldset disabled={busy}><legend>Paid reputation and identity</legend>
-      <label style={{ display: 'block' }}><input type="checkbox" checked={choices.reputation_opt_in} onChange={e => choose({ reputation_opt_in: e.target.checked })}/>Accept paid feedback: only reviewers who paid this agent through AnyRoute can rate it</label>
+      <label style={{ display: 'block' }}><input type="checkbox" checked={choices.reputation_opt_in} onChange={e => choose({ reputation_opt_in: e.target.checked })}/>Accept paid feedback: only reviewers who paid this agent through Anyroute can rate it</label>
       <label style={{ display: 'block' }}><input type="checkbox" checked={choices.identity_opt_out} onChange={e => choose({ identity_opt_out: e.target.checked })}/>Keep this key out of ERC-8004 identity and identity links{choices.unlinkable_only_rulebook ? ' (default for a rulebook that allows only the unlinkable lane)' : ''}</label>
       <p>ERC-8004 identity: {choices.registration.agent_id ? `agent ${choices.registration.agent_id}` : choices.registration.status}. An identity sent to the chain is public and permanent.</p>
     </fieldset>}

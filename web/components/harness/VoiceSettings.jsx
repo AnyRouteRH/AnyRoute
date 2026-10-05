@@ -20,7 +20,7 @@ export default function VoiceSettings({ voice }) {
       <label className={s.choice}><input type="checkbox" checked={voice.allowRemoteVoice} onChange={(event) => voice.configure({ allowRemoteVoice: event.target.checked })} /> Allow remote read-aloud voices; answer text may leave this device</label>
       <p>{voice.voiceNote || "Read-aloud prefers voices the browser reports as local. Remote voices require your choice above."}</p>
       <p>Conversation mode sends each completed utterance, reads the answer, then listens again. It needs sign-in and one model. Sending uses your current chat settings and balance. Stop voice ends the loop; Stop in the composer also stops an answer.</p>
-      <p>AnyRoute receives the transcript when you send it, through the current chat path. The router reads requests in memory except on the encrypted-chat path. Voice choices last for this visit. Transcripts follow your existing chat history settings.</p>
+      <p>Anyroute receives the transcript when you send it, through the current chat path. The router reads requests in memory except on the encrypted-chat path. Voice choices last for this visit. Transcripts follow your existing chat history settings.</p>
     </div>
   </>;
 }

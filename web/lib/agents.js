@@ -149,7 +149,7 @@ export function sampleIntent(form) {
 
 // The confirmation is the sole path to the kill mutation; cancellation sends nothing.
 export async function confirmKill(agent, reason, confirm, request) {
-  if (!confirm(`Stop ${agent.name || 'this key'}? New requests through AnyRoute will be refused until you resume it.`)) return false;
+  if (!confirm(`Stop ${agent.name || 'this key'}? New requests through Anyroute will be refused until you resume it.`)) return false;
   await request(`/api/v1/agents/${encodeURIComponent(agent.key_hash)}/kill`, { method: 'POST', body: reason.trim() ? { reason: reason.trim() } : {} });
   return true;
 }

@@ -340,7 +340,7 @@ export default [
     "id": "receipt-backed-reputation",
     "date": "2026-10-03",
     "title": "Agent reputation only from people who paid",
-    "summary": "Agents can link an ERC-8004 identity on Robinhood Chain, take feedback only from reviewers who paid them through AnyRoute, weighted by the amount and fading over time, show a signed daily liveness check, and publish a signed track record with a Merkle proof over their receipts. Built and off by default; not switched on at anyroute.tech yet.",
+    "summary": "Agents can link an ERC-8004 identity on Robinhood Chain, take feedback only from reviewers who paid them through Anyroute, weighted by the amount and fading over time, show a signed daily liveness check, and publish a signed track record with a Merkle proof over their receipts. Built and off by default; not switched on at anyroute.tech yet.",
     "links": [
       {
         "label": "Read the docs",
@@ -661,7 +661,7 @@ export default [
     "id": "chat-limits",
     "date": "2026-10-02",
     "title": "Set a chat budget",
-    "summary": "Turn on Limits in the Harness to set a spending cap, ask before replies above an amount you choose, and stop the chat session. The router enforces these rules for requests through AnyRoute.",
+    "summary": "Turn on Limits in the Harness to set a spending cap, ask before replies above an amount you choose, and stop the chat session. The router enforces these rules for requests through Anyroute.",
     "links": [
       {
         "label": "Open page",
@@ -975,7 +975,7 @@ export default [
   {
     "id": "public-whitepaper",
     "date": "2026-10-01",
-    "title": "Read the AnyRoute whitepaper",
+    "title": "Read the Anyroute whitepaper",
     "summary": "The whitepaper explains the architecture, payment design and routing model. Read it from the site alongside the developer reference.",
     "links": [
       {
@@ -1054,7 +1054,7 @@ export default [
     "id": "agent-circuit-breakers",
     "date": "2026-09-30",
     "title": "Stop an agent when limits are crossed",
-    "summary": "Agent circuit breakers stop subsequent requests when the configured conditions are crossed. Owners can review the stop and resume the agent; these controls apply to requests through AnyRoute.",
+    "summary": "Agent circuit breakers stop subsequent requests when the configured conditions are crossed. Owners can review the stop and resume the agent; these controls apply to requests through Anyroute.",
     "links": [
       {
         "label": "Open page",
@@ -1073,7 +1073,7 @@ export default [
     "id": "agent-controls",
     "date": "2026-09-30",
     "title": "Set rules and approvals for agents",
-    "summary": "Set model, lane, tool, time and spending rules for an agent, and stop its next request with the kill switch. Requests above your chosen approval amount require a single-use approval that expires after 15 minutes; rules apply to requests through AnyRoute.",
+    "summary": "Set model, lane, tool, time and spending rules for an agent, and stop its next request with the kill switch. Requests above your chosen approval amount require a single-use approval that expires after 15 minutes; rules apply to requests through Anyroute.",
     "links": [
       {
         "label": "Open Agents",
@@ -1100,7 +1100,7 @@ export default [
     "id": "agent-progressive-caps",
     "date": "2026-09-30",
     "title": "Adjust agent budgets from their track record",
-    "summary": "Progressive autonomy adjusts an agent’s spending caps within configured limits as its record changes. The router enforces the resulting caps for requests through AnyRoute.",
+    "summary": "Progressive autonomy adjusts an agent’s spending caps within configured limits as its record changes. The router enforces the resulting caps for requests through Anyroute.",
     "links": [
       {
         "label": "Open page",
@@ -1143,7 +1143,7 @@ export default [
     "id": "agent-rule-tools",
     "date": "2026-09-30",
     "title": "Let an agent check its rules first",
-    "summary": "Agents can read their own rulebook and check a proposed action through MCP tools. The router still enforces those rules when a request is sent through AnyRoute.",
+    "summary": "Agents can read their own rulebook and check a proposed action through MCP tools. The router still enforces those rules when a request is sent through Anyroute.",
     "links": [
       {
         "label": "Open page",
@@ -1252,7 +1252,7 @@ export default [
   {
     "id": "data-storage-inventory",
     "date": "2026-09-30",
-    "title": "Inspect what AnyRoute keeps",
+    "title": "Inspect what Anyroute keeps",
     "summary": "What we keep lists database columns, temporary stores, logs and places request text or addresses are read. The page publishes the inventory hash and the available transparency-log evidence.",
     "links": [
       {
@@ -2432,7 +2432,7 @@ export default [
   {
     "id": "telegram-chat",
     "date": "2026-09-29",
-    "title": "Chat with AnyRoute in Telegram",
+    "title": "Chat with Anyroute in Telegram",
     "summary": "Link your key to the Telegram bot and choose a model for chat. Its private mode selects the attested lane; messages still pass through Telegram and the router.",
     "links": [
       {
@@ -2456,7 +2456,7 @@ export default [
   {
     "id": "tor-onion-access",
     "date": "2026-09-29",
-    "title": "Reach AnyRoute through Tor",
+    "title": "Reach Anyroute through Tor",
     "summary": "Connect to the router’s onion service through Tor. Onion traffic uses rate limits that do not rely on the client’s network address; ordinary request text remains readable by the router.",
     "links": [
       {

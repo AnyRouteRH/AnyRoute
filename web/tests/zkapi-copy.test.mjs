@@ -14,7 +14,7 @@ test('zkAPI copy describes funding separation and preserves the prompt and lease
   assert.match(page, /<h1>Pay with zkAPI\.<\/h1>/);
   assert.match(page, /Keep your funding wallet apart from your AI calls\./);
   assert.match(page, /Calls within a lease still link to one key and the operator’s account/);
-  assert.match(page, /AnyRoute reads ordinary prompts in memory\. The model provider also receives them/);
+  assert.match(page, /Anyroute reads ordinary prompts in memory\. The model provider also receives them/);
   assert.match(page, /An expired active note can be claimed in full by the treasury/);
   assert.match(wallet, /<h2 id="zk-backup">Your note wallet<\/h2>/);
   const entry = TASKS.find(task => task.id === 'zkapi');

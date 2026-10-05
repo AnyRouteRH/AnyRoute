@@ -1,6 +1,6 @@
 # Monitoring
 
-AnyRoute exposes its health through three public, read-only endpoints. Several independent watchers read them, so no single component has to stay up to report that something is wrong.
+Anyroute exposes its health through three public, read-only endpoints. Several independent watchers read them, so no single component has to stay up to report that something is wrong.
 
 | Endpoint | Meaning |
 |---|---|

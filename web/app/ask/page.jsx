@@ -14,7 +14,7 @@ export default function AskPage() {
             <br />
             files.
           </h1>
-          <p>Drop in documents, ask a question, and get an answer that cites the passages it used. Your files are read in this browser and sent to AnyRoute over TLS with your question. This page saves nothing in your browser.</p>
+          <p>Drop in documents, ask a question, and get an answer that cites the passages it used. Your files are read in this browser and sent to Anyroute over TLS with your question. This page saves nothing in your browser.</p>
         </div>
         <Ask />
       </main>

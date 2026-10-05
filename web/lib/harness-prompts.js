@@ -5,7 +5,7 @@ export const PROMPT_KEY = "anyroute-harness-prompts-v1";
 export const MAX_PROMPTS = 200;
 export const MAX_PROMPT_BYTES = 2_000_000;
 const bytes = (s) => new TextEncoder().encode(s).length;
-const bad = () => { throw new Error("Choose a valid AnyRoute prompt library JSON file (version 1, up to 2 MB)."); };
+const bad = () => { throw new Error("Choose a valid Anyroute prompt library JSON file (version 1, up to 2 MB)."); };
 const field = (value, max, required = false) => {
   if (typeof value !== "string" || value.length > max || (required && !value.trim())) bad();
   return value;

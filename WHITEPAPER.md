@@ -1,8 +1,8 @@
-# AnyRoute Whitepaper
+# Anyroute Whitepaper
 
 ## 1. Abstract
 
-AnyRoute combines a shared inference API, USDG accounting, privacy lanes, signed receipts and agent controls. Each request carries evidence and limits: the router selects an eligible endpoint, accounts for the call and records what happened. A requested privacy floor causes refusal if no endpoint qualifies.
+Anyroute combines a shared inference API, USDG accounting, privacy lanes, signed receipts and agent controls. Each request carries evidence and limits: the router selects an eligible endpoint, accounts for the call and records what happened. A requested privacy floor causes refusal if no endpoint qualifies.
 
 The hosted service has SEAL attested serving, key transparency anchored in Sigstore Rekor, per-host receipt anchoring, Tor onion access with blind tokens, encrypted chat, private files and a data inventory. The network is open for approved Intel TDX hosts, with fresh evidence, signed policy and sanctions screening. Agent rulebooks, approvals on /agents and Telegram, ledgers, alerts, circuit breakers, progressive autonomy, certificates, public profiles and network statistics are switched on. Sealed hosting is available, but no sealed agent is registered at anyroute.tech yet.
 
@@ -20,7 +20,7 @@ Transport encryption protects a connection against observers between its endpoin
 
 Giving an agent a funded credential grants authority to make requests. A budget in instructions alone depends on the agent following those instructions, interpreting amounts correctly and maintaining its own state. Parallel calls, retries, a wrong model selection or a long generation can make that boundary difficult to reason about. A useful control must be checked by the service that admits and accounts for the work.
 
-The AnyRoute rulebook therefore attaches constraints to a key and evaluates them at the router. It can restrict models, lanes, declared tools, working hours, output size and spending over several intervals. The owner can require approval or stop the next request. This is a boundary for activity through AnyRoute. It does not control unrelated credentials, other services, the agent's operating system or a tool implementation running elsewhere.
+The Anyroute rulebook therefore attaches constraints to a key and evaluates them at the router. It can restrict models, lanes, declared tools, working hours, output size and spending over several intervals. The owner can require approval or stop the next request. This is a boundary for activity through Anyroute. It does not control unrelated credentials, other services, the agent's operating system or a tool implementation running elsewhere.
 
 ### 2.3 Capacity needs a common admission rule
 
@@ -166,7 +166,7 @@ Client: plaintext + gateway verification
      |
      | encrypted message content; visible routing envelope
      v
-AnyRoute router: admission, accounting, ciphertext forwarding
+Anyroute router: admission, accounting, ciphertext forwarding
      |
      v
 Attested gateway: decrypt and restore content
@@ -205,7 +205,7 @@ A specified lane or disclosure ceiling applies to the underlying calls rather th
 | Encrypted chat over onion with blind tokens | Correctly encrypted content is hidden | Through accepted Tor ingress | Through blind tokens | Gateway plaintext, size and timing |
 | Private retrieval/files | Yes, in memory | Not supplied by this adapter alone | Uses its supported keyed billing path | Multiple provider calls; no persistent document store |
 
-## 6. The AnyRoute Network
+## 6. The Anyroute Network
 
 ### 6.1 The approved build and signed policy
 
@@ -261,7 +261,7 @@ The router evaluates applicable policies when reserving spending capacity and se
 
 The kill switch stops the next admitted request. The owner resumes the agent. It is not a mechanism for recalling an answer already delivered or guaranteeing cancellation of every in-flight computation. A request already admitted can complete, so operators should distinguish future admission from cancellation and final settlement.
 
-Ask-first approvals appear on `/agents`; owners can link Telegram there with a one-time code and approve or deny through AnyRoute's bot. Approval details pass through Telegram. The same approvals are single use and expire after fifteen minutes under the current default. The stored approval projection contains intent metadata such as model, lane, output bound, declared tools and cost bound. It does not store the prompt or tool arguments. The approval must match the projected intent and remain within its permitted cost when consumed.
+Ask-first approvals appear on `/agents`; owners can link Telegram there with a one-time code and approve or deny through Anyroute's bot. Approval details pass through Telegram. The same approvals are single use and expire after fifteen minutes under the current default. The stored approval projection contains intent metadata such as model, lane, output bound, declared tools and cost bound. It does not store the prompt or tool arguments. The approval must match the projected intent and remain within its permitted cost when consumed.
 
 Approving an intent does not authorize arbitrary instructions hidden inside the content. Because prompts are absent from the approval binding, two bodies can share the same projected intent. The feature controls router-visible resource authority; it is not a content review signature. Approval also cannot bypass an independent denial or a circuit-breaker kill.
 
@@ -269,9 +269,9 @@ Approving an intent does not authorize arbitrary instructions hidden inside the 
 
 MCP exposes `anyroute_agent_rules` and `anyroute_agent_check`. An agent can inspect its rules and evaluate a proposed action before making a call. A self-check is advisory because state may change before admission; enforcement still occurs at the router. A useful integration handles a refusal or approval-required response even after a successful earlier check.
 
-The per-agent ledger associates activity with signed receipts and supports CSV and JSON export. Policy events and billing evidence provide different views of activity: decisions describe admission, while generation receipts describe served calls. The ledger does not establish that activity outside AnyRoute was captured, and exporting it can expose operational metadata even without conversation text.
+The per-agent ledger associates activity with signed receipts and supports CSV and JSON export. Policy events and billing evidence provide different views of activity: decisions describe admission, while generation receipts describe served calls. The ledger does not establish that activity outside Anyroute was captured, and exporting it can expose operational metadata even without conversation text.
 
-Alerts are available in the `/agents` feed, through the existing spend-alert webhook and through Telegram when the owner uses AnyRoute's bot. Owners who link Telegram can also approve or deny requests there, with the same single-use approval as /agents; the approval details pass through Telegram. Email alerts are not switched on yet. An available notification channel is not interchangeable with an approval channel. Notification delivery can fail independently of a router decision, so enforcement does not rely on a person receiving an alert first.
+Alerts are available in the `/agents` feed, through the existing spend-alert webhook and through Telegram when the owner uses Anyroute's bot. Owners who link Telegram can also approve or deny requests there, with the same single-use approval as /agents; the approval details pass through Telegram. Email alerts are not switched on yet. An available notification channel is not interchangeable with an approval channel. Notification delivery can fail independently of a router decision, so enforcement does not rely on a person receiving an alert first.
 
 ### 7.4 Circuit breakers and progressive autonomy
 
@@ -285,7 +285,7 @@ Track-record certificates are router-signed statements with a fresh pseudonym an
 
 These certificates are not zero-knowledge proofs and are not anonymous credentials. The router sees the activity and signs the statement. A fresh pseudonym reduces reuse of one public identifier, but does not prevent correlation by claim combinations, issuance timing or information held by the router. A relying party must trust the issuer for the facts asserted.
 
-All agent enforcement described here applies to requests through AnyRoute. There is no on-chain enforcement of the rulebook and no agent-to-agent payment mechanism in this control surface. External wallets, tool execution and unrelated endpoints remain outside this boundary. The agreement system described below is a separate boundary, switched on at anyroute.tech.
+All agent enforcement described here applies to requests through Anyroute. There is no on-chain enforcement of the rulebook and no agent-to-agent payment mechanism in this control surface. External wallets, tool execution and unrelated endpoints remain outside this boundary. The agreement system described below is a separate boundary, switched on at anyroute.tech.
 
 ### 7.6 Opt-in profiles and directory
 

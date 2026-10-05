@@ -37,7 +37,7 @@ res.provider;                      // the attested host`,
     flow:[['Accrue','small calls add up'],['Swap','bounded, at fair value'],['Allocate','units per generation']]},
   {tag:'Encryption',title:'End-to-end encrypted chat',attrs:['On-device encryption','Attested gateway','Ciphertext relay'],label:'encrypted chat path',
     code:`// The client encrypts on your device.
-// AnyRoute's router forwards ciphertext to the attested gateway.
+// Anyroute's router forwards ciphertext to the attested gateway.
 // The gateway handles inference and encrypts the response.
 // Follow /docs/#e2ee-phala for the client flow.
 

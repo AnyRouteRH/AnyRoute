@@ -4,7 +4,7 @@ import Changelog from './Changelog';
 
 export const metadata = {
   title: 'Changelog — Anyroute',
-  description: 'See what has shipped on AnyRoute, with links to the pages and public commits.',
+  description: 'See what has shipped on Anyroute, with links to the pages and public commits.',
   alternates: { canonical: '/changelog/', types: { 'application/rss+xml': '/changelog/rss.xml', 'application/atom+xml': '/changelog/atom.xml', 'application/json': '/changelog/index.json' } },
 };
 

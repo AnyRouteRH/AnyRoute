@@ -44,7 +44,7 @@ export default function PrivateProxyDocs() {
     <>
       <h2 id="private">Make any AI app private in one command.</h2>
       <p>
-        anyroute-private is a small program that runs on your own computer and looks like the OpenAI API at http://127.0.0.1:8788/v1, so any app that lets you set a base URL can use it. Every call it receives is rebuilt from scratch and sent to AnyRoute’s onion
+        anyroute-private is a small program that runs on your own computer and looks like the OpenAI API at http://127.0.0.1:8788/v1, so any app that lets you set a base URL can use it. Every call it receives is rebuilt from scratch and sent to Anyroute’s onion
         service through your own Tor client, on the unlinkable lane, and paid with a blind token. It is Apache-2.0 licensed, has no dependencies to install, and is one file: node private.mjs.
       </p>
       <div className="note">

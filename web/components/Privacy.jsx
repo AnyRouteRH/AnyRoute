@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Scramble} from './UI';
 
-const POINTS=[['End-to-end encrypted chat','The client encrypts on your device; the attested gateway handles inference while the router forwards ciphertext.'],['Other request paths','AnyRoute’s router reads request text in memory to route it. Attested serving alone does not hide prompts from the router.'],['Evidence and stored records','Inspect signed receipts, the key transparency log and the data inventory. Receipts store hashes, token counts and cost, not prompt or answer text.']];
+const POINTS=[['End-to-end encrypted chat','The client encrypts on your device; the attested gateway handles inference while the router forwards ciphertext.'],['Other request paths','Anyroute’s router reads request text in memory to route it. Attested serving alone does not hide prompts from the router.'],['Evidence and stored records','Inspect signed receipts, the key transparency log and the data inventory. Receipts store hashes, token counts and cost, not prompt or answer text.']];
 const STEPS=['Request :private','Quote verified','Route selected','Receipt signed'];
 const hex=n=>Array.from({length:n},()=>'0123456789abcdef'[(Math.random()*16)|0]).join('');
 const FIRST={quote:'sha256:9c41e0b2…a1f307e2',nonce:'0x5e2a…c91d'};

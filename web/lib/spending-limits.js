@@ -11,11 +11,11 @@ export const LIMIT_WORDS = {
   scope: 'Models, lanes and tools', guard: 'Actions (Agent Guard)', save: 'Save spending limits', remove: 'Remove spending limits',
   capsHelp: 'Optional; a blank cap adds no cap. Per request uses the router’s estimated cost. Hour, day and week are rolling windows that include requests still running.',
   askHelp: 'Optional. Above this estimated cost, the router pauses the request until you approve or deny it. Each approval is single use and expires.',
-  stopHelp: 'Stop refuses the next request through AnyRoute until you resume. A request already running may finish and is still billed.',
+  stopHelp: 'Stop refuses the next request through Anyroute until you resume. A request already running may finish and is still billed.',
   stopFirst: 'Save spending limits first. Stop and Resume act on saved limits.',
   scopeHelp: 'One entry per line or comma. Model identifiers and author/* patterns are accepted. Deny wins. Blank lists add no restriction unless you choose to deny tools below.',
   lanesHelp: 'With restrictions on, no checked lanes means every lane is denied. Selecting a lane does not establish its availability.',
-  scopeOnly: 'Spending limits cover requests through AnyRoute only; they do not control calls sent elsewhere.',
+  scopeOnly: 'Spending limits cover requests through Anyroute only; they do not control calls sent elsewhere.',
 };
 
 const entries = value => String(value || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);

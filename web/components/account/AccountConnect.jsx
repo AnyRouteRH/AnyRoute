@@ -14,7 +14,7 @@ export default function AccountConnect({ onConnect, onSecret }) {
     setBusy(true); setError('');
     try {
       const value = await getKey();
-      if (!validKey(value)) throw new Error('Enter a valid AnyRoute API key.');
+      if (!validKey(value)) throw new Error('Enter a valid Anyroute API key.');
       await api('/api/v1/key', { key: value.trim() });
       await onConnect(value.trim());
     } catch (e) { setError(e.message); }

@@ -4,7 +4,7 @@ import s from "./whitepaper.module.css";
 
 export const metadata = {
   title: "Whitepaper — Anyroute",
-  description: "The AnyRoute router, SEAL evidence, privacy paths, host network and agent controls: implementation, activation and honest limits.",
+  description: "The Anyroute router, SEAL evidence, privacy paths, host network and agent controls: implementation, activation and honest limits.",
 };
 
 export default function WhitepaperPage() {

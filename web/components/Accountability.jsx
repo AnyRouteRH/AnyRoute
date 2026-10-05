@@ -12,7 +12,7 @@ const STAGES=[['Quote','done'],['Policy','done'],['Screening','done'],['Probatio
 /** Network admission steps; hosts post no deposit. */
 export default function Accountability(){return <section className="section dark" id="accountability"><div className="container split">
   <div className="split-copy">
-    <div data-reveal><span className="eyebrow tick">Accountability / AnyRoute Network</span><h2 className="h2">A public record for every host.</h2><p className="lede">The AnyRoute Network is open for early hosts running the approved build. Admission checks the hardware and policy before a host serves requests.</p></div>
+    <div data-reveal><span className="eyebrow tick">Accountability / Anyroute Network</span><h2 className="h2">A public record for every host.</h2><p className="lede">The Anyroute Network is open for early hosts running the approved build. Admission checks the hardware and policy before a host serves requests.</p></div>
     <div className="points" data-stagger>{POINTS.map(([t,b])=><div className="point" key={t} data-reveal><i aria-hidden="true"/><h3>{t}</h3><p>{b}</p></div>)}</div>
     <p data-reveal style={{marginTop:24}}><a className="inline-link" href="/network/">Check the approved build and join</a> · <a className="inline-link" href="/hosts/">Inspect host records</a></p>
   </div>
