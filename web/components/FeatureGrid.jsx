@@ -19,7 +19,7 @@ const ICONS={
 const FEATURES=[
   {k:'intro',wide:true,inverse:true,label:'Anyroute',title:'The open routing layer',body:<>Any model, any provider, any route. One familiar API for your next generation of agents. <mark>Know where every call goes and what it costs</mark>, down to the receipt.</>},
   {k:'api',label:'Open API',title:'Familiar request shapes',body:<>Keep the clients and request shapes your team already knows. Change the base URL and key, with <mark>OpenRouter-compatible routing preferences</mark> built in.</>},
-  {k:'usdg',label:'USDG credits',title:'Prepaid, with a 0% router fee',body:<>One balance for every model and provider. <mark>Pay in USDG</mark> and withdraw what you don’t use, self-custodially.</>},
+  {k:'usdg',label:'Prepaid credits',title:'Prepaid, with a 0% router fee',body:<>One balance for every model and provider. <mark>Fund it with $ANYR or a stock token</mark> from your own wallet.</>},
   {k:'receipt',wide:true,label:'Signed receipts',title:'Portable proof per call',body:<>See the model, provider, tokens and cost behind each generation. <mark>A signed receipt travels with the response</mark>, anchored on Robinhood Chain every hour for independent verification.</>},
   {k:'pay',label:'Agent payments',title:'HTTP 402, built for agents',body:<>A request can begin without an account. <mark>Receive a 402 quote, pay, then retry</mark> with a payment proof.</>},
   {k:'keys',label:'Agent rulebook',title:'Rules before every request',body:<>Cap spending per request, hour, day and week. Choose models, lanes, tools and working hours. <mark>Ask first, or stop the agent before its next request.</mark> <a className="inline-link" href="/agents/">Manage your agents</a>.</>},

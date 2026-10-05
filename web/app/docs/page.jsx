@@ -808,7 +808,7 @@ export default function Docs() {
             <br />
             Keep the request.
           </h1>
-          <p>Route calls to any model, pay in USDG or with a Stock Token, and verify every receipt.</p>
+          <p>Route calls to any model, pay with $ANYR or a Stock Token, and verify every receipt.</p>
         </div>
         <div className="side-layout">
           <nav className="side-nav" aria-label="Documentation sections" data-reveal="fade">

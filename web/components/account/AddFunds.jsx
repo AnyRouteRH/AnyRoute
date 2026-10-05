@@ -90,6 +90,6 @@ export default function AddFunds({ apiKey, balance, force = false, onBalance, on
     {state.status && <p className={s.status} role="status" aria-live="polite">{state.status}</p>}
     {error && <p className="error" role="alert">{error}</p>}
     {onResume && Number(available) > 0 && <Button type="button" disabled={disabled || busy} onClick={onResume}>Send now</Button>}
-    <p className={s.links}><a className="inline-link" href="/docs/#get-usdg">How do I get USDG?</a> · <a className="inline-link" href="/dashboard/#payments">See all payment options</a></p>
+    <p className={s.links}>{(data?.usdgEscrow?.enabled || options.some(o => o.kind === 'credits')) && <><a className="inline-link" href="/docs/#get-usdg">How do I get USDG?</a> · </>}<a className="inline-link" href="/dashboard/#payments">See all payment options</a></p>
   </section>;
 }

@@ -100,7 +100,7 @@ const SEARCH_ONLY = new Set([
   'agent-guard', // V98
   'json-check', /* V83 */ 'inbox', 'activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
 SEARCH_ONLY.add('payments'); SEARCH_ONLY.add('get-usdg'); // ON1: funding joins Build; payment reference stays searchable.
-TASKS.push(task('get-usdg', 'build', 'Get USDG', 'Read how to get USDG onto Robinhood Chain before adding funds.', '/docs/#get-usdg', 'usdg, bridge, buy, chain, funding')); // ON1
+TASKS.push(task('get-usdg', 'build', 'Get USDG', 'How to get USDG on Robinhood Chain. USDG deposits are not switched on here yet.', '/docs/#get-usdg', 'usdg, bridge, buy, chain')); // ON1
 SEARCH_ONLY.add('spec'); // V80: keep Build at nine menu tools; spec stays searchable.
 SEARCH_ONLY.add('zkapi'); // ZK9: search-only Sepolia pilot.
 TASKS.push(task('facilitator', 'build', 'Settle x402 payments for your API', 'Verify and settle USDG payments on Robinhood Chain; the router only pays gas.', '/facilitator/', 'x402, facilitator, seller, settle, bazaar, discovery, usdg')); // v6 F
