@@ -1,5 +1,6 @@
-"""Read and check the calling key's rulebook. Dry runs reserve no budget."""
+"""Read and check the calling key's rulebook, and replay a draft one. Dry runs and replays reserve no budget."""
 from typing import Any, Callable, Literal, TypedDict, Union
+from urllib.parse import quote
 import httpx
 from .agent_errors import request_error
 
@@ -110,13 +111,65 @@ class AgentRulebook(TypedDict):
     policies: list[AgentPolicyState]
 
 
+AgentOutcome = Literal["allow", "deny", "approval_required"]
+
+
+class AgentReplayReason(TypedDict):
+    code: str
+    message: str
+
+
+class AgentReplayExample(TypedDict):
+    """One replayed call or Guard action. ``actual`` is the decision recorded at the time; None when none was recorded."""
+    time: str
+    kind: Literal["call", "action"]
+    model: str | None
+    lane: str | None
+    action: str | None
+    cost_usd: float
+    decision: AgentOutcome
+    reason: AgentReplayReason | None
+    actual: AgentOutcome | None
+
+
+# "from" is a Python keyword, so this one uses the functional form.
+AgentReplayWindow = TypedDict("AgentReplayWindow", {"from": str, "to": str, "days": int})
+
+
+class AgentReplayActual(TypedDict):
+    allowed: int
+    denied: int
+    asked: int
+    not_recorded: int
+
+
+class _AgentReplayOptional(TypedDict, total=False):
+    stopped_at: str
+    stopped_reason: str
+
+
+class AgentReplay(_AgentReplayOptional):
+    """What a draft rulebook would have done with a key's recorded activity. ``notes`` says what the record cannot tell."""
+    window: AgentReplayWindow
+    evaluated: int
+    allowed: int
+    denied: int
+    asked: int
+    by_reason: dict[str, int]
+    actual: AgentReplayActual
+    changed: int
+    examples: list[AgentReplayExample]
+    truncated: bool
+    notes: list[str]
+
+
 class AgentClient:
     def __init__(self, base_url: str, http: httpx.Client, headers: Callable[[], dict[str, str]]):
         self._base_url, self._http, self._headers = base_url, http, headers
 
-    def _request(self, path: str, intent: AgentIntent | None = None) -> Any:
-        kwargs = {"json": intent} if intent is not None else {}
-        res = self._http.request("POST" if intent is not None else "GET", f"{self._base_url}/api/v1/agents/{path}", headers={"accept": "application/json", "content-type": "application/json", **self._headers()}, **kwargs)
+    def _request(self, path: str, body: Any = None) -> Any:
+        kwargs = {"json": body} if body is not None else {}
+        res = self._http.request("POST" if body is not None else "GET", f"{self._base_url}/api/v1/agents/{path}", headers={"accept": "application/json", "content-type": "application/json", **self._headers()}, **kwargs)
         try:
             data = res.json()
         except ValueError:
@@ -133,3 +186,12 @@ class AgentClient:
     def check(self, intent: AgentIntent) -> AgentDecision:
         """Check before expensive calls. Never retry a denial unchanged. Reserves no budget."""
         return self._request("check", intent)
+
+    def replay(self, key_hash: str, policy: AgentPolicy, days: int | None = None) -> AgentReplay:
+        """Replay a draft rulebook on a key's last ``days`` (1 to 7, default 7) of recorded calls and Agent Guard checks,
+        before saving it. Read only: nothing is saved, charged or changed. Needs the same permissions as setting that
+        key's rulebook."""
+        body: dict[str, Any] = {"policy": policy}
+        if days is not None:
+            body["days"] = days
+        return self._request(f"{quote(key_hash, safe='')}/replay", body)

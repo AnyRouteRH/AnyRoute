@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AnyRoute, AnyRouteError, AgentPolicyDenied, AgentKilled, AgentApprovalRequired, type AgentIntent, type AgentPolicy, type AgentRulebook, type AgentDecision, type Fetch } from "../src/index.js";
+import { AnyRoute, AnyRouteError, AgentPolicyDenied, AgentKilled, AgentApprovalRequired, type AgentIntent, type AgentPolicy, type AgentRulebook, type AgentDecision, type AgentReplay, type Fetch } from "../src/index.js";
 import { json, stubFetch } from "./helpers.js";
 const intent: AgentIntent = { kind: "inference", model: "example/model", lane: "public", est_cost_pico: "1000000000", max_output_tokens: 32, tools: [] };
 const policy: AgentPolicy = { version: 1, models: {}, caps: {}, on_breach: "deny" };
@@ -34,4 +34,20 @@ test("approval fields can be absent; disabled policy routes remain ordinary erro
   const c = new AnyRoute({ baseUrl: "https://router.test", fetch: (async () => json({ error: { type: "not_found", message: "Not found." } }, 404)) as Fetch });
   const e = await c.agent.rules().catch(e => e);
   expect(e.constructor).toBe(AnyRouteError); expect(e.status).toBe(404);
+});
+test("replay posts the draft to the key's replay route and returns REST data unchanged", async () => {
+  const draft: AgentPolicy = { ...policy, models: { deny: ["beta/*"] }, caps: { per_day_usd: 5 } };
+  const result: AgentReplay = { window: { from: "2026-09-21T00:00:00.000Z", to: "2026-09-28T00:00:00.000Z", days: 7 }, evaluated: 2, allowed: 1, denied: 1, asked: 0, by_reason: { model_not_allowed: 1 }, actual: { allowed: 2, denied: 0, asked: 0, not_recorded: 0 }, changed: 1, examples: [{ time: "2026-09-22T10:00:00.000Z", kind: "call", model: "beta/model", lane: "public", action: null, cost_usd: 0.01, decision: "deny", reason: { code: "model_not_allowed", message: "The model is outside the rulebook." }, actual: "allow" }], truncated: false, notes: [] };
+  const bodies: unknown[] = [];
+  const f = stubFetch({ "POST /api/v1/agents/hash%2Fone/replay": ({ init }) => { expect(new Headers(init?.headers).get("authorization")).toBe("Bearer key"); bodies.push(JSON.parse(init?.body as string)); return json({ data: result }); } });
+  const c = new AnyRoute({ baseUrl: "https://router.test", apiKey: "key", fetch: f.fetch });
+  expect(await c.agent.replay("hash/one", draft)).toEqual(result);
+  expect(await c.agent.replay("hash/one", draft, { days: 2 })).toEqual(result);
+  expect(bodies).toEqual([{ policy: draft }, { policy: draft, days: 2 }]);
+});
+test("replay refusals surface as errors without retries", async () => {
+  let calls = 0;
+  const c = new AnyRoute({ baseUrl: "https://router.test", apiKey: "key", fetch: (async () => { calls++; return json({ error: { type: "rate_limited", message: "Too many replays from this key. Try again within a minute." } }, 429); }) as Fetch });
+  const e = await c.agent.replay("hash", policy).catch(e => e);
+  expect(e).toBeInstanceOf(AnyRouteError); expect(e.status).toBe(429); expect(calls).toBe(1);
 });

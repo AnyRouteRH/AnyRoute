@@ -65,3 +65,34 @@ def test_absent_approval_metadata_and_disabled_routes():
         with pytest.raises(AnyRouteError) as caught:
             AnyRoute("https://router.test", http=http).agent.rules()
         assert type(caught.value) is AnyRouteError and caught.value.status == 404
+
+
+def test_replay_posts_the_draft_to_the_key_and_returns_data_unchanged():
+    policy = {"version": 1, "models": {"deny": ["beta/*"]}, "caps": {"per_day_usd": 5}, "on_breach": "deny"}
+    result = {"window": {"from": "2026-09-21T00:00:00.000Z", "to": "2026-09-28T00:00:00.000Z", "days": 7}, "evaluated": 2, "allowed": 1, "denied": 1, "asked": 0,
+              "by_reason": {"model_not_allowed": 1}, "actual": {"allowed": 2, "denied": 0, "asked": 0, "not_recorded": 0}, "changed": 1, "examples": [], "truncated": False, "notes": []}
+    bodies = []
+
+    def handler(req):
+        assert req.method == "POST"
+        assert req.url.raw_path == b"/api/v1/agents/hash%2Fone/replay"
+        assert req.headers["authorization"] == "Bearer key"
+        bodies.append(json.loads(req.content))
+        return httpx.Response(200, json={"data": result})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        c = AnyRoute("https://router.test", "key", http=http)
+        assert c.agent.replay("hash/one", policy) == result
+        assert c.agent.replay("hash/one", policy, days=2) == result
+    assert bodies == [{"policy": policy}, {"policy": policy, "days": 2}]
+
+
+def test_replay_refusals_surface_as_errors():
+    def handler(req):
+        return httpx.Response(429, json={"error": {"type": "rate_limited", "message": "Too many replays from this key. Try again within a minute."}})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        c = AnyRoute("https://router.test", "key", http=http)
+        with pytest.raises(AnyRouteError) as e:
+            c.agent.replay("hash", {"version": 1, "models": {}, "caps": {}, "on_breach": "deny"})
+    assert e.value.status == 429

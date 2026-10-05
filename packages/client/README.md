@@ -34,4 +34,6 @@ Dry runs send no prompt, record no policy event, and reserve no budget. A later 
 
 The operator must enable `AGENT_POLICY_ENABLED` (default false); disabled routes return 404. Switched on at anyroute.tech. Rulebook reads and checks remain available when the key is stopped. Anyroute's router reads ordinary chat text in memory; these methods do not alter that path.
 
-These methods call `GET /api/v1/agents/me` and `POST /api/v1/agents/check`. Manage rulebooks, single-use approvals, activity, alerts and certificates on [/agents](https://anyroute.tech/agents/); see the [agent API documentation](https://anyroute.tech/docs/#agent-rulebook).
+Before saving a rulebook change, an owner or admin key can replay the draft on a key's recorded activity: `await client.agent.replay(keyHash, policy, { days: 7 })` returns how many calls and Agent Guard checks from those days would have been allowed, refused (`denied`) or sent to ask first (`asked`), `by_reason`, up to 20 `examples` beside what happened at the time, `stopped_at` when the draft would have stopped the key, `truncated` past 5,000, and `notes` for what the record cannot tell. Nothing is saved, charged or changed. Exported as `AgentReplay`.
+
+These methods call `GET /api/v1/agents/me`, `POST /api/v1/agents/check` and `POST /api/v1/agents/:key_hash/replay`. Manage rulebooks, single-use approvals, activity, alerts and certificates on [/agents](https://anyroute.tech/agents/); see the [agent API documentation](https://anyroute.tech/docs/#agent-rulebook).
