@@ -61,7 +61,7 @@ import OpenAI from "openai";
 import { decisionHeaders, verifyDecisionReceipt } from "./decision-receipt.ts";
 
 const client = new OpenAI({ baseURL: "https://anyroute.tech/api/v1", apiKey: process.env.ANYROUTE_KEY });
-const intent = { symbol: "NVDA", side: "buy", quantity: "2", limit_price: "180.00", client_order_id: "7f3c" };
+const intent = { symbol: "STOCK_A", side: "buy", quantity: "2", limit_price: "180.00", client_order_id: "7f3c" };
 const reply = await client.chat.completions.create({ model: "openai/gpt-5.4", messages }, { headers: decisionHeaders(intent) });
 const receipt = (reply as any).receipt; // store it next to the intent
 
@@ -77,7 +77,7 @@ receipt = reply.model_extra["receipt"]
 check = verify_decision_receipt(receipt, intent)  # pip install cryptography
 ```
 
-- The header is `X-Anyroute-Decision-Tag: sha256:<64 hex>`. The helpers hash the intent as canonical JSON (keys sorted, no spaces). Write prices and quantities as strings so every language hashes the same bytes. Known vector: the intent above hashes to `sha256:16dc5789390743edeeec90c686873ddfd5cc435514b4bf0550490af74033e22a`.
+- The header is `X-Anyroute-Decision-Tag: sha256:<64 hex>`. The helpers hash the intent as canonical JSON (keys sorted, no spaces). Write prices and quantities as strings so every language hashes the same bytes. Known vector: the intent above hashes to `sha256:c6a5490500b12be3787fadaa8d87982c369b158af7f5cdfdc8643b5177477c8d`.
 - The router signs the tag into the v1 receipt (`payload.decision_tag`) and the v2 COSE receipt (`claims.decision_tag`). It never sees the intent, only the hash you chose.
 - A malformed tag is refused with 400 before anything is charged. The unlinkable lane refuses tags, because a reused tag joins calls together.
 - Receipts are anchored hourly; `GET /api/v1/receipts/:id/proof` returns the Merkle path once a receipt's hour is rooted.

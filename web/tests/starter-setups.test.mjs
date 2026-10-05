@@ -132,9 +132,10 @@ test('the summary says in plain English what a setup fills here and what it sets
   assert.deepEqual(chat.lines.map(l => l.part), ['caps', 'ask']);
   assert.ok(chat.elsewhere.some(l => l.part === 'route')); assert.ok(chat.elsewhere.some(l => l.part === 'tools'));
   const trading = lines('trading-agent', 'key');
-  assert.ok(trading.lines.some(l => /^Actions: only trade.order and trade.cancel, for NVDA/.test(l.text) && /\$500 an action/.test(l.text)));
+  assert.ok(trading.lines.some(l => /^Actions: only trade.order and trade.cancel, for STOCK_A/.test(l.text) && /\$500 an action/.test(l.text)));
   assert.ok(trading.elsewhere.some(l => l.text === 'Model calls and actions only Monday to Friday, 13:30–20:00 UTC'));
   assert.ok(trading.elsewhere.some(l => l.text === 'Ask me first after 60 calls in a rolling hour')); assert.match(trading.note, /from Nov 1 use 14:30–21:00/);
+  for (const target of source('guard-trading').actions.targets.allow) assert.ok(trading.note.includes(target), target);
   const tradingOff = lines('trading-agent', 'agents', false);
   assert.ok(!tradingOff.lines.some(l => ['actions', 'hours'].includes(l.part))); assert.equal(tradingOff.note, '');
   const batch = lines('batch-jobs', 'agents');

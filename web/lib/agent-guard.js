@@ -28,12 +28,11 @@ export const GUARD_STARTERS = [
         ],
         "targets": {
           "allow": [
-            "NVDA",
-            "TSLA",
-            "AAPL",
-            "MSFT",
-            "SPY",
-            "QQQ"
+            "STOCK_A",
+            "STOCK_B",
+            "STOCK_C",
+            "INDEX_FUND_A",
+            "INDEX_FUND_B"
           ]
         },
         "per_action_usd": 500,

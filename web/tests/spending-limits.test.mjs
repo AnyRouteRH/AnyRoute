@@ -58,9 +58,9 @@ test('editing caps and ask me first writes the existing rulebook fields with the
 test('Agent Guard actions map both ways, keep empty restricted lists and validate their amounts', t => {
   const g = guardForm(GUARD_STARTERS[1].policy.actions);
   assert.equal(g.deny, 'transfer.*\nbridge.*'); assert.equal(g.per_action_usd, '200'); assert.equal(g.restrictActions, true);
-  const form = { ...limitsFromRulebook(null), guard: { ...guardForm(null), restrictActions: true, targetAllow: 'NVDA, SPY', per_day_usd: '100', max_per_hour: '4', approval_above_usd: '25' } };
+  const form = { ...limitsFromRulebook(null), guard: { ...guardForm(null), restrictActions: true, targetAllow: 'STOCK_A, INDEX_FUND_A', per_day_usd: '100', max_per_hour: '4', approval_above_usd: '25' } };
   const { policy, errors } = rulebookFromLimits(form);
-  assert.deepEqual(errors, []); assert.deepEqual(policy.actions, { allow: [], targets: { allow: ['NVDA', 'SPY'] }, per_day_usd: 100, max_per_hour: 4, approval_above_usd: 25 }); accepts(t, policy);
+  assert.deepEqual(errors, []); assert.deepEqual(policy.actions, { allow: [], targets: { allow: ['STOCK_A', 'INDEX_FUND_A'] }, per_day_usd: 100, max_per_hour: 4, approval_above_usd: 25 }); accepts(t, policy);
   assert.deepEqual(rulebookFromLimits({ ...form, guard: guardForm(null) }).policy.actions, {});
   assert.equal(rulebookFromLimits({ ...limitsFromRulebook(full), guard: null }).policy.actions, undefined);
   for (const [k, bad] of [['per_action_usd', '0'], ['per_day_usd', '1000001'], ['approval_above_usd', 'NaN'], ['max_per_hour', '1.5'], ['max_per_hour', '100001']]) assert.ok(rulebookFromLimits({ ...form, guard: { ...form.guard, [k]: bad } }).errors.length, k);

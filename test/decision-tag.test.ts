@@ -10,12 +10,12 @@ import { startRouter, sse, MODELS, type Harness } from "./helpers.ts";
 // B: X-Anyroute-Decision-Tag. The digest of an order intent, signed into the v1 and v2 receipts of the model call that
 // informed it, verifiable later with the integration helper against the router's published keys.
 
-const intent = { symbol: "NVDA", side: "buy", quantity: "2", limit_price: "180.00", client_order_id: "7f3c" };
+const intent = { symbol: "STOCK_A", side: "buy", quantity: "2", limit_price: "180.00", client_order_id: "7f3c" };
 const chat = (extra: Record<string, unknown> = {}) => ({ model: MODELS.llama.slug, messages: [{ role: "user", content: "buy or wait?" }], max_tokens: 32, ...extra });
 
 test("the helper's intent hash is canonical, has a fixed known vector shared with the Python helper, and parses as a tag", () => {
-  expect(orderIntentHash(intent)).toBe("sha256:16dc5789390743edeeec90c686873ddfd5cc435514b4bf0550490af74033e22a");
-  expect(orderIntentHash({ client_order_id: "7f3c", limit_price: "180.00", quantity: "2", side: "buy", symbol: "NVDA" })).toBe(orderIntentHash(intent));
+  expect(orderIntentHash(intent)).toBe("sha256:c6a5490500b12be3787fadaa8d87982c369b158af7f5cdfdc8643b5177477c8d");
+  expect(orderIntentHash({ client_order_id: "7f3c", limit_price: "180.00", quantity: "2", side: "buy", symbol: "STOCK_A" })).toBe(orderIntentHash(intent));
   expect(decisionHeaders(intent)).toEqual({ [DECISION_TAG_HEADER]: orderIntentHash(intent) });
   expect(parseDecisionTag(orderIntentHash(intent))).toBe(orderIntentHash(intent));
   expect(parseDecisionTag(orderIntentHash(intent).slice(7).toUpperCase())).toBe(orderIntentHash(intent));
@@ -73,7 +73,7 @@ describe("DECISION_TAGS_ENABLED=true", () => {
     const key = await h.fundedKey();
     const account = (await h.ctx.db.query.keys.findFirst({ where: (k, { eq }) => eq(k.keyHash, key.hash) }))!.accountId;
     const before = await balanceOf(h.ctx.db, account);
-    const r = await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...key.auth, [DECISION_TAG_HEADER]: "buy NVDA" }, json: chat() });
+    const r = await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...key.auth, [DECISION_TAG_HEADER]: "buy STOCK_A" }, json: chat() });
     expect(r.status).toBe(400);
     expect((await r.json()).error.type).toBe("invalid_decision_tag");
     expect(await balanceOf(h.ctx.db, account)).toEqual(before);

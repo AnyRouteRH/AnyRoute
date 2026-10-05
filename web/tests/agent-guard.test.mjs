@@ -13,8 +13,8 @@ test('guard starters match integration copies and survive model-rulebook edits',
   }
 });
 test('approval summary shows readable action metadata and amount', () => {
-  const summary = intentSummary({ kind: 'action', action: 'trade.order', target: 'NVDA', amount_pico: '360000000000000', details_sha256: 'sha256:' + 'a'.repeat(64) });
-  assert.match(summary, /Action: trade.order/); assert.match(summary, /Target: NVDA/); assert.match(summary, /Amount: \$360.00/); assert.match(summary, /Order hash: sha256:/);
+  const summary = intentSummary({ kind: 'action', action: 'trade.order', target: 'STOCK_A', amount_pico: '360000000000000', details_sha256: 'sha256:' + 'a'.repeat(64) });
+  assert.match(summary, /Action: trade.order/); assert.match(summary, /Target: STOCK_A/); assert.match(summary, /Amount: \$360.00/); assert.match(summary, /Order hash: sha256:/);
 });
 // U103: the guard starters are folded into Start from a setup, listed only where Guard's section shows.
 test('guard starters are status-gated, labeled and use the existing responsive design', () => {

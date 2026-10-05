@@ -8,7 +8,7 @@ brokerage and never sees brokerage credentials. Python 3.9+; signature checks ne
     from decision_receipt import decision_headers, verify_decision_receipt
 
     client = OpenAI(base_url="https://anyroute.tech/api/v1", api_key=os.environ["ANYROUTE_KEY"])
-    intent = {"symbol": "NVDA", "side": "buy", "quantity": "2", "limit_price": "180.00", "client_order_id": "7f3c"}
+    intent = {"symbol": "STOCK_A", "side": "buy", "quantity": "2", "limit_price": "180.00", "client_order_id": "7f3c"}
     reply = client.chat.completions.create(model=model, messages=messages, extra_headers=decision_headers(intent))
     receipt = reply.model_extra["receipt"]  # keep it next to the intent
     # later, or in an audit:
@@ -77,5 +77,5 @@ def verify_decision_receipt(receipt: dict, intent: dict, base_url: str = "https:
 
 if __name__ == "__main__":
     # The known vector shared with decision-receipt.ts and the README.
-    example = {"symbol": "NVDA", "side": "buy", "quantity": "2", "limit_price": "180.00", "client_order_id": "7f3c"}
+    example = {"symbol": "STOCK_A", "side": "buy", "quantity": "2", "limit_price": "180.00", "client_order_id": "7f3c"}
     print(order_intent_hash(example))

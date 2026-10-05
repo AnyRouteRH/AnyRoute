@@ -23,12 +23,12 @@ beforeAll(async () => { h = await startRouter({ env: { AGENT_POLICY_ENABLED: "tr
 afterAll(async () => { await h?.close(); });
 const policy = (actions?: Record<string, unknown>, extra = {}) => agentPolicySchema.parse({ version: 1, models: {}, caps: {}, on_breach: "deny", ...(actions === undefined ? {} : { actions }), ...extra });
 const state: AgentPolicyState = { killed: false, spent_pico: { hour: 0n, day: 0n, week: 0n }, actions_pico_day: 0n, actions_hour: 0 };
-const intent = (extra = {}) => agentIntentSchema.parse({ kind: "action", action: "trade.order", amount_pico: "360000000000000", target: "NVDA", ...extra });
+const intent = (extra = {}) => agentIntentSchema.parse({ kind: "action", action: "trade.order", amount_pico: "360000000000000", target: "STOCK_A", ...extra });
 const now = new Date("2026-10-02T15:00:00Z");
 const codes = (p: ReturnType<typeof policy>, i = intent(), s = state, at = now) => evaluateAgentPolicy(p, s, i, at).reasons.map(r => r.code);
 const hash = "sha256:" + "a".repeat(64);
 type Auth = { auth: Record<string, string>; hash?: string };
-const decide = async (k: Auth, body = {}, router = h) => (await router.request("/api/v1/guard/decide", { method: "POST", headers: k.auth, json: { action: "trade.order", target: "NVDA", amount_usd: "360.00", details_sha256: hash, ...body } })).json();
+const decide = async (k: Auth, body = {}, router = h) => (await router.request("/api/v1/guard/decide", { method: "POST", headers: k.auth, json: { action: "trade.order", target: "STOCK_A", amount_usd: "360.00", details_sha256: hash, ...body } })).json();
 const put = (owner: Auth, target: string, p: unknown) => h.request(`/api/v1/agents/${target}/policy`, { method: "PUT", headers: owner.auth, json: p });
 const approve = (owner: Auth, id: string) => h.request(`/api/v1/agents/approvals/${id}/approve`, { method: "POST", headers: owner.auth });
 const outcome = (key: Auth, id: string, status = "executed", amount_usd?: string) => h.request(`/api/v1/guard/decisions/${id}/outcome`, { method: "POST", headers: key.auth, json: { status, ...(amount_usd === undefined ? {} : { amount_usd }) } });
@@ -38,9 +38,9 @@ test("action evaluator fails closed, exact/prefix deny wins, targets ignore case
   expect(codes(policy({ allow: ["trade.*"], deny: ["trade.cancel"] }))).toEqual([]);
   expect(codes(policy({ allow: ["trade.*"], deny: ["trade.*"] }))).toContain("action_not_allowed");
   expect(codes(policy({ allow: ["trade"] }))).toContain("action_not_allowed");
-  expect(codes(policy({ targets: { allow: ["nvda"] } }))).toEqual([]);
-  expect(codes(policy({ targets: { allow: ["nvda"] } }), intent({ target: undefined }))).toContain("target_not_allowed");
-  expect(codes(policy({ targets: { allow: ["NVDA"], deny: ["nvda"] } }))).toContain("target_not_allowed");
+  expect(codes(policy({ targets: { allow: ["stock_a"] } }))).toEqual([]);
+  expect(codes(policy({ targets: { allow: ["stock_a"] } }), intent({ target: undefined }))).toContain("target_not_allowed");
+  expect(codes(policy({ targets: { allow: ["STOCK_A"], deny: ["stock_a"] } }))).toContain("target_not_allowed");
   expect(intentJson(intent()).amount_pico).toBe("360000000000000");
   for (const action of ["trade-order", "Trade.order", ".trade", "trade.*", "a".repeat(65)]) expect(() => intent({ action })).toThrow();
 });
@@ -89,7 +89,7 @@ test("approvals bind exact target/details and amount, are single-use, and rechec
   const key = await h.fundedKey(); await put(key, key.hash, policy({ approval_above_usd: 250 }));
   const waiting = (await decide(key)).data; expect(waiting.decision).toBe("approval_required");
   expect((await approve(key, waiting.approval_id)).status).toBe(200);
-  for (const changed of [{ amount_usd: "361" }, { target: "nvda" }, { details_sha256: "sha256:" + "b".repeat(64) }, { action: "trade.cancel" }]) {
+  for (const changed of [{ amount_usd: "361" }, { target: "stock_a" }, { details_sha256: "sha256:" + "b".repeat(64) }, { action: "trade.cancel" }]) {
     const r = (await decide(key, { ...changed, approval_id: waiting.approval_id })).data;
     expect(r.decision).toBe("deny"); expect(r.reasons[0].code).toBe("agent_approval_invalid");
   }
@@ -146,14 +146,14 @@ test("inference keys decide, poll, report and use MCP, but cannot manage; intern
   const tools = (await (await mcp(key, "tools/list")).json()).result.tools;
   for (const t of guardMcpTools) expect(tools.some((r: any) => r.name === t.name)).toBe(true);
   const call = async (name: string, args: unknown) => (await (await mcp(key, "tools/call", { name, arguments: args })).json()).result.structuredContent;
-  const waiting = await call("anyroute_guard_decide", { action: "trade.order", target: "NVDA", amount_usd: "360" });
+  const waiting = await call("anyroute_guard_decide", { action: "trade.order", target: "STOCK_A", amount_usd: "360" });
   expect(waiting.decision).toBe("approval_required");
   expect((await h.request(`/api/v1/agents/approvals/${waiting.approval_id}`, { headers: key.auth })).status).toBe(200);
   for (const path of [`/api/v1/agents/${key.hash}/resume`, `/api/v1/agents/${key.hash}/kill`, `/api/v1/agents/approvals/${waiting.approval_id}/approve`, `/api/v1/agents/approvals/${waiting.approval_id}/deny`]) expect((await h.request(path, { method: "POST", headers: key.auth, json: {} })).status).toBe(403);
   expect((await put(key, key.hash, policy({}))).status).toBe(403);
   await approve(owner, waiting.approval_id);
   expect((await call("anyroute_guard_wait", { approval_id: waiting.approval_id, timeout_s: 1 })).status).toBe("approved");
-  const allowed = await call("anyroute_guard_decide", { action: "trade.order", target: "NVDA", amount_usd: "360", approval_id: waiting.approval_id });
+  const allowed = await call("anyroute_guard_decide", { action: "trade.order", target: "STOCK_A", amount_usd: "360", approval_id: waiting.approval_id });
   expect(allowed.decision).toBe("allow");
   expect((await call("anyroute_guard_report", { decision_id: allowed.decision_id, status: "executed", amount_usd: "355" })).status).toBe("executed");
   const rules = await call("anyroute_agent_rules", {}); expect(rules.actions_remaining).toEqual({ per_day_usd: "645", per_hour: 4 });
@@ -165,7 +165,7 @@ test("Telegram action text snapshot and maximum cost in dollars", async () => {
   const id = (await decide(key)).data.approval_id;
   const [saved] = await h.ctx.db.select().from(agentApprovals).where(eq(agentApprovals.id, id));
   const row = { ...saved, requestedAt: new Date("2026-10-02T13:50:00Z"), expiresAt: new Date("2026-10-02T14:05:00Z") };
-  expect(approvalText(row, "Trading agent", "b".repeat(64), true)).toBe("AnyRoute: your agent asks first\nAgent: Trading agent\nAction: trade.order\nTarget: NVDA\nAmount: $360.00\nOrder hash: sha256:aaaaaaaa…aaaaa\nRulebook: bbbbbbbbbbbb\nExpires: 14:05 UTC (15 min)");
+  expect(approvalText(row, "Trading agent", "b".repeat(64), true)).toBe("AnyRoute: your agent asks first\nAgent: Trading agent\nAction: trade.order\nTarget: STOCK_A\nAmount: $360.00\nOrder hash: sha256:aaaaaaaa…aaaaa\nRulebook: bbbbbbbbbbbb\nExpires: 14:05 UTC (15 min)");
   expect(approvalText(row)).toBe(`AnyRoute approval ${row.id}\nIntent: ${JSON.stringify(row.intent).slice(0, 2600)}\nMaximum cost: ${row.maxCostPico} pico-USD\nExpires: ${row.expiresAt.toISOString()}\nStatus: expired`);
   expect(approvalText({ ...row, intent: { kind: "mcp_tool", name: "read" } }, undefined, undefined, true)).toContain("Maximum cost: $360");
 });

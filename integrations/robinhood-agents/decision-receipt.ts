@@ -7,7 +7,7 @@
 //   import OpenAI from "openai";
 //   import { decisionHeaders, verifyDecisionReceipt } from "./decision-receipt.ts";
 //   const client = new OpenAI({ baseURL: "https://anyroute.tech/api/v1", apiKey: process.env.ANYROUTE_KEY });
-//   const intent = { symbol: "NVDA", side: "buy", quantity: "2", limit_price: "180.00", client_order_id: "7f3c" };
+//   const intent = { symbol: "STOCK_A", side: "buy", quantity: "2", limit_price: "180.00", client_order_id: "7f3c" };
 //   const reply = await client.chat.completions.create({ model, messages }, { headers: decisionHeaders(intent) });
 //   const receipt = (reply as unknown as { receipt: SignedReceipt }).receipt; // keep it next to the intent
 //   // later, or in an audit:

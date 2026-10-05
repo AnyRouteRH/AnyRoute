@@ -17,6 +17,7 @@ const tradingActions = guard => {
   return { windows, actions };
 };
 export const MARKET_HOURS_NOTE = 'UTC hours cover the whole rulebook, model calls included: 13:30–20:00 covers US market hours during daylight time; from Nov 1 use 14:30–21:00.';
+export const TARGETS_NOTE = 'Allowed targets STOCK_A, STOCK_B, STOCK_C, INDEX_FUND_A and INDEX_FUND_B stand for the symbols your agent trades; put your own there before saving.';
 
 /**
  * The setups. `from` names the starters whose numbers each one reuses; `build` composes the rulebook, with Agent Guard's
@@ -30,7 +31,7 @@ export const STARTER_SETUPS = [
   { id: 'trading-agent', name: 'Trading agent', from: ['trading-ask-first', 'guard-trading'],
     blurb: 'The trading starter: ask first above an amount and after a number of calls an hour, on proven hardware when the model has it. Order rules and market hours where Agent Guard is on.',
     build: ({ guard }) => ({ ...starter('trading-ask-first'), route_default: 'proven_first', ...tradingActions(guard) }),
-    note: ({ guard }) => guard ? MARKET_HOURS_NOTE : '' },
+    note: ({ guard }) => guard ? `${MARKET_HOURS_NOTE} ${TARGETS_NOTE}` : '' },
   { id: 'batch-jobs', name: 'Batch jobs', from: ['trading-budget'],
     blurb: 'Higher caps for long runs on standard providers. The daily cap and a denials breaker stop a runaway loop.',
     // No requests-a-minute breaker: a normal batch would trip it and stop the key.
@@ -45,7 +46,7 @@ const GUARD_NOTE = 'Action rules only: model spending and declared tools stay un
 export const MORE_STARTERS = [
   ...STARTER_RULEBOOKS.map(item => ({ id: item.id, name: item.name, from: [item.id], blurb: item.description, build: () => starter(item.id) })),
   ...GUARD_STARTERS.map(item => ({ id: item.id, name: item.name, from: [item.id], guardOnly: true, build: () => guardStarter(item.id),
-    blurb: item.policy.windows ? `${GUARD_NOTE} ${MARKET_HOURS_NOTE}` : GUARD_NOTE })),
+    blurb: item.policy.windows ? `${GUARD_NOTE} ${MARKET_HOURS_NOTE} ${TARGETS_NOTE}` : GUARD_NOTE })),
 ];
 
 /** A fresh copy of the rulebook a setup stands for. */
