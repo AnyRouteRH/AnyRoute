@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { LANES } from '../../lib/agents';
 import { GUARD_LIMIT } from '../../lib/agent-guard';
 import { LIMIT_CAPS, GUARD_CAPS, LIMIT_WORDS as W, guardForm } from '../../lib/spending-limits';
+import RouteDefault from './RouteDefault'; // U101
 import st from './SpendingLimits.module.css';
 
 export function LimitField({ id, label, children, help }) {
@@ -55,6 +56,7 @@ export default function SpendingLimits({ id, value, onChange, disabled = false, 
       <div className={st.checks}>{LANES.map(lane => <label className="check-label" key={lane}><input type="checkbox" disabled={!value.restrictLanes} checked={value.lanes.includes(lane)} onChange={e => set({ lanes: e.target.checked ? [...value.lanes, lane] : value.lanes.filter(l => l !== lane) })}/>{lane}</label>)}</div>
       <p className="help-text">{W.lanesHelp}</p>
     </fieldset>}
+    {scope && <RouteDefault id={id} value={value.routeDefault} onChange={v => set({ routeDefault: v })} restrictLanes={!!value.restrictLanes} lanes={value.lanes} disabled={disabled}/>} {/* U101: next to the lanes */}
     {guard && <fieldset disabled={disabled} className={st.group}><legend>{W.guard}</legend><p className="help-text">{GUARD_LIMIT}</p>
       <label className="check-label"><input type="checkbox" checked={!!g} onChange={e => set({ guard: e.target.checked ? guardForm(null) : null })}/>Use action rules</label>
       {g ? <>

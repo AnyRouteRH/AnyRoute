@@ -2,6 +2,7 @@ import { guardIntentSummary } from "./agent-guard.js"; // V98
 import { breakerForm, buildBreakers, breakerReasonText } from "./agent-breakers.js";
 import { autonomyForm, autonomyPolicy } from "./agent-autonomy.js";
 import { alertSettingsErrors } from './agent-alerts.js';
+import { applyRouteDefault, routeDefaultForm } from './route-default.js'; // U101
 // Rulebook forms and REST view models. No credentials or prompt text are stored here.
 export const LANES = ['public', 'attested', 'unlinkable'];
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -65,7 +66,7 @@ export function policyForm(policy) {
   const p = policy || {};
   return { ...(p.actions === undefined ? {} : { actions: structuredClone(p.actions) }), ...autonomyForm(p), breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
     restrictTools: p.tools?.allow !== undefined, /* V85: preserve empty allowlists. */ toolAllow: (p.tools?.allow || []).join('\n'), toolDeny: (p.tools?.deny || []).join('\n'),
-    restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES],
+    restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES], routeDefault: routeDefaultForm(p), // U101
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
     restrictWindows: p.windows !== undefined, windows: (p.windows || []).map(w => ({ ...w, days: [...w.days] })),
     ...(p.alerts === undefined ? {} : {alerts:structuredClone(p.alerts)}), ...(p.agreements === undefined ? {} : {agreements:structuredClone(p.agreements)}), approval: p.approval?.above_usd == null ? '' : String(p.approval.above_usd), approvalCalls: p.approval?.above_calls_per_hour == null ? '' : String(p.approval.above_calls_per_hour), onBreach: p.on_breach || 'deny' };
@@ -93,6 +94,7 @@ export function buildPolicy(form) {
     policy.lanes = [...form.lanes];
     if (policy.lanes.length > 64 || policy.lanes.some(lane => !LANES.includes(lane))) errors.push('Choose public, attested or unlinkable lanes.');
   }
+  applyRouteDefault(policy, form.routeDefault ?? 'standard', errors); // U101: standard is left out
   for (const k of CAP_FIELDS) {
     const value = form.caps[k];
     if (String(value).trim() === '') continue;

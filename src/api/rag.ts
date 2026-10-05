@@ -5,6 +5,7 @@ import type { Ctx } from "../context.ts";
 import { ApiError, fail } from "../lib/errors.ts";
 import { picoToUsd, picoToUsdString, usdToPico } from "../lib/money.ts";
 import { resolveDisclosureRequest } from "../router/disclosure.ts";
+import { applyRagRouteDefault } from "../routing/route-default.ts"; // U101
 import { buildMessages, chunkText, cosineScores, topK, type PromptSource } from "../rag/text.ts";
 import { requireKey } from "./auth.ts";
 import { generationHeaders, readJson, sharedPolicyHash } from "./common.ts";
@@ -258,6 +259,7 @@ export function ragRoutes(app: Hono, ctx: Ctx) {
     if (chunks.length > limits.maxChunks) fail(413, `The documents make ${chunks.length} chunks, and a request may embed at most ${limits.maxChunks}. Send fewer documents or a larger chunk.size.`, "payload_too_large", { limit: limits.maxChunks, chunks: chunks.length });
 
     // ---- the lane the caller asked for -----------------------------------------------------
+    await applyRagRouteDefault(ctx, c, req, key); // U101: the key's default privacy route, only when the request names no lane
     // The request's own setting, else the one pinned on the key (routing.provider, which chat applies and embeddings would not).
     const pinned = ((key.routing as { provider?: Record<string, unknown> } | null)?.provider ?? {}) as Record<string, unknown>;
     const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined);

@@ -26,6 +26,7 @@ import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
 import { requestLane } from "../ohttp/lane.ts";
+import { applyRouteDefault } from "../routing/route-default.ts"; // U101
 import { noteLane } from "../services/private-stats.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken } from "../blind/redeem.ts";
 
@@ -66,6 +67,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     if (key?.allowedModels?.length && !key.allowedModels.includes(r.model.id)) fail(403, "This key may not use that model.", "model_not_allowed");
     const chars = (Array.isArray(input) ? input : [input]).reduce((n: number, s) => n + String(s).length, 0);
     const promptTokens = Math.ceil(chars / 3) + 8;
+    await applyRouteDefault(ctx, c, body, key, { tokens: promptTokens }); // U101: the key's default privacy route, only when the request names no lane
     // Same disclosure ceiling and lane as chat (`provider.disclosure`, `provider.lane`, X-Anyroute-Disclosure-Max, X-Anyroute-Lane).
     const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
     // A per-call payment names its payer as a wallet does: it is identity-bearing for lane "unlinkable".

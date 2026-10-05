@@ -18,6 +18,8 @@ export const agentPolicySchema = z.strictObject({
   version: z.literal(1),
   models: names,
   lanes: z.array(z.enum(["public", "attested", "unlinkable"])).max(64).optional(),
+  // U101: the privacy route for a request that names no lane (src/routing/route-default.ts). Absent means "standard".
+  route_default: z.enum(["standard", "proven_first", "proven_only"]).optional(),
   caps: z.strictObject({ per_request_usd: usd.optional(), per_hour_usd: usd.optional(), per_day_usd: usd.optional(), per_week_usd: usd.optional(), max_output_tokens: tokens.optional() }),
   tools: toolRules.optional(),
   windows: z.array(z.strictObject({ days: z.array(z.number().int().min(0).max(6)).max(64), start: time, end: time })).max(64).optional(),

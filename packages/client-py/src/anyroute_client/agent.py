@@ -4,6 +4,9 @@ import httpx
 from .agent_errors import request_error
 
 AgentLane = Literal["public", "attested", "unlinkable"]
+# The lane for a request that names none: "standard" (the default), "proven_first" (attested when available) or
+# "proven_only" (attested, or refused).
+AgentRouteDefault = Literal["standard", "proven_first", "proven_only"]
 
 
 class AgentNames(TypedDict, total=False):
@@ -35,6 +38,7 @@ class AgentApproval(_AgentApprovalOptional):
 
 class _PolicyOptional(TypedDict, total=False):
     lanes: list[AgentLane]
+    route_default: AgentRouteDefault
     tools: AgentNames
     windows: list[AgentWindow]
     approval: AgentApproval

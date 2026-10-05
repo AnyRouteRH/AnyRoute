@@ -2,7 +2,7 @@
 
 from .attestation import ATTEST_SAN_SUFFIX, attest_san_for, digest_hex, evaluate_attestation, fetch_router_attestation, verify_provider
 from .canonical import canonical_bytes, canonical_json
-from .agent import AgentPolicy, AgentLane, AgentIntent, AgentReason, AgentDecision, AgentRemaining, AgentRulebook
+from .agent import AgentPolicy, AgentLane, AgentRouteDefault, AgentIntent, AgentReason, AgentDecision, AgentRemaining, AgentRulebook
 from .agent_errors import AgentPolicyDenied, AgentKilled, AgentApprovalRequired
 from .client import AnyRoute
 from .errors import AnyRouteError, AttestationRefused, ReceiptInvalid
@@ -12,7 +12,7 @@ from .tdx import TdxFields, parse_tdx_quote
 from .types import BoundIdentity, Check, ExpectedDigests, ProviderVerification, ReceiptVerification
 
 __all__ = [
-    "AgentPolicy", "AgentLane", "AgentIntent", "AgentReason", "AgentDecision", "AgentRemaining", "AgentRulebook",
+    "AgentPolicy", "AgentLane", "AgentRouteDefault", "AgentIntent", "AgentReason", "AgentDecision", "AgentRemaining", "AgentRulebook",
     "AgentPolicyDenied", "AgentKilled", "AgentApprovalRequired",
     "ATTEST_SAN_SUFFIX",
     "AnyRoute",

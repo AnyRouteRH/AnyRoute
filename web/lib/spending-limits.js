@@ -73,7 +73,7 @@ export function rulebookFromLimits(form) {
 export function withLimits(saved, form, { scope = false, guard = false } = {}) {
   const base = limitsFromRulebook(saved);
   const next = { ...base, caps: { ...base.caps, ...Object.fromEntries(LIMIT_CAPS.map(([k]) => [k, form.caps?.[k] ?? ''])) }, approval: form.approval ?? '' };
-  if (scope) for (const k of ['modelAllow', 'modelDeny', 'restrictLanes', 'lanes', 'restrictTools', 'toolAllow', 'toolDeny']) next[k] = form[k];
+  if (scope) for (const k of ['modelAllow', 'modelDeny', 'restrictLanes', 'lanes', 'routeDefault', 'restrictTools', 'toolAllow', 'toolDeny']) next[k] = form[k]; // U101: routeDefault sits with the lanes
   if (guard) next.guard = form.guard ?? null;
   return next;
 }

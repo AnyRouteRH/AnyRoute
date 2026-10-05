@@ -2,10 +2,13 @@ import type { Fetch } from "./types.js";
 import { requestError } from "./agent-errors.js";
 
 export type AgentLane = "public" | "attested" | "unlinkable";
+/** The lane for a request that names none: "standard" (the default), "proven_first" (attested when available) or "proven_only" (attested, or refused). */
+export type AgentRouteDefault = "standard" | "proven_first" | "proven_only";
 export type AgentPolicy = {
   version: 1;
   models: { allow?: string[]; deny?: string[] };
   lanes?: AgentLane[];
+  route_default?: AgentRouteDefault;
   caps: { per_request_usd?: number; per_hour_usd?: number; per_day_usd?: number; per_week_usd?: number; max_output_tokens?: number };
   tools?: { allow?: string[]; deny?: string[] };
   windows?: { days: (0 | 1 | 2 | 3 | 4 | 5 | 6)[]; start: string; end: string }[];

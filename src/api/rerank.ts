@@ -25,6 +25,7 @@ import type { Attempt } from "../router/execute.ts";
 import { holderTier, scaleLimit, walletOfAccount } from "../holders/tiers.ts";
 import { gatewayOrigin } from "../ohttp/origin.ts";
 import { requestLane } from "../ohttp/lane.ts";
+import { applyRouteDefault } from "../routing/route-default.ts"; // U101
 import { noteLane } from "../services/private-stats.ts";
 import { BLIND_POOL, claimToken, confirmToken, isBlindRequest, presentBlindToken, redemptionSummary, requireValue, unclaimToken } from "../blind/redeem.ts";
 
@@ -68,6 +69,7 @@ export function rerankRoutes(app: Hono, ctx: Ctx) {
     }
     if (key?.allowedModels?.length && !key.allowedModels.includes(r.model.id)) fail(403, "This key may not use that model.", "model_not_allowed");
     const est = estimateRerank(req);
+    await applyRouteDefault(ctx, c, body, key, { tokens: 0 }); // U101: the key's default privacy route, only when the request names no lane
     const { disclosure: _d, lane: _l, lane_downgrade: _ld, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
     const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!paymentHeaderOf(c)), hasToken: !!pass });
     noteLane(c.req.raw, disc.lane); // the status page counts public-lane requests only (services/slo.ts)

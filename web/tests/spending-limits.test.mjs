@@ -78,6 +78,35 @@ test('an editor that shows only some fields overlays them and keeps the saved ru
   assert.equal(rulebookFromLimits(withLimits(full, { ...chat, guard: null }, { guard: true })).policy.actions, undefined);
 });
 
+test('the default route sits next to the lanes, maps both ways and keeps the allowlist warning (U101)', t => {
+  const editor = source('../components/limits/SpendingLimits.jsx');
+  const at = mark => editor.indexOf(mark);
+  assert.ok(at('{W.lanesHelp}') > 0 && at('{W.lanesHelp}') < at('<RouteDefault ') && at('<RouteDefault ') < at('{W.guard}'));
+  assert.match(editor, /\{scope && <RouteDefault id=\{id\} value=\{value\.routeDefault\} onChange=\{v => set\(\{ routeDefault: v \}\)\} restrictLanes=\{!!value\.restrictLanes\} lanes=\{value\.lanes\}/);
+  for (const route_default of ['proven_first', 'proven_only']) {
+    const policy = { ...full, route_default };
+    const form = limitsFromRulebook(policy);
+    assert.equal(form.routeDefault, route_default);
+    const built = rulebookFromLimits(form);
+    assert.deepEqual(built, { policy, errors: [] }); accepts(t, built.policy);
+  }
+  // Standard is the default and is left out, so a rulebook without the setting keeps its exact body.
+  assert.equal(limitsFromRulebook(full).routeDefault, 'standard');
+  assert.equal(rulebookFromLimits(limitsFromRulebook(full)).policy.route_default, undefined);
+  const edited = { ...limitsFromRulebook(null), routeDefault: 'proven_first' };
+  assert.deepEqual(rulebookFromLimits(edited), { policy: { version: 1, models: {}, route_default: 'proven_first', caps: {}, on_breach: 'deny' }, errors: [] });
+  assert.ok(rulebookFromLimits({ ...edited, routeDefault: 'attested' }).errors.some(e => e.startsWith('Default route')));
+  // An editor that shows the lanes writes the default with them; one that does not (chat) keeps the saved default.
+  const saved = { ...full, route_default: 'proven_only' };
+  assert.equal(rulebookFromLimits(withLimits(saved, edited, { scope: true })).policy.route_default, 'proven_first');
+  assert.equal(rulebookFromLimits(withLimits(saved, limitsFromRulebook(null))).policy.route_default, 'proven_only');
+  assert.equal(chatFromLimits(limitsFromChat({ budget_usd: 5, policy: { version: 1, models: {}, caps: {}, route_default: 'proven_first', on_breach: 'deny' } })).policy.route_default, 'proven_first');
+  // The allowlist above is stricter, and the setting says so.
+  const field = source('../components/limits/RouteDefault.jsx');
+  assert.match(field, /routeDefaultConflict\(current, restrictLanes, lanes \?\? \[\]\)/); assert.match(field, /role="status">\{conflict\}/);
+  assert.match(field, /name=\{`\$\{id\}-route-default`\}/); // one radio group per editor
+});
+
 test('chat limits map to the session body and the chat key’s rulebook; the earlier flat form gives the same payloads', t => {
   const form = limitsFromChat(null);
   assert.equal(form.total, '5'); assert.equal(form.minutes, '60');
@@ -131,7 +160,7 @@ test('docs and editor copy say Spending limits and avoid unavailable or banned w
   assert.match(docs, /<section id="spending-limits"><h2>Spending limits<\/h2>/); assert.doesNotMatch(docs, /<h[23]>Limits</);
   assert.match(docs, /\{GUARD_LIMIT\}/);
   const banned = new RegExp(String.raw`\b(?:${['de' + 'mo', 'te' + 'st', 'te' + 'sted', 'mo' + 'ck', 'simu' + 'lated', 'place' + 'holder', 'fix' + 'ture', 'lo' + 'cal', 'anony' + 'mous', 'trust' + 'less', 'decen' + 'tralized', 'ea' + 'rn', 'yi' + 'eld', 'A' + 'PY', 'ret' + 'urns', 'pri' + 'vate'].join('|')})\b|no lo` + 'gs', 'i');
-  for (const file of ['../components/SpendingLimitsDocs.jsx', '../components/limits/SpendingLimits.jsx', '../components/limits/KeyLimits.jsx', '../components/harness/Limits.jsx', '../lib/spending-limits.js']) {
+  for (const file of ['../components/SpendingLimitsDocs.jsx', '../components/limits/SpendingLimits.jsx', '../components/limits/KeyLimits.jsx', '../components/harness/Limits.jsx', '../lib/spending-limits.js', '../components/limits/RouteDefault.jsx', '../lib/route-default.js']) {
     const copy = source(file).replace(/\bplaceholder=|import[^\n]*\n/g, '');
     assert.doesNotMatch(copy, banned, file);
   }
