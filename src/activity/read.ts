@@ -55,6 +55,16 @@ export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, elig
     from ledger l left join keys k on k.key_hash = l.key_hash where l.account_id = ${key.accountId}
     and (${whole} or l.key_hash = ${key.keyHash}) and (${q.key ?? null}::text is null or l.key_hash = ${q.key ?? null})
     and l.kind <> 'usage'`);
+  // Auto top-ups of a key's limit, and top-ups skipped with the reason (src/ledger/topup.ts). No money moves, so the amount is 0.
+  const usd = (pico: SQL) => sql`regexp_replace(to_char(${pico}::numeric / 1000000000000, 'FM999999999990.00'), '\\.00$', '')`;
+  const topupBy = sql`${label} || ' by $' || ${usd(sql`t.amount_pico`)}`;
+  if (!q.kind || q.kind === "topup") sources.push(sql`select 'topup:' || t.id, t.created_at, 'topup',
+    case t.outcome when 'added' then 'Topped up ' || ${topupBy} || '; $' || ${usd(sql`greatest(t.max_per_week_pico - t.week_total_pico, 0)`)} || ' left this week'
+    when 'skipped_balance' then 'Could not top up ' || ${topupBy} || ': your account has $' || ${usd(sql`greatest(t.available_pico, 0)`)} || ' available'
+    when 'skipped_weekly' then 'Could not top up ' || ${topupBy} || ': its $' || ${usd(sql`t.max_per_week_pico`)} || ' weekly top-up limit is reached'
+    else 'Could not top up ' || ${topupBy} || ': the team budget is fully allocated' end,
+    '0', null, null, null, ${label}, null, case when t.outcome = 'added' then 'added' else 'skipped' end, t.id, null
+    from key_topups t join keys k on k.key_hash = t.key_hash where ${agents}`);
   if (!q.kind || q.kind === "alert") sources.push(sql`select 'spend-alert:' || s.id || ':' || (f->>'id'), (f->>'at')::timestamptz, 'alert', 'Spending alert', '0', null, null, null,
     coalesce(f->>'key_label',${label}), null, f->'delivery'->>'status', s.id, null
     from spend_alerts s cross join lateral jsonb_array_elements(s.state->'history') f left join keys k on k.key_hash = s.key_hash

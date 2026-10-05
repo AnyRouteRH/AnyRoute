@@ -2,9 +2,10 @@ import { enforceAgentReservation, type AgentReservation } from "../agents/enforc
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.ts";
 import { accounts, holds, keys, ledger } from "../db/schema.ts";
-import { fail } from "../lib/errors.ts";
+import { ApiError, fail } from "../lib/errors.ts";
 import { type Pico, picoToUsd } from "../lib/money.ts";
 import { log, uid } from "../lib/util.ts";
+import { applyTopup } from "./topup.ts";
 
 // Money invariants (enforced here and by DB triggers, see drizzle/0001_invariants.sql):
 // - The ledger is append-only; ledger.ref is UNIQUE, which makes every credit idempotent.
@@ -87,7 +88,7 @@ export type ReserveInput = {
 export const reserve = (db: Db, r: ReserveInput): Promise<Pico> => enforceAgentReservation(db, r, db => reserveUnchecked(db, r));
 async function reserveUnchecked(db: Db, r: ReserveInput): Promise<Pico> {
   if (r.amount < 0n) fail(400, "Invalid reservation.");
-  return db.transaction(async (tx) => {
+  const out = await db.transaction(async (tx): Promise<{ value: Pico } | { refusal: ApiError }> => {
     const [acct] = await tx.select().from(accounts).where(eq(accounts.id, r.accountId)).for("update");
     if (!acct) fail(402, "This key has no balance. Deposit USDG to its key hash or pay per call.", "insufficient_credits");
     const available = acct.balance - acct.held + (r.creditLine ?? 0n);
@@ -114,13 +115,22 @@ async function reserveUnchecked(db: Db, r: ReserveInput): Promise<Pico> {
           .select({ inflight: sql<string>`coalesce(sum(${holds.amount}), 0)` })
           .from(holds)
           .where(and(eq(holds.keyHash, k.keyHash), eq(holds.status, "held")));
-        if (spent + BigInt(inflight) + r.amount > k.budget)
-          fail(
+        let budget = k.budget;
+        // Auto top-up: a key that its budget would refuse, with less than its rule's threshold left, tops up first
+        // (src/ledger/topup.ts). The top-up, or the note saying why there was none, is kept even when the request is
+        // still refused, so a stalled key resumes once the account or the week allows.
+        const topup = spent + BigInt(inflight) + r.amount > budget ? await applyTopup(tx, { ...k, spent }, `reserve:${r.id}`) : null;
+        if (topup) budget = topup.limitAfter;
+        if (spent + BigInt(inflight) + r.amount > budget) {
+          const refusal = new ApiError(
             402,
-            `This key would exceed its budget of $${picoToUsd(k.budget)}${k.budgetReset ? ` per ${k.budgetReset.replace(/ly$/, "")}` : ""}.`,
+            `This key would exceed its budget of $${picoToUsd(budget)}${k.budgetReset ? ` per ${k.budgetReset.replace(/ly$/, "")}` : ""}.`,
             "key_budget_exceeded",
-            { budget_usd: picoToUsd(k.budget), spent_usd: picoToUsd(spent) },
+            { budget_usd: picoToUsd(budget), spent_usd: picoToUsd(spent) },
           );
+          if (topup?.recorded) return { refusal };
+          throw refusal;
+        }
       }
     }
     const existing = await tx.select({ id: holds.id }).from(holds).where(eq(holds.id, r.id));
@@ -133,8 +143,10 @@ async function reserveUnchecked(db: Db, r: ReserveInput): Promise<Pico> {
       kind: r.kind ?? "usage",
       expiresAt: new Date(Date.now() + (r.ttlMs ?? 15 * 60_000)),
     });
-    return r.amount;
+    return { value: r.amount };
   });
+  if ("refusal" in out) throw out.refusal;
+  return out.value;
 }
 
 export type SettleResult = { charged: Pico; uncovered: Pico; alreadySettled?: boolean };
@@ -178,11 +190,15 @@ export async function settle(
         description: meta.description ?? "Model usage",
         generationId: meta.generationId ?? null,
       });
-      if (h.keyHash)
-        await tx
+      if (h.keyHash) {
+        const [k] = await tx
           .update(keys)
           .set({ spent: sql`${keys.spent} + ${charged}`, spentTotal: sql`${keys.spentTotal} + ${charged}`, lastUsed: new Date() })
-          .where(eq(keys.keyHash, h.keyHash));
+          .where(eq(keys.keyHash, h.keyHash))
+          .returning({ keyHash: keys.keyHash, accountId: keys.accountId, budget: keys.budget, budgetReset: keys.budgetReset, spent: keys.spent, topup: keys.topup, disabled: keys.disabled, expiresAt: keys.expiresAt, teamId: keys.teamId });
+        // Auto top-up after the debit, under the same key row lock (src/ledger/topup.ts).
+        if (k?.topup) await applyTopup(tx, k, `settle:${holdId}`);
+      }
     }
     return { charged, uncovered };
   });

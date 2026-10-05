@@ -544,7 +544,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   {
     file: "src/api/keys.ts",
     carries: "settings",
-    reads: "Key settings (name, budget, limits, allowed models, tracing destination, scope and include_byok_in_limit), amounts, BYOK provider keys, team roles and wallet sign-in challenges.",
+    reads: "Key settings (name, budget, limits, allowed models, tracing destination, scope, include_byok_in_limit and the auto top-up amounts), amounts, BYOK provider keys, team roles and wallet sign-in challenges.",
     then: "Validated and written to the keys, byok_keys, teams and kv tables as described above.",
     kept: "The settings and, for a BYOK key or a tracing destination, the key or the destination URL and credentials encrypted under APP_SECRET.",
     evidence: [ev("src/api/keys.ts", "const spec = keySpec.parse(await readJson(c));")],

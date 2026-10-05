@@ -1421,7 +1421,7 @@
             "name": "kind",
             "in": "query",
             "required": false,
-            "description": "call, approval, alert, deposit, agreement, policy or balance",
+            "description": "call, approval, alert, deposit, agreement, policy, balance or topup",
             "schema": {
               "type": "string"
             }
@@ -1507,7 +1507,7 @@
       "get": {
         "operationId": "listInbox",
         "summary": "List items that need attention",
-        "description": "Pending approvals with their expiry, alerts, deposits, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items.",
+        "description": "Pending approvals with their expiry, alerts, deposits, key auto top-ups, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items.",
         "security": [
           {
             "BearerAuth": []
@@ -9883,8 +9883,8 @@
           "Keys"
         ],
         "operationId": "updateKey",
-        "summary": "Update a key's limits, guardrails or tracing destination",
-        "description": "Accepts the fields of KeyCreateRequest. `tracing` sets where spans of this key's public-lane calls go: your OpenTelemetry collector (OTLP/HTTP JSON), Langfuse or Helicone. Spans follow the OpenTelemetry GenAI semantic conventions and add anyroute.cost_usd, anyroute.receipt_id, anyroute.lane and anyroute.provider. Prompt and completion text is included only with include_content: true. Attested and unlinkable lane calls are never exported.",
+        "summary": "Update a key's limits, auto top-up, guardrails or tracing destination",
+        "description": "Accepts the fields of KeyCreateRequest. `topup` sets or clears the key's auto top-up rule (KeyTopup). `tracing` sets where spans of this key's public-lane calls go: your OpenTelemetry collector (OTLP/HTTP JSON), Langfuse or Helicone. Spans follow the OpenTelemetry GenAI semantic conventions and add anyroute.cost_usd, anyroute.receipt_id, anyroute.lane and anyroute.provider. Prompt and completion text is included only with include_content: true. Attested and unlinkable lane calls are never exported.",
         "security": [
           {
             "BearerAuth": []
@@ -9936,6 +9936,17 @@
                   "summary": "Stop exporting",
                   "value": {
                     "tracing": null
+                  }
+                },
+                "topup": {
+                  "summary": "Auto top-up: below $2 left, add $10, at most $50 a week",
+                  "value": {
+                    "limit": 20,
+                    "topup": {
+                      "below_usd": 2,
+                      "add_usd": 10,
+                      "max_per_week_usd": 50
+                    }
                   }
                 }
               }
@@ -20337,6 +20348,45 @@
               "agent"
             ],
             "description": "The new key's role in its team (default member). A key cannot hand out a role above its own. In a team with an org budget every key needs a limit that fits."
+          },
+          "topup": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KeyTopup"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PATCH only. Auto top-up of this key's limit from the account's credits; null clears it. The key needs a limit without limit_reset."
+          }
+        },
+        "additionalProperties": false
+      },
+      "KeyTopup": {
+        "type": "object",
+        "description": "When the key has less than below_usd of its limit left, the router raises the limit by add_usd, at most max_per_week_usd per UTC week (Monday to Sunday), and only while the account's available credits cover the key's remaining allowance after it. No money moves. It runs after a debit and when the key's limit would refuse a request. Each top-up, or skipped top-up with its reason, shows in Activity (kind topup) and the inbox. Rulebook caps still apply.",
+        "required": [
+          "below_usd",
+          "add_usd",
+          "max_per_week_usd"
+        ],
+        "properties": {
+          "below_usd": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1000
+          },
+          "add_usd": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 1000,
+            "description": "At most max_per_week_usd."
+          },
+          "max_per_week_usd": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 5000
           }
         },
         "additionalProperties": false
@@ -20397,6 +20447,20 @@
                 "type": "null"
               }
             ]
+          },
+          "topup": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KeyTopup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "topups_this_week_usd": {
+            "type": "number",
+            "description": "GET /api/v1/keys/{hash} and PATCH: the auto top-ups added to this key's limit since Monday 00:00 UTC."
           }
         }
       },

@@ -125,12 +125,36 @@ export const keys = pgTable(
     routing: jsonb("routing"), // imported presets (LiteLLM aliases, default provider prefs)
     guardrails: jsonb("guardrails"),
     tracing: jsonb("tracing"), // customer trace export destination; its URL and credentials sealed with APP_SECRET
+    topup: jsonb("topup"), // auto top-up rule {below_usd, add_usd, max_per_week_usd} or null (src/ledger/topup.ts)
     disabled: boolean("disabled").notNull().default(false),
     expiresAt: ts("expires_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
     lastUsed: ts("last_used"),
   },
   (t) => [uniqueIndex("keys_chain_uq").on(t.chainKeyHash), index("keys_account_idx").on(t.accountId), check("keys_scope_valid", sql`${t.scope} IS NULL OR ${t.scope} = 'inference'`), check("keys_scope_management", sql`${t.scope} IS DISTINCT FROM 'inference' OR ${t.management} = false`)], // ZK6
+);
+
+// One row per auto top-up of a key's limit from the account's own credits, or per skipped top-up (deduplicated), so every
+// change is recorded and shows in Activity and the inbox. No money moves: the key's limit is an allowance on the balance.
+export const keyTopups = pgTable(
+  "key_topups",
+  {
+    id: text("id").primaryKey(),
+    ref: text("ref").notNull(), // settle:<hold> | reserve:<request> for a top-up; skip:<...> dedupes skipped notes
+    keyHash: text("key_hash").notNull(),
+    accountId: text("account_id").notNull(),
+    outcome: text("outcome").notNull(), // added | skipped_balance | skipped_weekly | skipped_org_budget
+    amount: money("amount_pico").notNull(), // the rule's add amount
+    limitBefore: money("limit_before_pico").notNull(),
+    limitAfter: money("limit_after_pico").notNull(),
+    spent: money("spent_pico").notNull(),
+    available: money("available_pico").notNull(), // the account's balance minus open holds when checked
+    weekStart: ts("week_start").notNull(), // UTC Monday 00:00 of the week counted
+    weekTotal: money("week_total_pico").notNull(), // top-ups this week, including this one when added
+    maxPerWeek: money("max_per_week_pico").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("key_topups_ref_uq").on(t.ref), index("key_topups_key_created_idx").on(t.keyHash, t.createdAt)],
 );
 
 export const byokKeys = pgTable(

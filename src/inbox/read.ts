@@ -42,7 +42,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
     capped ||= pending.length > 100;
     items.push(...pending.slice(0, 100).map(row => ({ id: `approval:${row.id}`, at: row.at.toISOString(), kind: "approval", title: "Approve an agent request", status: "pending", href: "/agents/", key_label: row.label, intent: inboxIntent(row.intent), approval_id: row.id, approval_limit: picoToUsdString(row.limit), expires_at: row.expires.toISOString(), can_decide: scope.canDecide, unread: true })));
   }
-  for (const kind of ["alert", "deposit", "agreement"] as const) {
+  for (const kind of ["alert", "deposit", "agreement", "topup"] as const) {
     // Reuse Activity's account, team, session, wallet-party and spending-alert guards.
     const eligible = kind === "deposit" ? sql`status = 'posted'` : kind === "agreement" ? sql`status in ('DisputeOpened','RulingPosted')` : undefined;
     const page = await readActivity(ctx, key, activityQuery({ kind, limit: "100", ...(since ? { from: since } : {}), to: asOf }), eligible);
@@ -51,7 +51,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
       if (!unread(row.at)) continue;
       if (kind === "deposit" && row.status !== "posted") continue;
       if (kind === "agreement" && !["DisputeOpened", "RulingPosted"].includes(row.status)) continue;
-      items.push({ id: row.id, at: row.at, kind, title: row.title, status: row.status, amount: row.amount, key_label: row.key_label, href: kind === "agreement" || row.id.startsWith("alert:") ? "/agents/" : kind === "deposit" ? "/dashboard/#payments" : "/dashboard/#spend-watch", unread: unread(row.at) });
+      items.push({ id: row.id, at: row.at, kind, title: row.title, status: row.status, amount: row.amount, key_label: row.key_label, href: kind === "agreement" || row.id.startsWith("alert:") ? "/agents/" : kind === "deposit" ? "/dashboard/#payments" : kind === "topup" ? "/dashboard/#api-keys" : "/dashboard/#spend-watch", unread: unread(row.at) });
     }
   }
   if (scope.whole && ctx.cfg.networkHosts.enabled) {

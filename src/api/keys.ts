@@ -21,6 +21,7 @@ import { parseStoredTracing, sealTracing, tracingInput, tracingJson } from "../s
 import { bearer, registerRootKey, requireKey, requireRole, ROLE_RANK, walletAccountId, type KeyRow, type Role } from "./auth.ts";
 import { actorOf, appendAudit, type AuditDetail } from "../teams/audit.ts";
 import { assertFitsOrgBudget } from "../teams/org.ts";
+import { topupInput, topupJson, topupsThisWeek } from "../ledger/topup.ts";
 
 const keySpec = z.object({
   include_byok_in_limit: z.boolean().optional(), // ZK6
@@ -45,6 +46,8 @@ const keySpec = z.object({
   // Trace export for this key's public-lane calls; null removes it. Secrets are sealed and never returned.
   tracing: tracingInput.nullable().optional(),
   role: z.enum(["admin", "dev", "member", "viewer", "agent"]).optional(), // the key's role in its team (default member)
+  // Auto top-up of the key's limit from the account's credits (src/ledger/topup.ts); null clears it. PATCH only.
+  topup: topupInput.nullable().optional(),
 });
 
 export function keyJson(k: KeyRow) {
@@ -67,6 +70,7 @@ export function keyJson(k: KeyRow) {
     management: k.management,
     guardrails: k.guardrails,
     tracing: tracingJson(k.tracing),
+    topup: topupJson(k.topup),
     chain_key_hash: k.chainKeyHash,
     key_address: k.keyAddress,
     created_at: k.createdAt.toISOString(),
@@ -106,8 +110,15 @@ function tracingPatch(ctx: Ctx, v: z.infer<typeof keySpec>, prev: unknown) {
   return { tracing: v.tracing === null ? null : sealTracing(ctx.cfg.appSecret, v.tracing, parseStoredTracing(prev)) };
 }
 
-/** keyJson plus this router's export counters for the key's tracing destination. */
-const keyJsonWithTracing = (ctx: Ctx, k: KeyRow) => ({ ...keyJson(k), tracing: tracingJson(k.tracing, ctx.tracing.stats(k.keyHash)) });
+/** keyJson plus this router's export counters for the key's tracing destination and this UTC week's auto top-ups. */
+const keyJsonWithTracing = async (ctx: Ctx, k: KeyRow) => ({ ...keyJson(k), tracing: tracingJson(k.tracing, ctx.tracing.stats(k.keyHash)), topups_this_week_usd: picoToUsd(await topupsThisWeek(ctx.db, k.keyHash)) });
+
+/** An auto top-up rule raises a total limit: the key needs a limit, and one that does not reset each period. */
+function assertTopupFits(topup: unknown, budget: bigint | null, reset: string | null) {
+  if (!topup) return;
+  if (budget == null) fail(400, "Auto top-up raises the key's total limit, so set `limit` too, or clear the rule with `topup: null`.", "invalid_request");
+  if (reset) fail(400, "Auto top-up works with a total limit that does not reset. Set `limit_reset: null`, or clear the rule with `topup: null`.", "invalid_request");
+}
 
 function applySpec(v: z.infer<typeof keySpec>) {
   const budget = v.budget_usd !== undefined ? v.budget_usd : v.limit;
@@ -200,6 +211,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
   // With a management/admin key: a virtual sub-key sharing that account's balance.
   app.post("/api/v1/keys", async (c) => {
     const spec = keySpec.parse(await readJson(c));
+    if (spec.topup !== undefined) fail(400, "Set auto top-up with PATCH /api/v1/keys/:hash once the key has a limit.", "invalid_request");
     const auth = c.req.header("authorization");
     const secret = generateApiKey();
     if (!auth) {
@@ -230,7 +242,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
   app.get("/api/v1/keys/:hash", async (c) => {
     const caller = await sub(ctx, c);
     await requireRole(ctx, caller, ["owner", "admin", "viewer"]);
-    return c.json({ data: keyJsonWithTracing(ctx, await ownedKey(ctx, caller, c.req.param("hash"))) });
+    return c.json({ data: await keyJsonWithTracing(ctx, await ownedKey(ctx, caller, c.req.param("hash"))) });
   });
   app.patch("/api/v1/keys/:hash", async (c) => {
     const caller = await sub(ctx, c);
@@ -245,14 +257,15 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     if (k.scope === "inference" && spec.management === true) fail(403, "An inference-only key cannot gain management rights.", "forbidden"); // ZK6
     if (spec.management !== undefined && !caller.management) fail(403, "Only a management key can change management rights.", "forbidden");
     if (spec.role !== undefined) fail(400, "Change a key's role with PUT /api/v1/teams/:id/members/:hash.", "invalid_request");
-    const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}), ...tracingPatch(ctx, spec, k.tracing) };
+    const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}), ...tracingPatch(ctx, spec, k.tracing), ...(spec.topup !== undefined ? { topup: spec.topup } : {}) };
+    assertTopupFits(patch.topup !== undefined ? patch.topup : k.topup, patch.budget !== undefined ? patch.budget : k.budget, patch.budgetReset !== undefined ? patch.budgetReset : k.budgetReset);
     // In a team with an org budget, a new limit (or a key coming back) must still fit.
     if (k.teamId && (patch.budget !== undefined || patch.disabled === false || patch.expiresAt !== undefined))
       await assertFitsOrgBudget(ctx.db, k.teamId, patch.budget !== undefined ? patch.budget : k.budget, k.keyHash);
     if (Object.keys(patch).length) await ctx.db.update(keys).set(patch).where(eq(keys.keyHash, k.keyHash));
     if (k.teamId && Object.keys(patch).length) await appendAudit(ctx.db, k.teamId, await actorOf(ctx.db, caller), "key.update", k.keyHash, keyChange(spec, patch));
     const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, k.keyHash));
-    return c.json({ data: keyJsonWithTracing(ctx, row) });
+    return c.json({ data: await keyJsonWithTracing(ctx, row) });
   });
   app.delete("/api/v1/keys/:hash", async (c) => {
     const caller = await sub(ctx, c);

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { fail } from "../lib/errors.ts";
 import { sha256 } from "../lib/util.ts";
-export const ACTIVITY_KINDS = ["call", "approval", "alert", "deposit", "agreement", "policy", "balance"] as const;
+export const ACTIVITY_KINDS = ["call", "approval", "alert", "deposit", "agreement", "policy", "balance", "topup"] as const;
 const instant = z.string().datetime({ offset: true }).refine(v => !/\.\d{7}/.test(v), "Use at most six fractional digits.");
 const micros = (v: string) => BigInt(Date.parse(v)) * 1000n + BigInt((v.match(/\.(\d+)/)?.[1] ?? "").padEnd(6, "0").slice(3, 6));
 const cursorShape = z.strictObject({ at: instant, id: z.string().min(1).max(512), filter: z.string().length(64) });
