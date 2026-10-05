@@ -54,7 +54,7 @@ export const TASKS = [
   task('settings', 'build', 'Set account preferences', 'Open Settings in the dashboard to manage account preferences.', '/dashboard/', 'settings, account, preferences'),
   task('mcp', 'build', 'Connect agent tools', 'Read the MCP tool interface and connection instructions.', '/docs/#mcp', 'mcp, tools, agent'),
 
-  task('agent-guard', 'agents', 'Read about action rules', 'Read the action checks and execution limits; not switched on yet.', '/docs/#agent-guard', 'agent guard, order, trade, swap, action'), // V98
+  task('agent-guard', 'agents', 'Read about action rules', 'Read the action checks and execution limits; switched on at anyroute.tech.', '/docs/#agent-guard', 'agent guard, order, trade, swap, action'), // V98
   task('rulebook', 'agents', 'Give an agent a budget', 'Set caps, models, lanes, tools and hours for requests through Anyroute.', '/agents/', 'agent, rulebook, budget, limits', true),
   task('sessions', 'agents', 'Give an agent a session', 'Open Agent Sessions in the dashboard to set a session budget and lifetime.', '/dashboard/', 'agent sessions, session, ttl'),
   task('approvals', 'agents', "Approve an agent’s payment", 'Review how approvals work, then connect a key to approve or deny a request.', '/agents/', 'approval, approve, deny, payment', true),
