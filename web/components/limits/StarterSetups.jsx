@@ -2,9 +2,11 @@
 // U103: Start from a setup, the one entry point for starting values wherever the spending limits editor appears. One click
 // fills the editor with a setup's values and lists what it set; the editor's own Save writes the rulebook, and Undo puts
 // back the values from before. This component never calls the API. Without onChange it is a read-only preview (/agents
-// before an agent is selected), which keeps the page's #starter-setups and #rulebook-templates anchors in place.
+// before an agent is selected), which keeps the page's #starter-setups and #rulebook-templates anchors in place. Where the
+// editor edits a saved key or agent, a picked setup also offers Replay it first (onReplay), which saves nothing either.
 import { useState } from 'react';
 import { openLine, setupsFor, setupSummary, withSetup } from '../../lib/starter-setups';
+import { ReplayFirst } from './ReplayRules'; // Replay your rules
 import st from './SpendingLimits.module.css';
 
 export const SETUP_WORDS = {
@@ -16,7 +18,7 @@ export const SETUP_WORDS = {
 };
 const W = SETUP_WORDS;
 
-export default function StarterSetups({ id = 'setups', view, value, onChange, guard = false, disabled = false }) {
+export default function StarterSetups({ id = 'setups', view, value, onChange, guard = false, disabled = false, onReplay = null }) {
   const preview = !onChange;
   const { setups, more } = setupsFor(view, { guard });
   const [picked, setPicked] = useState(preview ? setups[0]?.id ?? null : null);
@@ -52,6 +54,7 @@ export default function StarterSetups({ id = 'setups', view, value, onChange, gu
       {summary.elsewhere.length > 0 && <p className="help-text">On <a href="/agents/">Agents</a>, this setup also sets: {summary.elsewhere.map(l => l.text).join('; ')}.</p>}
       {summary.proven && <p className="help-text">{W.proven} <a href="/status/#proof-time">See proof-time by provider</a>.</p>}
       <p className="help-text">{W.kept}{preview ? '' : ' Review the fields below, then save.'}</p>
+      {before && onReplay && <ReplayFirst onReplay={onReplay}/>}
       {before && <button type="button" className="text-button" onClick={undo}>{W.undo}</button>}
     </div>}
   </>;

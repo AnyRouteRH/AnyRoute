@@ -10,6 +10,7 @@ import { api } from '../../lib/api';
 import { DAYS, LIMITS, FEATURE_OFF, capBars, reasonText, decisionText, intentSummary, eventsPage, confirmKill, errorState, utcTime } from '../../lib/agents';
 import { LIMIT_WORDS as W, limitsFromRulebook, rulebookFromLimits } from '../../lib/spending-limits';
 import SpendingLimits, { LimitGroup, useAgentGuard } from '../../components/limits/SpendingLimits';
+import ReplayResult, { ReplayButton, useRuleReplay } from '../../components/limits/ReplayRules'; // Replay your rules
 import s from './agents.module.css';
 import Approvals from './Approvals';
 import { BreakersForm, TrippedBadge } from './Breakers';
@@ -31,15 +32,17 @@ function Spend({ agent }) {
 }
 
 // U102: the shared spending limits editor, plus the rulebook's other rules and, where it applies, Agent Guard's actions.
-function RulebookForm({ policy, onSave, onRemove, busy, hasPolicy, guard, stop }) {
+function RulebookForm({ policy, onSave, onRemove, busy, hasPolicy, guard, stop, request, keyHash }) {
   const [form, setForm] = useState(() => limitsFromRulebook(policy));
   const [errors, setErrors] = useState([]);
   const [json, setJson] = useState(false);
   const set = (name, value) => setForm(f => ({ ...f, [name]: value }));
   const windowSet = (index, patch) => setForm(f => ({ ...f, windows: f.windows.map((w, i) => i === index ? { ...w, ...patch } : w) }));
   const built = rulebookFromLimits(form);
+  const replay = useRuleReplay(request, keyHash);
+  const replaySetup = () => { replay.run(rulebookFromLimits(form)); replay.reveal(); };
   return <form onSubmit={e => { e.preventDefault(); setErrors(built.errors); if (!built.errors.length) onSave(built.policy); }}>
-    <SpendingLimits id="rulebook" value={form} onChange={setForm} disabled={busy} setups="agents" scope guard={guard || policy?.actions !== undefined} stop={stop}>
+    <SpendingLimits id="rulebook" value={form} onChange={setForm} disabled={busy} setups="agents" scope guard={guard || policy?.actions !== undefined} stop={stop} onReplay={replaySetup}>
       <LimitGroup title="More rules" disabled={busy}>
         <div className="two-fields"><Field label="Maximum output tokens" id="max_output_tokens"><input id="max_output_tokens" type="number" min="1" max={LIMITS.tokens} step="1" value={form.caps.max_output_tokens} onChange={e => set('caps',{ ...form.caps,max_output_tokens:e.target.value })}/></Field>
         <Field label="Ask me first after calls per hour" id="approval-calls"><input id="approval-calls" type="number" step="1" min="1" max="1000000" value={form.approvalCalls ?? ''} onChange={e => set('approvalCalls',e.target.value)}/></Field></div>
@@ -52,7 +55,8 @@ function RulebookForm({ policy, onSave, onRemove, busy, hasPolicy, guard, stop }
       <BreakersForm values={form.breakers} onChange={values => set('breakers', values)} busy={busy}/>
       <AlertFields value={form.alerts} onChange={value => set('alerts',value)} disabled={busy}/>
     </SpendingLimits>
-    <Errors errors={errors}/><div className="button-row"><Button type="submit" disabled={busy}>{W.save}</Button>{hasPolicy && <Button type="button" secondary disabled={busy} onClick={() => { if (window.confirm('Remove these spending limits? Their rules will no longer apply.')) onRemove(); }}>{W.remove}</Button>}<button type="button" className="text-button" aria-expanded={json} onClick={() => setJson(!json)}>{json ? 'Hide JSON' : 'View JSON'}</button></div>
+    <Errors errors={errors}/><div className="button-row"><Button type="submit" disabled={busy}>{W.save}</Button><ReplayButton replay={replay} disabled={busy} onRun={() => replay.run(built)}/>{hasPolicy && <Button type="button" secondary disabled={busy} onClick={() => { if (window.confirm('Remove these spending limits? Their rules will no longer apply.')) onRemove(); }}>{W.remove}</Button>}<button type="button" className="text-button" aria-expanded={json} onClick={() => setJson(!json)}>{json ? 'Hide JSON' : 'View JSON'}</button></div>
+    <ReplayResult id="replay-rules" replay={replay} current={built.policy}/>
     {json && <><Errors errors={built.errors}/><pre className={s.json}>{JSON.stringify(built.policy,null,2)}</pre></>}
   </form>;
 }
@@ -94,7 +98,7 @@ function AgentDetail({ agent, request, refreshList, refreshVersion, onError, gua
       <TrippedBadge record={record} agent={agent}/>
       <span className={s.hash}>Key {agent.key_hash}</span><Spend agent={agent}/><p className={s.hash}>Policy SHA {record?.sha256 || agent.policy_sha256 || 'None'}</p>
       {notice && <p role="status">{notice}</p>}{busy && <p role="status">Reading or updating rulebook…</p>}{readError && <><p role="alert">{readError}</p><Button secondary disabled={busy} onClick={() => setRevision(r => r+1)}>Read rulebook again</Button></>}
-      {record && <><h3>{W.title}</h3><RulebookForm key={revision} policy={policy} hasPolicy={!!policy} busy={busy} guard={guard} stop={stop} onSave={body => mutate(() => request(path+'/policy',{ method:'PUT',body }))} onRemove={() => mutate(() => request(path+'/policy',{ method:'DELETE' }))}/></>}
+      {record && <><h3>{W.title}</h3><RulebookForm key={revision} policy={policy} hasPolicy={!!policy} busy={busy} guard={guard} stop={stop} request={request} keyHash={agent.key_hash} onSave={body => mutate(() => request(path+'/policy',{ method:'PUT',body }))} onRemove={() => mutate(() => request(path+'/policy',{ method:'DELETE' }))}/></>}
       <p className="help-text">{W.scopeOnly}</p>
     </section>
     <section className="control-panel"><h2>Event log</h2><p className="help-text">Newest first, 50 per page. These intents contain model, lane, estimated cost and tools; no prompt or response text is shown.</p>

@@ -59,11 +59,12 @@ export function StopResume({ id, stop, disabled }) {
 }
 
 // U103: `setups` names the editor (chat, key or agents) for Start from a setup, which fills only the values that editor shows.
-export default function SpendingLimits({ id, value, onChange, disabled = false, compact = false, scope = false, guard = false, setups = null, budget = null, stop, children }) {
+// `onReplay`, where the editor edits a saved key or agent, lets a picked setup offer Replay it first.
+export default function SpendingLimits({ id, value, onChange, disabled = false, compact = false, scope = false, guard = false, setups = null, budget = null, stop, onReplay = null, children }) {
   const set = patch => onChange({ ...value, ...patch });
   const g = value.guard, setGuard = patch => set({ guard: { ...g, ...patch } });
   return <div className={st.limits + (compact ? ' ' + st.compact : '')}>
-    {setups && <StarterSetups id={id} view={setups} value={value} onChange={onChange} guard={guard} disabled={disabled}/>}
+    {setups && <StarterSetups id={id} view={setups} value={value} onChange={onChange} guard={guard} disabled={disabled} onReplay={onReplay}/>}
     <fieldset disabled={disabled} className={st.group}><legend>{W.caps}</legend>
       {budget && <KeyBudgetField id={id} budget={budget}/>}
       <div className={st.grid}>{LIMIT_CAPS.map(([k, label]) => <Field key={k} id={`${id}-${k}`} label={label}>{money(`${id}-${k}`, value.caps?.[k], v => set({ caps: { ...value.caps, [k]: v } }))}</Field>)}</div>

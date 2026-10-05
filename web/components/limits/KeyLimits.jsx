@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { FEATURE_OFF, confirmKill, errorState, formatUsd, utcTime } from '../../lib/agents';
-import { LIMIT_WORDS as W, KEY_BUDGET_WORDS as KB, budgetResetText, keyBudgetText, keySaveNotice, keySavePlan, limitsFromRulebook, saveKeyLimits, topupSummary, topupText } from '../../lib/spending-limits';
+import { LIMIT_WORDS as W, KEY_BUDGET_WORDS as KB, budgetResetText, keyBudgetText, keySaveNotice, keySavePlan, limitsFromRulebook, rulebookFromLimits, saveKeyLimits, topupSummary, topupText } from '../../lib/spending-limits';
+import ReplayResult, { ReplayButton, useRuleReplay } from './ReplayRules'; // Replay your rules
 import SpendingLimits, { KeyBudgetField, LimitGroup, useAgentGuard } from './SpendingLimits';
 import { Button, Modal } from '../UI';
 
@@ -26,6 +27,10 @@ export default function KeyLimits({ apiKey, keyHash, name, current, budget = nul
   const [revision, setRevision] = useState(0);
   const request = useCallback((path, options = {}) => api(path, { ...options, key: apiKey }), [apiKey]);
   const path = '/api/v1/agents/' + encodeURIComponent(keyHash);
+  const replay = useRuleReplay(request, keyHash);
+  const draft = form ? rulebookFromLimits(form) : null;
+  const replayNow = () => { if (form) replay.run(rulebookFromLimits(form)); };
+  const replaySetup = () => { replayNow(); replay.reveal(); }; // Start from a setup: Replay it first
   useEffect(() => {
     const ac = new AbortController();
     setView(v => ({ ...v, busy: true, error: '' }));
@@ -75,10 +80,11 @@ export default function KeyLimits({ apiKey, keyHash, name, current, budget = nul
     {view.busy && !form && !view.off && <p role="status">Reading spending limits…</p>}
     {view.error && <div className="error" role="alert">{view.error}</div>}
     {form && <form onSubmit={save}>
-      <SpendingLimits key={revision} id="key-limits" value={form} onChange={setForm} disabled={view.busy} setups="key" scope guard={guard || own?.policy?.actions !== undefined} budget={budgetField} stop={stop}/>
+      <SpendingLimits key={revision} id="key-limits" value={form} onChange={setForm} disabled={view.busy} setups="key" scope guard={guard || own?.policy?.actions !== undefined} onReplay={replaySetup} budget={budgetField} stop={stop}/>
       {row.inherited > 0 && <p className="help-text">This key also follows {row.inherited === 1 ? 'an inherited rulebook' : `${row.inherited} inherited rulebooks`} from the key that created it. Change those on that key.</p>}
       {failed}
-      <div className="button-row"><Button type="submit" disabled={view.busy}>{W.save}</Button>{own && <Button type="button" secondary disabled={view.busy} onClick={() => { if (window.confirm('Remove these spending limits? Their rules will no longer apply.')) mutate(() => request(path + '/policy', { method: 'DELETE' }), 'Spending limits removed.'); }}>{W.remove}</Button>}</div>
+      <div className="button-row"><Button type="submit" disabled={view.busy}>{W.save}</Button><ReplayButton replay={replay} disabled={view.busy} onRun={replayNow}/>{own && <Button type="button" secondary disabled={view.busy} onClick={() => { if (window.confirm('Remove these spending limits? Their rules will no longer apply.')) mutate(() => request(path + '/policy', { method: 'DELETE' }), 'Spending limits removed.'); }}>{W.remove}</Button>}</div>
+      <ReplayResult id="key-limits-replay" replay={replay} current={draft?.policy}/>
     </form>}
     {!form && view.off && <form onSubmit={save}>
       <LimitGroup title={KB.title} disabled={view.busy}><KeyBudgetField id="key-limits" budget={budgetField}/></LimitGroup>

@@ -47,3 +47,35 @@
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 12px; }
 .topupSummary { margin: 0 0 8px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 @media (max-width: 560px) { .grid3 { grid-template-columns: 1fr; } }
+/* Replay your rules: the result below Save */
+.replay { min-width: 0; margin: 16px 0 0; outline: none; overflow-wrap: anywhere; }
+.replay:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 4px; }
+.replay > :global(.help-text) { margin: 0 !important; }
+.replayResult { padding: 14px 16px; border: 1px solid var(--line); background: var(--paper-2); font-size: 14px; line-height: 1.55; }
+.replayResult p { margin: 0 0 10px; }
+.replayDone { font: 500 12px/1.4 var(--mono); letter-spacing: .03em; text-transform: uppercase; }
+.replayBar { display: flex; height: 12px; margin: 4px 0 10px; border: 1px solid var(--line-strong); background: var(--paper); overflow: hidden; }
+.replayBar span { flex-basis: 0; min-width: 3px; }
+.allowed { background: var(--signal); }
+.asked { background: var(--warn); }
+.denied { background: var(--danger); }
+.replayLegend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; padding: 0; list-style: none; font-size: 13px; }
+.replayLegend li { display: inline-flex; align-items: center; gap: 6px; background: none; }
+.replayLegend i { width: 10px; height: 10px; flex: none; }
+.replayLegend span { color: var(--muted); font: 400 12px var(--mono); }
+.replayStop { padding: 8px 10px; border-left: 3px solid var(--danger); background: var(--paper); }
+.replayHeading { margin: 14px 0 6px; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .03em; }
+.replayReasons, .replayNotes { margin: 0 0 10px; padding-left: 18px; }
+.replayReasons li, .replayNotes li { margin: 2px 0; background: none; }
+.replayExamples { margin: 8px 0 4px; }
+.replayExamples summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .03em; }
+.replayExamples summary:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 2px; }
+.replayExamples ol { display: grid; gap: 8px; margin: 4px 0 0; padding: 0; list-style: none; }
+.replayExamples li { padding: 10px 12px; border: 1px solid var(--line); border-left-width: 3px; background: var(--paper); }
+.replayExamples li.allowed { border-left-color: var(--signal-deep); }
+.replayExamples li.asked { border-left-color: var(--warn); }
+.replayExamples li.denied { border-left-color: var(--danger); }
+.replayExamples li p { margin: 0 0 4px; font-size: 13px; }
+.replayExamples li :global(.help-text) { margin: 0 !important; }
+.replayExampleHead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin: 0 0 4px; font: 500 12px var(--mono); }
+.replayExampleHead time { color: var(--muted); font-weight: 400; }
