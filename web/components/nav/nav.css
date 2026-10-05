@@ -39,11 +39,18 @@
 .site-search input{display:block;width:100%;margin-top:12px;border:1px solid var(--line-strong);background:var(--white);color:var(--ink);font:400 18px var(--sans);padding:14px}
 .search-status,.search-help{font:400 11px/1.5 var(--mono);color:var(--muted);margin:14px 0}
 .search-results{max-height:46svh;overflow:auto;overscroll-behavior:contain;display:grid;gap:4px}
-.search-results a{display:block;padding:14px;border:1px solid transparent;text-decoration:none}
-.search-results a[aria-selected=true]{background:var(--signal-tint);border-color:var(--signal-deep)}
+.search-results [role=option]{display:block;width:100%;padding:14px;border:1px solid transparent;background:transparent;color:inherit;font:inherit;text-align:left;text-decoration:none;cursor:pointer}
+.search-results [role=option][aria-selected=true]{background:var(--signal-tint);border-color:var(--signal-deep)}
 .search-results small{display:block;font:500 10px var(--mono);text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .search-results strong{display:block;font:550 17px/1.3 var(--sans)}
-.search-results a span{display:block;color:var(--muted);font-size:14px;margin-top:4px}
+.search-results [role=option] span{display:block;color:var(--muted);font-size:14px;margin-top:4px}
+/* U106: actions. A sign-in marker, the agent/model pick step and the same confirm step the page uses. */
+.search-results [aria-disabled=true]{cursor:default}.search-results [aria-disabled=true] strong{color:var(--muted)}
+.search-lock{display:inline-block;margin-left:8px;padding:1px 6px;border:1px solid var(--line-strong);font-style:normal;color:var(--ink)}
+.site-search .modal-head h2{flex:1}.site-search .search-back{align-self:center;flex:none}
+.search-confirm{display:grid;gap:12px;padding-block:6px}.search-confirm p{margin:0}.search-confirm #site-search-question{font:550 18px/1.4 var(--sans)}
+.search-confirm .button-row{display:flex;flex-wrap:wrap;gap:10px}
+.site-search[data-phase=done] .search-status{font:550 18px/1.4 var(--sans);color:var(--ink)}
 .search-empty{padding-block:20px}
 .site-footer .footer-links{grid-template-columns:repeat(6,minmax(0,1fr));gap:24px}
 .site-footer .footer-about{grid-column:1 / -1}
