@@ -75,7 +75,8 @@ test('the page shows the tag, hashes the order in the browser and says nothing i
  const block=page.slice(page.indexOf('function DecisionTag'),page.indexOf('function ReceiptBox'));
  const visible=[...block.matchAll(/>([^<>{}]+)</g),...block.matchAll(/'([^'\n]{12,})'/g),...block.matchAll(/`([^`\n]{12,})`/g)].map(m=>m[1]).join(' ');
  assert.doesNotMatch(visible,/\b(?:demo|test|tested|local|mock|simulated|placeholder|fixture|earn|yield|APY|x402)\b/i);
- assert.doesNotMatch(visible,/\b(?:AAPL|TSLA|NVDA|MSFT|AMZN|GOOGL|META|SPY|QQQ)\b/);
+ // Example orders name generic symbols only.
+ for(const m of block.matchAll(/symbol\\?"?\s*:\s*\\?"([^"\\]+)/g))assert.match(m[1],/^(?:STOCK|INDEX_FUND)_[A-Z]$/);
 });
 
 test('the docs section has its anchor and examples, says it is not switched on yet, and is indexed, searchable and linked from Labs',async()=>{
@@ -87,7 +88,9 @@ test('the docs section has its anchor and examples, says it is not switched on y
  for(const name of ['withDecisionTag','with_decision_tag','details_sha256','informed_by','/api/v1/guard/decisions','/api/v1/receipts/verify','decision_tag_valid','--intent',TAG])assert.ok(docs.includes(name),name);
  const visible=[...docs.matchAll(/>([^<>{}]+)</g),...docs.matchAll(/'([^'\n]{12,})'/g),...docs.matchAll(/`([^`]{12,})`/g)].map(m=>m[1]).join(' ');
  assert.doesNotMatch(visible,/\b(?:demo|test|tested|local|mock|simulated|placeholder|fixture|earn|yield|APY|x402)\b/i);
- assert.doesNotMatch(visible,/\b(?:AAPL|TSLA|NVDA|MSFT|AMZN|GOOGL|META|SPY|QQQ)\b/);
+ const symbols=[...docs.matchAll(/symbol\\?"?\s*:\s*\\?"([^"\\]+)/g),...docs.matchAll(/"target\\?":\s*\\?"([^"\\]+)/g)].map(m=>m[1]);
+ assert.ok(symbols.length>=4);
+ for(const symbol of symbols)assert.match(symbol,/^(?:STOCK|INDEX_FUND)_[A-Z]$/);
  const page=read('app/docs/page.jsx');
  assert.equal(page.split('<DecisionTagDocs />').length-1,1);
  assert.ok(page.indexOf('<TradingAgentDocs />')<page.indexOf('<DecisionTagDocs />'));
