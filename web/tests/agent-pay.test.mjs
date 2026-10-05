@@ -62,13 +62,15 @@ test('every call uses the selected agent’s own key, checked first, never the c
   assert.deepEqual(verified, [['/api/v1/receipts/verify', { payload: { a: 1 }, sig: 's', key_id: 'k' }]]);
 });
 
-test('the /agents section and search say Anyroute never holds the money and keep public wording', () => {
-  const section = readFileSync('app/agents/PayAgent.jsx', 'utf8');
+test('the /agents section, docs, Labs and search say Anyroute never holds the money and keep public wording', () => {
+  const section = readFileSync('app/agents/PayAgent.jsx', 'utf8'), docs = readFileSync('components/AgentPayDocs.jsx', 'utf8');
   assert.match(section, /id="pay-agent"/); assert.match(section, /payState\(r\.data\)/); assert.match(section, /agentRequest\(agent\.key_hash, secret\)/);
   assert.match(section, /sendTransactions\(address/); assert.match(section, /senderProblem\(address, p\.from\)/);
   assert.match(readFileSync('app/agents/Agents.jsx', 'utf8'), /<PayAgent agent=\{key && !off \? agent : null\}\/>/);
+  assert.match(docs, /id="agent-pay"/); assert.match(docs, /Anyroute never holds the money\./); assert.match(docs, /AGENT_PAY_ENABLED \(default false\)/);
+  assert.doesNotMatch(docs, /x402/);
   const task = TASKS.find(t => t.id === 'pay-agent');
   assert.equal(task.href, '/agents/#pay-agent'); assert.equal(task.menu, false); assert.equal(task.group, 'agents');
   const banned = new RegExp(String.raw`\b(?:${['de' + 'mo', 'te' + 'st', 'te' + 'sted', 'lo' + 'cal', 'mo' + 'ck', 'simu' + 'lated', 'place' + 'holder', 'fix' + 'ture', 'ea' + 'rn', 'yi' + 'eld', 'A' + 'PY', 'ret' + 'urns', 'pri' + 'vate', 'bo' + 'nds?'].join('|')})\b|no lo` + 'gs', 'i');
-  for (const [name, text] of [['section', section.replace(/^import[^\n]*\n/gm, '')], ['lib', readFileSync('lib/agent-pay.js', 'utf8').replace(/\.test\(/g, '(')]]) assert.doesNotMatch(text, banned, name);
+  for (const [name, text] of [['section', section.replace(/^import[^\n]*\n/gm, '')], ['docs', docs.replace(/^import[^\n]*\n/gm, '')], ['lib', readFileSync('lib/agent-pay.js', 'utf8').replace(/\.test\(/g, '(')]]) assert.doesNotMatch(text, banned, name);
 });

@@ -11,6 +11,8 @@ export const READING = 'Reading live status…';
 export const LABS = [
   { id: 'agent-guard', name: 'Agent Guard', field: 'agent_guard.enabled', absentIsOff: true, href: '/docs/#agent-guard',
     blurb: 'Your agent asks its rulebook before an action with money, such as an order or a payment, and waits for you above an amount you set.' },
+  { id: 'agent-pay', name: 'Pay another agent', field: 'agent_pay.enabled', absentIsOff: true, href: '/docs/#agent-pay',
+    blurb: 'Your agent pays another agent in USDG from its own wallet, after its rulebook allows it, and gets a signed receipt. Anyroute never holds the money.' },
   { id: 'x402', name: 'Pay per call with x402', field: 'per_call.x402.configured', offLabel: 'Not live', href: '/docs/#x402',
     blurb: on => `${on ? '' : 'Built, not live. '}Pay for one call in USDG with an x402 signature, with no account and no key.` },
   { id: 'paid-tools', name: 'Paid tools from your balance', field: 'tools.ready', href: '/docs/#paid-tools',
@@ -49,7 +51,8 @@ export function labRows(data, phase = 'ready') {
     // Before the status answers, or when it cannot be read, no row says on or off; the page shows READING or UNREAD once.
     if (!ready) return { ...base, state: phase === 'loading' ? 'loading' : 'unknown', label: phase === 'loading' ? 'Reading…' : 'Unknown', blurb: blurb(false) };
     let value = at(data, item.field);
-    // Agent Guard's section is left out of the status while it is off (its docs say to read an absent field as off).
+    // Agent Guard's section is left out of the status while it is off (its docs say to read an absent field as off); a
+    // router from before Pay another agent has no agent_pay section, and it is off there too.
     if (value === undefined && item.absentIsOff && at(data, item.field.split('.')[0]) === undefined) value = false;
     const state = value === true ? 'on' : value === false ? 'off' : 'unknown';
     return { ...base, state, label: state === 'on' ? 'On' : state === 'off' ? item.offLabel ?? 'Off' : 'Not reported', blurb: blurb(state === 'on') };

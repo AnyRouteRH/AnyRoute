@@ -7,6 +7,7 @@ const sections = [
   ["replay-rules", "Replay your rules"],
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
+  ["agent-pay", "Pay another agent (not switched on)"],
   ["trading-agents", "Trading agents"],
   ["agent-breakers", "Circuit breakers"],
   ["agent-autonomy", "Progressive autonomy"],

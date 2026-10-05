@@ -7,6 +7,7 @@ import { TASKS, menuTasks } from '../lib/site-map.js';
 // The shape of GET /api/v1/status at anyroute.tech, cut to the fields Labs reads.
 const live = () => ({
   agent_guard: { enabled: true },
+  agent_pay: { enabled: false },
   per_call: { configured: false, x402: { configured: false } },
   tools: { enabled: false, ready: false },
   decision_tags: { enabled: false },
@@ -21,12 +22,12 @@ const byId = rows => Object.fromEntries(rows.map(row => [row.id, row]));
 test('each live row reads its own status field and says which', () => {
   const rows = byId(labRows(live()));
   assert.deepEqual(Object.values(rows).filter(r => r.source === 'status').map(r => [r.id, r.field]), [
-    ['agent-guard', 'agent_guard.enabled'], ['x402', 'per_call.x402.configured'], ['paid-tools', 'tools.ready'],
+    ['agent-guard', 'agent_guard.enabled'], ['agent-pay', 'agent_pay.enabled'], ['x402', 'per_call.x402.configured'], ['paid-tools', 'tools.ready'],
     ['decision-tags', 'decision_tags.enabled'], ['data-tools', 'data_tools.enabled'], ['make-good', 'makegood.enabled'],
     ['identity', 'identity.enabled'], ['commerce', 'commerce.enabled'], ['facilitator', 'facilitator.enabled'],
   ]);
   assert.deepEqual([rows['agent-guard'].state, rows['agent-guard'].label], ['on', 'On']);
-  for (const id of ['paid-tools', 'decision-tags', 'data-tools', 'make-good', 'identity', 'commerce', 'facilitator']) assert.deepEqual([rows[id].state, rows[id].label], ['off', 'Off'], id);
+  for (const id of ['agent-pay', 'paid-tools', 'decision-tags', 'data-tools', 'make-good', 'identity', 'commerce', 'facilitator']) assert.deepEqual([rows[id].state, rows[id].label], ['off', 'Off'], id);
   // Flipping one field flips only its row.
   const on = byId(labRows({ ...live(), makegood: { enabled: true } }));
   assert.equal(on['make-good'].state, 'on'); assert.equal(on.commerce.state, 'off');
@@ -41,9 +42,12 @@ test('x402 per-call payment is described as not live unless the status says it i
 });
 
 test('an absent Agent Guard section reads as off; any other missing field is not reported, never guessed', () => {
-  const { agent_guard, decision_tags, ...rest } = live();
+  const { agent_guard, agent_pay, decision_tags, ...rest } = live();
   const rows = byId(labRows(rest));
   assert.deepEqual([rows['agent-guard'].state, rows['agent-guard'].label], ['off', 'Off']);
+  assert.deepEqual([rows['agent-pay'].state, rows['agent-pay'].label], ['off', 'Off']); // a router from before it
+  assert.equal(byId(labRows({ ...live(), agent_pay: { enabled: true } }))['agent-pay'].state, 'on');
+  assert.match(rows['agent-pay'].blurb, /Anyroute never holds the money\./);
   assert.deepEqual([rows['decision-tags'].state, rows['decision-tags'].label], ['unknown', 'Not reported']);
   assert.equal(byId(labRows({ ...live(), commerce: { enabled: 'yes' } })).commerce.state, 'unknown');
 });

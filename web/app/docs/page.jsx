@@ -1,5 +1,6 @@
 import RouterLimits from "../../components/RouterLimits"; // HD1
 import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
+import AgentPayDocs from "../../components/AgentPayDocs"; // Pay another agent
 import FastCreditDocs from '../../components/FastCreditDocs'; // V97
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
 import FacilitatorDocs from "../../components/FacilitatorDocs"; // v6 F: hosted x402 facilitator.
@@ -868,6 +869,7 @@ export default function Docs() {
           <AgentAlertDocs />
           <AgentApprovalDocs />
           <AgentGuardDocs /> {/* V98 */}
+          <AgentPayDocs /> {/* Pay another agent */}
           <TradingAgentDocs /> {/* B */}
           <AgentCertificateDocs /><AgentProfileDocs /><AgentIdentityDocs /><SealedAgentDocs />
           <h2 id="quickstart">Make your first API call.</h2> {/* ON2 */}

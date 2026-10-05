@@ -21,6 +21,7 @@ const sections = {
   'network-host-signup': 'NetworkHostsDocs', 'network-host-policy': 'NetworkPolicyDocs',
   'network-payouts': 'NetworkPayoutDocs', 'host-bonds': 'HostBondsDocs',
   'commerce-stats': 'CommerceStatsDocs', // v6 L
+  'agent-pay': 'AgentPayDocs', // Pay another agent
 };
 
 test('/docs feature index and side navigation link every agent, encrypted-chat and network section', () => {
@@ -37,7 +38,7 @@ test('/docs feature index and side navigation link every agent, encrypted-chat a
 });
 
 test('hosted enablement keeps self-host defaults and accurately separates unavailable features', () => {
-  for (const component of Object.values(sections).filter(name => !['E2eeDocs', 'HostBondsDocs', 'NetworkPayoutDocs', 'AgreementsDocs', 'SealedAgentDocs', 'AgentIdentityDocs', 'CommerceStatsDocs'].includes(name))) {
+  for (const component of Object.values(sections).filter(name => !['E2eeDocs', 'HostBondsDocs', 'NetworkPayoutDocs', 'AgreementsDocs', 'SealedAgentDocs', 'AgentIdentityDocs', 'CommerceStatsDocs', 'AgentPayDocs'].includes(name))) {
     const docs = read(`components/${component}.jsx`);
     assert.match(docs, /default(?:s to)? false/);
     assert.match(docs, /Switched on at anyroute.tech\./);
@@ -48,6 +49,8 @@ test('hosted enablement keeps self-host defaults and accurately separates unavai
   assert.match(read('components/AgentIdentityDocs.jsx'), /default to false/);
   assert.match(read('components/AgentIdentityDocs.jsx'), /Not switched on at anyroute.tech yet\./);
   assert.match(read('components/CommerceStatsDocs.jsx'), /it defaults to false and is not switched on at anyroute.tech yet/); // v6 L
+  assert.match(read('components/AgentPayDocs.jsx'), /is built and not switched on at anyroute.tech yet\. Self-hosted routers turn it on with AGENT_PAY_ENABLED \(default false\)/); // Pay another agent
+  assert.match(read('components/AgentPayDocs.jsx'), /Anyroute never holds the money\./);
   assert.match(read('components/SealedAgentDocs.jsx'), /hosting is available at anyroute.tech, but no sealed agent is registered there yet/);
   const featureHtml = renderToStaticMarkup(createElement(DocsFeatureIndex));
   for (const phrase of ['Telegram linking and approvals', 'opt-in public profiles', 'no sealed agent is registered', 'escrow and dispute contracts deployed on Robinhood Chain', 'Live network statistics', 'Agent agreements · live, with jury rulings']) assert.ok(featureHtml.includes(phrase), phrase);

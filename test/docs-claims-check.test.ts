@@ -69,6 +69,13 @@ describe("docs claims check", () => {
     expect(judge(claim, { data: { escrow: { enabled: true, usdg: { enabled: true } } } })).toEqual([]);
   });
 
+  test("paying another agent follows agent_pay.enabled, and the fixture has it off", () => {
+    const claim = { file: "doc.md", line: 1, text: "Your agent can pay another agent from its wallet, live at anyroute.tech.", implicit: false };
+    expect(judge(claim, fixture).map((f) => [f.capability.id, f.value])).toEqual([["agent-pay", false]]);
+    expect(judge({ ...claim, text: "Paying another agent is built and not switched on at anyroute.tech yet." }, fixture)).toEqual([]);
+    expect(judge(claim, { data: { agent_pay: { enabled: true } } })).toEqual([]);
+  });
+
   test("calling an on feature off is a warning, not a failure", () => {
     expect(at("The agreement contracts are not switched on yet.").map((f) => [f.level, f.capability.id])).toEqual([["warn", "agreements"]]);
   });
