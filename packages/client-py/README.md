@@ -48,3 +48,20 @@ if asked["decision"] == "allow":
 `pay()` returns Agent Guard's decision for action `pay.agent` (allow, deny or approval_required with `approval_id` and `poll`); pass `approval_id=` with the same fields once approved. `confirm_pay()` raises with the router's reason when the transfer is missing, short, from a wallet not linked to the account, or to another wallet. Verify `receipt` at `POST /api/v1/receipts/verify`. The operator must enable `AGENT_PAY_ENABLED` (default false), which needs `AGENT_GUARD_ENABLED`; while off the routes return 404. Not switched on at anyroute.tech yet.
 
 These methods call `GET /api/v1/agents/me`, `POST /api/v1/agents/check`, `POST /api/v1/agents/pay`, `POST /api/v1/agents/pay/{decision_id}/confirm` and `POST /api/v1/agents/{key_hash}/replay`. Manage rulebooks, single-use approvals, activity, alerts and certificates on [/agents](https://anyroute.tech/agents/); see the [agent API documentation](https://anyroute.tech/docs/#agent-rulebook).
+
+## Decision tags
+
+Tag the model call that informs an order with the SHA-256 of that order. The router signs the hash into the call's receipt, so the order and the receipt together show which model answered before the decision; the router never sees the order. Decision tags are not switched on at anyroute.tech yet: the router records them only when `DECISION_TAGS_ENABLED` is on (`GET /api/v1/status` reports `decision_tags.enabled`), and ignores the header while it is off.
+
+```python
+from anyroute_client import AnyRoute, check_decision_tag, decision_tag, with_decision_tag
+
+order = {"symbol": "STOCK_A", "side": "buy", "quantity": "2", "limit_price": "180.00", "client_order_id": "7f3c"}
+with AnyRoute(router_url, api_key) as client:
+    reply = client.chat({"model": model_id, "messages": messages}, headers=with_decision_tag(order))
+    check = check_decision_tag(reply["receipt"], order)  # {"matches", "tag", "expected"}
+    # Give Agent Guard the same hash, and its decision names this call in informed_by.
+    details_sha256 = decision_tag(order)
+```
+
+`with_decision_tag(order, headers=None)` returns the headers with `X-Anyroute-Decision-Tag` added; pass it to the OpenAI SDK as `extra_headers=`. The hash is SHA-256 of the order's canonical JSON (keys sorted, no spaces), the same bytes the TypeScript SDK and the helpers in `integrations/robinhood-agents` hash. Write prices and quantities as strings. `check_decision_tag` compares hashes only; `reply["anyroute"]["receipt_verification"]` checks the signature. See the [decision tag documentation](https://anyroute.tech/docs/#decision-tags).

@@ -26,6 +26,7 @@ export type { CertificateInfo } from "./x509.js";
 export { HPKE_MEDIA_TYPE, sealedPost } from "./hpke.js";
 export type { HpkeExchange, HpkeHook, SealedPostOptions } from "./hpke.js";
 export { routingHeaders, withRouting } from "./options.js";
+export { DECISION_TAG_HEADER, checkDecisionTag, decisionTag, receiptDecisionTag, withDecisionTag } from "./decision-tag.js";
 export { TLOG_KINDS, TransparencyError, TransparencyLog, SplitViewDetected, bindingsDigest, blindIssuerKeyDigest, ohttpKeyConfigDigest, receiptKeyDigest, verifyConsistency as verifyTlogConsistency, verifyInclusion as verifyTlogInclusion, verifyRekorInclusion } from "./tlog.js";
 export type { CheckpointStore, LoggedKey, RekorAnchor, RekorAnchorOptions, TlogKind, TransparencyOptions } from "./tlog.js";
 export { defaultP256Verify, type P256Verifier } from "./ecdsa.js";

@@ -5,6 +5,7 @@ from .canonical import canonical_bytes, canonical_json
 from .agent import AgentPolicy, AgentLane, AgentRouteDefault, AgentIntent, AgentReason, AgentDecision, AgentRemaining, AgentRulebook, AgentReplay, AgentReplayExample, AgentPayInput, AgentPayDecision, AgentPayment
 from .agent_errors import AgentPolicyDenied, AgentKilled, AgentApprovalRequired
 from .client import AnyRoute
+from .decision_tag import DECISION_TAG_HEADER, check_decision_tag, decision_tag, receipt_decision_tag, with_decision_tag
 from .errors import AnyRouteError, AttestationRefused, ReceiptInvalid
 from .keccak import keccak256
 from .receipts import RECEIPT_KEYS_PATH, fetch_receipt_keys, key_id_of, parse_key_set, receipt_leaf, verify_merkle_proof, verify_receipt, verify_sidecar_receipt
@@ -21,6 +22,7 @@ __all__ = [
     "AttestationRefused",
     "BoundIdentity",
     "Check",
+    "DECISION_TAG_HEADER",
     "ExpectedDigests",
     "ProviderVerification",
     "RECEIPT_KEYS_PATH",
@@ -30,6 +32,8 @@ __all__ = [
     "attest_san_for",
     "canonical_bytes",
     "canonical_json",
+    "check_decision_tag",
+    "decision_tag",
     "digest_hex",
     "evaluate_attestation",
     "fetch_receipt_keys",
@@ -38,10 +42,12 @@ __all__ = [
     "key_id_of",
     "parse_key_set",
     "parse_tdx_quote",
+    "receipt_decision_tag",
     "receipt_leaf",
     "verify_merkle_proof",
     "verify_provider",
     "verify_receipt",
     "verify_sidecar_receipt",
+    "with_decision_tag",
 ]
 __version__ = "0.1.0"
