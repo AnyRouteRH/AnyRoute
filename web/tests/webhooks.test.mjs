@@ -23,7 +23,7 @@ test('standard library verification example checks exact bytes, time and signed 
   });
 });
 test('webhook page uses the shared Account group and search-only task', () => {
-  assert.ok(ACCOUNT_GROUPS.find(g => g.title === 'Account').ids.includes('webhooks'));
+  assert.ok(ACCOUNT_GROUPS.find(g => g.title === 'Settings').ids.includes('webhooks'));
   assert.equal(TASKS.find(t => t.id === 'webhooks').menu,false);
   assert.equal(ACCOUNT_SECTIONS.find(t => t.taskId === 'webhooks').href,'/dashboard/webhooks/');
   assert.equal(eventLabel('approval.decided'),'Approval decided');

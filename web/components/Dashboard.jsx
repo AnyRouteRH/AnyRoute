@@ -16,7 +16,7 @@ import AccountShell from "./account/AccountShell";
 import AccountAnchors from "./account/AccountAnchors.js";
 import AccountHome from "./account/AccountHome";
 import { useAccountKey } from "./account/useAccountKey";
-import { sectionFromHash, sectionHash } from "./account/account-state.js";
+import { groupHash, sectionFromHash, sectionHash } from "./account/account-state.js";
 import TelegramLink from "../app/agents/TelegramLink";
 import { useEffect, useRef, useState } from "react";
 import { models as sampleModels, providers as sampleProviders, initialWorkspace, storageKey, routeCall, validWorkspace, money } from "../lib/demo";
@@ -867,7 +867,10 @@ export default function Dashboard() {
       setLoaded(true);
     }
     const selectHash = () => {
-      setTab(sectionFromHash(window.location.hash));
+      const next = sectionFromHash(window.location.hash);
+      // U104: a tab id (#keys) opens that tab's first section, shown under the section's own hash.
+      if (groupHash(window.location.hash.slice(1)) && window.location.hash !== "#" + tabId(next)) window.history.replaceState(null, "", "#" + tabId(next));
+      setTab(next);
     };
     selectHash();
     const model = new URLSearchParams(window.location.search).get("model");

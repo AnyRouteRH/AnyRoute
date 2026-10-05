@@ -97,5 +97,5 @@ test('Home, Harness and Playground share funding and explicit retry wiring', () 
   assert.equal(TASKS.find(item => item.id === 'account-payments').title, 'Add funds');
   assert.ok(menuTasks('build').some(item => item.id === 'account-payments')); assert.ok(menuTasks('build').length <= 9);
   assert.equal(TASKS.find(item => item.id === 'get-usdg').menu, false);
-  assert.ok(ACCOUNT_GROUPS.find(group => group.title === 'Money').ids.includes('account-payments'));
+  assert.ok(ACCOUNT_GROUPS.find(group => group.title === 'Billing').ids.includes('account-payments'));
 });

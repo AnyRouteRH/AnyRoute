@@ -4,16 +4,35 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import fs from 'node:fs';
 import { ACCOUNT_GROUPS, ACCOUNT_SECTIONS, TASKS, menuTasks, GROUPS } from '../lib/site-map.js';
-import { AccountNavigation, AccountPreview } from '../components/account/AccountViews.js';
-import { dashboardSections, sectionFromHash, sectionHash, homeChecklist, homeSpend } from '../components/account/account-state.js';
+import { AccountNavigation, AccountPreview, AccountTabs } from '../components/account/AccountViews.js';
+import AccountAnchors from '../components/account/AccountAnchors.js';
+import { dashboardSections, groupOf, groupSections, sectionFromHash, sectionHash, homeChecklist, homeSpend } from '../components/account/account-state.js';
 
-test('one account map includes every section once in the intended groups', () => {
-  assert.deepEqual(ACCOUNT_GROUPS.map(group => group.title), ['Home', 'Use', 'Agents', 'Money', 'Account']);
+// U104: the earlier sidebar groups, kept here as the old -> new map every section moved through.
+const MOVED = {
+  Home: { dashboard: 'Overview', inbox: 'Overview' },
+  Use: { playground: 'Build', models: 'Build', routing: 'Build', presets: 'Build', characters: 'Build', evals: 'Build', batches: 'Build', skills: 'Build' },
+  Agents: { rulebook: 'Keys & limits', sessions: 'Keys & limits', directory: 'Keys & limits' },
+  Money: { insights: 'Overview', 'account-activity': 'Overview', statements: 'Billing', 'account-payments': 'Billing', holders: 'Billing', spend: 'Keys & limits', 'api-receipts': 'Billing' },
+  Account: { 'account-keys': 'Keys & limits', 'account-export': 'Settings', teams: 'Keys & limits', providers: 'Build', settings: 'Settings', webhooks: 'Settings', keep: 'Settings' },
+};
+
+test('one account map includes every section once in five tabs', () => {
+  assert.deepEqual(ACCOUNT_GROUPS.map(group => group.title), ['Overview', 'Build', 'Keys & limits', 'Billing', 'Settings']);
+  assert.deepEqual(ACCOUNT_GROUPS.map(group => group.id), ['overview', 'build', 'keys', 'billing', 'settings']);
   const ids = ACCOUNT_GROUPS.flatMap(group => group.ids);
-  assert.equal(new Set(ids).size, 27); // V86: Webhooks joins Account.
-  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.title === 'Account').ids, ['account-keys', 'account-export', 'teams', 'providers', 'settings', 'webhooks', 'keep']);
+  assert.equal(ids.length, 27); assert.equal(new Set(ids).size, 27);
   assert.deepEqual(new Set(ids), new Set(ACCOUNT_SECTIONS.map(section => section.taskId)));
-  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.title === 'Money').ids, ['insights', 'account-activity', 'statements', 'account-payments', 'holders', 'spend', 'api-receipts']);
+  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'keys').ids, ['account-keys', 'rulebook', 'sessions', 'spend', 'teams', 'directory']);
+  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'billing').ids, ['account-payments', 'api-receipts', 'statements', 'holders']);
+  assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'settings').ids, ['settings', 'account-export', 'webhooks', 'keep']);
+  const moved = Object.assign({}, ...Object.values(MOVED));
+  assert.equal(Object.keys(moved).length, 27);
+  for (const [id, title] of Object.entries(moved)) assert.equal(ACCOUNT_GROUPS.find(group => group.ids.includes(id))?.title, title, id);
+  // Each tab opens on a dashboard section, so a tab click stays on the page.
+  for (const group of ACCOUNT_GROUPS) assert.ok(groupSections(group)[0].hash, group.id);
+  for (const section of ACCOUNT_SECTIONS) assert.equal(groupOf(section.title).ids.includes(section.taskId), true, section.title);
+  assert.equal(groupOf('Unknown').id, 'overview');
   for (const section of ACCOUNT_SECTIONS) assert.ok(TASKS.some(task => task.id === section.taskId));
   for (const group of GROUPS) assert.ok(menuTasks(group.id).length <= 9);
 });
@@ -28,26 +47,47 @@ test('every legacy dashboard deep link selects its view; overview and unknown ha
     assert.ok(ACCOUNT_SECTIONS.some(section => section.href === '/dashboard/#' + hash));
   }
   for (const hash of ['', '#overview', '#home', '#missing']) assert.equal(sectionFromHash(hash), 'Home');
+  // U104: each tab id is a hash too, opening that tab's first section, with an anchor on the page.
+  assert.deepEqual(Object.fromEntries(ACCOUNT_GROUPS.map(group => [group.id, sectionFromHash('#' + group.id)])), { overview: 'Home', build: 'Playground', keys: 'API keys', billing: 'Payments', settings: 'Settings' });
+  const anchors = renderToStaticMarkup(h(AccountAnchors));
+  for (const id of ['overview', ...ACCOUNT_GROUPS.map(group => group.id), ...dashboardSections.map(section => section.hash)]) assert.equal(anchors.split(`id="${id}"`).length, 2, id);
 });
 
-test('the rendered sidebar uses real links and marks only the current section', () => {
-  for (const current of ['Home', 'Agents', 'Receipts']) {
+test('five tabs and the current tab’s sections use real links and mark only where you are', () => {
+  const reached = new Set();
+  for (const [current, tab] of [['Home', 'Overview'], ['Agents', 'Keys & limits'], ['Receipts', 'Billing'], ['Webhooks', 'Settings'], ['Providers', 'Build']]) {
+    const tabs = renderToStaticMarkup(h(AccountTabs, { current }));
+    assert.match(tabs, /^<nav class="dashboard-nav" aria-label="Account">/);
+    assert.equal((tabs.match(/<a /g) || []).length, 5); assert.equal((tabs.match(/aria-current="true"/g) || []).length, 1);
+    assert.match(tabs, new RegExp(`aria-current="true"[^>]*>${tab.replace('&', '&amp;')}</a>`));
+    for (const group of ACCOUNT_GROUPS) assert.ok(tabs.includes(`href="${groupSections(group)[0].href}"`), group.id);
     const html = renderToStaticMarkup(h(AccountNavigation, { current }));
     assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
-    assert.match(html, /aria-label="Account sections"/);
-    for (const section of ACCOUNT_SECTIONS) assert.ok(html.includes(`href="${section.href}"`), section.title);
+    assert.ok(html.includes(`aria-label="${tab.replace('&', '&amp;')} sections"`));
+    for (const section of groupSections(groupOf(current))) assert.ok(html.includes(`href="${section.href}"`), section.title);
   }
+  // Every section is one tab away.
+  for (const group of ACCOUNT_GROUPS) for (const section of groupSections(group)) if (renderToStaticMarkup(h(AccountNavigation, { current: groupSections(group)[0].title })).includes(`href="${section.href}"`)) reached.add(section.taskId);
+  assert.equal(reached.size, ACCOUNT_SECTIONS.length);
 });
 
-test('sidebar navigation preserves modified clicks and routes dashboard clicks in place', () => {
+test('tab and section links preserve modified clicks and route dashboard clicks in place', () => {
   const chosen = [];
   const tree = AccountNavigation({ current: 'Home', onNavigate: title => chosen.push(title) });
-  const link = tree.props.children[1].props.children[1];
+  const link = tree.props.children.props.children[2];
   let prevented = 0;
   link.props.onClick({ button: 0, preventDefault: () => prevented++ });
-  assert.deepEqual(chosen, ['Playground']); assert.equal(prevented, 1);
+  assert.deepEqual(chosen, ['Inbox']); assert.equal(prevented, 1);
   for (const modifiers of [{button:1},{button:0,metaKey:true},{button:0,ctrlKey:true},{button:0,shiftKey:true},{button:0,altKey:true}]) link.props.onClick({...modifiers,preventDefault:()=>prevented++});
   assert.equal(prevented, 1);
+  const tabs = AccountTabs({ current: 'Home', onNavigate: title => chosen.push(title) }).props.children;
+  tabs[2].props.onClick({ button: 0, preventDefault: () => prevented++ });
+  assert.deepEqual(chosen, ['Inbox', 'API keys']); assert.equal(prevented, 2);
+  tabs[2].props.onClick({ button: 0, metaKey: true, preventDefault: () => prevented++ }); assert.equal(prevented, 2);
+  // Off the dashboard (no onNavigate) and for sections on other pages, the link is followed.
+  AccountTabs({ current: 'Agents' }).props.children[0].props.onClick({ button: 0, preventDefault: () => prevented++ });
+  AccountNavigation({ current: 'Agents', onNavigate: title => chosen.push(title) }).props.children.props.children[2].props.onClick({ button: 0, preventDefault: () => prevented++ });
+  assert.equal(prevented, 2); assert.equal(chosen.length, 2);
 });
 
 test('signed-out previews render honest copy for every section without account figures', () => {

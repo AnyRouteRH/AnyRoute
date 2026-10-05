@@ -1,16 +1,25 @@
 import { createElement as h } from 'react';
 import { ACCOUNT_GROUPS, ACCOUNT_SECTIONS } from '../../lib/site-map.js';
+import { groupOf, groupSections } from './account-state.js';
+// A plain click on a dashboard section stays on the page; modified clicks and other pages follow the link.
+const follow = (section, onNavigate) => event => {
+  if (!onNavigate || !section.hash || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault(); onNavigate(section.title);
+};
+// U104: the five account tabs. Real links, so they also work from /agents/ and /dashboard/webhooks/; each opens its first section.
+export function AccountTabs({ current, onNavigate, className }) {
+  const here = groupOf(current);
+  return h('nav', { className: 'dashboard-nav' + (className ? ' ' + className : ''), 'aria-label': 'Account' }, ACCOUNT_GROUPS.map(group => {
+    const first = groupSections(group)[0];
+    return h('a', { key: group.id, href: first.href, 'aria-current': group === here ? 'true' : undefined, onClick: follow(first, onNavigate) }, group.title);
+  }));
+}
+// The sections of the current tab.
 export function AccountNavigation({ current, onNavigate }) {
-  return h('nav', { 'aria-label': 'Account sections' }, ACCOUNT_GROUPS.map(group => h('div', { key: group.title },
+  const group = groupOf(current);
+  return h('nav', { 'aria-label': `${group.title} sections` }, h('div', null,
     h('span', { className: 'eyebrow' }, group.title),
-    ...group.ids.map(id => {
-      const section = ACCOUNT_SECTIONS.find(item => item.taskId === id);
-      return h('a', { key: id, href: section.href, 'aria-current': current === section.title ? 'page' : undefined,
-        onClick: event => {
-          if (!onNavigate || !section.hash || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-          event.preventDefault(); onNavigate(section.title);
-        } }, section.title);
-    }))));
+    ...groupSections(group).map(section => h('a', { key: section.taskId, href: section.href, 'aria-current': current === section.title ? 'page' : undefined, onClick: follow(section, onNavigate) }, section.title))));
 }
 // What signed-out visitors see on Home: the six things it shows once a key is connected. No numbers.
 export const HOME_PREVIEW = [

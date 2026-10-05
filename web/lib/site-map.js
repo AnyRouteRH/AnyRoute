@@ -120,12 +120,13 @@ TASKS.push({ ...task('webhooks', 'build', 'Manage webhook destinations', 'Inspec
 TASKS.push({ ...task('commerce', 'verify', 'Read the commerce ledger', 'See anchored settlements without self-dealing, beside the gross figures.', '/commerce/', 'commerce, settlements, volume, self-dealing, dune'), menu: false }); // v6 L: search-only.
 
 // Account sections share the task map; existing dashboard hashes remain stable.
+// U104: five account tabs. Each opens its first section; its id is also a dashboard hash (#keys opens API keys).
 export const ACCOUNT_GROUPS = [
-  { title: 'Home', ids: ['dashboard', 'inbox'] },
-  { title: 'Use', ids: ['playground', 'models', 'routing', 'presets', 'characters', 'evals', 'batches', 'skills'] },
-  { title: 'Agents', ids: ['rulebook', 'sessions', 'directory'] },
-  { title: 'Money', ids: ['insights', 'account-activity', 'statements', 'account-payments', 'holders', 'spend', 'api-receipts'] },
-  { title: 'Account', ids: ['account-keys', 'account-export', 'teams', 'providers', 'settings', 'webhooks', 'keep'] },
+  { id: 'overview', title: 'Overview', ids: ['dashboard', 'inbox', 'account-activity', 'insights'] },
+  { id: 'build', title: 'Build', ids: ['playground', 'models', 'routing', 'presets', 'characters', 'evals', 'batches', 'skills', 'providers'] },
+  { id: 'keys', title: 'Keys & limits', ids: ['account-keys', 'rulebook', 'sessions', 'spend', 'teams', 'directory'] },
+  { id: 'billing', title: 'Billing', ids: ['account-payments', 'api-receipts', 'statements', 'holders'] },
+  { id: 'settings', title: 'Settings', ids: ['settings', 'account-export', 'webhooks', 'keep'] },
 ];
 TASKS.push(task('account-keys', 'build', 'Manage account keys', 'Explore API keys, then connect to create keys and set budgets.', '/dashboard/#api-keys', 'api keys, budget'));
 TASKS.push(task('account-payments', 'build', 'Add funds', 'Connect your key and choose a token to see live deposit instructions.', '/dashboard/#payments', 'balance, deposit'));

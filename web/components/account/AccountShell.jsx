@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Button, CopyButton, Modal } from '../UI';
-import { AccountNavigation, AccountPreview } from './AccountViews.js';
+import { AccountNavigation, AccountPreview, AccountTabs } from './AccountViews.js';
 import AccountConnect from './AccountConnect';
 import FirstCallQuickstart from './FirstCallQuickstart'; // ON2
 import s from './AccountShell.module.css';
@@ -9,12 +9,14 @@ export default function AccountShell({ current, apiKey, onConnect, onDisconnect,
   const [secret, setSecret] = useState('');
   const content = useRef(null);
   const side = useRef(null);
-  // Phones show the sections as one swipeable row: start it at the current section.
-  useEffect(() => { const nav = side.current?.querySelector('nav'); const here = nav?.querySelector('[aria-current]'); if (nav && here && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = here.offsetLeft - nav.offsetLeft - 8; }, [current]);
+  const tabs = useRef(null);
+  // Phones show the tabs and the current tab's sections as swipeable rows: start each at the current one.
+  useEffect(() => { for (const nav of [tabs.current?.querySelector('nav'), side.current?.querySelector('nav')]) { const here = nav?.querySelector('[aria-current]'); if (nav && here && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = here.offsetLeft - nav.offsetLeft - 8; } }, [current]);
   useEffect(() => {
     if (!apiKey && window.location.hash) content.current?.querySelector('h2')?.focus({ preventScroll: true });
   }, [current, apiKey]);
   return <div className={s.shell}>
+    <div className={s.tabs} ref={tabs}><AccountTabs current={current} onNavigate={onNavigate}/></div>
     <aside className={s.sidebar} ref={side}><AccountNavigation current={current} onNavigate={onNavigate}/>
       <div className={s.connection}>{apiKey ? <><p className="help-text">Key connected · this tab only</p><Button secondary onClick={onDisconnect}>Disconnect</Button></> : <p className="help-text">Explore your account. Connect a key when you are ready.</p>}</div>
     </aside>

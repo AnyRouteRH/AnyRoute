@@ -38,7 +38,7 @@ test('approve and deny from inbox call only the existing single-use approval end
   await assert.rejects(decideInboxApproval(request, 'id', 'used')); assert.equal(calls.length, 2);
 });
 test('inbox is a real account section and a searchable task in the API account group', () => {
-  assert.equal(sectionFromHash('#inbox'), 'Inbox'); assert.ok(ACCOUNT_GROUPS.find(group => group.title === 'Home').ids.includes('inbox'));
+  assert.equal(sectionFromHash('#inbox'), 'Inbox'); assert.ok(ACCOUNT_GROUPS.find(group => group.title === 'Overview').ids.includes('inbox'));
   const task = TASKS.find(task => task.id === 'inbox'); assert.equal(task.title, 'Check your inbox'); assert.equal(task.group, 'build'); assert.equal(task.href, '/dashboard/#inbox');
 });
 

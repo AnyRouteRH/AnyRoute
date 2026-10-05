@@ -1,6 +1,15 @@
-import { ACCOUNT_SECTIONS } from '../../lib/site-map.js';
+import { ACCOUNT_GROUPS, ACCOUNT_SECTIONS } from '../../lib/site-map.js';
 export const dashboardSections = ACCOUNT_SECTIONS.filter(section => section.hash);
-export const sectionFromHash = hash => dashboardSections.find(section => section.hash === hash.replace(/^#/, ''))?.title || 'Home';
+// U104: the sections of each account tab, in order, and the tab a section belongs to (Overview when unknown).
+export const groupSections = group => group.ids.map(id => ACCOUNT_SECTIONS.find(section => section.taskId === id));
+export const groupOf = title => ACCOUNT_GROUPS.find(group => groupSections(group).some(section => section.title === title)) || ACCOUNT_GROUPS[0];
+// A tab id used as a hash (#overview, #build, #keys, #billing, #settings) opens that tab's first dashboard section.
+export const groupHash = id => { const group = ACCOUNT_GROUPS.find(item => item.id === id); return group ? groupSections(group).find(section => section.hash)?.hash : undefined; };
+export const sectionFromHash = hash => {
+  const id = hash.replace(/^#/, '');
+  const target = dashboardSections.some(section => section.hash === id) ? id : groupHash(id);
+  return dashboardSections.find(section => section.hash === target)?.title || 'Home';
+};
 export const sectionHash = title => dashboardSections.find(section => section.title === title)?.hash || 'home';
 export function homeChecklist(workspace, agents) {
   return [

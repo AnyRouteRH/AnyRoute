@@ -66,5 +66,5 @@ test('cancel prevents completion, failures are surfaced and unchanged cursors ar
 });
 test('secret stripping keeps key metadata and navigation uses the account map',()=>{
   assert.deepEqual(withoutSecrets({key:'credential',keys:[{hash:'hash',key_hash:'hash',secret:'credential',deposit:{key_hash:'chain-hash'}}]}),{keys:[{hash:'hash',key_hash:'hash',deposit:{key_hash:'chain-hash'}}]});
-  for(const [id,group,hash] of [['statements','Money','statements'],['account-export','Account','export-data']]){assert.ok(ACCOUNT_GROUPS.find(g=>g.title===group).ids.includes(id));assert.equal(ACCOUNT_SECTIONS.find(s=>s.taskId===id).hash,hash);assert.equal(TASKS.find(t=>t.id===id).menu,false);}
+  for(const [id,group,hash] of [['statements','Billing','statements'],['account-export','Settings','export-data']]){assert.ok(ACCOUNT_GROUPS.find(g=>g.title===group).ids.includes(id));assert.equal(ACCOUNT_SECTIONS.find(s=>s.taskId===id).hash,hash);assert.equal(TASKS.find(t=>t.id===id).menu,false);}
 });

@@ -1,4 +1,8 @@
 .shell{display:grid;grid-template-columns:200px minmax(0,1fr);gap:32px;align-items:start}
+/* U104: the five account tabs span the shell; the sidebar lists the current tab's sections. */
+.tabs{grid-column:1/-1;min-width:0}
+.tabs nav{position:static;margin-top:0;margin-bottom:0;background:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.tabs a:focus-visible,.sidebar a:focus-visible{outline:2px solid var(--signal-deep);outline-offset:-2px}
 .sidebar{border:1px solid var(--line);background:var(--paper-2);padding:16px}
 .sidebar nav{display:grid;gap:20px}
 .sidebar nav div{display:grid;gap:4px}
