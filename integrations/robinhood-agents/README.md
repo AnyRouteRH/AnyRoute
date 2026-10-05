@@ -82,6 +82,8 @@ check = verify_decision_receipt(receipt, intent)  # pip install cryptography
 - A malformed tag is refused with 400 before anything is charged. The unlinkable lane refuses tags, because a reused tag joins calls together.
 - Receipts are anchored hourly; `GET /api/v1/receipts/:id/proof` returns the Merkle path once a receipt's hour is rooted.
 - Off unless the router sets `DECISION_TAGS_ENABLED`; `GET /api/v1/status` shows `decision_tags.enabled`. While it is off the header is ignored, so check `payload.decision_tag` in the first receipt you store.
+- Give `guarded(...)` in `guard.ts` or `guard.py` the same intent: its `details_sha256` is this hash. When the router records tags, the Agent Guard decision then names the tagged call in `informed_by` (generation id, receipt id, model, provider), and `GET /api/v1/guard/decisions?receipt=<receipt id>` lists the decisions a receipt's tag went into.
+- To check by hand, paste the receipt and then the intent at `/verify/`: the intent is hashed in the browser and only the hashes are compared. A proof pack lists every tagged call in `decision_tags`, and `node scripts/verify-proof-pack.mjs <pack> --intent intent.json` names the call behind an intent. The SDKs have the same helpers: `withDecisionTag` in `packages/client`, `with_decision_tag` in `packages/client-py`.
 
 ## 4. Market-data tools (per call)
 
