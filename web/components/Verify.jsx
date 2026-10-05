@@ -106,7 +106,7 @@ function DecisionTag({info,receiptValid}){
       {out?.error&&<div className="error" role="alert">{out.error}</div>}
       {out?.tag&&<div className={styles.verdict} data-tone={match&&receiptValid?'ok':match?'warn':'bad'} role="status">
         <div className={styles.verdictHead}><h2>{match?'The order matches':'Not this order'}</h2><State state={match&&receiptValid?'pass':match?'bad':'fail'}/></div>
-        <p>{match&&receiptValid?'This is the order the receipt’s signed decision tag names: the model call above was made with this order’s hash attached.':match?'The hashes match, but the receipt itself did not verify, so this shows nothing.':`This order hashes to ${shortDigest(out.tag)}, not to the receipt’s tag. A changed field, a number written another way or a missing field gives a different hash.`}</p>
+        <p>{match&&receiptValid?'This is the order the receipt’s signed decision tag names: the model call this receipt covers was made with this order’s hash attached.':match?'The hashes match, but the receipt itself did not verify, so this shows nothing.':`This order hashes to ${shortDigest(out.tag)}, not to the receipt’s tag. A changed field, a number written another way or a missing field gives a different hash.`}</p>
       </div>}
     </dd></div>
   </dl></div>;
