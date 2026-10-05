@@ -284,7 +284,10 @@ export async function verifyReceipt(receipt, opts = {}) {
   const v1 = await verifyReceiptV1(receipt, opts);
   if (!cose) return v1;
   const v2 = await verifyReceiptV2(cose, { ...v2opts, proof: receipt.v2?.anchor });
-  return { ...v1, valid: v1.valid && v2.valid, checks: [...v1.checks, ...v2.checks], claims: v2.claims };
+  // B: both encodings are signed by the router from the same call, so they carry the same decision tag or none.
+  const t1 = receipt.payload?.decision_tag ?? null, t2 = v2.claims?.decision_tag ?? null;
+  const tags = t1 === t2 ? [] : [fail("decision_tag", "The v1 and v2 receipts carry different decision tags, so they are not from the same call.")];
+  return { ...v1, valid: v1.valid && v2.valid && !tags.length, checks: [...v1.checks, ...v2.checks, ...tags], claims: v2.claims };
 }
 const anchorState = (checks) => {
   const c = checks.find((x) => x.id === "v2_anchor_proof");
@@ -487,6 +490,43 @@ export async function verifyReceiptV2(coseB64, { keys, publicKeyHex, ed25519 = e
     checks.push(ok ? pass("v2_anchor_proof", `v2: included under root ${proof.root.slice(0, 10)}…${proof.anchored ? "" : " (a root kept off chain, not posted)"}`) : fail("v2_anchor_proof", "v2: the Merkle path does not lead from this receipt to the root."));
   } else checks.push(skip("v2_anchor_proof", "v2: no Merkle path yet. Roots are built hourly."));
   return { valid: checks.every((c) => c.status !== "fail") && checks.some((c) => c.id === "v2_signature" && c.status === "pass"), keyId: d.keyId, claims: d.claims, leaf, checks };
+}
+
+// ---- decision tags (B) ---------------------------------------------------------------------------------------------
+// A caller may send X-Anyroute-Decision-Tag with a model call: the SHA-256 of the order its agent is about to place. The
+// router signs it into that call's v1 receipt (payload.decision_tag) and v2 claims (claims.decision_tag). The page shows it
+// and hashes an order pasted here the way the helpers and SDKs do; only the two hashes are compared, nothing is sent.
+
+const TAG = /^sha256:[0-9a-f]{64}$/;
+
+/**
+ * The decision tag a receipt carries, from its v1 payload or its v2 claims (pass the decoded, signed claims when the
+ * receipt was checked), or null. `agree` is false when the two encodings name different tags.
+ */
+export function receiptDecisionTag(receipt, claims) {
+  const v1 = typeof receipt?.payload?.decision_tag === "string" ? receipt.payload.decision_tag : null;
+  const c = claims ?? receipt?.v2?.claims ?? (typeof receipt?.claims === "object" ? receipt.claims : null);
+  const v2 = typeof c?.decision_tag === "string" ? c.decision_tag : null;
+  const tag = v1 ?? v2;
+  return tag ? { tag, v1, v2, agree: !v1 || !v2 || v1 === v2, wellFormed: TAG.test(tag) } : null;
+}
+
+/**
+ * `sha256:<hex>` of an order's canonical JSON (keys sorted, no spaces), the same bytes the decision-receipt helpers and
+ * the SDKs hash, or a pasted `sha256:` digest as it is. Returns { tag } or { error }. Runs in this browser only.
+ */
+export async function orderDecisionTag(text) {
+  const s = String(text || "").trim();
+  if (!s) return { error: "Paste the order first." };
+  if (/^(?:sha256:)?[0-9a-fA-F]{64}$/.test(s)) return { tag: "sha256:" + s.replace(/^sha256:/, "").toLowerCase(), digest: true };
+  let value;
+  try {
+    value = JSON.parse(s);
+  } catch {
+    return { error: "That is not valid JSON. Paste the order exactly as your agent hashed it." };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { error: "An order is a JSON object, for example {\"symbol\":\"STOCK_A\",\"side\":\"buy\",\"quantity\":\"2\"}." };
+  return { tag: "sha256:" + bytesToHex(await sha256(utf8(canonicalJson(value)))) };
 }
 
 /**

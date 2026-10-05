@@ -33,3 +33,16 @@ export function decisionTagOf(enabled: boolean, c: Context, lane: string): strin
 
 /** The signed receipt field: omitted entirely when there is no tag, so untagged receipts are unchanged. */
 export const decisionTagFields = (tag: string | null): { decision_tag?: string } => (tag ? { decision_tag: tag } : {});
+
+/** A tag a verifier is asked to compare: `sha256:<64 hex>` or the bare hex, any case. */
+export const expectedDecisionTag = z.string().trim().regex(/^(?:sha256:)?[0-9a-fA-F]{64}$/, "decision_tag must be sha256:<64 hex characters>").transform((v) => `sha256:${v.replace(/^sha256:/, "").toLowerCase()}`);
+
+/**
+ * What a receipt verification reports about a decision tag: the tag the receipt's signed contents carry (null when it has
+ * none) and, when the caller supplied the tag it expects (the SHA-256 of its order, computed on its side), whether the two
+ * are the same. Only digests are compared; the order itself is never sent.
+ */
+export function decisionTagCheck(signed: unknown, expected: string | undefined) {
+  const tag = typeof signed === "string" && /^sha256:[0-9a-f]{64}$/.test(signed) ? signed : null;
+  return { decision_tag: tag, decision_tag_valid: expected === undefined ? null : tag === expected };
+}

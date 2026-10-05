@@ -58,6 +58,28 @@ describe("DECISION_TAGS_ENABLED=true", () => {
     expect((row.receiptV2 as { decision_tag?: string }).decision_tag).toBe(orderIntentHash(intent));
   });
 
+  test("POST /api/v1/receipts/verify shows the signed tag and compares it with the order hash a caller sends", async () => {
+    const key = await h.fundedKey();
+    const tag = orderIntentHash(intent), changed = orderIntentHash({ ...intent, quantity: "20" });
+    const receipt = (await (await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...key.auth, ...decisionHeaders(intent) }, json: chat() })).json()).receipt;
+    const plain = (await (await h.request("/api/v1/chat/completions", { method: "POST", headers: key.auth, json: chat() })).json()).receipt;
+    const verify = async (body: Record<string, unknown>) => (await (await h.request("/api/v1/receipts/verify", { method: "POST", json: body })).json()).data;
+    const v1 = { payload: receipt.payload, sig: receipt.sig, key_id: receipt.key_id };
+    expect(await verify(v1)).toMatchObject({ valid: true, decision_tag: tag, decision_tag_valid: null });
+    expect(await verify({ ...v1, decision_tag: tag })).toMatchObject({ valid: true, signature_valid: true, decision_tag_valid: true });
+    expect(await verify({ ...v1, decision_tag: tag.slice(7).toUpperCase() })).toMatchObject({ valid: true, decision_tag_valid: true });
+    expect(await verify({ ...v1, decision_tag: changed })).toMatchObject({ valid: false, signature_valid: true, decision_tag: tag, decision_tag_valid: false });
+    expect(await verify({ cose: receipt.v2.cose, decision_tag: tag })).toMatchObject({ valid: true, signature_valid: true, decision_tag: tag, decision_tag_valid: true });
+    expect(await verify({ cose: receipt.v2.cose, decision_tag: changed })).toMatchObject({ valid: false, decision_tag_valid: false });
+    // An untagged receipt says so, and cannot match an order.
+    const untagged = { payload: plain.payload, sig: plain.sig, key_id: plain.key_id };
+    expect(await verify(untagged)).toMatchObject({ valid: true, decision_tag: null, decision_tag_valid: null });
+    expect(await verify({ ...untagged, decision_tag: tag })).toMatchObject({ valid: false, signature_valid: true, decision_tag: null, decision_tag_valid: false });
+    // A tag edited into a stored receipt still fails its signature, whatever the comparison says.
+    expect(await verify({ ...v1, payload: { ...v1.payload, decision_tag: changed }, decision_tag: changed })).toMatchObject({ valid: false, signature_valid: false, decision_tag_valid: true });
+    expect((await h.request("/api/v1/receipts/verify", { method: "POST", json: { ...v1, decision_tag: "buy STOCK_A" } })).status).toBe(400);
+  });
+
   test("streamed calls carry the tag in the closing receipt; untagged calls are unchanged", async () => {
     const key = await h.fundedKey();
     const s = await sse(await h.request("/api/v1/chat/completions", { method: "POST", headers: { ...key.auth, ...decisionHeaders(intent) }, json: chat({ stream: true }) }));

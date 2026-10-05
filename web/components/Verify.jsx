@@ -4,7 +4,7 @@ import ProofBadge from './ProofBadge';
 import {useEffect,useState} from 'react';
 import {CopyButton,Button,Code} from './UI';
 import {API_BASE} from '../lib/api';
-import {KEYS_PATH,attestationPath,describeAttestation,isEnclaveReceipt,parseReceiptInput,providerIdFromSearch,shortDigest,verifyReceipt} from '../lib/verify';
+import {KEYS_PATH,attestationPath,describeAttestation,isEnclaveReceipt,orderDecisionTag,parseReceiptInput,providerIdFromSearch,receiptDecisionTag,shortDigest,verifyReceipt} from '../lib/verify';
 import {describePrivacy,privacyPath,receiptIdFromSearch} from '../lib/privacy';
 import styles from './Verify.module.css';
 
@@ -86,8 +86,35 @@ function Attestation({view}){
 
 const RESULT_HEAD={true:['pass','Signature valid'],false:['fail','Does not verify']};
 
-function ReceiptBox({providerId}){
-  const [text,setText]=useState('');const [keyHex,setKeyHex]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [out,setOut]=useState(null);
+/** B: a receipt's decision tag, and an order pasted here hashed in this browser and compared with it. */
+function DecisionTag({info,receiptValid}){
+  const [order,setOrder]=useState('');const [out,setOut]=useState(null);
+  async function check(e){e.preventDefault();setOut(null);setOut(await orderDecisionTag(order))}
+  const match=out?.tag?out.tag===info.tag:null;
+  return <div className={styles.panel}><dl className={styles.facts}>
+    <div className={styles.fact}><dt>Decision tag</dt><dd>
+      <div className={styles.digest}><code>{info.tag}</code><CopyButton text={info.tag}/></div>
+      <span className={styles.sub}>The caller sent this SHA-256 with the call, usually the hash of the order its agent placed after reading the answer, and the router signed it into this receipt with the model, provider and request and answer hashes. The router only ever saw the hash, never the order.</span>
+      {!info.agree&&<span className={styles.sub}>The v1 and v2 encodings name different tags. Do not rely on either.</span>}
+    </dd></div>
+    <div className={styles.fact}><dt>Check an order</dt><dd>
+      <form onSubmit={check}>
+        <div className="field" style={{margin:0}}><label htmlFor="order-json">Order JSON, or its sha256: hash</label><textarea id="order-json" value={order} onChange={e=>{setOrder(e.target.value);setOut(null)}} spellCheck="false" autoComplete="off" className="mono" rows={4} placeholder={'{"client_order_id":"7f3c","limit_price":"180.00","quantity":"2","side":"buy","symbol":"STOCK_A"}'}/></div>
+        <div className={styles.actions} style={{marginTop:12}}><Button type="submit" secondary>Check the order</Button></div>
+      </form>
+      <span className={styles.sub}>Hashed in this browser as canonical JSON (keys sorted, no spaces), as the decision-receipt helpers and the SDKs hash it. Only the two hashes are compared; the order is not sent anywhere. Write prices and quantities as strings so every language hashes the same bytes.</span>
+      {out?.error&&<div className="error" role="alert">{out.error}</div>}
+      {out?.tag&&<div className={styles.verdict} data-tone={match&&receiptValid?'ok':match?'warn':'bad'} role="status">
+        <div className={styles.verdictHead}><h2>{match?'The order matches':'Not this order'}</h2><State state={match&&receiptValid?'pass':match?'bad':'fail'}/></div>
+        <p>{match&&receiptValid?'This is the order the receipt’s signed decision tag names: the model call above was made with this order’s hash attached.':match?'The hashes match, but the receipt itself did not verify, so this shows nothing.':`This order hashes to ${shortDigest(out.tag)}, not to the receipt’s tag. A changed field, a number written another way or a missing field gives a different hash.`}</p>
+      </div>}
+    </dd></div>
+  </dl></div>;
+}
+
+function ReceiptBox({providerId,initial}){
+  const [text,setText]=useState('');
+  useEffect(()=>{if(initial)setText(t=>t||initial)},[initial]);const [keyHex,setKeyHex]=useState('');const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [out,setOut]=useState(null);
   async function run(e){
     e.preventDefault();setError('');setOut(null);
     const parsed=parseReceiptInput(text);if(parsed.error){setError(parsed.error);return}
@@ -107,8 +134,10 @@ function ReceiptBox({providerId}){
   const r=out?.result;const receipt=out?.receipt;
   const [state,head]=r?(r.checks.some(c=>(c.id==='signature'||c.id==='v2_signature')&&c.status==='not_checked')?['not_checked','Could not be checked here']:RESULT_HEAD[r.valid]):[];
   const named=receipt?.payload?.provider??r?.claims?.node?.provider;
+  const decision=r?receiptDecisionTag(receipt,r.claims):null;
   return <section className={`${styles.section} ${styles.receipt}`} aria-labelledby="v-receipt"><h2 id="v-receipt">Verify a receipt</h2>
-    <p className={styles.lead}>Paste a receipt from a response, or from <span className="mono">GET /api/v1/receipts/&lt;id&gt;</span>. It is checked in this browser against the keys the router publishes at <span className="mono">{KEYS_PATH}</span>. A receipt with a v2 (COSE) encoding gets that checked too: signature, chain head and Merkle path. Nothing you paste is sent anywhere.</p>
+    <p className={styles.lead}>Paste a receipt from a response, or from <span className="mono">GET /api/v1/receipts/&lt;id&gt;</span>. It is checked in this browser against the keys the router publishes at <span className="mono">{KEYS_PATH}</span>. A receipt with a v2 (COSE) encoding gets that checked too: signature, chain head and Merkle path. A receipt with a decision tag shows it, and you can check an order against it. Nothing you paste is sent anywhere.</p>
+    {initial&&<p className={styles.help}>Filled in with the receipt named in the address, as the router serves it. Press Verify receipt to check it.</p>}
     <form onSubmit={run}>
       <div className="field"><label htmlFor="receipt-json">Receipt (JSON)</label><textarea id="receipt-json" value={text} onChange={e=>setText(e.target.value)} spellCheck="false" autoComplete="off" placeholder={'{ "payload": { … }, "sig": "…", "key_id": "…" }'}/></div>
       <details className={styles.more}><summary>Check against a key I trust instead</summary><div>
@@ -126,6 +155,7 @@ function ReceiptBox({providerId}){
       <div className={styles.panel}><ul className={styles.list}>{r.checks.map(c=><li key={c.id}><State state={c.status}/><span>{c.detail}</span></li>)}</ul></div>
       {!out.ownKey&&isEnclaveReceipt(receipt)&&<div className={styles.hint}>This receipt was signed by a provider’s enclave key, not by the router, so the router’s key list is not the place to check it. Use “Check against a key I trust instead” with the provider’s attested receipt key, or verify it with an SDK against the provider’s attestation.</div>}
       {providerId&&named&&named!==providerId&&<div className={styles.hint}>This receipt names provider <span className="mono">{String(named)}</span>, not <span className="mono">{providerId}</span>.</div>}
+      {decision&&<DecisionTag info={decision} receiptValid={r.valid}/>}
       <ul className={styles.gaps}>{r.notChecked.map((n,i)=><li key={i}>{n}</li>)}</ul>
     </div>}
   </section>;
@@ -134,12 +164,14 @@ function ReceiptBox({providerId}){
 /** The public verify page: what the router has and has not verified about one provider, and a receipt checker. */
 export default function Verify(){
   const [providerId,setProviderId]=useState('');const [ready,setReady]=useState(false);const [load,setLoad]=useState('idle');const [data,setData]=useState(null);const [now,setNow]=useState(0);const [asked,setAsked]=useState(false);
-  const [receiptId,setReceiptId]=useState('');const [sawAsked,setSawAsked]=useState(false);const [sawLoad,setSawLoad]=useState('idle');const [saw,setSaw]=useState(null);
+  const [receiptId,setReceiptId]=useState('');const [sawAsked,setSawAsked]=useState(false);const [sawLoad,setSawLoad]=useState('idle');const [saw,setSaw]=useState(null);const [receiptText,setReceiptText]=useState('');
   useEffect(()=>{
     const raw=new URLSearchParams(location.search);const rid=receiptIdFromSearch(location.search);
     setReceiptId(rid);setSawAsked(raw.has('r')||raw.has('receipt'));
     if(!rid)return;
     const ac=new AbortController();setSawLoad('loading');
+    // The receipt itself, to fill in the checker below (public by id, like the label). A failure leaves the box empty.
+    fetch(API_BASE+'/api/v1/receipts/'+encodeURIComponent(rid),{signal:ac.signal,headers:{accept:'application/json'}}).then(async res=>{if(res.ok){const j=await res.json();if(j?.data?.payload&&j.data.sig)setReceiptText(JSON.stringify(j.data,null,2))}}).catch(()=>{});
     fetch(API_BASE+privacyPath(rid),{signal:ac.signal,headers:{accept:'application/json'}}).then(async res=>{
       if(res.status===404){setSawLoad('missing');return}
       if(!res.ok)throw new Error(String(res.status));
@@ -168,7 +200,7 @@ export default function Verify(){
     {load==='error'&&<div className="error" role="alert">The router could not be reached, so nothing is known about this provider from here. That is not the same as “not attested”; try again.</div>}
     {view&&<Attestation view={view}/>}
     <Saw receiptId={receiptId} asked={sawAsked} load={sawLoad} view={sawLoad==='ok'?saw:null}/>
-    <ReceiptBox providerId={providerId}/>
+    <ReceiptBox providerId={providerId} initial={receiptText}/>
     <StatementVerify/> {/* V87 */}
     <section className={styles.section} aria-labelledby="v-sdk"><h2 id="v-sdk">Check the provider itself</h2>
       <p className={styles.lead}>The record above is the router’s account. The SDKs go further before they send anything: they read the provider’s own <span className="mono">/attest</span>, check that the quote commits to its TLS key and digests, that its certificate name is derived from the quote, and refuse if any of it fails. They do not repeat Intel’s signature check on the quote; the router does that, and the SDK says so in its report.</p>

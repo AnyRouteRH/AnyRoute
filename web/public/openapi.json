@@ -4489,7 +4489,7 @@
         ],
         "operationId": "verifyReceipt",
         "summary": "Verify a signed receipt",
-        "description": "A v1 receipt (payload, sig, key_id) is checked as before. A v2 receipt is sent as cose (the COSE_Sign1 bytes, base64) and is checked in order: signature, then request_sha256 and response_sha256 when given, then the chunk hash chain when chunks (the data of every streamed event before the receipt, in order) are given, then the anchor path. The result reports each step (signature_valid, hashes_valid, chain_valid, inclusion_valid; null when not run) and valid is false when any step that ran failed.",
+        "description": "A v1 receipt (payload, sig, key_id) is checked as before. A v2 receipt is sent as cose (the COSE_Sign1 bytes, base64) and is checked in order: signature, then request_sha256 and response_sha256 when given, then the chunk hash chain when chunks (the data of every streamed event before the receipt, in order) are given, then the anchor path. The result reports each step (signature_valid, hashes_valid, chain_valid, inclusion_valid; null when not run) and valid is false when any step that ran failed. Either form also reports decision_tag, the X-Anyroute-Decision-Tag the receipt carries (null when none), and, when the request includes decision_tag (the SHA-256 of your order), decision_tag_valid; a mismatch makes valid false. Decision tags are recorded only while DECISION_TAGS_ENABLED is on.",
         "requestBody": {
           "required": true,
           "content": {
@@ -19320,7 +19320,13 @@
           "supported_parameters"
         ],
         "properties": {
-          "availability": { "type": "string", "enum": ["temporarily_unavailable"], "description": "Optional; all eligible upstream accounts are exhausted. Omitted otherwise." },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "temporarily_unavailable"
+            ],
+            "description": "Optional; all eligible upstream accounts are exhausted. Omitted otherwise."
+          },
           "capabilities": {
             "type": "array",
             "items": {
@@ -22058,6 +22064,11 @@
                 "type": "integer"
               }
             }
+          },
+          "decision_tag": {
+            "type": "string",
+            "pattern": "^(sha256:)?[0-9a-fA-F]{64}$",
+            "description": "Optional: the SHA-256 of your order, computed on your side as the decision-receipt helpers do (canonical JSON, sha256:<64 hex>). The result reports decision_tag (the tag the receipt's signed contents carry, or null) and decision_tag_valid (whether it equals this value; null when omitted), and valid is false when they differ. Only the hash is sent."
           }
         }
       },
@@ -22099,6 +22110,11 @@
                 "type": "integer"
               }
             }
+          },
+          "decision_tag": {
+            "type": "string",
+            "pattern": "^(sha256:)?[0-9a-fA-F]{64}$",
+            "description": "Optional: the SHA-256 of your order, computed on your side as the decision-receipt helpers do (canonical JSON, sha256:<64 hex>). The result reports decision_tag (the tag the receipt's signed contents carry, or null) and decision_tag_valid (whether it equals this value; null when omitted), and valid is false when they differ. Only the hash is sent."
           }
         }
       },
