@@ -129,6 +129,12 @@ const ACTIONS = {
   "route.create": "Route created",
   "route.update": "Route updated",
   "route.delete": "Route deleted",
+  "playbook.create": "Playbook created", // U115
+  "playbook.update": "Playbook changed",
+  "playbook.rename": "Playbook renamed",
+  "playbook.delete": "Playbook deleted",
+  "playbook.follow": "Key follows a playbook",
+  "playbook.unfollow": "Key stopped following a playbook",
 };
 export const AUDIT_ACTIONS = Object.keys(ACTIONS);
 export const actionLabel = (action) => ACTIONS[action] ?? String(action || "Unknown");

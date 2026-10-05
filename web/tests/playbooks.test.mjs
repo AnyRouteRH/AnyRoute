@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { EMPTY_RULES, PLAYBOOK_WORDS, deleteRequest, followPath, followRequest, followersText, followsText, linkedPlaybook, ownRules, playbookBody, playbookForm, playbookHref, playbookPath, scopeText, startChoices, startRules } from '../lib/playbooks.js';
 import { STARTER_SETUPS, setupPolicy } from '../lib/starter-setups.js';
 import { ACCOUNT_GROUPS, ACCOUNT_SECTIONS, TASKS } from '../lib/site-map.js';
+import { AUDIT_ACTIONS, actionLabel } from '../lib/teams.js';
 
 // The router's own schema, where this Node can load TypeScript; a playbook body must never be one it would refuse.
 const schema = await import('../../src/agents/policy.ts').then(m => m.agentPolicySchema).catch(() => null);
@@ -104,4 +105,12 @@ test('every key and agent shows the playbook it follows or offers one; followed 
 test('playbook copy is plain and uses the site’s words', () => {
   const copy = [...Object.values(PLAYBOOK_WORDS), read('components/limits/Playbooks.jsx'), read('components/limits/FollowPlaybook.jsx'), TASKS.find(t => t.id === 'playbooks').description].join('\n');
   assert.doesNotMatch(copy, /\b(?:demo|test|tested|local|mock|simulated|placeholder|fixture|kill|killed|earn|yield|APY|x402)\b/i);
+});
+
+test('the team audit log names every playbook change the router records', () => {
+  const router = fs.readFileSync(new URL('../../src/teams/audit.ts', import.meta.url), 'utf8');
+  const recorded = [...router.matchAll(/"(playbook\.[a-z]+)"/g)].map(m => m[1]);
+  assert.deepEqual(recorded, ['playbook.create', 'playbook.update', 'playbook.rename', 'playbook.delete', 'playbook.follow', 'playbook.unfollow']);
+  for (const action of recorded) { assert.ok(AUDIT_ACTIONS.includes(action), action); assert.notEqual(actionLabel(action), action); }
+  assert.equal(actionLabel('playbook.update'), 'Playbook changed');
 });
