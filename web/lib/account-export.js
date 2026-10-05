@@ -2,7 +2,7 @@ import { statementPath } from './statements.js';
 export const EXPORT_PARTS = ['account', 'keys', 'rulebooks', 'policy_events', 'sessions', 'approvals', 'activity', 'statements', 'agreements', 'agent_profiles'];
 export const EXPORT_EXCLUSIONS = [
   { name: 'Key secrets and credentials', reason: 'Never included. Metadata uses existing read endpoints; no key is created.' },
-  { name: 'Chat history', reason: 'Lives in your browser. Export it from the Harness.' },
+  { name: 'Chat history', reason: 'Lives in your browser. Export it from Chat.' },
   { name: 'Private files and saved content', reason: 'Files, characters, saved routes, presets, batches and other content are outside this account-record export.' },
   { name: 'Deleted or expired records', reason: 'Existing retention applies. This export cannot recover data the read APIs no longer return.' },
   { name: 'Other accounts and restricted records', reason: 'Every request uses this connected key and keeps each endpoint’s existing access rules.' },

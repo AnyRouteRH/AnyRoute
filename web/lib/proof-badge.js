@@ -29,7 +29,7 @@ export function proofBadges(evidence = {}, now = Date.now()) {
   let providerId = '', receiptId = '', context = '';
   if (source === 'model') {
     hardware = current(data, now) && current(data.attestation || {}, now) && data.attested_available !== false && hasModelCapability(data, 'attested');
-    context = 'Available endpoint: routing may choose another provider. Ordinary Harness chat is readable by the router.';
+    context = 'Available endpoint: routing may choose another provider. Ordinary Chat messages are readable by the router.';
   } else if (source === 'host') {
     hardware = data.attested === true && data.attestation?.status === 'attested' && current(data.attestation, now);
     providerId = data.id;

@@ -36,7 +36,7 @@ export default function InstallApp() {
       <div className={s.instructions}>
         <p>Install Anyroute on your phone or desktop.</p>
         <ol><li>Open this page in Safari.</li><li>Tap Share, then Add to Home Screen. You may need to scroll through the share menu.</li><li>Turn on Open as Web App if shown, then tap Add.</li></ol>
-        <p>The app opens the Harness. Chat needs an internet connection. Its static pages and assets stay in this browser; requests and replies are never saved by the app cache.</p>
+        <p>The app opens Chat, which needs an internet connection. Its static pages and assets stay in this browser; requests and replies are never saved by the app cache.</p>
       </div>
     </Modal>}
   </>;

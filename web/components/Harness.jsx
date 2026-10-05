@@ -348,7 +348,7 @@ function SignIn({ onKey, onClose, reason }) {
               {busy === "key" ? "Connecting…" : "Connect key"}
             </Button>
             {hasWallet() && (
-              <Button type="button" secondary disabled={!!busy} onClick={() => run("wallet", async () => onKey(await walletApiKey("Harness wallet key")))}>
+              <Button type="button" secondary disabled={!!busy} onClick={() => run("wallet", async () => onKey(await walletApiKey("Chat wallet key")))}>
                 {busy === "wallet" ? "Waiting for signature…" : "Sign in with wallet"}
               </Button>
             )}

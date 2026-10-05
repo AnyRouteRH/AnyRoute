@@ -13,15 +13,15 @@ const task = (id, group, title, description, href, keywords, featured = false) =
 
 export const TASKS = [
   task('zkapi', 'build', 'Read about zkAPI payments', 'Open the Sepolia pilot and its funding, storage and privacy limits.', '/zkapi/', 'zkapi, sepolia, eth, payment'), // ZK9
-  task('chat', 'chat', 'Chat with any model', 'Use the Harness to send messages and choose a model.', '/harness/', 'conversation, assistant, harness', true),
+  task('chat', 'chat', 'Chat with any model', 'Use Chat to send messages and choose a model.', '/harness/', 'conversation, assistant, harness', true),
   task('compare', 'chat', 'Compare model answers', 'Put models side by side in the Arena.', '/arena/', 'compare, arena, side by side', true),
-  task('images', 'chat', 'Make an image', 'Choose an image-output model in the Harness.', '/harness/', 'picture, draw, art, image, photo', true),
-  task('vision', 'chat', 'Ask about a picture', 'Attach images to a Harness chat with a model that reads images.', '/harness/', 'vision, upload, photograph'),
-  task('voice', 'chat', 'Talk with a model', 'Use browser speech and voice controls in the Harness.', '/harness/', 'voice, speech, microphone, audio'),
+  task('images', 'chat', 'Make an image', 'Choose an image-output model in Chat.', '/harness/', 'picture, draw, art, image, photo', true),
+  task('vision', 'chat', 'Ask about a picture', 'Attach images in Chat with a model that reads images.', '/harness/', 'vision, upload, photograph'),
+  task('voice', 'chat', 'Talk with a model', 'Use browser speech and voice controls in Chat.', '/harness/', 'voice, speech, microphone, audio'),
   task('files', 'chat', 'Ask your files', 'Add text or PDFs, ask questions and inspect the cited passages.', '/ask/', 'pdf, documents, rag, upload', true),
   task('encrypted', 'chat', 'Use encrypted chat', 'Follow the device-encryption setup for the attested gateway.', '/docs/#e2ee-phala', 'encrypted, encryption, e2ee'),
-  task('history', 'chat', 'Organise your chats', 'Search, pin, rename, export or import chats in the Harness.', '/harness/', 'history, conversations, export, import'),
-  task('install', 'chat', 'Install the app', 'Open the Harness and use browser installation on your phone or desktop.', '/harness/', 'pwa, mobile, phone, install'),
+  task('history', 'chat', 'Organise your chats', 'Search, pin, rename, export or import chats in Chat.', '/harness/', 'history, conversations, export, import'),
+  task('install', 'chat', 'Install the app', 'Open Chat and use browser installation on your phone or desktop.', '/harness/', 'pwa, mobile, phone, install'),
   task('models', 'chat', 'Find models and prices', 'Search one model catalog by capability, provider, context and price.', '/models/', 'catalog, pricing, cost, models, capabilities, images, audio, network'),
 
   task('account-activity', 'agents', 'See all your activity', 'Follow calls, approvals, alerts and funds, with receipts and exports.', '/dashboard/#activity', 'activity, history, ledger, receipts, export'),
@@ -108,7 +108,7 @@ SEARCH_ONLY.add('facilitator'); // v6 F: off until switched on, so search-only.
 SEARCH_ONLY.add('make-good'); TASKS.push(task('make-good', 'build', 'Read make-good refund rules', 'See when a failed, cut-off or rerouted call is refunded, with a signed refund receipt.', '/docs/#make-good-refunds', 'refund, make good, failover, truncated, receipt')); // V6 R
 for (const item of TASKS) item.menu = !SEARCH_ONLY.has(item.id);
 TASKS.push({ ...task('paid-tools', 'build', 'Browse paid tools', 'List x402 tools a key can pay from its balance, with their canary state.', '/tools/', 'tools, x402, paid, mcp, canary'), menu: false }); // v6 T: search-only until switched on.
-TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Harness Tools to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
+TASKS.push({ ...task('chat-limits', 'chat', 'Limit chat spending', 'Open Tools in Chat to cap spending, approve replies and stop chat.', '/harness/', 'limits, budget, spending, approval, stop'), menu: false }); // U77: search-only control.
 TASKS.push({ ...task('starter-setups', 'agents', 'Start from a setup', 'Fill spending limits from a ready-made setup, review it, then save.', '/agents/#starter-setups', 'starter, setup, template, budget, rules, chatbot, trading, batch, proven hardware'), menu: false }); // U103: replaces V85's rulebook templates; /agents/#rulebook-templates lands on the same place.
 TASKS.push({ ...task('request-check', 'agents', 'Check a request against your rules', 'Check agent rules without spending: allow, approval required or deny.', '/agents/#request-check', 'check, try, request, rules'), menu: false }); // V85: search-only.
 TASKS.push({ ...task('prompt-library', 'chat', 'Save and reuse prompts', 'Keep named prompts in this browser and fill in variables before using them.', '/harness/#prompt-library', 'prompts, library, templates, favourites'), menu: false }); // V81: search-only, keeps menus short.

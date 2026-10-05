@@ -1252,7 +1252,7 @@ export default function Dashboard() {
                 <span className="badge">{live ? "Live request · billed to the selected key" : "No external request"}</span>
               </div>
               <p className="help-text harness-link">
-                Want every model with its tools, compare mode and attachments? <a className="inline-link" href="/harness/">Open the harness</a>
+                Want every model with its tools, compare mode and attachments? <a className="inline-link" href="/harness/">Open Chat</a>
               </p>
               <div className="playground-grid">
                 <form className="control-panel" onSubmit={run}>

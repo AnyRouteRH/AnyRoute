@@ -9,6 +9,6 @@ export default function RouteExplanation({ receipt, header }) {
     <summary>Why this route?</summary>
     <p>{routeSentence(route)}</p>
     {receipt?.payload?.council && <p>This receipt describes the judge call. Each member call has its own receipt.</p>}
-    <p className={styles.limit}>Recorded by the router. Check the receipt signature in the <a href="/verify/#v-receipt">receipt checker</a>; the Harness has not checked it.</p>
+    <p className={styles.limit}>Recorded by the router. Check the receipt signature in the <a href="/verify/#v-receipt">receipt checker</a>; Chat has not checked it.</p>
   </details>;
 }

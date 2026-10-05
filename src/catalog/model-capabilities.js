@@ -8,7 +8,7 @@ export const MODEL_CAPABILITIES = [
   { key: "longContext", label: "Long context", explanation: "Lists a context window of at least 128,000 tokens; the chosen provider may have a lower limit." },
   { key: "attested", label: "Proven hardware", explanation: "Has an endpoint with a fresh hardware attestation checked by the router; this does not prove answer quality or encrypt ordinary chat." },
   { key: "network", label: "Anyroute network", explanation: "Has a live offer on an Anyroute network host for a model admitted on that host; routing may choose another provider.", href: "/network/" },
-  { key: "encrypted", label: "Encrypted chat", explanation: "Available through the separate device-encryption gateway setup; ordinary Harness chat still sends readable requests to the router.", href: "/docs/#e2ee-phala" },
+  { key: "encrypted", label: "Encrypted chat", explanation: "Available through the separate device-encryption gateway setup; ordinary Chat still sends readable requests to the router.", href: "/docs/#e2ee-phala" },
 ];
 
 export function modelModalities(model, direction = "input") {
