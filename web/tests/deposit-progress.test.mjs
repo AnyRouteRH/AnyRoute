@@ -8,12 +8,12 @@ test('detected amount and worth precede status; the delay is from API block prog
   const v = depositProgressView({ ...base, stage: 'detected' });
   assert.equal(v.confirmation, 'We see 13,000 $ANYR from 0xabcd…1234.');
   assert.match(v.worth, /Worth ≈ \$10.93 in credits/);
-  assert.match(v.status, /Detected.*About 10 min left/);
+  assert.match(v.status, /Detected.*About 10 min until final/);
   assert.match(depositProgressView({ ...base, stage: 'detected', remaining_s: null }).status, /Timing varies/);
   assert.match(depositProgressView({ ...base, stage: 'detected', amount: '9007199254740993.123456789012345678901' }).confirmation, /9,007,199,254,740,993.123456789012345678901/);
 });
 test('settling, final, price wait, indexing wait, unknown, orphan and reversal states are distinct', () => {
-  assert.match(depositProgressView({ ...base, stage: 'provisional', credited_usd: 10.93 }).status, /Credited \(settling\): \$10.93.*10 min left.*reverse/);
+  assert.match(depositProgressView({ ...base, stage: 'provisional', credited_usd: 10.93 }).status, /Credited \(settling\): \$10.93.*10 min until final.*reverse/);
   const final = depositProgressView({ ...base, stage: 'final', credited_usd: 10.93 });
   assert.equal(final.status, 'Credited. $10.93 added to your balance. The transfer is final.'); assert.equal(final.final, true);
   assert.match(depositProgressView({ ...base, stage: 'awaiting_price' }).status, /Waiting for a price.*current rate/);

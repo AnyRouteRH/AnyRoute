@@ -1,3 +1,4 @@
+import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B123
 import RouterLimits from "../../components/RouterLimits"; // HD1
 import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
 import WeeklySummaryDocs from "../../components/WeeklySummaryDocs"; // B120
@@ -862,6 +863,7 @@ export default function Docs() {
             The router serves this site, so your base URL is this site’s address followed by /api/v1. Create a key in the dashboard, add funds (the add-funds card lists the tokens this router accepts) and call it from any OpenAI- or OpenRouter-compatible client.
           </div>
           <DocsFeatureIndex />
+          <DepositCountdownDocs /> {/* B123 */}
           <KeyProvisioningDocs /> {/* ZK6 */}
           <UnusedKeysDocs /> {/* B125 */}
           <ZkapiDocs /> {/* ZK9 */}

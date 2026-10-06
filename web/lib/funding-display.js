@@ -1,3 +1,4 @@
+import { depositCountdown } from './deposit-countdown.js'; // B123
 // V96: API-derived credit estimates and deposit progress, shared by funding views.
 import { creditEstimate, formatUnits, formatUsd, stageOf } from './anyr-pay.js';
 import { relativeTime } from './verify.js';
@@ -38,16 +39,16 @@ export function fundingDepositLabel(stage) {
   return labels[stage] || 'Checking deposit status';
 }
 
-export function fundingDepositView(deposit, escrow) {
+export function fundingDepositView(deposit, escrow, now = Date.now()) {
   const stage = stageOf(deposit);
   const delay = Number(escrow?.expected_credit_delay_s);
   const minutes = Math.max(1, Math.round(delay / 60));
   const wait = Number.isFinite(delay) && delay > 0 ? ` Chain finality usually takes about ${minutes} minute${minutes === 1 ? '' : 's'}; it can take longer.` : '';
   return {
     label: fundingDepositLabel(stage),
-    detail: ['confirming', 'detected'].includes(stage) ? wait.trim()
+    detail: ['confirming', 'detected'].includes(stage) ? depositCountdown({ ...deposit, stage }, now) || wait.trim()
       : ['credited', 'final'].includes(stage) && deposit.credited_usd != null ? `${formatUsd(deposit.credited_usd)} added to your balance.`
-      : stage === 'provisional' ? `${formatUsd(deposit.credited_usd || 0)} added while this transfer settles. Any remainder waits for finality. A chain reorganisation can reverse the early credit.`
+      : stage === 'provisional' ? `${formatUsd(deposit.credited_usd || 0)} added while this transfer settles.${depositCountdown({ ...deposit, stage }, now) ? ` ${depositCountdown({ ...deposit, stage }, now)}.` : ''} Any remainder waits for finality. A chain reorganisation can reverse the early credit.`
       : stage === 'awaiting_price' ? 'The transfer is final. Credits wait for an available price.' : '',
     note: deposit.note || '',
   };

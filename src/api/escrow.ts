@@ -1,3 +1,4 @@
+import { withDepositCountdown } from "../pay/deposit-countdown.ts"; // B123
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
 import { anyrPriceInfo, escrowDepositsFor, escrowEnabled, escrowInfo } from "../pay/escrow.ts";
@@ -22,13 +23,14 @@ export function escrowRoutes(app: Hono, ctx: Ctx) {
   // pending_finality | pending | credited | orphaned | reversed (see escrow_deposits in src/db/schema.ts); `stage`
   // says where it is on the way to a credit: confirming | awaiting_price | crediting | credited | orphaned | reversed.
   app.get("/api/v1/escrow/deposits", async (c) => {
+    c.header("Cache-Control", "no-store"); // B123
     const key = await requireKey(ctx, c.req.header("authorization"));
     const wallet = key.accountId.startsWith("w_") ? `0x${key.accountId.slice(2)}` : null;
     return c.json({
       data: {
         enabled: escrowEnabled(ctx),
         wallet,
-        deposits: wallet ? await escrowDepositsFor(ctx, key.accountId) : [],
+        deposits: wallet ? await withDepositCountdown(ctx, await escrowDepositsFor(ctx, key.accountId)) : [],
         ...(wallet ? {} : { hint: "Stock deposits are credited to the sending wallet. Sign in with that wallet to use them." }),
       },
     });

@@ -1,0 +1,4 @@
+// B123
+export const depositPingNotes = [
+  "deposit-ping:<chain id>:<deposit id>: account id, deposit id, notice timestamp and credited USD decimal amount. The worker reads newly credited $ANYR and stock deposits from the last day (including early credit), at most 100 per pass, and inserts one permanent marker per deposit. Inbox reads show up to 100 notices from the last 90 days under account-wide Activity access; ordinary and session keys receive none. Markers remain until operator deletion to prevent replay. Telegram sends once per eligible existing account link after the claim commits, using the current balance; a crash or failed send can lose delivery and is not retried. Telegram receives readable token amount, symbol, credited amount and account balance. No prompt, answer, API key, message text, new body reader or caller address is retained.",
+];

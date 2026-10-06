@@ -1,3 +1,4 @@
+import { runDepositPings } from "../pay/deposit-pings.ts"; // B123
 import { registerRushJobs } from "../rush/monitor.ts"; // ON3
 import { registerWeeklySummaryJob } from "../telegram/weekly-summary.ts"; // B120
 import { reconcileToolCalls } from "../tools/call.ts"; // v6 T
@@ -41,6 +42,7 @@ import { runAgentPayVerify } from "../agents/pay.ts"; // Pay another agent
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
+  if (cfg.depositPingsEnabled && cfg.runtimeRole !== "api") jobs.register("deposit-pings", 5_000, () => runDepositPings(ctx)); // B123
   registerAgreementJobs(ctx, router);
   registerRushJobs(ctx); // ON3
   registerWeeklySummaryJob(ctx); // B120

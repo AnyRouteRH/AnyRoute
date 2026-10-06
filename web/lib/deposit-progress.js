@@ -1,3 +1,4 @@
+import { depositCountdown } from './deposit-countdown.js'; // B123
 import { fundingDepositLabel } from './funding-display.js';
 import { api } from './api.js';
 
@@ -23,7 +24,8 @@ export function depositProgressView(d, now = Date.now()) {
   const observed = amount != null && !['submitted', 'checking', 'orphaned', 'reversed'].includes(d.stage);
   const confirmation = observed ? `We see ${amount} ${d.symbol}${d.from_address ? ` from ${short(d.from_address)}` : ''}.` : null;
   const worth = observed && d.worth_usd != null ? `Worth ≈ ${dollars(d.worth_usd)} in credits.${d.worth_fixed ? '' : ' The rate is fixed when credited.'}` : null;
-  const remaining = d.remaining_s != null && d.remaining_s > 0 ? ` About ${Math.max(1, Math.ceil(d.remaining_s / 60))} min left.` : ' Timing varies.';
+  const countdown = depositCountdown(d, now); // B123
+  const remaining = countdown ? ` ${countdown}.` : ' Timing varies.';
   const label = fundingDepositLabel(d.stage);
   let status;
   if (d.stage === 'submitted') status = now - Date.parse(d.submitted_at) >= 180_000 ? 'We have not detected this deposit after a few minutes. Check the transaction and the sending wallet; do not send again while it is pending.' : 'Transaction sent. Watching for the deposit; do not send again while it is pending.';

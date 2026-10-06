@@ -2,8 +2,10 @@
 import { useEffect, useState } from 'react';
 import { depositProgressView, readDepositProgress } from '../../lib/deposit-progress.js';
 import s from './DepositProgress.module.css';
+import { useDepositClock } from '../../lib/use-deposit-clock.js'; // B123
 
 export default function DepositProgress({ apiKey }) {
+  const now = useDepositClock(); // B123
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -27,7 +29,7 @@ export default function DepositProgress({ apiKey }) {
     <h3>Deposit status</h3>
     {error && <p className="error" role="alert">{error} Deposit status may be out of date; the next refresh will try again.</p>}
     <ul aria-live="polite" aria-atomic="false">{[...pending, ...final].map(d => {
-      const view = depositProgressView(d);
+      const view = depositProgressView(d, now);
       return <li key={d.id} data-final={view.final}>
         {view.confirmation && <p><strong>{view.confirmation}</strong></p>}
         {d.tx_url && <a className="inline-link" href={d.tx_url} target="_blank" rel="noopener noreferrer">View transaction ↗</a>}

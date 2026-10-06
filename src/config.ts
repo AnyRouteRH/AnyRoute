@@ -1,3 +1,4 @@
+import { depositPingsEnv } from "./pay/deposit-pings-config.ts"; // B123
 import { hardeningEnv, hardeningSettings } from "./hardening/config.ts"; // HD1
 import { rpcEnv, rpcSettings } from "./chain/rpc-config.ts"; // RPC1: private transport settings.
 import { fastCreditEnv, fastCreditSettings } from "./pay/fast-credit-config.ts"; // V97
@@ -71,6 +72,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 const schema = z.object({
   ...hardeningEnv, // HD1
   ...fastCreditEnv, // V97
+  ...depositPingsEnv, // B123
   ...identityEnv, // v6 I
   ...zkapiPageEnv, // ZK10
   ...toolsEnv, // v6 T
@@ -537,6 +539,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
       allowed.push("weekly-summary"); // B120
+      allowed.push("deposit-pings"); // B123
       allowed.push("webhooks"); // V86: bounded event delivery.
       allowed.push("makegood-payouts"); // V6 R: on-chain make-good refunds.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
@@ -640,6 +643,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   const holders = holderSettings(e, anyrEscrow);
   return {
     fastCredit: fastCreditSettings(e), // V97
+    depositPingsEnabled: e.DEPOSIT_PINGS_ENABLED, // B123
     env: e.ANYROUTE_ENV,
     production,
     developerFirstCallEnabled: e.DEVELOPER_FIRST_CALL_ENABLED, // ON2

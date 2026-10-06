@@ -75,7 +75,11 @@ export async function accountDeposits(ctx: Ctx, accountId: string) {
   const wallet = accountId.startsWith("w_") ? `0x${accountId.slice(2)}` : "";
   const escrow = wallet ? await ctx.db.select().from(escrowDeposits).where(eq(escrowDeposits.fromAddress, wallet)).orderBy(desc(escrowDeposits.blockNumber), desc(escrowDeposits.logIndex)).limit(50) : [];
   const explorer = ctx.cfg.chain.explorerUrl;
-  const base = (lane: string, tx: string, index: number, block: bigint) => ({ id: `${lane}:${tx}:${index}`, lane, tx_hash: tx, tx_url: explorer && /^https:\/\//.test(explorer) ? `${explorer.replace(/\/$/, "")}/tx/${tx}` : null, block: block.toString(), remaining_s: lane === "usdg" ? null : depositRemainingSeconds(block, fin, credit) });
+  const base = (lane: string, tx: string, index: number, block: bigint) => {
+    const remaining = lane === "usdg" ? null : depositRemainingSeconds(block, fin, credit);
+    return { id: `${lane}:${tx}:${index}`, lane, tx_hash: tx, tx_url: explorer && /^https:\/\//.test(explorer) ? `${explorer.replace(/\/$/, "")}/tx/${tx}` : null, block: block.toString(), remaining_s: remaining,
+      expected_final_at: remaining !== null && remaining > 0 ? new Date(Date.now() + remaining * 1000).toISOString() : null }; // B123
+  };
   const deposits: Array<Record<string, unknown>> = [];
   const tokens = acceptedTokens(ctx);
   for (const row of escrow) {
@@ -101,7 +105,7 @@ export async function accountDeposits(ctx: Ctx, accountId: string) {
   }
   for (const r of stored.filter(r => r.key.startsWith(`deposit-watch:${ctx.cfg.chain.id}:`))) {
     const w = r.value as DepositWatch;
-    if (!deposits.some(d => d.tx_hash === w.txHash && d.lane === w.lane)) deposits.push({ ...base(w.lane, w.txHash, -1, 0n), block: null, remaining_s: null, stage: "submitted", submitted_at: w.submittedAt });
+    if (!deposits.some(d => d.tx_hash === w.txHash && d.lane === w.lane)) deposits.push({ ...base(w.lane, w.txHash, -1, 0n), block: null, remaining_s: null, expected_final_at: null, stage: "submitted", submitted_at: w.submittedAt });
     else if (deposits.some(d => d.tx_hash === w.txHash && d.lane === w.lane && ["final", "credited"].includes(String(d.stage)))) await ctx.db.delete(kv).where(eq(kv.key, r.key)); // Indexed credits keep the status across reloads.
   }
   return { deposits, explorer, confirmations: ctx.cfg.chain.confirmations, head_block: fin.head.toString(), credit_block: credit.toString(), expected_credit_delay_s: Math.max(0, fin.headTime - fin.finalTime), ...await fastCreditFields(ctx) };

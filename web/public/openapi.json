@@ -194,7 +194,117 @@
     }
   ],
   "paths": {
-    "/api/v1/agents/approvals/{id}/approve-and-allow": {"get":{"summary":"Preview an approval's ask-first amount change","description":"B118: management or same-team owner/admin auth as Approve. Inference and session keys refused. Only amount-only approvals for the current own rulebook; playbook followers return 409 playbook_linked with playbook_id and playbook_name. AGENT_POLICY_ENABLED false returns 404; actions require AGENT_GUARD_ENABLED. Returns data.field, before_usd, after_usd, amount_usd and policy_sha256. Preview changes nothing.","security":[{"BearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"Exact threshold change; amounts are decimal USD strings."},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Not pending, not amount-only, rules changed or playbook followed","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}}}},"post":{"summary":"Approve and allow next time","description":"B118: same auth and eligibility as GET. In one transaction approves once and saves only approval.above_usd for model calls or actions.approval_above_usd for actions, rounded up to the cent, with the schema version and hash-chained policy_set and approval_approved events. Caps are unchanged. Original single-use retry binding and expiry remain. Changed hash returns 409. Telegram unchanged.","security":[{"BearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"required":["policy_sha256"],"properties":{"policy_sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}}}}}},"responses":{"200":{"description":"data contains approval (existing approval shape), change (the GET preview), policy (updated rulebook), version (schema version) and sha256 (new policy digest)."},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"},"409":{"description":"Not pending, not amount-only, rules changed or playbook followed","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ApiError"}}}}}}},
+    "/api/v1/agents/approvals/{id}/approve-and-allow": {
+      "get": {
+        "summary": "Preview an approval's ask-first amount change",
+        "description": "B118: management or same-team owner/admin auth as Approve. Inference and session keys refused. Only amount-only approvals for the current own rulebook; playbook followers return 409 playbook_linked with playbook_id and playbook_name. AGENT_POLICY_ENABLED false returns 404; actions require AGENT_GUARD_ENABLED. Returns data.field, before_usd, after_usd, amount_usd and policy_sha256. Preview changes nothing.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact threshold change; amounts are decimal USD strings."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Not pending, not amount-only, rules changed or playbook followed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Approve and allow next time",
+        "description": "B118: same auth and eligibility as GET. In one transaction approves once and saves only approval.above_usd for model calls or actions.approval_above_usd for actions, rounded up to the cent, with the schema version and hash-chained policy_set and approval_approved events. Caps are unchanged. Original single-use retry binding and expiry remain. Changed hash returns 409. Telegram unchanged.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "policy_sha256"
+                ],
+                "properties": {
+                  "policy_sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "data contains approval (existing approval shape), change (the GET preview), policy (updated rulebook), version (schema version) and sha256 (new policy digest)."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Not pending, not amount-only, rules changed or playbook followed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/facilitator/supported": {
       "get": {
         "tags": [
@@ -1512,7 +1622,7 @@
       "get": {
         "operationId": "listInbox",
         "summary": "List items that need attention",
-        "description": "Pending approvals with their expiry, alerts, deposits, key auto top-ups, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items.",
+        "description": "B123: DEPOSIT_PINGS_ENABLED defaults false; when enabled, account-wide keys also see worker-recorded $ANYR and stock credit notices (one per deposit, including early credit). Pending approvals with their expiry, alerts, deposits, key auto top-ups, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items.",
         "security": [
           {
             "BearerAuth": []
@@ -16110,7 +16220,140 @@
         }
       }
     },
-    "/api/v1/telegram/weekly-summary": {"get": {"security": [{"BearerAuth": []}], "responses": {"200": {"description": "Weekly summary preference.", "content": {"application/json": {"schema": {"type": "object", "properties": {"data": {"type": "object", "required": ["opted_in", "last_sent_week"], "properties": {"opted_in": {"type": "boolean", "default": false}, "last_sent_week": {"type": ["string", "null"], "pattern": "^[0-9]{4}-W[0-9]{2}$"}}}}}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"description": "This principal has no Telegram link."}}, "summary": "Read weekly Telegram summary preference", "description": "B120: WEEKLY_SUMMARY_ENABLED defaults false and requires Telegram linking and agent policies. Same principal auth as /api/v1/telegram/link, no-store. Preference belongs to this key’s link; last_sent_week is account-wide and survives unlink. One message/account for the previous ISO week, Monday from 09:00 UTC, hourly checks. Quiet weeks skipped; team administrators see only their team. Existing call charges, approval request statuses at send time, stop events and most-used model; top five agents by spend. Telegram can read names and totals. A crash or ambiguous network failure after sending but before commit may repeat delivery; no catch-up after Monday."}, "put": {"security": [{"BearerAuth": []}], "responses": {"200": {"description": "Weekly summary preference.", "content": {"application/json": {"schema": {"type": "object", "properties": {"data": {"type": "object", "required": ["opted_in", "last_sent_week"], "properties": {"opted_in": {"type": "boolean", "default": false}, "last_sent_week": {"type": ["string", "null"], "pattern": "^[0-9]{4}-W[0-9]{2}$"}}}}}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"description": "This principal has no Telegram link."}, "400": {"$ref": "#/components/responses/BadRequest"}}, "summary": "Choose weekly Telegram summaries", "description": "B120: Same auth and flag guards as GET. Updates only this principal’s existing Telegram link; opt-in defaults off. Unlink removes the preference. No-store. Strict boolean body; invalid bodies return 400.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["opted_in"], "properties": {"opted_in": {"type": "boolean"}}}}}}}},
+    "/api/v1/telegram/weekly-summary": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Weekly summary preference.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "opted_in",
+                        "last_sent_week"
+                      ],
+                      "properties": {
+                        "opted_in": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "last_sent_week": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^[0-9]{4}-W[0-9]{2}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "This principal has no Telegram link."
+          }
+        },
+        "summary": "Read weekly Telegram summary preference",
+        "description": "B120: WEEKLY_SUMMARY_ENABLED defaults false and requires Telegram linking and agent policies. Same principal auth as /api/v1/telegram/link, no-store. Preference belongs to this key’s link; last_sent_week is account-wide and survives unlink. One message/account for the previous ISO week, Monday from 09:00 UTC, hourly checks. Quiet weeks skipped; team administrators see only their team. Existing call charges, approval request statuses at send time, stop events and most-used model; top five agents by spend. Telegram can read names and totals. A crash or ambiguous network failure after sending but before commit may repeat delivery; no catch-up after Monday."
+      },
+      "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Weekly summary preference.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "opted_in",
+                        "last_sent_week"
+                      ],
+                      "properties": {
+                        "opted_in": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "last_sent_week": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^[0-9]{4}-W[0-9]{2}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "This principal has no Telegram link."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "summary": "Choose weekly Telegram summaries",
+        "description": "B120: Same auth and flag guards as GET. Updates only this principal’s existing Telegram link; opt-in defaults off. Unlink removes the preference. No-store. Strict boolean body; invalid bodies return 400.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "opted_in"
+                ],
+                "properties": {
+                  "opted_in": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/telegram/link": {
       "get": {
         "summary": "Read Telegram link status",
@@ -17421,6 +17664,112 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/escrow/deposits": {
+      "get": {
+        "tags": [
+          "Credits"
+        ],
+        "summary": "Read deposit progress and approximate finality time",
+        "description": "B123: active bearer key required. Account credit progress allows owner/admin/member/viewer roles and excludes session keys; escrow deposits are scoped to the wallet behind the key. Nullable expected_final_at is an estimate, never proof of finality. No-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deposit stages with an optional timing estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "deposits": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "expected_final_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "nullable": true,
+                                "description": "Approximate ISO finality estimate from live block progress; null when unavailable. Not a deadline."
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/v1/credits/deposits": {
+      "get": {
+        "tags": [
+          "Credits"
+        ],
+        "summary": "Read deposit progress and approximate finality time",
+        "description": "B123: active bearer key required. Account credit progress allows owner/admin/member/viewer roles and excludes session keys; escrow deposits are scoped to the wallet behind the key. Nullable expected_final_at is an estimate, never proof of finality. No-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deposit stages with an optional timing estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "deposits": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "expected_final_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "nullable": true,
+                                "description": "Approximate ISO finality estimate from live block progress; null when unavailable. Not a deadline."
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       }

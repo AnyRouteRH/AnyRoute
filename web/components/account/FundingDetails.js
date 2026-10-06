@@ -1,3 +1,5 @@
+'use client'; // B123
+import { useDepositClock } from '../../lib/use-deposit-clock.js'; // B123
 import { createElement as h } from 'react';
 import { fundingDepositView, fundingQuote } from '../../lib/funding-display.js';
 
@@ -15,8 +17,9 @@ export function FundingQuote({ option, amount, now }) {
 }
 
 export function FundingDeposits({ deposits, escrow }) {
+  const now = useDepositClock(); // B123
   return (deposits || []).slice(0, 3).map(deposit => {
-    const view = fundingDepositView(deposit, escrow);
+    const view = fundingDepositView(deposit, escrow, now);
     return h('p', { key: deposit.id, role: 'status' },
       `${deposit.amount ?? ''} ${deposit.symbol === 'ANYR' ? '$ANYR' : deposit.symbol || 'token'}: ${view.label}.`,
       view.detail && ` ${view.detail}`, view.note && ` ${view.note}`);
