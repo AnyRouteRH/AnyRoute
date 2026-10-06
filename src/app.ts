@@ -21,6 +21,7 @@ import { agentProfilesRoutes } from "./api/agent-profiles.ts";
 import { identityRoutes } from "./identity/routes.ts"; // v6 I: before the rulebook routes, which 404 without AGENT_POLICY_ENABLED.
 import { agentSealedRoutes } from "./api/agent-sealed.ts";
 import { telegramLinkingRoutes } from "./api/telegram-linking.ts";
+import { weeklySummaryRoutes } from "./api/weekly-summary.ts"; // B120
 import { guardAgreementSigners } from "./agreements/tally.ts";
 import { agreementsRoutes } from "./agreements/routes.ts";
 import { networkBurnRoutes } from "./network/burn-routes.ts";
@@ -236,6 +237,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentLedgerRoutes(app, ctx);
   agentApprovalsRoutes(app, ctx);
   telegramLinkingRoutes(app, ctx);
+  weeklySummaryRoutes(app, ctx); // B120
   agentSessionsRoutes(app, ctx);
   spendRoutes(app, ctx);
   webhookRoutes(app, ctx); // V86.

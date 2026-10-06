@@ -1,4 +1,5 @@
 import { registerRushJobs } from "../rush/monitor.ts"; // ON3
+import { registerWeeklySummaryJob } from "../telegram/weekly-summary.ts"; // B120
 import { reconcileToolCalls } from "../tools/call.ts"; // v6 T
 import { runToolCanaries } from "../tools/canary.ts"; // v6 T
 import { runAgentLiveness } from "../identity/liveness.ts"; // v6 I
@@ -42,6 +43,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   const { cfg, jobs } = ctx;
   registerAgreementJobs(ctx, router);
   registerRushJobs(ctx); // ON3
+  registerWeeklySummaryJob(ctx); // B120
   // v6 T: close holds of failed paid tool calls once their authorization expires; probe listed tools with a known answer.
   if (cfg.tools.enabled) { jobs.register("tools-reconcile", 60_000, () => reconcileToolCalls(ctx)); jobs.register("tools-canary", 3_600_000, () => runToolCanaries(ctx)); }
   if (cfg.hostBonds.enabled) { jobs.register("host-bond-indexer", 5_000, () => pollHostBonds(ctx), { atStart: true }); jobs.register("host-slasher", 60_000, () => runHostSlasher(ctx)); }

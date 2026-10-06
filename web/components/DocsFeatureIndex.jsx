@@ -18,6 +18,7 @@ const sections = [
   ["agent-autonomy", "Progressive autonomy"],
   ["agent-ledger", "Activity & receipts"],
   ["agent-alerts", "Agent alerts"],
+  ["weekly-summary", "Weekly Telegram summary"], // B120
   ["agent-certificates", "Track-record certificates"],
   ["agent-profiles", "Public profiles & directory"],
   ["agent-identity", "Identity, paid reputation & liveness"],

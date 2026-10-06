@@ -372,6 +372,7 @@ const schema = z.object({
   // Optional Telegram bot (BotFather token, a secret). Without it the bot never starts.
   TELEGRAM_BOT_TOKEN: opt,
   TELEGRAM_LINKING_ENABLED: bool.default(false),
+  WEEKLY_SUMMARY_ENABLED: bool.default(false), // B120
 
   // ---- $ANYR holder perks: free inference credits (scripts/holder-credits.ts) and live holder tiers.
   // The token is ANYR_TOKEN_ADDRESS / ANYR_TOKEN_SYMBOL above (the $ANYR escrow settings).
@@ -535,6 +536,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     if (e.RUNTIME_ROLE === "worker") {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
+      allowed.push("weekly-summary"); // B120
       allowed.push("webhooks"); // V86: bounded event delivery.
       allowed.push("makegood-payouts"); // V6 R: on-chain make-good refunds.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
@@ -589,6 +591,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   if (e.AGENT_PAY_ENABLED && !e.AGENT_GUARD_ENABLED) throw new Error("AGENT_PAY_ENABLED requires AGENT_GUARD_ENABLED.");
   if (e.AGENT_PAY_ENABLED && (!e.USDG_ADDRESS || /^0x0{40}$/.test(e.USDG_ADDRESS))) throw new Error("AGENT_PAY_ENABLED requires USDG_ADDRESS.");
   if (e.TELEGRAM_LINKING_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("TELEGRAM_LINKING_ENABLED requires AGENT_POLICY_ENABLED.");
+  if (e.WEEKLY_SUMMARY_ENABLED && !e.TELEGRAM_LINKING_ENABLED) throw new Error("WEEKLY_SUMMARY_ENABLED requires TELEGRAM_LINKING_ENABLED."); // B120
   if (e.TELEGRAM_LINKING_ENABLED && e.RUNTIME_ROLE !== "api" && !e.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_LINKING_ENABLED requires TELEGRAM_BOT_TOKEN on the worker (or a combined role).");
   if (e.TELEGRAM_BOT_TOKEN && !/^\d{3,20}:[A-Za-z0-9_-]{20,}$/.test(e.TELEGRAM_BOT_TOKEN)) throw new Error("TELEGRAM_BOT_TOKEN must be the token BotFather issued (<id>:<secret>).");
   // The webhook is optional: without it the alert-notifier job only records state. Never echo the URL.
@@ -837,6 +840,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
     telegram: { botToken: e.TELEGRAM_BOT_TOKEN, linkingEnabled: e.TELEGRAM_LINKING_ENABLED },
+    weeklySummaryEnabled: e.WEEKLY_SUMMARY_ENABLED, // B120
     backup: { required: e.BACKUP_REQUIRED, maxAgeHours: e.BACKUP_MAX_AGE_HOURS },
     holders,
     ipx: ipxSettings(e),

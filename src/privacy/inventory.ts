@@ -1,4 +1,5 @@
 import { guardTables } from "./tables/agent-guard.ts"; // V98
+import { describeWeeklySummary } from "./weekly-summary.ts"; // B120
 import { agentPayTables } from "./agent-pay.ts"; // Pay another agent
 import { webhookTables } from "./webhooks.ts"; // V86: retained webhook configuration and attempt metadata.
 import { facilitatorTables } from "./facilitator.ts"; // v6 F: hosted x402 facilitator.
@@ -44,6 +45,7 @@ export const INVENTORY_FORMAT = "anyroute.data-inventory/1";
 export const TABLE_DOCS: Record<string, TableDoc> = { ...guardTables, ...agentPayTables, ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables, ...x402RecoveryTables, ...facilitatorTables, ...makegoodTables, ...toolTables, ...identityTables, ...commerceTables };
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);
+describeWeeklySummary(TABLE_DOCS); // B120
 export { EXTERNAL };
 
 // ---- consistency -----------------------------------------------------------------------------------------------------

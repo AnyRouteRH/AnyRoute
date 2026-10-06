@@ -1,5 +1,6 @@
 import RouterLimits from "../../components/RouterLimits"; // HD1
 import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
+import WeeklySummaryDocs from "../../components/WeeklySummaryDocs"; // B120
 import AgentPayDocs from "../../components/AgentPayDocs"; // Pay another agent
 import FastCreditDocs from '../../components/FastCreditDocs'; // V97
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
@@ -875,6 +876,7 @@ export default function Docs() {
           <AgentApprovalDocs />
           <ApproveAndAllowDocs /> {/* B118 */}
           <AgentGuardDocs /> {/* V98 */}
+          <WeeklySummaryDocs /> {/* B120 */}
           <AgentPayDocs /> {/* Pay another agent */}
           <TradingAgentDocs /> {/* B */}
           <DecisionTagDocs /> {/* B: decision tags */}

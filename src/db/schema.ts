@@ -28,6 +28,7 @@ export const accounts = pgTable(
   {
     id: text("id").primaryKey(),
     inferenceKeysDefault: boolean("inference_keys_default").notNull().default(false), // ZK6: new child-key default
+    lastSentWeek: text("last_sent_week"), // B120: ISO week of the account's Telegram summary
     kind: text("kind").notNull().default("key"), // key | wallet
     wallet: text("wallet"),
     balance: money("balance").notNull().default(sql`0`), // settled ledger sum (denormalized, trigger-checked)
@@ -707,6 +708,7 @@ export const measurementBundles = pgTable(
 
 export const kv = pgTable("kv", {
   key: text("key").primaryKey(),
+  weeklySummaryOptedIn: boolean("weekly_summary_opted_in"), // B120: only Telegram link rows
   value: jsonb("value").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
