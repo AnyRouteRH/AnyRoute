@@ -1,3 +1,4 @@
+export * from "./low-balance.ts"; // B119
 export * from "../network/bond-schema.ts";
 import { sql } from "drizzle-orm";
 import {
@@ -27,6 +28,7 @@ export const accounts = pgTable(
   "accounts",
   {
     id: text("id").primaryKey(),
+    lowBalancePico: money("low_balance_pico"), lowBalanceAlerted: boolean("low_balance_alerted").notNull().default(false), // B119
     inferenceKeysDefault: boolean("inference_keys_default").notNull().default(false), // ZK6: new child-key default
     lastSentWeek: text("last_sent_week"), // B120: ISO week of the account's Telegram summary
     kind: text("kind").notNull().default("key"), // key | wallet

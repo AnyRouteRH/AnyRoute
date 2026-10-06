@@ -1,4 +1,5 @@
 import { depositPingItems } from "./deposit-pings.ts"; // B123
+import { lowBalanceInbox } from "../account/low-balance.ts"; // B119
 import { createHmac } from "node:crypto";
 import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -95,6 +96,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
     capped ||= hosts.length > 100;
     items.push(...hosts.slice(0, 100).map(row => ({ id: `host:${row.id}:${row.at.toISOString()}`, at: row.at.toISOString(), kind: "host", title: "Host record updated", status: row.status, href: `/hosts/?id=${encodeURIComponent(row.id)}`, unread: unread(row.at.toISOString()) })));
   }
+  if (scope.whole) { const alerts = await lowBalanceInbox(ctx, key.accountId, since, asOf); capped ||= alerts.length > 100; items.push(...alerts.slice(0, 100)); } // B119
   items.sort((a, b) => micros(a.at) === micros(b.at) ? (a.id > b.id ? -1 : a.id < b.id ? 1 : 0) : micros(a.at) > micros(b.at) ? -1 : 1);
   return { data: items, count: items.filter(item => item.unread).length, capped, as_of: asOf, seen_scope: scope.seenScope, scope: scope.whole ? "account" : "key" };
 }

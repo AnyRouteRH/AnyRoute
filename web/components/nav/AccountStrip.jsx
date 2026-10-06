@@ -1,9 +1,10 @@
 'use client';
+import RunwayBalance from "../runway/RunwayBalance"; // B119
 import { useEffect, useRef, useState } from 'react';
 import { loadKey } from '../../lib/api.js';
 import { accountPoller } from '../../lib/account-poller.js';
 import { observeAccountKey } from '../account/useAccountKey.js';
-import { BalanceLink, BellButton } from './AccountTrigger.js';
+import { BellButton } from './AccountTrigger.js';
 import AccountDrawer from './AccountDrawer';
 import s from './AccountStrip.module.css';
 // U105: your balance and a bell on every page while a key is connected in this tab. Signed out: renders nothing, requests nothing.
@@ -30,7 +31,7 @@ export default function AccountStrip() {
   if (!key || snapshot?.fatal) return null;
   const close = () => setOpen(false);
   return <div className={s.strip}>
-    <BalanceLink snapshot={snapshot} className={s.balance}/>
+    <RunwayBalance apiKey={key} snapshot={snapshot} className={s.balance}/> {/* B119 */}
     <BellButton snapshot={snapshot} open={open} onClick={() => setOpen(true)} buttonRef={bell} className={s.bell} badgeClass={s.badge}/>
     {open && <AccountDrawer key={key} apiKey={key} snapshot={snapshot} onClose={close}/>}
   </div>;

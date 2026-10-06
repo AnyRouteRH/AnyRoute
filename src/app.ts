@@ -1,3 +1,4 @@
+import { accountRunwayRoutes } from "./api/account-runway.ts"; // B119
 import { hardeningMiddleware, originLockMiddleware } from "./hardening/middleware.ts"; // HD1
 import { internalEnv } from "./hardening/client.ts"; // HD1
 import { initializeUpstreamMonitor } from "./rush/monitor.ts"; // ON3
@@ -215,6 +216,7 @@ export async function createApp(opts: AppOptions = {}) {
   proofPackRoutes(app, ctx); // U100
   laneReportRoutes(app, ctx); // Lane report: read-only, with statements
   insightsRoutes(app, ctx); // V88: read-only, off by default.
+  accountRunwayRoutes(app, ctx); // B119
   inboxRoutes(app, ctx); // U78: account inbox.
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
   keysRoutes(app, ctx);

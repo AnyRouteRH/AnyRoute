@@ -7,6 +7,7 @@ export const groupOf = title => ACCOUNT_GROUPS.find(group => groupSections(group
 export const groupHash = id => { const group = ACCOUNT_GROUPS.find(item => item.id === id); return group ? groupSections(group).find(section => section.hash)?.hash : undefined; };
 export const sectionFromHash = hash => {
   const id = hash.replace(/^#/, '');
+  if (id === 'money') return 'Payments'; // B119: funding link from balance alerts.
   const target = dashboardSections.some(section => section.hash === id) ? id : groupHash(id);
   return dashboardSections.find(section => section.hash === target)?.title || 'Home';
 };

@@ -1,0 +1,5 @@
+.balance { flex-direction: column; gap: 4px; }
+.balance small { font: 400 9px/1.2 var(--sans); letter-spacing: 0; }
+.fields { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-block: 16px; }
+.fields label { flex: 1 1 180px; min-width: 0; }
+.fields input { display: block; width: 100%; margin-top: 8px; box-sizing: border-box; }

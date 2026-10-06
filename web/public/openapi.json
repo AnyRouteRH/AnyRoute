@@ -1622,7 +1622,7 @@
       "get": {
         "operationId": "listInbox",
         "summary": "List items that need attention",
-        "description": "B123: DEPOSIT_PINGS_ENABLED defaults false; when enabled, account-wide keys also see worker-recorded $ANYR and stock credit notices (one per deposit, including early credit). Pending approvals with their expiry, alerts, deposits, key auto top-ups, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items.",
+        "description": "Pending approvals with their expiry, alerts, deposits, key auto top-ups, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items. B119: when LOW_BALANCE_ALERTS_ENABLED is true, account-scope inboxes also include low-balance crossings with kind low_balance, id, at, title, amount (decimal USD balance), status null, href /dashboard/#money, and unread. Session and ordinary key-scope inboxes cannot see these account alerts.",
         "security": [
           {
             "BearerAuth": []
@@ -2059,7 +2059,13 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "properties": { "stopped_until": { "type": "string", "format": "date-time", "description": "B117: Optional timed stop deadline; alerts retain the deadline captured at the stop and include it in webhook and Telegram delivery." } }
+                        "properties": {
+                          "stopped_until": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "B117: Optional timed stop deadline; alerts retain the deadline captured at the stop and include it in webhook and Telegram delivery."
+                          }
+                        }
                       }
                     }
                   }
@@ -2108,7 +2114,13 @@
                   "properties": {
                     "data": {
                       "type": "object",
-                      "properties": { "stopped_until": { "type": "string", "format": "date-time", "description": "B117: Effective timed stop deadline; omitted when running or any stopped inherited policy has no deadline. Also reported by MCP anyroute_agent_rules. Each timed policy in policies reports its own deadline." } }
+                      "properties": {
+                        "stopped_until": {
+                          "type": "string",
+                          "format": "date-time",
+                          "description": "B117: Effective timed stop deadline; omitted when running or any stopped inherited policy has no deadline. Also reported by MCP anyroute_agent_rules. Each timed policy in policies reports its own deadline."
+                        }
+                      }
                     }
                   }
                 }
@@ -3122,7 +3134,11 @@
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "until": { "type": "string", "format": "date-time", "description": "B117: Optional ISO time with timezone, future and at most 30 days ahead; omitted stops until manual Resume. The next enforcement check after expiry clears the stop atomically and appends a resume event with reason scheduled." },
+                  "until": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "B117: Optional ISO time with timezone, future and at most 30 days ahead; omitted stops until manual Resume. The next enforcement check after expiry clears the stop atomically and appends a resume event with reason scheduled."
+                  },
                   "reason": {
                     "type": "string",
                     "maxLength": 160
@@ -3930,7 +3946,13 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "properties": { "stopped_until": { "type": "string", "format": "date-time", "description": "B117: Optional timed stop deadline; alerts retain the deadline captured at the stop and include it in webhook and Telegram delivery." } }
+                        "properties": {
+                          "stopped_until": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "B117: Optional timed stop deadline; alerts retain the deadline captured at the stop and include it in webhook and Telegram delivery."
+                          }
+                        }
                       }
                     }
                   }
@@ -17777,6 +17799,187 @@
           }
         }
       }
+    },
+    "/api/v1/account/runway": {
+      "get": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Estimate balance runway",
+        "description": "Same active-key authentication and visibility as credits: account-scoped keys see the account; sessions see remaining budget and their own charges. Inference-only keys are forbidden. Settled balance divided by seven-day charged usage/tool spend per day, rounded down; null without spending. Refunds, token purchases and holds are excluded.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "balance_usd",
+                    "spend_7d_usd",
+                    "per_day_usd",
+                    "days_left"
+                  ],
+                  "properties": {
+                    "balance_usd": {
+                      "type": "number"
+                    },
+                    "spend_7d_usd": {
+                      "type": "number"
+                    },
+                    "per_day_usd": {
+                      "type": "number"
+                    },
+                    "days_left": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "operationId": "getAccountRunway"
+      }
+    },
+    "/api/v1/account/low-balance": {
+      "get": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Read balance alert setting",
+        "description": "Owner keys only; no session or inference-only keys. enabled reports LOW_BALANCE_ALERTS_ENABLED (default false).",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "low_balance_usd",
+                    "enabled"
+                  ],
+                  "properties": {
+                    "low_balance_usd": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0,
+                      "maximum": 1000000
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "operationId": "getLowBalanceSetting"
+      },
+      "patch": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Set balance alert threshold",
+        "description": "Owner keys only; no session or inference-only keys. 403 while LOW_BALANCE_ALERTS_ENABLED is false. Null clears the setting. A changed threshold starts a new crossing check; an unchanged threshold preserves the claim. Worker checks every five minutes, records an inbox low_balance item, and attempts linked Telegram delivery once per crossing. Re-arms strictly above the threshold.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; Cache-Control: no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "low_balance_usd",
+                    "enabled"
+                  ],
+                  "properties": {
+                    "low_balance_usd": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0,
+                      "maximum": 1000000
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "low_balance_usd"
+                ],
+                "properties": {
+                  "low_balance_usd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1000000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "setLowBalanceSetting"
+      }
     }
   },
   "components": {
@@ -19779,7 +19982,11 @@
           "version": {
             "const": 1
           },
-          "stopped_until": { "type": "string", "format": "date-time", "description": "B117: Present only on a timed stop; omitted on running or indefinitely stopped policies." },
+          "stopped_until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "B117: Present only on a timed stop; omitted on running or indefinitely stopped policies."
+          },
           "killed": {
             "type": "boolean"
           },
@@ -20323,7 +20530,40 @@
           "error"
         ],
         "properties": {
-          "suggested_models": {"description":"B121: optional availability-error alternatives; empty if none match. Never switches models or charges. Messages also returns this top-level field; Responses stream errors carry it in the error event and response.error.","type":"array","maxItems":3,"items":{"type":"object","required":["id","name","prompt_price","completion_price","why"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"prompt_price":{"type":"string","description":"Dollars per input token"},"completion_price":{"type":"string","description":"Dollars per output token"},"why":{"type":"string"}}}},
+          "suggested_models": {
+            "description": "B121: optional availability-error alternatives; empty if none match. Never switches models or charges. Messages also returns this top-level field; Responses stream errors carry it in the error event and response.error.",
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "prompt_price",
+                "completion_price",
+                "why"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "prompt_price": {
+                  "type": "string",
+                  "description": "Dollars per input token"
+                },
+                "completion_price": {
+                  "type": "string",
+                  "description": "Dollars per output token"
+                },
+                "why": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "error": {
             "type": "object",
             "required": [

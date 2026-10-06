@@ -1,8 +1,9 @@
+import { runwayText } from "../../lib/runway.js"; // B119
 import { createElement as h } from 'react';
 import { ADD_FUNDS_HREF, balanceLabel, bellBadge, bellLabel, formatBalance } from '../../lib/account-strip.js';
 // U105: the two header controls, without styles, so they also render in node.
 export function BalanceLink({ snapshot, className }) {
-  return h('a', { className, href: ADD_FUNDS_HREF, 'aria-label': balanceLabel(snapshot) }, formatBalance(snapshot?.balance));
+  return h('a', { className, href: ADD_FUNDS_HREF, 'aria-label': balanceLabel(snapshot) + (runwayText(snapshot?.runway) ? ' ' + runwayText(snapshot.runway) + '.' : ''), title: runwayText(snapshot?.runway) || undefined }, formatBalance(snapshot?.balance), runwayText(snapshot?.runway) ? h('small', { 'aria-hidden': true }, snapshot.runway.days_left === 0 ? 'Less than a day' : `About ${snapshot.runway.days_left} days`) : null); // B119
 }
 export function BellButton({ snapshot, open, onClick, buttonRef, className, badgeClass }) {
   const badge = bellBadge(snapshot);

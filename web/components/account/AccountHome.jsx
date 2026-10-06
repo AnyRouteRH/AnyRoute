@@ -1,4 +1,5 @@
 'use client';
+import RunwayHint from "../runway/RunwayHint"; // B119
 import DepositCreditStatus from './DepositCreditStatus'; // V97
 import DepositProgress from './DepositProgress'; // V97B
 import FirstCallQuickstart from './FirstCallQuickstart'; // ON2
@@ -38,7 +39,7 @@ export default function AccountHome({ apiKey, workspace, onReceipt, onRefresh })
     <DepositProgress apiKey={apiKey}/> {/* V97B: visible regardless of balance. */}
     <FirstCallQuickstart apiKey={apiKey} workspace={workspace} account/> {/* ON2 */}
     <div className={s.cards}>
-      <section className="control-panel"><h3>Balance</h3><dl><div><dt>Available</dt><dd>{dollars(workspace.credits.available ?? workspace.credits.balance)}</dd></div></dl><DepositCreditStatus credits={workspace.credits}/><a className="inline-link" href="/dashboard/#payments">Add funds and see payment options</a></section>
+      <section className="control-panel"><h3>Balance</h3><dl><div><dt>Available</dt><dd>{dollars(workspace.credits.available ?? workspace.credits.balance)}</dd></div></dl><RunwayHint apiKey={apiKey} revision={revision}/>{/* B119 */}<DepositCreditStatus credits={workspace.credits}/><a className="inline-link" href="/dashboard/#payments">Add funds and see payment options</a></section>
       <section className="control-panel"><h3>Spend</h3>{spend ? <><dl><div><dt>Today</dt><dd>{dollars(spend.today)}</dd></div><div><dt>This week</dt><dd>{dollars(spend.week)}</dd></div></dl><p className="help-text">UTC days · week starts Monday · {spend.scope === 'account' ? 'all account keys' : 'this key only'}</p></> : <p className="help-text" role="status">{status('spend')}</p>}<a className="inline-link" href="/dashboard/#spend-watch">Watch spending</a></section>
       <section className="control-panel"><h3>Keys</h3>{workspace.keysError ? <p className="help-text">{workspace.keysError}</p> : <p>{workspace.keys.length} account keys · {workspace.keys.filter(key => !key.disabled).length} active</p>}<a className="inline-link" href="/dashboard/#api-keys">Manage keys and budgets</a></section>
       <section className="control-panel"><h3>Agents</h3>{data.agents ? <p>{data.agents.length} agent keys · {data.agents.filter(agent => agent.killed).length} stopped</p> : <p className="help-text" role="status">{status('agents')}</p>}<a className="inline-link" href="/agents/">Manage agent rules</a></section>

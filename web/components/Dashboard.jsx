@@ -1,4 +1,5 @@
 "use client";
+import LowBalanceSetting from "./runway/LowBalanceSetting"; // B119
 import DepositCreditStatus from './account/DepositCreditStatus'; // V97
 import DepositProgress from './account/DepositProgress'; // V97B
 import DepositNextLine from './account/DepositNextLine'; // V97B
@@ -1544,6 +1545,7 @@ export default function Dashboard() {
             </>
           )}
           {live && tab === "Payments" && <AddFunds showProgress={false} key={apiKey} apiKey={apiKey} balance={ws?.credits?.available} onBalance={() => refresh()}/>} {/* ON1 */}
+          {live && tab === "Payments" && <LowBalanceSetting key={apiKey} apiKey={apiKey}/>} {/* B119 */}
           {live && tab === "Payments" && <DepositProgress apiKey={apiKey}/>} {/* V97B */}
           {tab === "Payments" && escrowOn && (
             <>
