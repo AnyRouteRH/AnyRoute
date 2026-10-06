@@ -198,3 +198,4 @@ export const ACTIONS = [
 ];
 
 TASKS.push({ ...task('approve-and-allow', 'agents', 'Allow this next time', 'Review and raise an agent’s ask-first amount while approving one request.', '/docs/#approve-and-allow', 'approve, approval, ask first, amount, threshold, allow next time'), menu: false }); // B118
+TASKS.push({ ...task('proof-pack-check', 'verify', 'Check a proof pack', 'Check receipts, statements and lane totals in your browser. Your file is never uploaded.', '/verify/#v-proof-pack', 'proof pack, file, receipts, statements, signatures, lane report'), menu: false }); // B122

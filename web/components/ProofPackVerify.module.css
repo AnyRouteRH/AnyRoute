@@ -1,0 +1,7 @@
+/* B122: use the Verify surface and site tokens. */
+.dropZone { border: 1px dashed var(--line); background: var(--paper-2); padding: 20px; display: grid; gap: 16px; }
+.dropZone:focus-within { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+.dropZone input { max-width: 100%; min-width: 0; }
+.result { margin-top: 24px; overflow-wrap: anywhere; }
+.result li { margin-block: 8px; }
+@media (max-width: 480px) { .dropZone { padding: 14px; } }
