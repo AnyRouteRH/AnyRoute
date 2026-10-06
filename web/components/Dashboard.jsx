@@ -12,6 +12,7 @@ import AccountLaneReport from "./account/AccountLaneReport"; // Lane report
 import AccountInsights from "./account/AccountInsights"; // V88: spend insights.
 import AccountInbox from "./account/AccountInbox"; // U78: account inbox.
 import AccountActivity from "./account/AccountActivity";
+import AccountUnusedKeys from "./account/AccountUnusedKeys"; import KeyLastUsed from "./account/KeyLastUsed.js"; // B125
 import ProofBadge from "./ProofBadge"; // U76: account receipt marks.
 import AccountShell from "./account/AccountShell";
 import AccountAnchors from "./account/AccountAnchors.js";
@@ -1419,6 +1420,7 @@ export default function Dashboard() {
                 <Button onClick={() => setModal({ type: "key" })}>Create key</Button>
               </div>
               {live && ws?.keysError && <div className="note">This key can’t list the workspace’s other keys ({ws.keysError}).</div>}
+              {live && !ws?.keysError && <AccountUnusedKeys key={apiKey} apiKey={apiKey} keys={ws?.keys || []} currentHash={ws?.me?.hash} onChanged={refresh}/>} {/* B125 */}
               {view.keys.length ? (
                 <div className="key-list">
                   {view.keys.map((k, i) => (
@@ -1428,6 +1430,7 @@ export default function Dashboard() {
                         <span className={"badge " + (k.active ? "green" : "")}>{k.active ? (k.current ? "Active · this browser" : "Active") : "Revoked"}</span>
                       </div>
                       <code className="key-token">{k.token}</code>
+                      {live && <KeyLastUsed value={ws?.keys?.find(key => key.hash === k.id)?.last_used} current={k.current}/>} {/* B125 */}
                       <div className="budget-line">
                         <span>
                           {money(k.spent, 6)} / {k.budget == null ? "no limit" : money(k.budget, 2) + " USDG"}

@@ -1,0 +1,6 @@
+.review { margin-block: 1rem; min-width: 0; overflow-wrap: anywhere; }
+.list { border: 1px solid var(--line); padding: 1rem; margin-block: 1rem; min-width: 0; }
+.row { display: flex; gap: .75rem; align-items: flex-start; padding-block: .75rem; cursor: pointer; }
+.row input { flex: 0 0 auto; width: 1.25rem; height: 1.25rem; margin-top: .2rem; accent-color: var(--ink); }
+.row > span { min-width: 0; }
+.row strong { margin-right: .5rem; }
