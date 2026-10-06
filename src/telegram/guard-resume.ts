@@ -17,7 +17,7 @@ export async function handleGuardResume(ctx: Ctx, api: TelegramApi, update: TgUp
   let text = "Use /resume followed by the agent key hash shown on /agents.";
   if (command[1]) try {
     await linkLimit(ctx, "callback", message.from.id, 20);
-    await ctx.db.transaction(async tx => {
+    const until = await ctx.db.transaction(async tx => {
       await lockLinks(tx);
       const link = await readLink(tx, message.from!.id);
       if (!link) fail(403, "Link an owner key before resuming an agent.", "forbidden");
@@ -29,8 +29,9 @@ export async function handleGuardResume(ctx: Ctx, api: TelegramApi, update: TgUp
       const [row] = await tx.select().from(agentPolicies).where(eq(agentPolicies.keyHash, command[1]!));
       if (!row) fail(404, "Rulebook not found.", "not_found");
       await changeKill(tx, row, false, null, caller.keyHash);
+      return row.killUntil; // B117
     });
-    text = "Agent resumed. Its rulebook limits still apply.";
+    text = until ? `Agent resumed early; its stop was set until ${until.toISOString()}. Its rulebook limits still apply.` : "Agent resumed. Its rulebook limits still apply."; // B117
   } catch (error) { text = error instanceof ApiError ? error.message : "Could not resume the agent."; }
   await api.call("sendMessage", { chat_id: message.chat.id, text }).catch(() => undefined);
   return true;

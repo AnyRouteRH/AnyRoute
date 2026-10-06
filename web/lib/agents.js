@@ -18,7 +18,7 @@ export const reasonText = reason => reason?.message || ({
   tool_not_allowed: 'A tool is outside the rulebook.', outside_window: 'The current UTC time is outside the allowed windows.',
   approval_required: 'This request needs approval.', approval_calls_per_hour: 'This hour reached the call count; further calls need approval.',
 }[reason?.code] || breakerReasonText(reason?.code) || reason?.code || 'No reason supplied.');
-export const decisionText = value => ({ allow: 'Allow', deny: 'Deny', approval_required: 'Approval required', policy_set: 'Rulebook saved', killed: 'Stopped', resumed: 'Resumed' }[value] || value || 'Decision not recorded');
+export const decisionText = value => ({ allow: 'Allow', deny: 'Deny', approval_required: 'Approval required', policy_set: 'Rulebook saved', killed: 'Stopped', resumed: 'Resumed', resume: 'Resumed' }[value] || value || 'Decision not recorded');
 export const errorState = error => error?.status === 404 && error?.type === 'not_found'
   ? { off: true, message: FEATURE_OFF } : { off: false, message: error?.message || 'The request could not be completed.' };
 export const formatUsd = value => value != null && Number.isFinite(Number(value)) ? '$' + Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 12 }) : 'Not recorded';
@@ -149,8 +149,8 @@ export function sampleIntent(form) {
 
 // The confirmation is the sole path to the kill mutation; cancellation sends nothing.
 export const stopQuestion = agent => `Stop ${agent.name || 'this key'}? New requests through Anyroute will be refused until you resume it.`; // U106: ⌘K asks the same words.
-export async function confirmKill(agent, reason, confirm, request) {
-  if (!confirm(stopQuestion(agent))) return false;
-  await request(`/api/v1/agents/${encodeURIComponent(agent.key_hash)}/kill`, { method: 'POST', body: reason.trim() ? { reason: reason.trim() } : {} });
+export async function confirmKill(agent, reason, confirm, request, until) { // B117
+  if (!confirm(until ? `Stop ${agent.name || 'this key'} until ${new Date(until).toLocaleString()}? New requests through Anyroute will be refused until then.` : stopQuestion(agent))) return false;
+  await request(`/api/v1/agents/${encodeURIComponent(agent.key_hash)}/kill`, { method: 'POST', body: { ...(reason.trim() ? { reason: reason.trim() } : {}), ...(until ? { until } : {}) } });
   return true;
 }

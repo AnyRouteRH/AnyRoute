@@ -82,8 +82,8 @@ export async function setPolicy(db: Db, accountId: string, keyHash: string, poli
     return row;
   });
 }
-export async function changeKill(tx: Db | Tx, row: PolicyRow, killed: boolean, reason: string | null, actor: string) {
-  const [updated] = await tx.update(agentPolicies).set({ killed, killedAt: killed ? new Date() : null, killedReason: killed ? reason : null, updatedAt: new Date(), updatedBy: actor }).where(eq(agentPolicies.keyHash, row.keyHash)).returning();
+export async function changeKill(tx: Db | Tx, row: PolicyRow, killed: boolean, reason: string | null, actor: string, until: Date | null = null) { // B117
+  const [updated] = await tx.update(agentPolicies).set({ killed, killUntil: killed ? until : null, killedAt: killed ? new Date() : null, killedReason: killed ? reason : null, updatedAt: new Date(), updatedBy: actor }).where(eq(agentPolicies.keyHash, row.keyHash)).returning();
   await appendEvent(tx, { keyHash: row.keyHash, kind: killed ? "killed" : "resumed", policySha256: row.sha256 });
   return updated;
 }

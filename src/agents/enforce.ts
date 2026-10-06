@@ -1,4 +1,5 @@
 import { recordBreakerRequest, withBreakerModels } from "./breaker-state.ts";
+import { resumeScheduled } from "./stop-until.ts"; // B117
 import { breakerKillReason } from "./breakers.ts";
 import { recordAutonomyBreaker, recordAutonomyClean } from "./autonomy.ts";
 import { ledgerActive, ledgerActor, ledgerReservation } from "./ledger-context.ts";
@@ -42,6 +43,7 @@ export async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentI
   ledgerActor(actor);
   let refusal: ApiError | undefined;
   for (const row of rows) {
+    await resumeScheduled(tx, row, now); // B117: before every inference, tool or action check.
     const state = withBreakerModels(await policyState(tx, row, now), intents);
     await recordBreakerRequest(tx, row, state, intents, now);
     for (const intent of intents) {

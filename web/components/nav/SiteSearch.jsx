@@ -1,4 +1,6 @@
 'use client';
+import StopMenu from '../limits/StopMenu'; // B117
+import { stoppedLabel, stopHelp } from '../../lib/stop-until'; // B117
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSearchShortcut } from '../../lib/site-search';
 import { GROUPS } from '../../lib/site-map';
@@ -55,7 +57,7 @@ export default function SiteSearch() {
   }, [open]);
   useEffect(() => {
     if (!open) return;
-    if (phase === 'confirm') { armed.current = performance.now(); confirmButton.current?.focus(); }
+    if (phase === 'confirm') { armed.current = performance.now(); (confirmButton.current?.querySelector('button') ?? confirmButton.current)?.focus(); }
     else if (phase === 'done') doneButton.current?.focus();
     else if (phase !== 'busy') input.current?.focus();
   }, [open, phase]);
@@ -102,16 +104,16 @@ export default function SiteSearch() {
     loading.current?.abort(); setStep(null); setSelected(0);
   };
   // The confirm step: the agentQuestion() words are on screen and this is the person's answer. Nothing runs before it.
-  const confirm = async () => {
+  const confirm = async (until) => { // B117
     if (phase !== 'confirm' || performance.now() - armed.current < ARM_MS) return;
     const { action, choice } = step;
     setStep({ ...step, phase: 'busy', error: '' }); setMessage(action.run === 'stop' ? `Stopping ${choice.title}…` : `Resuming ${choice.title}…`);
     try {
-      const changed = await runAgentCommand(action.run, choice.agent, request, { confirmed: true, signedIn });
+      const changed = await runAgentCommand(action.run, choice.agent, request, { confirmed: true, signedIn, until: typeof until === 'string' ? until : undefined });
       if (!changed) { setStep({ ...step, phase: 'confirm', error: '' }); setMessage(''); return; }
       setStep({ ...step, phase: 'done' });
       window.dispatchEvent(new Event('anyroute:agents-changed')); // an open /agents page reads its list again
-      setMessage(action.run === 'stop' ? `Stopped ${choice.title}. New requests through Anyroute are refused until you resume it.` : `Resumed ${choice.title}. New requests through Anyroute are allowed again, within its spending limits.`);
+      setMessage(action.run === 'stop' ? `Stopped ${choice.title}. ${stoppedLabel(typeof until === 'string' ? until : null)}.` : `Resumed ${choice.title}. New requests through Anyroute are allowed again, within its spending limits.`);
     } catch (error) { setStep({ ...step, phase: 'confirm', error: errorState(error).message }); setMessage(''); }
   };
   const keys = event => {
@@ -158,10 +160,10 @@ export default function SiteSearch() {
     {phase === 'pick' && (items.state === 'off' || items.state === 'error') && <p className="search-empty" role="alert">{items.error} {items.error === FEATURE_OFF && step.action.focus === 'limits' ? <a href="/dashboard/#api-keys" onClick={close}>Set a key’s budget in API keys</a> : <a href={startHref(step.action)} onClick={close}>Open {step.action.pick === 'model' ? 'Chat' : 'Agents'}</a>}</p>}
     {(phase === 'confirm' || phase === 'busy') && <div className="search-confirm" role="group" aria-labelledby="site-search-question">
       <p id="site-search-question">{agentQuestion(step.action.run, step.choice.agent)}</p>
-      {step.action.run === 'stop' && <p className="help-text">{W.stopHelp}</p>}
+      {step.action.run === 'stop' && <p className="help-text">{stopHelp}</p>}
       {step.error && <p className="error" role="alert">{step.error}</p>}
       <div className="button-row">
-        <button ref={confirmButton} type="button" className="ar-button" disabled={phase === 'busy'} onClick={confirm}><i aria-hidden="true"/><span>{step.action.run === 'stop' ? W.stop : W.resume}</span><b aria-hidden="true">→</b></button>
+        {step.action.run === 'stop' ? <span ref={confirmButton}><StopMenu disabled={phase === 'busy'} onStop={confirm}/></span> : <button ref={confirmButton} type="button" className="ar-button" disabled={phase === 'busy'} onClick={confirm}><i aria-hidden="true"/><span>{step.action.run === 'stop' ? W.stop : W.resume}</span><b aria-hidden="true">→</b></button>} {/* B117 */}
         <button type="button" className="ar-button secondary" disabled={phase === 'busy'} onClick={back}><span>Back</span><b aria-hidden="true">→</b></button>
       </div>
     </div>}

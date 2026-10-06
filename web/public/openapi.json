@@ -2058,7 +2058,8 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": { "stopped_until": { "type": "string", "format": "date-time", "description": "B117: Optional timed stop deadline; alerts retain the deadline captured at the stop and include it in webhook and Telegram delivery." } }
                       }
                     }
                   }
@@ -2106,7 +2107,8 @@
                   ],
                   "properties": {
                     "data": {
-                      "type": "object"
+                      "type": "object",
+                      "properties": { "stopped_until": { "type": "string", "format": "date-time", "description": "B117: Effective timed stop deadline; omitted when running or any stopped inherited policy has no deadline. Also reported by MCP anyroute_agent_rules. Each timed policy in policies reports its own deadline." } }
                     }
                   }
                 }
@@ -3063,7 +3065,7 @@
         "tags": [
           "Agent rulebook"
         ],
-        "summary": "Kill an agent",
+        "summary": "Stop an agent",
         "description": "Management key or owner/admin of the target key’s account and team, with the same permissions as editing that key. A committed kill is read on the next request by every replica, without policy caching. Requires an existing rulebook. Off returns 404.",
         "security": [
           {
@@ -3120,6 +3122,7 @@
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                  "until": { "type": "string", "format": "date-time", "description": "B117: Optional ISO time with timezone, future and at most 30 days ahead; omitted stops until manual Resume. The next enforcement check after expiry clears the stop atomically and appends a resume event with reason scheduled." },
                   "reason": {
                     "type": "string",
                     "maxLength": 160
@@ -3926,7 +3929,8 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": { "stopped_until": { "type": "string", "format": "date-time", "description": "B117: Optional timed stop deadline; alerts retain the deadline captured at the stop and include it in webhook and Telegram delivery." } }
                       }
                     }
                   }
@@ -19775,6 +19779,7 @@
           "version": {
             "const": 1
           },
+          "stopped_until": { "type": "string", "format": "date-time", "description": "B117: Present only on a timed stop; omitted on running or indefinitely stopped policies." },
           "killed": {
             "type": "boolean"
           },

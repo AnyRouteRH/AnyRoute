@@ -42,6 +42,7 @@ import SpendingLimitsDocs from "../../components/SpendingLimitsDocs";
 import AutoTopupDocs from "../../components/AutoTopupDocs"; // U113
 import ReplayRulesDocs from "../../components/ReplayRulesDocs";
 import PlaybooksDocs from "../../components/PlaybooksDocs"; // U115
+import StopUntilDocs from "../../components/StopUntilDocs"; // B117
 import DefaultRouteDocs from "../../components/DefaultRouteDocs";
 import RulebookWordsDocs from "../../components/RulebookWordsDocs"; // B124
 import StarterSetupsDocs from "../../components/StarterSetupsDocs"; // U103
@@ -871,6 +872,7 @@ export default function Docs() {
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
           <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs /><ReplayRulesDocs /><PlaybooksDocs /><RulebookWordsDocs /><AgentRulebookDocs /> {/* B124 */}<AgentBreakersDocs /><AgentAutonomyDocs />
+          <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs /><ReplayRulesDocs /><PlaybooksDocs /><StopUntilDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs /> {/* B117 */}
           <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}<LaneReportDocs /> {/* Lane report */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />

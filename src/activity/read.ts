@@ -36,11 +36,11 @@ export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, elig
       case when a.status in ('pending','approved') and a.expires_at <= now() then 'expired' else a.status end, a.id, a.max_cost_pico::text
       from agent_approvals a join keys k on k.key_hash = a.key_hash where ${agents}`);
     if (!q.kind || q.kind === "policy") sources.push(sql`select 'policy:' || e.id, e.ts, 'policy',
-      case e.kind when 'killed' then 'Agent stopped' when 'resumed' then 'Agent resumed' when 'policy_set' then 'Agent rules changed' when 'decision' then 'Request blocked by rules' else 'Agent rule event' end,
+      case e.kind when 'killed' then 'Agent stopped' when 'resumed' then 'Agent resumed' when 'resume' then 'Agent resumed' when 'policy_set' then 'Agent rules changed' when 'decision' then 'Request blocked by rules' else 'Agent rule event' end,
       '0', e.intent->>'model', e.intent->>'lane', null, ${label}, null, coalesce(e.decision,e.kind), e.id::text, null
       from agent_policy_events e join keys k on k.key_hash = e.key_hash where ${agents} and e.kind not like 'approval_%' and (e.kind <> 'decision' or e.decision = 'deny')`);
     if (!q.kind || q.kind === "alert") sources.push(sql`select 'alert:' || (a->>'id'), (a->>'at')::timestamptz, 'alert',
-      case a->>'kind' when 'cap' then 'Spending limit alert' when 'denials' then 'Blocked requests alert' when 'killed' then 'Agent stopped alert' else 'Approval alert' end,
+      case a->>'kind' when 'cap' then 'Spending limit alert' when 'denials' then 'Blocked requests alert' when 'killed' then case when a->>'stopped_until' is not null then 'Agent stopped until ' || (a->>'stopped_until') else 'Agent stopped alert' end else 'Approval alert' end,
       '0', null, null, null, ${label}, null, a->>'delivery', a->>'id', null
       from kv v cross join lateral jsonb_array_elements(v.value->'feed') a join keys k on k.key_hash = a->>'key_hash'
       where v.key = ${`agent-alerts:${key.accountId}`} and ${agents} and (a->>'at')::timestamptz > now() - interval '90 days'`);

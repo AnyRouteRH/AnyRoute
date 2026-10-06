@@ -358,6 +358,13 @@
       "when": 1791400052000,
       "tag": "0052_weekly_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1791400053000,
+      "tag": "0053_stop_until",
+      "breakpoints": true
     }
   ]
 }

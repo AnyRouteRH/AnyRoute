@@ -30,8 +30,8 @@ function ChatLimits({ limits, signedIn, busy, onStop }) {
   const [form, setForm] = useState(() => limitsFromChat(session));
   const [error, setError] = useState('');
   const run = async fn => { setError(''); try { await fn(); } catch (e) { setError(e.message); } };
-  const stop = { stopped: !!session?.stopped, ready: !!session?.ready, busy: changing,
-    onStop: () => { onStop(); run(limits.stop); }, onResume: () => run(limits.resume) };
+  const stop = { stopped: !!session?.stopped && (!session.stopped_until || Date.parse(session.stopped_until) > Date.now()), until: session?.stopped_until, ready: !!session?.ready, busy: changing,
+    onStop: (_reason, until) => { onStop(); run(() => limits.stop(until)); }, onResume: () => run(limits.resume) };
   const field = (name, label, max, help) => <LimitField id={`chat-${name}`} label={label} help={help}><input id={`chat-${name}`} type="number" min={name === 'minutes' ? 1 : 0} max={max} step={name === 'minutes' ? 1 : 'any'} inputMode="decimal" required value={form[name]} onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))}/></LimitField>;
   return <div className={s.panel}>
     <p>Apply spending limits to chat in this browser tab, across its models and conversations. Calls use the same account balance and signed receipts.</p>

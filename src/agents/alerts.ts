@@ -12,7 +12,7 @@ export const ALERT_RETENTION_MS = 90 * 86_400_000;
 export const ALERT_FEED_LIMIT = 100;
 export const ALERT_RATE = 10;
 export const alertStateKey = (account: string) => `agent-alerts:${account}`;
-export type AgentAlert = { id: string; key_hash: string; at: string; kind: "cap" | "denials" | "killed" | "approval"; window?: string; percent?: number; count?: number; channels: string[]; delivery: "pending" | "delivered" | "failed" | "feed_only"; attempts: number; delivered_targets?: string[]; next_attempt: number };
+export type AgentAlert = { id: string; key_hash: string; at: string; kind: "cap" | "denials" | "killed" | "approval"; window?: string; percent?: number; count?: number; channels: string[]; delivery: "pending" | "delivered" | "failed" | "feed_only"; attempts: number; delivered_targets?: string[]; next_attempt: number; stopped_until?: string }; // B117
 const denialBatches = new WeakMap<object, string>();
 export type AlertState = { denials?: Record<string, { at: number; batch: string }[]>; feed: AgentAlert[]; dedupe: Record<string, number>; rate: { minute: number; count: number } };
 const empty = (): AlertState => ({ feed: [], dedupe: {}, rate: { minute: 0, count: 0 } });
@@ -28,7 +28,7 @@ export async function saveAlertState(db: Db | Tx, account: string, state: AlertS
   await db.insert(kv).values({ key: alertStateKey(account), value: state }).onConflictDoUpdate({ target: kv.key, set: { value: state, updatedAt: new Date(now) } });
 }
 /** Caller owns the existing account lock. Each threshold has a rolling-window cooldown, not a calendar reset. */
-export function addAlert(state: AlertState, keyHash: string, policy: AgentPolicy, data: Pick<AgentAlert, "kind" | "window" | "percent" | "count">, dedupe: string, duration: number, now: number) {
+export function addAlert(state: AlertState, keyHash: string, policy: AgentPolicy, data: Pick<AgentAlert, "kind" | "window" | "percent" | "count" | "stopped_until">, dedupe: string, duration: number, now: number) {
   if (!policy.alerts || (state.dedupe[dedupe] ?? 0) > now) return false;
   state.dedupe[dedupe] = now + duration;
   state.feed.unshift({ id: randomUUID(), key_hash: keyHash, at: new Date(now).toISOString(), ...data, channels: [...new Set(policy.alerts.channels ?? ["webhook", "telegram"])], delivery: "pending", attempts: 0, next_attempt: 0 });
@@ -62,7 +62,7 @@ export async function captureAgentAlert(tx: Db | Tx, event: typeof agentPolicyEv
     state.denials[key.keyHash] = entries.slice(-10_000);
     const count = state.denials[key.keyHash].length;
     if (count >= (policy.alerts?.denials_in_10min ?? 5)) addAlert(state, key.keyHash, policy, { kind: "denials", count }, `${key.keyHash}:denials`, 600_000, now);
-  } else addAlert(state, key.keyHash, policy, { kind: event.kind === "killed" ? "killed" : "approval" }, `${key.keyHash}:event:${event.id}`, 0, now);
+  } else addAlert(state, key.keyHash, policy, { kind: event.kind === "killed" ? "killed" : "approval", ...(event.kind === "killed" && rows.find(r => r.keyHash === key.keyHash)?.killUntil ? { stopped_until: rows.find(r => r.keyHash === key.keyHash)!.killUntil!.toISOString() } : {}) }, `${key.keyHash}:event:${event.id}`, 0, now);
   await saveAlertState(tx, key.accountId, state, now);
 }
 /** Called after a successful reservation under the account lock; counts actual charges plus open reservations. */

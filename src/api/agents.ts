@@ -1,4 +1,5 @@
 import { actionsRemaining, combinedActionsRemaining } from "../agents/guard-state.ts"; // V98
+import { killBody, stopFields, combinedStopFields, visibleStop } from "../agents/stop-until.ts"; // B117
 import { autonomyDescription, autonomyMultiplier, spendingCapPico } from "../agents/autonomy.ts";
 import { agentAlertsRoutes } from "./agent-alerts.ts";
 import type { Context, Hono } from "hono";
@@ -17,8 +18,7 @@ import { evaluateAgentPolicy, type AgentDecision } from "../agents/evaluate.ts";
 import { appendEvent, assertOwnRulebook, changeKill, eventJson, lockAccount, policiesFor, policyState, setPolicy, type PolicyRow } from "../agents/store.ts";
 import { loadReplay, replayRulebook, REPLAY } from "../agents/replay.ts";
 // U115: playbook_id, present only while the key follows a playbook, names it; the rules are then that playbook's current rules.
-const jsonPolicy = (row: PolicyRow) => ({ policy: row.spec, sha256: row.sha256, version: row.version, killed: row.killed, killed_at: row.killedAt?.toISOString() ?? null, killed_reason: row.killedReason, ...(row.playbookId ? { playbook_id: row.playbookId } : {}) });
-const killBody = z.strictObject({ reason: z.string().max(160).optional() });
+const jsonPolicy = (row: PolicyRow) => ({ policy: row.spec, sha256: row.sha256, version: row.version, killed: row.killed, killed_at: row.killedAt?.toISOString() ?? null, killed_reason: row.killedReason, ...stopFields(row), ...(row.playbookId ? { playbook_id: row.playbookId } : {}) }); // B117
 const replayBody = z.strictObject({ policy: agentPolicySchema, days: z.number().int().min(1).max(REPLAY.maxDays).optional() });
 export async function principal(ctx: Ctx, c: Context) {
   const key = await requireKey(ctx, c.req.header("authorization"));
@@ -39,6 +39,7 @@ async function ownPolicy(ctx: Ctx, hash: string) {
 }
 async function describe(ctx: Ctx, key: KeyRow, rows: PolicyRow[], now: Date) {
   return Promise.all(rows.map(async row => {
+    row = visibleStop(row, now); // B117: reads reflect expiry; enforcement records the resume atomically.
     const state = await policyState(ctx.db, row, now);
     const spent = Object.fromEntries(Object.entries(state.spent_pico).map(([w, v]) => [w, picoToUsd(v)]));
     const remaining = Object.fromEntries((["hour", "day", "week"] as const).map(w => {
@@ -74,7 +75,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
       const descriptions = await describe(ctx, key, policies, new Date());
       const own = descriptions.find(p => !p.inherited) ?? descriptions[0];
       const uncapped = own ? null : await policyState(ctx.db, { keyHash: key.keyHash, killed: false }, new Date());
-      return { key_hash: key.keyHash, name: key.name, has_policy: !!own, killed: descriptions.some(p => p.killed), policy_sha256: own?.sha256 ?? null, ...followed(books, own), spent: own?.spent ?? Object.fromEntries(Object.entries(uncapped!.spent_pico).map(([w, v]) => [w, picoToUsd(v)])), caps: own?.effective_caps ?? own?.policy.caps ?? {}, policies: descriptions };
+      return { key_hash: key.keyHash, name: key.name, has_policy: !!own, killed: descriptions.some(p => p.killed), ...combinedStopFields(descriptions), policy_sha256: own?.sha256 ?? null, ...followed(books, own), spent: own?.spent ?? Object.fromEntries(Object.entries(uncapped!.spent_pico).map(([w, v]) => [w, picoToUsd(v)])), caps: own?.effective_caps ?? own?.policy.caps ?? {}, policies: descriptions }; // B117
     }));
     return c.json({ data });
   });
@@ -86,7 +87,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
       const limits = policies.map(p => p.remaining[window]).filter((v): v is number => typeof v === "number");
       return [window, limits.length ? Math.min(...limits) : null];
     }));
-    return c.json({ data: { key_hash: key.keyHash, name: key.name, policy: own?.policy ?? null, sha256: own?.sha256 ?? null, ...followed(own?.playbook_id ? await playbookNames(ctx, key.accountId) : new Map(), own), killed: policies.some(p => p.killed), remaining, policies, ...(ctx.cfg.agentGuardEnabled ? combinedActionsRemaining(policies) : {}), ...(own?.autonomy ? { autonomy: own.autonomy, effective_caps: own.effective_caps } : {}) } });
+    return c.json({ data: { key_hash: key.keyHash, name: key.name, policy: own?.policy ?? null, sha256: own?.sha256 ?? null, ...followed(own?.playbook_id ? await playbookNames(ctx, key.accountId) : new Map(), own), killed: policies.some(p => p.killed), ...combinedStopFields(policies), remaining, policies, ...(ctx.cfg.agentGuardEnabled ? combinedActionsRemaining(policies) : {}), ...(own?.autonomy ? { autonomy: own.autonomy, effective_caps: own.effective_caps } : {}) } }); // B117
   });
   app.post("/api/v1/agents/check", async c => {
     const key = await requireKey(ctx, c.req.header("authorization"));
@@ -97,7 +98,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
       await lockAccount(tx, key.accountId);
       const rows = await policiesFor(tx, key.keyHash);
       const now = new Date();
-      const decisions = await Promise.all(rows.map(async row => evaluateAgentPolicy(row.spec, await policyState(tx, row, now), intent, now)));
+      const decisions = await Promise.all(rows.map(async row => evaluateAgentPolicy(row.spec, await policyState(tx, visibleStop(row, now), now), intent, now))); // B117: dry run stays read-only.
       const decision: AgentDecision["decision"] = decisions.some(d => d.decision === "deny") ? "deny" : decisions.some(d => d.decision === "approval_required") ? "approval_required" : "allow";
       return { decision, reasons: decisions.flatMap(d => d.reasons) };
     });
@@ -105,7 +106,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
   });
   app.get("/api/v1/agents/:key_hash/policy", async c => {
     const key = await ownedKey(ctx, await principal(ctx, c), c.req.param("key_hash"));
-    return c.json({ data: jsonPolicy(await ownPolicy(ctx, key.keyHash)) });
+    return c.json({ data: jsonPolicy(visibleStop(await ownPolicy(ctx, key.keyHash), new Date())) }); // B117
   });
   app.put("/api/v1/agents/:key_hash/policy", async c => {
     const caller = await principal(ctx, c);
@@ -143,7 +144,7 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
       await lockAccount(tx, key.accountId);
       const [policy] = await tx.select().from(agentPolicies).where(eq(agentPolicies.keyHash, key.keyHash));
       if (!policy) fail(404, "Rulebook not found.", "not_found");
-      return changeKill(tx, policy, action === "kill", body.reason ?? null, caller.keyHash);
+      return changeKill(tx, policy, action === "kill", body.reason ?? null, caller.keyHash, body.until ? new Date(body.until) : null); // B117
     });
     return c.json({ data: jsonPolicy(row) });
   });

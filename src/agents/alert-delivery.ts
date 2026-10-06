@@ -1,3 +1,4 @@
+import { timedAlertText } from "./stop-text.ts"; // B117
 import { sendRuleWebhook } from "../webhooks/delivery.ts"; // V86: shared signed transport.
 import { linkedAlertTargets } from "../telegram/delivery.ts";
 import { and, eq, isNotNull, like, sql } from "drizzle-orm";
@@ -14,7 +15,7 @@ import { captureAgentCaps, ALERT_RATE, pruneAgentAlerts, readAlertState, saveAle
 export type AlertDeliveryOptions = Pick<SpendWatchOptions, "send" | "resolve"> & { now?: () => number; telegramFetch?: typeof fetch };
 const nowTime = Date.now;
 type Target = { id: string; send: () => Promise<boolean> };
-export const agentAlertPayload = (alert: AgentAlert) => ({ source: "anyroute", type: "agent_alert", id: alert.id, key_hash: alert.key_hash, at: alert.at, kind: alert.kind, ...(alert.window ? { window: alert.window, percent: alert.percent } : {}), ...(alert.count ? { count: alert.count } : {}) });
+export const agentAlertPayload = (alert: AgentAlert) => ({ source: "anyroute", type: "agent_alert", id: alert.id, key_hash: alert.key_hash, at: alert.at, kind: alert.kind, ...(alert.stopped_until ? { stopped_until: alert.stopped_until } : {}), ...(alert.window ? { window: alert.window, percent: alert.percent } : {}), ...(alert.count ? { count: alert.count } : {}) });
 // V86: legacy destinations stay unsigned until their owner rotates; egress remains guarded.
 async function targets(ctx: Ctx, account: string, alert: AgentAlert, opts: AlertDeliveryOptions): Promise<Target[]> {
   const out: Target[] = [];
@@ -31,7 +32,7 @@ async function targets(ctx: Ctx, account: string, alert: AgentAlert, opts: Alert
     }
   }
   if (alert.channels.includes("telegram") && ctx.cfg.telegram.botToken) {
-    out.push(...await linkedAlertTargets(ctx, account, alert.key_hash, `AnyRoute agent alert: ${alert.kind}${alert.window ? ` (${alert.window}, ${alert.percent}%)` : ""}. Key ${alert.key_hash}. Open /agents for details.`, opts.telegramFetch));
+    out.push(...await linkedAlertTargets(ctx, account, alert.key_hash, timedAlertText(alert) ?? `AnyRoute agent alert: ${alert.kind}${alert.window ? ` (${alert.window}, ${alert.percent}%)` : ""}. Key ${alert.key_hash}. Open /agents for details.`, opts.telegramFetch));
     const [agent] = await ctx.db.select().from(keys).where(eq(keys.keyHash, alert.key_hash));
     const links = await ctx.db.select().from(kv).where(like(kv.key, "telegram:user:%"));
     for (const link of links) {
@@ -49,7 +50,7 @@ async function targets(ctx: Ctx, account: string, alert: AgentAlert, opts: Alert
         if ((await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, key.keyHash)).limit(1)).length) continue;
         if (!["owner", "admin"].includes(await roleOf(ctx, key))) continue;
         out.push({ id: `telegram:${id}`, send: async () => {
-          try { await new TelegramApi(ctx.cfg.telegram.botToken!, opts.telegramFetch).call("sendMessage", { chat_id: Number(id), text: `AnyRoute agent alert: ${alert.kind}${alert.window ? ` (${alert.window}, ${alert.percent}%)` : ""}. Key ${alert.key_hash}. Open /agents for details.`, link_preview_options: { is_disabled: true } }, AbortSignal.timeout(5_000)); return true; } catch { return false; }
+          try { await new TelegramApi(ctx.cfg.telegram.botToken!, opts.telegramFetch).call("sendMessage", { chat_id: Number(id), text: timedAlertText(alert) ?? `AnyRoute agent alert: ${alert.kind}${alert.window ? ` (${alert.window}, ${alert.percent}%)` : ""}. Key ${alert.key_hash}. Open /agents for details.`, link_preview_options: { is_disabled: true } }, AbortSignal.timeout(5_000)); return true; } catch { return false; }
         } });
         if (out.filter(t => t.id.startsWith("telegram:")).length >= 20) break;
       } catch { /* Forgotten, disabled or invalid principal links are ignored. */ }

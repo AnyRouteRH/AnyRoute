@@ -7,6 +7,7 @@ export const agentPolicies = pgTable("agent_policies", {
   keyHash: text("key_hash").primaryKey().references(() => keys.keyHash),
   version: integer("version").notNull(), spec: jsonb("spec").$type<AgentPolicy>().notNull(), sha256: text("sha256").notNull(),
   killed: boolean("killed").notNull().default(false), killedAt: ts("killed_at"), killedReason: text("killed_reason"),
+  killUntil: ts("kill_until"), // B117: null means stopped until the owner resumes.
   updatedAt: ts("updated_at").notNull().defaultNow(), updatedBy: text("updated_by").notNull(),
   // U115: the playbook this key follows. While set, spec and sha256 are kept equal to the playbook's current rules.
   playbookId: text("playbook_id").references(() => playbooks.id),

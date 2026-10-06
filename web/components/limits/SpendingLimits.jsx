@@ -10,6 +10,8 @@ import { LIMIT_CAPS, GUARD_CAPS, LIMIT_WORDS as W, KEY_BUDGET, KEY_BUDGET_WORDS,
 import RouteDefault from './RouteDefault'; // U101
 import StarterSetups from './StarterSetups'; // U103
 import st from './SpendingLimits.module.css';
+import StopMenu from './StopMenu'; // B117
+import { stoppedLabel, stopHelp } from '../../lib/stop-until'; // B117
 
 export function LimitField({ id, label, children, help }) {
   return <div className="field"><label htmlFor={id}>{label}</label>{children}{help && <p className="help-text">{help}</p>}</div>;
@@ -50,11 +52,11 @@ export function AutoTopupRow({ id, topup }) {
 export function StopResume({ id, stop, disabled }) {
   const [reason, setReason] = useState('');
   return <fieldset disabled={disabled || stop.busy} className={st.group}><legend>{W.stopTitle}</legend>
-    <p className={st.state}><span className={'badge' + (stop.stopped ? ' dark' : '')}>{stop.stopped ? 'Stopped' : stop.ready ? 'Running' : 'No saved limits'}</span>{stop.detail}</p>
+    <p className={st.state}><span className={'badge' + (stop.stopped ? ' dark' : '')}>{stop.stopped ? stoppedLabel(stop.until) : stop.ready ? 'Running' : 'No saved limits'}</span>{stop.detail}</p> {/* B117 */}
     {stop.ready && !stop.stopped && stop.reason && <Field id={`${id}-stop-reason`} label="Reason (optional)"><input id={`${id}-stop-reason`} maxLength={160} value={reason} onChange={e => setReason(e.target.value)}/></Field>}
     {stop.stopped ? <Button type="button" className={st.stop} onClick={() => stop.onResume()}>{W.resume}</Button>
-      : <Button type="button" secondary className={st.stop} disabled={!stop.ready} onClick={() => stop.onStop(reason)}>{W.stop}</Button>}
-    <p className="help-text">{stop.ready ? W.stopHelp : W.stopFirst}</p>
+      : <StopMenu className={st.stop} disabled={!stop.ready || disabled || stop.busy} onStop={until => stop.onStop(reason, until)}/>} {/* B117 */}
+    <p className="help-text">{stop.ready ? stopHelp : W.stopFirst}</p> {/* B117 */}
   </fieldset>;
 }
 

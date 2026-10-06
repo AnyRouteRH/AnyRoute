@@ -105,17 +105,17 @@ export function createHarnessLimits({ request, stream, storage, pollMs = 5000 })
       persist(null);
     });
   }
-  async function stop() {
+  async function stop(until) { // B117
     if (!state.session?.ready) return;
     return mutate(async () => {
-      await owner(`/api/v1/agents/${path(state.session.key_hash)}/kill`, { method: 'POST', body: { reason: 'Stopped from chat in this browser' } });
-      persist({ ...state.session, stopped: true });
+      await owner(`/api/v1/agents/${path(state.session.key_hash)}/kill`, { method: 'POST', body: { reason: 'Stopped from chat in this browser', ...(until ? { until } : {}) } });
+      persist({ ...state.session, stopped: true, stopped_until: until ?? null });
     });
   }
   async function resume() {
     return mutate(async () => {
       await owner(`/api/v1/agents/${path(state.session.key_hash)}/resume`, { method: 'POST' });
-      persist({ ...state.session, stopped: false });
+      persist({ ...state.session, stopped: false, stopped_until: null });
     });
   }
   function waitForApproval(error, options, session) {

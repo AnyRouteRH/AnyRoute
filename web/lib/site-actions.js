@@ -104,9 +104,9 @@ export async function loadAgents(request, signedIn, signal) {
 }
 
 // Stop or Resume through the same calls as /agents, only once the person confirmed agentQuestion() and only signed in.
-export async function runAgentCommand(kind, agent, request, { confirmed = false, signedIn = false } = {}) {
+export async function runAgentCommand(kind, agent, request, { confirmed = false, signedIn = false, until } = {}) {
   if (confirmed !== true || !signedIn || !AGENT_ID.test(String(agent?.key_hash ?? ''))) return false;
-  if (kind === 'stop') return confirmKill(agent, '', () => true, request); // the dialog already asked confirmKill's question
+  if (kind === 'stop') return confirmKill(agent, '', () => true, request, until); // the dialog already asked confirmKill's question
   if (kind !== 'resume') return false;
   await request(`/api/v1/agents/${encodeURIComponent(agent.key_hash)}/resume`, { method: 'POST' });
   return true;

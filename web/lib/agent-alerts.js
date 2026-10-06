@@ -1,4 +1,6 @@
+import { stoppedLabel } from './stop-until.js'; // B117
 export function alertLabel(alert) {
+  if (alert.kind === 'killed' && alert.stopped_until) return `Agent ${stoppedLabel(alert.stopped_until).toLowerCase()}`; // B117
   if (alert.kind === 'cap') return `${alert.percent}% of the rolling ${alert.window} cap`;
   if (alert.kind === 'denials') return `${alert.count} denied request batches in 10 minutes`;
   return ({killed:'Agent stopped',approval:'Agent requested approval'})[alert.kind] || 'Agent alert';

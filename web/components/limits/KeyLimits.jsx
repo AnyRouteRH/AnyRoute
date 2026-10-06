@@ -62,9 +62,9 @@ export default function KeyLimits({ apiKey, keyHash, name, current, budget = nul
   };
   const own = row?.own;
   const playbook = row?.playbook ?? null; // U115: rules from a playbook are read-only here; the total budget and Stop still work.
-  const stop = { stopped: !!own?.killed, ready: !!own, busy: view.busy, reason: true,
+  const stop = { stopped: !!own?.killed, until: own?.stopped_until, ready: !!own, busy: view.busy, reason: true, // B117
     detail: own?.killed ? `Since ${utcTime(own.killed_at)}. Reason: ${own.killed_reason || 'Not recorded'}.` : null,
-    onStop: reason => mutate(() => confirmKill({ key_hash: keyHash, name }, reason, message => window.confirm(message), request), 'Stopped.'),
+    onStop: (reason, until) => mutate(() => confirmKill({ key_hash: keyHash, name }, reason, message => window.confirm(message), request, until), 'Stopped.'), // B117
     onResume: () => mutate(() => request(path + '/resume', { method: 'POST' }), 'Resumed.') };
   const budgetField = { value: budgetValue, onChange: setBudgetValue, help: [KB.help, budgetResetText(reset), spent == null ? '' : `Spent so far: ${formatUsd(spent)}.`].filter(Boolean).join(' '),
     topup: { value: topupValue, onChange: setTopupValue, summary: topupSummary(topupValue, { week, reset }) } };

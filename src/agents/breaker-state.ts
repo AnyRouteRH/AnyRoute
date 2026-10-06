@@ -9,7 +9,7 @@ import type { BreakerState } from "./breakers.ts";
 
 /** Caller holds the same account lock used by caps. Resume resets breakers, never cap spend. */
 export async function loadBreakerState(db: Db | Tx, keyHash: string, now: Date): Promise<BreakerState> {
-  const [resume] = await db.select({ id: agentPolicyEvents.id, ts: agentPolicyEvents.ts }).from(agentPolicyEvents).where(sql`${agentPolicyEvents.keyHash} = ${keyHash} and ${agentPolicyEvents.kind} = 'resumed'`).orderBy(desc(agentPolicyEvents.id)).limit(1);
+  const [resume] = await db.select({ id: agentPolicyEvents.id, ts: agentPolicyEvents.ts }).from(agentPolicyEvents).where(sql`${agentPolicyEvents.keyHash} = ${keyHash} and ${agentPolicyEvents.kind} in ('resumed', 'resume')`).orderBy(desc(agentPolicyEvents.id)).limit(1); // B117
   const since = (ms: number) => new Date(Math.max(now.getTime() - ms, resume?.ts.getTime() ?? 0)).toISOString();
   const scope = sql`(select key_hash from keys where key_hash = ${keyHash} union select key_hash from agent_sessions where parent_key_hash = ${keyHash})`;
   const [charged] = await db.select({ total: sql<string>`coalesce(sum(-${ledger.amount}), 0)` }).from(ledger).where(sql`${ledger.keyHash} in ${scope} and ${ledger.kind} = 'usage' and ${ledger.amount} < 0 and ${ledger.createdAt} > ${since(60_000)} and ${ledger.createdAt} <= ${now.toISOString()}`);
