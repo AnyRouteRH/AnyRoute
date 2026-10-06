@@ -1,4 +1,5 @@
 "use client";
+import ModelAlternatives from "./harness/ModelAlternatives"; import { suggestedModels, alternativeRetry } from "../lib/model-alternatives.js"; // B121
 import AddFunds from "./account/AddFunds"; import { fundingError, recoverFundingDraft } from "../lib/add-funds.js"; // ON1
 import RouteExplanation from "./harness/RouteExplanation"; // V84
 import ProofBadge from "./ProofBadge"; // U76: shared evidence labels.
@@ -433,7 +434,7 @@ function ToolCalls({ msg, awaiting, onSubmit }) {
   );
 }
 
-function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage, voice, limits, funding }) {
+function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, onUseImage, voice, limits, funding, onAlternative }) { // B121
   const facts = replyFacts(msg);
   const waiting = msg.status === "waiting";
   const streaming = msg.status === "streaming" || waiting;
@@ -465,6 +466,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
           {n}
         </p>
       ))}
+      {last && msg.error && <ModelAlternatives model={model?.name || msg.model} suggestions={msg.suggestedModels} onRetry={onAlternative} disabled={busy} />} {/* B121 */}
       {msg.error && (
         <div className={s.replyError} role="alert">
           <p>{msg.error}</p>
@@ -979,7 +981,7 @@ export default function Harness() {
         message = wait != null ? `Rate limited. You can try again in ${Math.max(1, Math.ceil(wait / 1000))} s.` : "Rate limited. Wait a moment and try again.";
         kind = "rate";
       }
-      patchMsg(laneId, msgId, { ...reply, status: stopped ? "stopped" : "error", ttft, ms: performance.now() - t0, error: stopped ? (reply.text ? "Stopped. The part already delivered is billed." : "Stopped before the first token.") : message, errorKind: stopped ? "stopped" : kind });
+      patchMsg(laneId, msgId, { ...reply, status: stopped ? "stopped" : "error", ttft, ms: performance.now() - t0, error: stopped ? (reply.text ? "Stopped. The part already delivered is billed." : "Stopped before the first token.") : message, errorKind: stopped ? "stopped" : kind, suggestedModels: stopped ? [] : suggestedModels(err?.suggested_models) }); // B121
     } finally {
       controllers.current.delete(msgId);
       setInflight((n) => n - 1);
@@ -1024,18 +1026,19 @@ export default function Harness() {
     jobs.forEach((j) => runLane(...j));
   }
 
-  function regenerate(laneId) {
+  function regenerate(laneId, alternativeId) { // B121
     if (busy || needKey("send")) return;
     const lane = lanesRef.current.find((l) => l.id === laneId);
     if (!lane) return;
+    const retry = alternativeId ? alternativeRetry(lane, alternativeId) : null; if (alternativeId && (!retry || !find(alternativeId))) return; const retryModel = retry?.modelId ?? lane.modelId; // B121
     const lastUser = lane.messages.map((m) => m.role).lastIndexOf("user");
     const lastTool = lane.messages.map((m) => m.role).lastIndexOf("tool");
     const cut = Math.max(lastUser, lastTool) + 1;
     const history = lane.messages.slice(0, cut);
     if (lane.messages.findLast(m => m.role === "assistant")?.errorKind === "funds") setDraft(d => d === recoverFundingDraft("", history) ? "" : d); // ON1
-    const reply = { id: uid(), role: "assistant", model: lane.modelId, status: "waiting", text: "" };
-    setLanes((ls) => ls.map((l) => (l.id === laneId ? { ...l, messages: [...history, reply] } : l)));
-    runLane(laneId, lane.modelId, history, reply.id, lane.messages.findLast((m) => m.role === "assistant")?.imageMode ?? null);
+    const reply = { id: uid(), role: "assistant", model: retryModel, status: "waiting", text: "" }; // B121
+    setLanes((ls) => ls.map((l) => (l.id === laneId ? { ...l, modelId: retryModel, messages: [...history, reply] } : l))); // B121
+    runLane(laneId, retryModel, history, reply.id, lane.messages.findLast((m) => m.role === "assistant")?.imageMode ?? null);
   }
 
   function toolResults(laneId, results) {
@@ -1262,7 +1265,7 @@ export default function Harness() {
                           <code>{m.text}</code>
                         </div>
                       ) : (
-                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} voice={voice} limits={limits} funding={{ apiKey: auth.key, balance: auth.balance, onBalance: balance => setAuth(a => ({ ...a, balance })) }} /> /* ON1 */
+                        <Reply key={m.id} msg={m} model={find(m.model)} last={m.id === lastId} busy={busy} onRegenerate={() => regenerate(l.id)} onAlternative={id => regenerate(l.id, id)} onToolResults={(r) => toolResults(l.id, r)} onSignIn={() => setSignin("send")} onUseImage={acceptsImages ? addFiles : undefined} voice={voice} limits={limits} funding={{ apiKey: auth.key, balance: auth.balance, onBalance: balance => setAuth(a => ({ ...a, balance })) }} /> /* ON1 */
                       ),
                     )}
                   </div>

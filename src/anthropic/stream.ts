@@ -113,6 +113,7 @@ export class StreamTranslator {
         ...(typeof e.type === "string" ? { type: e.type } : {}),
         ...(typeof ev.id === "string" ? { receipt_id: ev.id } : {}),
         ...(isObj(e.metadata) ? { metadata: e.metadata } : {}),
+        ...(Array.isArray(ev.suggested_models) ? { suggested_models: ev.suggested_models } : {}), // B121
       });
     }
     if (ev.usage) this.usage = ev.usage;
@@ -263,6 +264,7 @@ export async function streamMessages(inner: Response, o: StreamOptions): Promise
       ...(typeof e.type === "string" ? { type: e.type } : {}),
       ...(typeof first.id === "string" ? { receipt_id: first.id } : {}),
       ...(isObj(e.metadata) ? { metadata: e.metadata } : {}),
+      ...(Array.isArray(first.suggested_models) ? { suggested_models: first.suggested_models } : {}), // B121
     });
   }
 

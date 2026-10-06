@@ -116,14 +116,14 @@ export function anthropicRoutes(app: Hono, ctx: Ctx) {
       const extra: Record<string, string> = { "request-id": requestId, ...(conv.ignored.length ? { "x-anyroute-ignored": conv.ignored.join(", ") } : {}) };
 
       const fromRouter = async () => {
-        const body = (await res.json().catch(() => null)) as { id?: unknown; error?: { message?: string; type?: string; metadata?: Record<string, unknown> } } | null;
+        const body = (await res.json().catch(() => null)) as { id?: unknown; suggested_models?: unknown; error?: { message?: string; type?: string; metadata?: Record<string, unknown> } } | null;
         const err = body?.error;
         let message = typeof err?.message === "string" ? err.message : `The router answered ${res.status}.`;
         if (res.status === 404 && err?.type === "model_not_found") {
           if (target !== requested) message = `ANTHROPIC_MODEL_MAP maps '${requested}' to '${target}', which is not available. See GET /v1/models.`;
           else if (isAnthropicName(requested)) message = unknownAnthropicModel(requested);
         }
-        return refusal(c, res.status, message, requestId, { router: routerErrorInfo(err ?? {}, body?.id), headers: forwarded(res.headers) });
+        return refusal(c, res.status, message, requestId, { router: { ...routerErrorInfo(err ?? {}, body?.id), ...(Array.isArray(body?.suggested_models) ? { suggested_models: body.suggested_models } : {}) }, headers: forwarded(res.headers) });
       };
 
       if (!res.ok) return await fromRouter();

@@ -2,6 +2,7 @@ const sections = [
   ["unused-keys", "Review unused keys"], // B125
   ["proof-pack", "Proof pack"], // B122
   ["deposit-countdown", "Deposit countdown and credit notices"], // B123
+  ["errors", "Similar models when a model is unavailable"], // B121
   ["spending-limits", "Spending limits"],
   ["default-route", "Default route"],
   ["lane-report", "Lane report"],

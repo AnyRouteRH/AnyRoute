@@ -83,6 +83,10 @@ export class HealthTracker implements HealthView {
     return !!last && last.at! >= since && hardFailure(last) && last.source === "probe";
   }
 
+  lastFailureKind(modelId: string, providerId: string) { // B121: distinguish availability from rate/policy outages without retaining new data.
+    return this.recent.get(this.k(modelId, providerId))?.findLast(e => !e.ok && (e.at ?? 0) >= Date.now() - this.outageWindowMs)?.errorKind;
+  }
+
   uptime30d(modelId: string, providerId: string) {
     const key = this.k(modelId, providerId);
     const agg = this.uptimeMap.get(key) ?? { ok: 0, total: 0 };

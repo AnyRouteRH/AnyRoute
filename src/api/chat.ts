@@ -1,3 +1,4 @@
+import { addSuggestions, availabilityFailure, selectWithSuggestions } from "../model-alternatives/suggest.ts"; // B121
 import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
 import { noteFailedPaidCall, noteServedCall } from "../services/makegood.ts"; // V6 R
 import { guardInferenceModels } from "../provisioning/inference.ts"; // ZK6
@@ -389,9 +390,10 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   const byok = await byokFor(ctx, billing?.accountId);
   if (body.verify != null) applyDualDecoding(body); // temperature 0 and a fixed seed, before parameter support is checked
   const params = requestParams(body);
-  const { targets, excluded } = selectTargets(ctx, { resolved, prefs, params, promptTokens, byok, disc });
+  const alternatives = { resolved, prefs, params, promptTokens, byok, body, allowed }; // B121
+  const { targets, excluded } = selectWithSuggestions(() => selectTargets(ctx, { resolved, prefs, params, promptTokens, byok, disc }), ctx, alternatives); // B121
   if (!targets.length)
-    fail(404, "No providers match this request's model and routing preferences.", "no_providers", { excluded: excluded.slice(0, 50) });
+    throw addSuggestions(new ApiError(404, "No providers match this request's model and routing preferences.", "no_providers", { excluded: excluded.slice(0, 50) }), ctx, alternatives); // B121
 
   // Dual verification (`verify: "dual"`): the same request to two providers, outputs compared.
   if (body.verify != null) return runDual(toolkit, { ctx, c, kind, body, bodySha, t0, key, wallet, tier, billing, paywithNote, prefs, disc, resolved, targets, excluded, promptTokens, byok, guard, guardCfg, middle, savedRoute, preset: presetMeta });
@@ -447,7 +449,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   const planned = classes.size === 1 ? [...classes][0] : null;
   // Likewise the policy hash: up front on a stream only when every reachable endpoint attested the same one.
   const plannedPolicy = sharedPolicyHash(attemptable.map(({ cand }) => servedPolicyHash(ctx, cand)));
-  const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens, tier, disc, planned, plannedPolicy };
+  const common = { ctx, c, body, billing, holdId, t0, bodySha, stream, kind, byok, meta, guardCfg, promptTokens, tier, disc, planned, plannedPolicy, unavailable: (attempts: Attempt[], last?: Parameters<typeof allFailed>[1]) => availabilityFailure(() => allFailed(attempts, last), ctx, alternatives, attempts) }; // B121
 
   if (stream) return explainedStream(ctx.cfg.routeExplain, () => route({ appSecret: ctx.cfg.appSecret, targets, path, body, stream: true, keyFor, signal: abort.signal, health: ctx.health, maxAttempts: ctx.cfg.routing.maxAttempts, timeoutMs: ctx.cfg.routing.providerTimeoutMs, firstTokenTimeoutMs: ctx.cfg.routing.firstTokenTimeoutMs, production: ctx.cfg.production, caller: sha256(billing.accountId).slice(0, 16) }), (run, routeHeaders) => streamResponse({ ...common, run, routeHeaders, abort })); // V84
 
@@ -461,7 +463,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   if (!result.ok) {
     await giveBack(ctx, billing, holdId);
     await noteFailedPaidCall(ctx, billing, holdId, result.attempts); // V6 R
-    throw allFailed(result.attempts, result.last);
+    throw common.unavailable(result.attempts, result.last); // B121
   }
   const r = result as Extract<RouteSuccess, { kind: "json" }>;
   const json = r.json;
@@ -862,7 +864,7 @@ async function finalize(p: FinalizeInput) {
   };
 }
 
-function streamResponse(p: Common & { run: () => ReturnType<typeof route>; routeHeaders?: Record<string, string>; abort: AbortController }): Response {
+function streamResponse(p: Common & { unavailable: typeof allFailed; run: () => ReturnType<typeof route>; routeHeaders?: Record<string, string>; abort: AbortController }): Response {
   const { ctx, kind } = p;
   const enc = new TextEncoder();
   const created = Math.floor(Date.now() / 1000);
@@ -891,7 +893,7 @@ function streamResponse(p: Common & { run: () => ReturnType<typeof route>; route
       if (!result.ok) {
         await giveBack(ctx, p.billing, p.holdId);
         await noteFailedPaidCall(ctx, p.billing, p.holdId, result.attempts); // V6 R
-        const err = allFailed(result.attempts, result.last);
+        const err = p.unavailable(result.attempts, result.last); // B121
         event(err.toJSON());
         send("data: [DONE]\n\n");
         closed = true;

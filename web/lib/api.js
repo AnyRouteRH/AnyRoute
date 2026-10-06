@@ -77,6 +77,7 @@ export async function api(path, { key, method = "GET", body, signal, headers = {
   if (!res.ok) {
     const e = json?.error;
     const err = new ApiError(res.status, e?.message || `Request failed (${res.status}).`, e?.type || "error", e?.metadata);
+    err.suggested_models = e?.suggested_models ?? json?.suggested_models; // B121
     err.retryAfter = res.headers.get("retry-after"); // seconds or an HTTP date; read by the batch and eval runners
     throw err;
   }
@@ -109,6 +110,7 @@ export async function streamChat({ key, body, headers = {}, signal, onDelta, onE
     }
     const e = doc?.error;
     const err = new ApiError(res.status, e?.message || `Request failed (${res.status}).`, e?.type || "error", e?.metadata);
+    err.suggested_models = e?.suggested_models ?? doc?.suggested_models; // B121
     err.retryAfter = res.headers.get("retry-after");
     // A withheld answer is still billed and signed: keep the receipt and usage the refusal carries, so callers can show them.
     if (doc?.receipt && typeof doc.receipt === "object") err.receipt = doc.receipt;
@@ -142,6 +144,7 @@ export async function streamChat({ key, body, headers = {}, signal, onDelta, onE
       onEvent?.(ev);
       if (ev.error && !ev.choices) {
         out.error = new ApiError(ev.error.code || 502, ev.error.message || "The route failed.", ev.error.type || "error", ev.error.metadata);
+        out.error.suggested_models = ev.suggested_models; // B121
         continue;
       }
       if (ev.error) out.error = new ApiError(502, ev.error.message || "The provider failed mid-stream.", ev.error.type || "provider_error");

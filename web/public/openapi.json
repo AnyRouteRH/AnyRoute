@@ -20318,6 +20318,7 @@
           "error"
         ],
         "properties": {
+          "suggested_models": {"description":"B121: optional availability-error alternatives; empty if none match. Never switches models or charges. Messages also returns this top-level field; Responses stream errors carry it in the error event and response.error.","type":"array","maxItems":3,"items":{"type":"object","required":["id","name","prompt_price","completion_price","why"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"prompt_price":{"type":"string","description":"Dollars per input token"},"completion_price":{"type":"string","description":"Dollars per output token"},"why":{"type":"string"}}}},
           "error": {
             "type": "object",
             "required": [

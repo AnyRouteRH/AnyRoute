@@ -530,7 +530,7 @@ export class StreamTranslator {
   private usage: Json | null = null;
   private receipt: Json | null = null;
   private finish: string | null = null;
-  private failure: { code: string; message: string } | null = null;
+  private failure: { code: string; message: string; suggested_models?: unknown[] } | null = null;
   private readonly suffix: string;
   private readonly id: string;
 
@@ -651,7 +651,7 @@ export class StreamTranslator {
     if (isStr(ev.model) && ev.model) this.model = ev.model;
     if (isObj(ev.usage)) this.usage = ev.usage;
     if (isObj(ev.receipt)) this.receipt = ev.receipt;
-    if (isObj(ev.error)) this.failure ??= { code: isStr(ev.error.type) && ev.error.type ? ev.error.type : "server_error", message: isStr(ev.error.message) && ev.error.message ? ev.error.message : "The provider failed." };
+    if (isObj(ev.error)) this.failure ??= { code: isStr(ev.error.type) && ev.error.type ? ev.error.type : "server_error", message: isStr(ev.error.message) && ev.error.message ? ev.error.message : "The provider failed.", ...(Array.isArray(ev.suggested_models) ? { suggested_models: ev.suggested_models } : {}) }; // B121
     for (const ch of Array.isArray(ev.choices) ? ev.choices : []) {
       if (!isObj(ch)) continue;
       const d = isObj(ch.delta) ? ch.delta : {};
@@ -667,8 +667,8 @@ export class StreamTranslator {
     if (!this.failure && !sawDone && !this.finish) this.failure = { code: "upstream_interrupted", message: "The provider's stream ended before it finished." };
     if (this.failure) {
       const { code, message } = this.failure;
-      this.emit("error", { code, message, param: null });
-      this.emit("response.failed", { response: this.response("failed", [], { error: { code, message } }) });
+      this.emit("error", { code, message, param: null, ...(Array.isArray(this.failure.suggested_models) ? { suggested_models: this.failure.suggested_models } : {}) }); // B121
+      this.emit("response.failed", { response: this.response("failed", [], { error: { code, message, ...(Array.isArray(this.failure.suggested_models) ? { suggested_models: this.failure.suggested_models } : {}) } }) });
       return;
     }
     this.closeMessage();

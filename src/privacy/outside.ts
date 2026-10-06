@@ -1,4 +1,5 @@
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
+import { modelAlternativesReader } from "./model-alternatives.ts"; // B121
 import { anonymousRateFamily, hardeningAddresses, hardeningBodies } from "./hardening.ts"; // HD1
 import { weeklySummaryReader } from "./weekly-summary.ts"; // B120
 import { fastCreditLogRecords } from "./fast-credit.ts";
@@ -415,6 +416,7 @@ const addressReaders: Touchpoint[] = [
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
   weeklySummaryReader, // B120
+  modelAlternativesReader, // B121
   ...hardeningBodies, // HD1
   { file: "src/api/guard.ts", carries: "settings", reads: "A strict bounded action name, optional target label and order digest, decimal amount and approval identifier, or a reported outcome.", then: "Authenticates the deciding key and serializes checks and reports with the account lock. Action and target are readable caller-chosen labels; targets can name a wallet or host. No full order details are accepted. When DECISION_TAGS_ENABLED is on and an order digest is given, the decision also reads the same agent's calls from the preceding 24 hours whose stored receipt carries that digest as decision_tag and returns their ids, model, provider and time as informed_by; GET /api/v1/guard/decisions reads decisions by digest or receipt id within the Activity scope. Neither stores anything new.", kept: "Decision metadata and reported outcomes in agent_action_decisions, with action decisions and outcomes on agent_policy_events and action approval projections in agent_approvals. Reported amounts are not verified execution.", evidence: [ev("src/api/guard.ts", "guardDecideInput.parse(await readJson(c))")] }, // V98
   depositProgressReader, // V97B

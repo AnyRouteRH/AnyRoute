@@ -1,4 +1,5 @@
 import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B123
+import ModelAlternativesDocs from "../../components/ModelAlternativesDocs"; // B121
 import RouterLimits from "../../components/RouterLimits"; // HD1
 import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
 import WeeklySummaryDocs from "../../components/WeeklySummaryDocs"; // B120
@@ -1308,6 +1309,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
             </li>
           </ul>
           <Code label="Recover a lost x402 answer (JavaScript, viem)">{x402RecoveryExample}</Code>
+          <ModelAlternativesDocs /> {/* B121 */}
           <h2 id="receipts">The response is only the beginning.</h2>
           <p>
             Every generation returns normalized usage and a signed receipt with hashes of the request and response (never their content), in two encodings: v1 (JSON, Ed25519) and v2 (a COSE_Sign1 signed EdDSA with the same key, with token
