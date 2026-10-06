@@ -1,3 +1,4 @@
+import { plainApprovalText } from "../agents/rulebook-approval-text.ts"; // B124
 import { handleGuardResume } from "./guard-resume.ts"; // V98
 import { guardApprovalText } from "./guard-text.ts";
 import { picoToUsdString } from "../lib/money.ts";
@@ -26,6 +27,7 @@ export function approvalText(row: ApprovalRow, name?: string, policySha256?: str
 async function noticeText(ctx: Ctx, row: ApprovalRow) {
   const [key] = await ctx.db.select({ name: keys.name }).from(keys).where(eq(keys.keyHash, row.keyHash));
   const policies = await policiesFor(ctx.db, row.keyHash);
+  if (ctx.cfg.agentRulebookWordsEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
   return approvalText(row, key?.name ?? undefined, policies[0]?.sha256, ctx.cfg.agentGuardEnabled);
 }
 async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Notice, row: ApprovalRow) {

@@ -1,0 +1,8 @@
+// B124
+export default function RulebookWordsDocs() {
+  return <section id="rulebook-words"><h2>Rulebooks in plain English</h2>
+    <p>Read your agent’s rules as short sentences before opening Edit. Starter setups, playbooks and approval prompts on Agents and in the inbox use the same words. Amounts keep every decimal place, so $0.005 stays $0.005. Model and paid tool budgets use rolling hours, days and weeks; working hours use UTC and exclude the end time. All rulebooks that apply to a key still apply, including inherited rules.</p>
+    <p>This changes how existing rules are shown. There is no new endpoint or policy field. GET /api/v1/agents and GET /api/v1/agents/:key_hash/policy return policies used by the page; GET /api/v1/playbooks returns playbook rules. These routes keep their existing Bearer-key account and team permissions. Approval decisions still use POST /api/v1/agents/approvals/:id/approve or /deny with an owner or admin key. A short approval line gives the amount cap and ask-first amount; it is not the full rulebook.</p>
+    <p>AGENT_RULEBOOK_WORDS_ENABLED defaults to false. It changes only Telegram approval wording in the existing linked delivery job, where Telegram linking and agent rulebooks must already be enabled. When enabled, Telegram receives readable approval details and the current amount-rule summary instead of a rules fingerprint. Inference messages and tool arguments are not included. The summary is current when read; it is not a saved copy of the rules at approval creation. The page needs no new flag. Rules constrain requests through Anyroute and actions your agent checks first; ordinary request text remains readable by the router in memory.</p>
+  </section>;
+}

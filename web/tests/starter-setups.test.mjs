@@ -125,24 +125,24 @@ test('setups are offered where the editor appears; earlier starters stay reachab
 test('the summary says in plain English what a setup fills here and what it sets on Agents', () => {
   const lines = (id, view, guard = true) => setupSummary(byId[id], { view, guard });
   const chatbot = lines('careful-chatbot', 'agents');
-  assert.deepEqual(chatbot.lines.map(l => l.text).slice(0, 2), ['Caps of $0.01 a request, $0.20 an hour, $1 a day and $5 a week', 'Ask me first above $0.005']);
+  assert.deepEqual(chatbot.lines.map(l => l.text).slice(0, 2), ['Up to $0.01 a request and $0.2 in any hour and $1 in any 24 hours and $5 in any 7 days', 'Asks you above $0.005 for a model or paid tool call']);
   assert.ok(chatbot.lines.some(l => l.text === 'Requests that name no lane: Proven hardware first')); assert.deepEqual(chatbot.open, ['models', 'hours']);
   assert.equal(chatbot.elsewhere.length, 0); assert.equal(chatbot.proven, true);
   const chat = lines('careful-chatbot', 'chat');
   assert.deepEqual(chat.lines.map(l => l.part), ['caps', 'ask']);
   assert.ok(chat.elsewhere.some(l => l.part === 'route')); assert.ok(chat.elsewhere.some(l => l.part === 'tools'));
   const trading = lines('trading-agent', 'key');
-  assert.ok(trading.lines.some(l => /^Actions: only trade.order and trade.cancel, for STOCK_A/.test(l.text) && /\$500 an action/.test(l.text)));
-  assert.ok(trading.elsewhere.some(l => l.text === 'Model calls and actions only Monday to Friday, 13:30–20:00 UTC'));
-  assert.ok(trading.elsewhere.some(l => l.text === 'Ask me first after 60 calls in a rolling hour')); assert.match(trading.note, /from Nov 1 use 14:30–21:00/);
+  assert.ok(trading.lines.some(l => /Only these actions: trade.order, trade.cancel/.test(l.text) && /\$500 each/.test(l.text)));
+  assert.ok(trading.elsewhere.some(l => l.text === 'Weekdays 13:30–20:00 UTC (start included, end excluded)'));
+  assert.ok(trading.elsewhere.some(l => l.text === 'Asks you after 60 model calls in any hour')); assert.match(trading.note, /from Nov 1 use 14:30–21:00/);
   for (const target of source('guard-trading').actions.targets.allow) assert.ok(trading.note.includes(target), target);
   const tradingOff = lines('trading-agent', 'agents', false);
   assert.ok(!tradingOff.lines.some(l => ['actions', 'hours'].includes(l.part))); assert.equal(tradingOff.note, '');
   const batch = lines('batch-jobs', 'agents');
   assert.ok(batch.lines.some(l => l.text === 'Requests that name no lane: Standard provider'));
-  assert.ok(batch.lines.some(l => /^Circuit breakers at 5 denials in ten minutes; a trip stops the key until you resume it$/.test(l.text)));
+  assert.ok(batch.lines.some(l => /^Stop at 5 denials in any 10 minutes; resume to run again$/.test(l.text)));
   assert.equal(batch.proven, false);
-  assert.ok(lines('proven-hardware', 'key').lines.some(l => l.text === 'Lanes: attested only'));
+  assert.ok(lines('proven-hardware', 'key').lines.some(l => l.text === 'Only these lanes: proven hardware'));
   // Every line names a value the editor holds; nothing describes an endpoint or a field the rulebook does not have.
   for (const setup of [...STARTER_SETUPS, ...MORE_STARTERS]) for (const l of describeRulebook(setupPolicy(setup, { guard: true }), { guard: true })) {
     assert.ok(['caps', 'ask', 'models', 'tools', 'lanes', 'route', 'actions', 'tokens', 'calls', 'breach', 'hours', 'breakers', 'alerts'].includes(l.part));

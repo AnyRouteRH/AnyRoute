@@ -1,0 +1,212 @@
+{
+  "research": [
+    "Up to $0.02 a request and $0.1 in any hour and $0.5 in any 24 hours and $2 in any 7 days",
+    "Replies up to 512 tokens",
+    "Only these lanes: standard",
+    "No declared or paid tools allowed",
+    "Asks you above $0.01 for a model or paid tool call",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "coding": [
+    "Up to $0.1 a request and $0.5 in any hour and $2 in any 24 hours and $8 in any 7 days",
+    "Replies up to 4096 tokens",
+    "Only these lanes: standard",
+    "No declared or paid tools allowed",
+    "Asks you above $0.02 for a model or paid tool call",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "shopping": [
+    "Up to $0.01 a request and $0.05 in any hour and $0.1 in any 24 hours and $0.5 in any 7 days",
+    "Replies up to 512 tokens",
+    "Only these lanes: standard",
+    "No declared or paid tools allowed",
+    "Asks you above $0.001 for a model or paid tool call",
+    "Weekdays 09:00–17:00 UTC (start included, end excluded)",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "support": [
+    "Up to $0.01 a request and $0.2 in any hour and $1 in any 24 hours and $5 in any 7 days",
+    "Replies up to 256 tokens",
+    "Only these lanes: standard",
+    "No declared or paid tools allowed",
+    "Asks you above $0.005 for a model or paid tool call",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "Alerts at 50%, 80%, 100% of hourly, daily and weekly caps",
+    "Alerts after 3 denials in ten minutes",
+    "Alerts in the agent feed only",
+    "If a rule is broken: Refuse that request"
+  ],
+  "private": [
+    "Up to $0.02 a request and $0.1 in any hour and $0.5 in any 24 hours and $2 in any 7 days",
+    "Replies up to 512 tokens",
+    "Only these lanes: proven hardware",
+    "Requests that name no lane: Proven hardware only",
+    "No declared or paid tools allowed",
+    "Asks you above $0.01 for a model or paid tool call",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "experiment": [
+    "Up to $0.01 a request and $0.02 in any hour and $0.05 in any 24 hours and $0.2 in any 7 days",
+    "Replies up to 256 tokens",
+    "Only these lanes: standard",
+    "No declared or paid tools allowed",
+    "Asks you above $0.005 for a model or paid tool call",
+    "Stop at $0.02 spent in any minute; resume to run again",
+    "Stop at 2 requests in any minute; resume to run again",
+    "Stop at 1 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Stop until you resume"
+  ],
+  "trading-allowlist": [
+    "Up to $0.25 a request and $1.5 in any hour and $5 in any 24 hours and $25 in any 7 days",
+    "Replies up to 4096 tokens",
+    "Only these models: anthropic/*, openai/*, google/*",
+    "Only these lanes: standard, proven hardware",
+    "Asks you above $0.1 for a model or paid tool call",
+    "Stop at 30 requests in any minute; resume to run again",
+    "Stop at 5 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "trading-budget": [
+    "Up to $0.25 a request and $1.5 in any hour and $5 in any 24 hours and $25 in any 7 days",
+    "Replies up to 4096 tokens",
+    "Only these lanes: standard, proven hardware",
+    "Asks you above $0.1 for a model or paid tool call",
+    "Stop at 30 requests in any minute; resume to run again",
+    "Stop at 5 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "trading-ask-first": [
+    "Up to $0.25 a request and $1.5 in any hour and $3 in any 24 hours and $25 in any 7 days",
+    "Replies up to 4096 tokens",
+    "Only these lanes: standard, proven hardware",
+    "Asks you above $0.1 for a model or paid tool call",
+    "Asks you after 60 model calls in any hour",
+    "Stop at 30 requests in any minute; resume to run again",
+    "Stop at 5 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "guard-trading": [
+    "No spending caps for model or paid tool calls",
+    "Weekdays 13:30–20:00 UTC (start included, end excluded)",
+    "Only these actions: trade.order, trade.cancel",
+    "Only these action targets: STOCK_A, STOCK_B, STOCK_C, INDEX_FUND_A, INDEX_FUND_B",
+    "Actions up to $500 each; asks you above $250",
+    "Actions up to $2000 in any 24 hours",
+    "Up to 20 actions in any hour",
+    "If a rule is broken: Refuse that request"
+  ],
+  "guard-onchain": [
+    "No spending caps for model or paid tool calls",
+    "Only these actions: swap, token.approve",
+    "Never sends transfer.*, bridge.*",
+    "Actions up to $200 each; asks you above $50",
+    "Actions up to $1000 in any 24 hours",
+    "Up to 10 actions in any hour",
+    "If a rule is broken: Stop until you resume"
+  ],
+  "guard-payments": [
+    "No spending caps for model or paid tool calls",
+    "Only these actions: payment.send, invoice.pay, tool.buy",
+    "Actions up to $100 each; asks you above $25",
+    "Actions up to $500 in any 24 hours",
+    "Up to 30 actions in any hour",
+    "If a rule is broken: Refuse that request"
+  ],
+  "careful-chatbot:false": [
+    "Up to $0.01 a request and $0.2 in any hour and $1 in any 24 hours and $5 in any 7 days",
+    "Replies up to 256 tokens",
+    "Only these lanes: standard, proven hardware",
+    "Requests that name no lane: Proven hardware first",
+    "No declared or paid tools allowed",
+    "Asks you above $0.005 for a model or paid tool call",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "careful-chatbot:true": [
+    "Up to $0.01 a request and $0.2 in any hour and $1 in any 24 hours and $5 in any 7 days",
+    "Replies up to 256 tokens",
+    "Only these lanes: standard, proven hardware",
+    "Requests that name no lane: Proven hardware first",
+    "No declared or paid tools allowed",
+    "Asks you above $0.005 for a model or paid tool call",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "trading-agent:false": [
+    "Up to $0.25 a request and $1.5 in any hour and $3 in any 24 hours and $25 in any 7 days",
+    "Replies up to 4096 tokens",
+    "Only these lanes: standard, proven hardware",
+    "Requests that name no lane: Proven hardware first",
+    "Asks you above $0.1 for a model or paid tool call",
+    "Asks you after 60 model calls in any hour",
+    "Stop at 30 requests in any minute; resume to run again",
+    "Stop at 5 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "trading-agent:true": [
+    "Up to $0.25 a request and $1.5 in any hour and $3 in any 24 hours and $25 in any 7 days",
+    "Replies up to 4096 tokens",
+    "Only these lanes: standard, proven hardware",
+    "Requests that name no lane: Proven hardware first",
+    "Asks you above $0.1 for a model or paid tool call",
+    "Asks you after 60 model calls in any hour",
+    "Weekdays 13:30–20:00 UTC (start included, end excluded)",
+    "Only these actions: trade.order, trade.cancel",
+    "Only these action targets: STOCK_A, STOCK_B, STOCK_C, INDEX_FUND_A, INDEX_FUND_B",
+    "Actions up to $500 each; asks you above $250",
+    "Actions up to $2000 in any 24 hours",
+    "Up to 20 actions in any hour",
+    "Stop at 30 requests in any minute; resume to run again",
+    "Stop at 5 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "batch-jobs:false": [
+    "Up to $0.25 a request and $1.5 in any hour and $5 in any 24 hours and $25 in any 7 days",
+    "Replies up to 4096 tokens",
+    "Only these lanes: standard, proven hardware",
+    "Asks you above $0.1 for a model or paid tool call",
+    "Stop at 5 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "batch-jobs:true": [
+    "Up to $0.25 a request and $1.5 in any hour and $5 in any 24 hours and $25 in any 7 days",
+    "Replies up to 4096 tokens",
+    "Only these lanes: standard, proven hardware",
+    "Asks you above $0.1 for a model or paid tool call",
+    "Stop at 5 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "proven-hardware:false": [
+    "Up to $0.02 a request and $0.1 in any hour and $0.5 in any 24 hours and $2 in any 7 days",
+    "Replies up to 512 tokens",
+    "Only these lanes: proven hardware",
+    "Requests that name no lane: Proven hardware only",
+    "No declared or paid tools allowed",
+    "Asks you above $0.01 for a model or paid tool call",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ],
+  "proven-hardware:true": [
+    "Up to $0.02 a request and $0.1 in any hour and $0.5 in any 24 hours and $2 in any 7 days",
+    "Replies up to 512 tokens",
+    "Only these lanes: proven hardware",
+    "Requests that name no lane: Proven hardware only",
+    "No declared or paid tools allowed",
+    "Asks you above $0.01 for a model or paid tool call",
+    "Stop at 5 requests in any minute; resume to run again",
+    "Stop at 3 denials in any 10 minutes; resume to run again",
+    "If a rule is broken: Refuse that request"
+  ]
+}

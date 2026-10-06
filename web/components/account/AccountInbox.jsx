@@ -1,6 +1,8 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ApproveAndAllow from '../ApproveAndAllow'; // B118
+import { useEffect, useRef, useState } from 'react';
+import { InboxRulebooks, InboxApprovalRulebook } from '../limits/InboxRulebooks'; // B124
 import { Button } from '../UI';
 import { api } from '../../lib/api.js';
 import { decideInboxApproval, INBOX_EVENT, markInboxSeen } from '../../lib/inbox.js';
@@ -29,10 +31,12 @@ export default function AccountInbox({ apiKey, panel = false }) {
     {busy && <p role="status">Reading inbox…</p>}
     {!busy && page && !page.data.length && <p>No new items or pending approvals.</p>}
     {page?.capped && <p role="status">Showing up to 100 recent records per source. Open Activity or the linked view for earlier records; the count covers the items shown.</p>}
-    <ul className={s.list}>{page?.data.map(item => <li key={item.id}>
+    <InboxRulebooks apiKey={apiKey} page={page}><ul className={s.list}>{page?.data.map(item => <li key={item.id}>
       <div className={s.row}><a className="inline-link" href={item.href}>{item.title}</a><time dateTime={item.at}>{new Date(item.at).toLocaleString()}</time></div>
       <p className="help-text">{[item.key_label, item.model, item.status, item.amount && item.amount !== '0' ? `${item.amount} USDG` : ''].filter(Boolean).join(' · ')}</p>
       {item.kind === 'approval' && <><p>{intentSummary(item.intent)}</p>{item.intent?.intents?.filter(intent => intent.max_output_tokens !== undefined).map((intent, index) => <p className="help-text" key={index}>{intent.model} · Output limit: {intent.max_output_tokens} tokens</p>)}<p>Limit {item.approval_limit} USDG · Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p>{item.can_decide && <div className={s.actions}>{['approve', 'deny'].map(choice => <Button secondary key={choice} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onClick={() => run(item.id, () => decideInboxApproval(request, item.approval_id, choice))}>{choice === 'approve' ? 'Approve' : 'Deny'}</Button>)}</div>}{item.can_decide && <ApproveAndAllow request={request} id={item.approval_id} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onApproved={refresh}/>}</>}
     </li>)}</ul>
+      {item.kind === 'approval' && <><InboxApprovalRulebook approvalId={item.approval_id} intent={item.intent}/><p>{intentSummary(item.intent)}</p>{item.intent?.intents?.filter(intent => intent.max_output_tokens !== undefined).map((intent, index) => <p className="help-text" key={index}>{intent.model} · Output limit: {intent.max_output_tokens} tokens</p>)}<p>Limit {item.approval_limit} USDG · Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p>{item.can_decide && <div className={s.actions}>{['approve', 'deny'].map(choice => <Button secondary key={choice} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onClick={() => run(item.id, () => decideInboxApproval(request, item.approval_id, choice))}>{choice === 'approve' ? 'Approve' : 'Deny'}</Button>)}</div>}</>}
+    </li>)}</ul></InboxRulebooks> {/* B124 */}
   </section>;
 }

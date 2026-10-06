@@ -449,6 +449,7 @@ const schema = z.object({
   // witnesses; src/tlog). Off by default: no route is registered and nothing is appended.
   AGENT_PROFILES_ENABLED: bool.default(false),
   AGENT_POLICY_ENABLED: bool.default(false),
+  AGENT_RULEBOOK_WORDS_ENABLED: bool.default(false), // B124: Telegram wording only
   AGENT_GUARD_ENABLED: bool.default(false), // V98
   // Pay another agent: Agent Guard decides, the paying wallet sends USDG straight to the recipient, the router checks the
   // transfer on chain and signs a receipt. Anyroute never holds the money. Off by default; needs AGENT_GUARD_ENABLED.
@@ -687,6 +688,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     adminToken: e.ADMIN_TOKEN,
     agentProfilesEnabled: e.AGENT_PROFILES_ENABLED,
     agentPolicyEnabled: e.AGENT_POLICY_ENABLED,
+    agentRulebookWordsEnabled: e.AGENT_RULEBOOK_WORDS_ENABLED, // B124
     agentGuardEnabled: e.AGENT_GUARD_ENABLED, // V98
     agentPayEnabled: e.AGENT_PAY_ENABLED,
     agentSealedEnabled: e.AGENT_SEALED_ENABLED,

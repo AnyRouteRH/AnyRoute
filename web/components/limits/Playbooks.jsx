@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { FEATURE_OFF, errorState, utcTime } from '../../lib/agents';
 import { PLAYBOOK_WORDS as W, deleteRequest, followersText, linkedPlaybook, playbookBody, playbookForm, playbookPath, scopeText, startChoices, startRules } from '../../lib/playbooks';
+import { RulebookSentences } from './RulebookSentences'; // B124
 import SpendingLimits, { useAgentGuard } from './SpendingLimits';
 import { Button } from '../UI';
 import st from './SpendingLimits.module.css';
@@ -16,7 +17,6 @@ function Editor({ id, playbook, agents, guard, busy, onSave, onCancel }) {
   const [start, setStart] = useState('empty');
   const [form, setForm] = useState(() => playbookForm(playbook?.policy));
   const [errors, setErrors] = useState([]);
-  const [json, setJson] = useState(false);
   const choices = isNew ? startChoices(agents) : [];
   const built = playbookBody(name, form);
   const group = label => choices.filter(c => c.group === label).map(c => <option key={c.value} value={c.value}>{c.label}</option>);
@@ -36,9 +36,7 @@ function Editor({ id, playbook, agents, guard, busy, onSave, onCancel }) {
     <div className="button-row">
       <Button type="submit" disabled={busy}>{W.save}</Button>
       <Button type="button" secondary disabled={busy} onClick={onCancel}>{W.cancel}</Button>
-      <button type="button" className="text-button" aria-expanded={json} onClick={() => setJson(!json)}>{json ? 'Hide JSON' : 'View JSON'}</button>
     </div>
-    {json && <pre className={st.json}>{JSON.stringify(built.body.policy, null, 2)}</pre>}
   </form>;
 }
 
@@ -46,6 +44,7 @@ function Card({ playbook: p, open, busy, onEdit, onDelete, children }) {
   return <li id={'playbook-' + p.id} className={st.playbook} aria-current={open || undefined}>
     <h3>{p.name}</h3>
     <div className={st.badges}><span className="badge">{scopeText(p)}</span><span className="badge">Version {p.version}</span><span className="badge">{followersText(p.followers)}</span></div>
+    <RulebookSentences policy={p.policy}/> {/* B124 */}
     <p className="help-text">Rules SHA-256 {p.sha256.slice(0, 16)}… · Changed {utcTime(p.updated_at)}</p>
     {p.keys.length > 0 && <ul>{p.keys.map(k => <li key={k.key_hash}><a href={`/agents/?agent=${encodeURIComponent(k.key_hash)}`}>{k.name || 'Unnamed key'}</a> · {k.key_hash.slice(0, 12)}</li>)}</ul>}
     {p.followers > p.keys.length && <p className="help-text">{p.followers - p.keys.length} more in other teams.</p>}

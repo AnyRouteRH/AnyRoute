@@ -1,0 +1,6 @@
+.sentences { padding-inline-start: 1.25rem; margin: 1rem 0; overflow-wrap: anywhere; }
+.sentences li + li { margin-top: .4rem; }
+.card { min-width: 0; }
+.editor { margin-top: 1rem; }
+.editor > summary { cursor: pointer; color: var(--ink); padding: .75rem 0; }
+.editor > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

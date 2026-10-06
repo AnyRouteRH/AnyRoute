@@ -10,6 +10,7 @@ const sections = [
   ["auto-topup", "Auto top-up"],
   ["replay-rules", "Replay your rules"],
   ["playbooks", "Playbooks"],
+  ["rulebook-words", "Rulebooks in plain English"], // B124
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
   ["approve-and-allow", "Allow this next time"], // B118
