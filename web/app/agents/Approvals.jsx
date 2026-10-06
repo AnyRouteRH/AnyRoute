@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import ApproveAndAllow from '../../components/ApproveAndAllow'; // B118
 import { Button } from '../../components/UI';
 import { pendingApprovals, decideAgentApproval, intentSummary, formatUsd, picoUsd, utcTime } from '../../lib/agents';
 
@@ -29,6 +30,6 @@ export default function Approvals({ request, agents, onError }) {
   return <section className="control-panel"><div className="button-row"><h2>Waiting for you</h2><Button secondary disabled={!!busy} onClick={() => setRevision(r => r+1)}>Refresh approvals</Button></div>
     <p className="help-text">Your agent asks you first above its approval threshold. Approval authorizes one matching request up to this estimated ceiling; the agent must retry before expiry. Other rulebook restrictions still apply.</p>
     {!rows.length && <p role="status">{loading ? 'Reading approvals…' : 'No pending approvals.'}</p>}
-    {rows.map(row => <article key={row.id}><h3>{agents.find(a => a.key_hash === row.key_hash)?.name || 'Unnamed agent'} · up to {formatUsd(picoUsd(row.max_cost_pico))}</h3><p style={row.intent?.kind === 'action' ? { overflowWrap: 'anywhere' } : undefined}>{intentSummary(row.intent)}</p><p>Expires {utcTime(row.expires_at)}</p><div className="button-row"><Button disabled={!!busy || Date.parse(row.expires_at) <= Date.now()} onClick={() => decide(row.id,'approve')}>Approve</Button><Button secondary disabled={!!busy || Date.parse(row.expires_at) <= Date.now()} onClick={() => decide(row.id,'deny')}>Deny</Button></div></article>)}
+    {rows.map(row => <article key={row.id}><h3>{agents.find(a => a.key_hash === row.key_hash)?.name || 'Unnamed agent'} · up to {formatUsd(picoUsd(row.max_cost_pico))}</h3><p style={row.intent?.kind === 'action' ? { overflowWrap: 'anywhere' } : undefined}>{intentSummary(row.intent)}</p><p>Expires {utcTime(row.expires_at)}</p><div className="button-row"><Button disabled={!!busy || Date.parse(row.expires_at) <= Date.now()} onClick={() => decide(row.id,'approve')}>Approve</Button><Button secondary disabled={!!busy || Date.parse(row.expires_at) <= Date.now()} onClick={() => decide(row.id,'deny')}>Deny</Button></div><ApproveAndAllow request={request} id={row.id} disabled={!!busy || Date.parse(row.expires_at) <= Date.now()} onApproved={() => { setRows(old => old.filter(r => r.id !== row.id)); setRevision(r => r+1); }}/></article>)}
   </section>;
 }

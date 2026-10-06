@@ -1,0 +1,4 @@
+/* B118: keep the full choice readable inside the account panel at 375 px. */
+.option { max-width: 100%; white-space: normal; text-align: left; line-height: 1.4; }
+.option span { min-width: 0; }
+.review { padding: 16px; }

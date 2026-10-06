@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import ApproveAndAllow from '../ApproveAndAllow'; // B118
 import { Button } from '../UI';
 import { api } from '../../lib/api.js';
 import { decideInboxApproval, INBOX_EVENT, markInboxSeen } from '../../lib/inbox.js';
@@ -11,7 +12,7 @@ export default function AccountInbox({ apiKey, panel = false }) {
   const [action, setAction] = useState(''), [actionError, setActionError] = useState('');
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const request = (path, options) => api(path, { ...options, key: apiKey });
+  const request = useCallback((path, options) => api(path, { ...options, key: apiKey }), [apiKey]); // B118
   async function run(id, operation) {
     setAction(id); setActionError('');
     try { await operation(); if (mounted.current) window.dispatchEvent(new Event(INBOX_EVENT)); }
@@ -31,7 +32,7 @@ export default function AccountInbox({ apiKey, panel = false }) {
     <ul className={s.list}>{page?.data.map(item => <li key={item.id}>
       <div className={s.row}><a className="inline-link" href={item.href}>{item.title}</a><time dateTime={item.at}>{new Date(item.at).toLocaleString()}</time></div>
       <p className="help-text">{[item.key_label, item.model, item.status, item.amount && item.amount !== '0' ? `${item.amount} USDG` : ''].filter(Boolean).join(' · ')}</p>
-      {item.kind === 'approval' && <><p>{intentSummary(item.intent)}</p>{item.intent?.intents?.filter(intent => intent.max_output_tokens !== undefined).map((intent, index) => <p className="help-text" key={index}>{intent.model} · Output limit: {intent.max_output_tokens} tokens</p>)}<p>Limit {item.approval_limit} USDG · Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p>{item.can_decide && <div className={s.actions}>{['approve', 'deny'].map(choice => <Button secondary key={choice} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onClick={() => run(item.id, () => decideInboxApproval(request, item.approval_id, choice))}>{choice === 'approve' ? 'Approve' : 'Deny'}</Button>)}</div>}</>}
+      {item.kind === 'approval' && <><p>{intentSummary(item.intent)}</p>{item.intent?.intents?.filter(intent => intent.max_output_tokens !== undefined).map((intent, index) => <p className="help-text" key={index}>{intent.model} · Output limit: {intent.max_output_tokens} tokens</p>)}<p>Limit {item.approval_limit} USDG · Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p>{item.can_decide && <div className={s.actions}>{['approve', 'deny'].map(choice => <Button secondary key={choice} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onClick={() => run(item.id, () => decideInboxApproval(request, item.approval_id, choice))}>{choice === 'approve' ? 'Approve' : 'Deny'}</Button>)}</div>}{item.can_decide && <ApproveAndAllow request={request} id={item.approval_id} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onApproved={refresh}/>}</>}
     </li>)}</ul>
   </section>;
 }

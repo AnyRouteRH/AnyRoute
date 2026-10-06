@@ -1,3 +1,4 @@
+import { agentApproveAndAllowRoutes } from "./agent-approve-and-allow.ts"; // B118
 import type { Hono, MiddlewareHandler } from "hono";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -14,6 +15,7 @@ export const agentApprovalMiddleware = (ctx: Ctx): MiddlewareHandler => async (c
 };
 export function agentApprovalsRoutes(app: Hono, ctx: Ctx) {
   configureApprovals(ctx.db, ctx.cfg.agentApprovalTtlS);
+  agentApproveAndAllowRoutes(app, ctx); // B118
   app.use("/api/v1/agents/approvals/*", async (_c, next) => { if (!ctx.cfg.agentPolicyEnabled) fail(404, "Not found.", "not_found"); await next(); });
   app.use("/api/v1/agents/approvals", async (_c, next) => { if (!ctx.cfg.agentPolicyEnabled) fail(404, "Not found.", "not_found"); await next(); });
   app.get("/api/v1/agents/approvals", async c => {

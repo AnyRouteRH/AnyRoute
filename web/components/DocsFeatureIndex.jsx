@@ -8,6 +8,7 @@ const sections = [
   ["playbooks", "Playbooks"],
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
+  ["approve-and-allow", "Allow this next time"], // B118
   ["agent-pay", "Pay another agent"],
   ["trading-agents", "Trading agents"],
   ["decision-tags", "Decision tags"],

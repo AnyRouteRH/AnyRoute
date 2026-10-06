@@ -195,3 +195,5 @@ export const ACTIONS = [
   action('chat-model', 'chat', 'Switch Chat model', 'Choose a model, then open Chat with it selected.', 'model, switch, change, choose, pick, chat, llm', { pick: 'model' }),
   action('default-route', 'rulebook', 'Set default route', 'Choose a key or agent, then set the route for requests that name no lane.', 'route, routing, default, lane, change', { signIn: true, pick: 'agent', focus: 'route' }),
 ];
+
+TASKS.push({ ...task('approve-and-allow', 'agents', 'Allow this next time', 'Review and raise an agent’s ask-first amount while approving one request.', '/docs/#approve-and-allow', 'approve, approval, ask first, amount, threshold, allow next time'), menu: false }); // B118

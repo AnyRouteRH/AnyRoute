@@ -1,3 +1,4 @@
+import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
 import { anonymousRateFamily, hardeningAddresses, hardeningBodies } from "./hardening.ts"; // HD1
 import { fastCreditLogRecords } from "./fast-credit.ts";
 import { depositProgressReader } from "./deposit-progress.ts"; // V97B
@@ -417,6 +418,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   depositProgressReader, // V97B
   toolsBodyReader, // v6 T
   agentPayBodyReader, // Pay another agent
+  approveAndAllowBodyReader, // B118
   provisioningBodyReader, inferenceModelReader, // ZK6
   structuredOutputReader, // V83
   webhookBodyReader, // V86.

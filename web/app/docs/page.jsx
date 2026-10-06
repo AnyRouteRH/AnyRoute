@@ -42,6 +42,7 @@ import DefaultRouteDocs from "../../components/DefaultRouteDocs";
 import StarterSetupsDocs from "../../components/StarterSetupsDocs"; // U103
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentCertificateDocs from "../../components/AgentCertificateDocs";
+import ApproveAndAllowDocs from "../../components/ApproveAndAllowDocs"; // B118
 import AgentApprovalDocs from "../../components/AgentApprovalDocs";
 import TradingAgentDocs from "../../components/TradingAgentDocs"; // B
 import DecisionTagDocs from "../../components/DecisionTagDocs"; // B: decision tags
@@ -870,6 +871,7 @@ export default function Docs() {
           <ToolsMarketDocs /> {/* v6 T */}
           <AgentAlertDocs />
           <AgentApprovalDocs />
+          <ApproveAndAllowDocs /> {/* B118 */}
           <AgentGuardDocs /> {/* V98 */}
           <AgentPayDocs /> {/* Pay another agent */}
           <TradingAgentDocs /> {/* B */}
