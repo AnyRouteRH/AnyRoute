@@ -2,6 +2,7 @@
 export function runwayText(report) {
   const days = report?.days_left;
   if (days === null || !Number.isSafeInteger(days) || days < 0) return '';
+  if (days > 365) return 'Lasts more than a year at your 7-day pace';
   return days === 0 ? 'Less than a day at your 7-day pace' : `Lasts about ${days} ${days === 1 ? 'day' : 'days'} at your 7-day pace`;
 }
 export function alertAmount(value) {

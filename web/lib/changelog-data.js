@@ -5,6 +5,198 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "rulebook-words",
+    "date": "2026-10-06",
+    "title": "Rulebooks in plain English",
+    "summary": "Wherever a rulebook appears, on Agents, starter setups, playbooks and approvals, it now reads as short sentences that list only what restricts the agent, such as \"Up to $1 in any 24 hours\" and \"Payments up to $20 each; asks you above $5\".",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#rulebook-words"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/5ab63d258741e0f1c5d47071ec82e924d88a7c47"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "stop-for-a-while",
+    "date": "2026-10-06",
+    "title": "Stop an agent for a while",
+    "summary": "Stop now offers \"for 1 hour\", \"until tomorrow 9:00\" or \"until I resume\". A stopped agent shows when it starts again, and its first request after that time resumes it.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#stop-until"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/aa5828f202b1aca68d67a12a9e91381503b4d01a"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "balance-runway",
+    "date": "2026-10-06",
+    "title": "See how long your balance lasts",
+    "summary": "Your balance now shows how long it lasts at your last 7 days' pace, and you can ask for a ping in your inbox and Telegram when it drops below an amount you choose.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#balance-runway"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/fd6791c7b4b50ea7bef826b59de48748a3e20b75"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "similar-model",
+    "date": "2026-10-06",
+    "title": "Model down? Try a similar one",
+    "summary": "When no provider can serve a model right now, the error lists up to three working models with the same abilities and the closest price, and Chat offers each one as a button. Nothing switches on its own.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#errors"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ce6f4c640812afc7ad5ec991e974daac113ae489"
+      }
+    ],
+    "tags": [
+      "chat",
+      "build"
+    ]
+  },
+  {
+    "id": "deposit-countdown",
+    "date": "2026-10-06",
+    "title": "A countdown for deposits",
+    "summary": "A deposit waiting for Robinhood Chain finality shows about how many minutes are left, and you get an inbox notice, plus a Telegram message if you linked it, when it is credited.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#deposit-countdown"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4efba3c67e71f578969fa24ae6898ce1fef17547"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "weekly-summary",
+    "date": "2026-10-06",
+    "title": "A weekly summary in Telegram",
+    "summary": "Turn on \"Weekly summary on Mondays\" on the Telegram card in Agents to get last week's spend per agent, approvals, stops and top model in one message.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#weekly-summary"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/f96ef30d5cb1ae6d44c1be12ee0015cbb4dc4cb1"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "site-links",
+    "date": "2026-10-06",
+    "title": "Links that open anyroute.tech",
+    "summary": "Links people open from receipts, Telegram messages and status feeds now point to anyroute.tech. Signed receipts are unchanged.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/verify/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/50ad5fc2235133aa746484c8d05c9c246399957f"
+      }
+    ],
+    "tags": [
+      "fix",
+      "verify"
+    ]
+  },
+  {
+    "id": "proof-pack-browser",
+    "date": "2026-10-06",
+    "title": "Check a proof pack in your browser",
+    "summary": "Drop a proof pack on /verify to check its signature, every receipt, the statements and the lane report on your own device. The file is never uploaded.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/verify/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/b0615dd922e6d3359399a2778c9733cf0b73e806"
+      }
+    ],
+    "tags": [
+      "verify"
+    ]
+  },
+  {
+    "id": "unused-keys",
+    "date": "2026-10-06",
+    "title": "Clean up unused keys",
+    "summary": "The Keys tab shows each key's last call and lists keys that haven't made a call in 30 days, so you can switch them off with one confirm.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#unused-keys"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/f787a5b9ecb9370b33bef4b6ca9e609427bf460d"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "approve-and-allow",
+    "date": "2026-10-06",
+    "title": "Approve and allow next time",
+    "summary": "On an approval, \"Approve and allow next time\" shows the new ask-first amount first, then approves this request and raises only that agent's ask-first amount. Caps never change.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#approve-and-allow"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/d078097eae841c377041a160ae146b9424a1b955"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
     "id": "team-playbooks",
     "date": "2026-10-05",
     "title": "One playbook for many agents",
