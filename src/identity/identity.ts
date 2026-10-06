@@ -167,7 +167,7 @@ export async function registrationFile(ctx: Ctx, id: string) {
   const p = found?.profile;
   const services: { name: string; endpoint: string; version?: string }[] = [];
   if (p) {
-    services.push({ name: "web", endpoint: `${ctx.cfg.publicUrl}/agents/profile/?id=${p.slug}` }, { name: "anyroute-card", endpoint: cardUrl(ctx, p.slug), version: "1" });
+    services.push({ name: "web", endpoint: `${ctx.cfg.siteUrl}/agents/profile/?id=${p.slug}` }, { name: "anyroute-card", endpoint: cardUrl(ctx, p.slug), version: "1" });
     if (p.settings.endpoint) services.push({ name: "agent", endpoint: p.settings.endpoint });
     if (ctx.cfg.identity.paidFeedback && row.reputationOptIn) services.push({ name: "anyroute-reputation", endpoint: reputationUrl(ctx, p.slug), version: "1" });
   }

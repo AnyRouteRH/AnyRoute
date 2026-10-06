@@ -213,7 +213,7 @@ export class TelegramBot {
   }
 
   private intro(first: boolean) {
-    const site = this.ctx.cfg.publicUrl;
+    const site = this.ctx.cfg.siteUrl; // B116: links people open
     return [
       first ? "AnyRoute on Telegram: chat with any AnyRoute model. Every answer is paid from your own AnyRoute key and ends with a signed receipt you can verify." : "AnyRoute on Telegram.",
       "",
@@ -294,7 +294,7 @@ export class TelegramBot {
         chat,
         [
           "Private mode is on. Your messages now go only to providers whose TEE attestation the router has verified and that document no retention. If none can answer, I send nothing and tell you why.",
-          `Each answer ends with "attested" (plus "GPU" when the receipt shows it) taken from its signed receipt, and a link to the provider's verification record. Attestation shows what code is running, not what a provider does with your text; ${this.ctx.cfg.publicUrl}/verify lists what is not checked.`,
+          `Each answer ends with "attested" (plus "GPU" when the receipt shows it) taken from its signed receipt, and a link to the provider's verification record. Attestation shows what code is running, not what a provider does with your text; ${this.ctx.cfg.siteUrl}/verify lists what is not checked.`,
         ].join("\n\n") + note,
       );
     }
@@ -382,7 +382,7 @@ export class TelegramBot {
       if (!res.ok) return await this.send(chat, await this.routerFailure(res, model, priv));
       const out = (await res.json().catch(() => null)) as { model?: string; choices?: { message?: { content?: unknown } }[]; usage?: { cost?: number }; receipt?: { id?: string; payload?: ReceiptPayload } } | null;
       const id = out?.receipt?.id;
-      const receiptUrl = id ? `${this.ctx.cfg.publicUrl}/api/v1/receipts/${encodeURIComponent(id)}` : null;
+      const receiptUrl = id ? `${this.ctx.cfg.siteUrl}/api/v1/receipts/${encodeURIComponent(id)}` : null;
       // In private mode the label comes from the signed receipt. An answer whose receipt does not show an attested
       // provider is not delivered, whatever the router said: the user asked for nothing else.
       const badge = priv ? attestedBadge(out?.receipt?.payload) : null;
@@ -397,7 +397,7 @@ export class TelegramBot {
         seconds(latency),
         ...(badge ? [badge] : []),
         ...(receiptUrl ? [`receipt ${receiptUrl}`] : []),
-        ...(badge && typeof provider === "string" && PROVIDER_ID.test(provider) ? [`verify ${this.ctx.cfg.publicUrl}/verify?p=${encodeURIComponent(provider)}`] : []),
+        ...(badge && typeof provider === "string" && PROVIDER_ID.test(provider) ? [`verify ${this.ctx.cfg.siteUrl}/verify?p=${encodeURIComponent(provider)}`] : []),
       ].join(" · ");
       // One line from the receipt: who read the prompt, who saw the address (here Telegram, not the router), how it was paid.
       const seen = out?.receipt?.payload ? await labelForReceipt(this.ctx, { id, payload: out.receipt.payload }).then((l) => shortLine(l, "telegram"), () => null) : null;
@@ -430,7 +430,7 @@ export class TelegramBot {
           return `The providers with a proven enclave for ${model} are temporarily unavailable. I did not send your message to any other provider and you were not charged. Please try again in a minute.`;
         case "upstream_not_attested": {
           const why = err.metadata?.upstream_attestation?.reason;
-          const link = typeof body?.id === "string" ? ` Receipt: ${this.ctx.cfg.publicUrl}/api/v1/receipts/${encodeURIComponent(body.id)}` : "";
+          const link = typeof body?.id === "string" ? ` Receipt: ${this.ctx.cfg.siteUrl}/api/v1/receipts/${encodeURIComponent(body.id)}` : "";
           return `The provider answered, but its signed receipt did not prove the answer came from an attested enclave, so I withheld it. The provider had already produced it, so this call is billed as usual.${typeof why === "string" && why ? ` Reason recorded: ${why.slice(0, 160)}.` : ""}${link}`;
         }
       }

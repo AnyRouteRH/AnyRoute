@@ -42,7 +42,7 @@ export function agentProfilesRoutes(app: Hono, ctx: Ctx) {
     const certificates = await profileCertificates(ctx, key, certificate_claims);
     const [row] = await ctx.db.insert(agentProfiles).values({ slug: newProfileSlug(), keyHash: key.keyHash, settings, certificates })
       .onConflictDoUpdate({ target: agentProfiles.keyHash, set: { settings, certificates } }).returning();
-    return c.json({ data: { id: row.slug, url: `${ctx.cfg.publicUrl}/agents/profile/?id=${row.slug}` } });
+    return c.json({ data: { id: row.slug, url: `${ctx.cfg.siteUrl}/agents/profile/?id=${row.slug}` } });
   });
   app.delete("/api/v1/agents/:key_hash/profile", async c => {
     guard(); c.header("cache-control", "no-store");

@@ -583,9 +583,9 @@ const LABEL: Record<string, string> = { investigating: "Investigating", identifi
 const entryText = (i: ReturnType<typeof incidentJson>) =>
   [`Status: ${LABEL[i.status] ?? i.status}. Impact: ${i.impact}. Lanes: ${i.lanes.join(", ")}${i.surfaces.length ? `. Surfaces: ${i.surfaces.join(", ")}` : ""}.`, ...i.updates.map((u) => `${u.at} ${LABEL[u.status] ?? u.status}: ${u.text}`)].join("\n");
 
-export function atomFeed(base: string, incidents: ReturnType<typeof incidentJson>[], now = Date.now()) {
+export function atomFeed(base: string, incidents: ReturnType<typeof incidentJson>[], now = Date.now(), siteUrl = base) { // B116: keep feed API URLs on base
   const updated = incidents.reduce((m, i) => (i.updated_at > m ? i.updated_at : m), new Date(now).toISOString());
-  const page = `${base}/status/`;
+  const page = `${siteUrl}/status/`;
   return `<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Anyroute status: incidents</title>
@@ -610,8 +610,8 @@ ${incidents
 `;
 }
 
-export function rssFeed(base: string, incidents: ReturnType<typeof incidentJson>[], now = Date.now()) {
-  const page = `${base}/status/`;
+export function rssFeed(base: string, incidents: ReturnType<typeof incidentJson>[], now = Date.now(), siteUrl = base) { // B116: keep feed API URLs on base
+  const page = `${siteUrl}/status/`;
   return `<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>

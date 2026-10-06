@@ -27,5 +27,5 @@ export async function labelForReceipt(ctx: Ctx, receipt: { id?: string | null; p
       teeKind = null; // the label then says the receipt does not name the TEE type
     }
   }
-  return privacyLabel({ id: receipt.id ?? undefined, payload }, { teeKind, unlinkableTransports: unlinkableTransports(ctx.cfg), baseUrl: ctx.cfg.publicUrl });
+  return privacyLabel({ id: receipt.id ?? undefined, payload }, { teeKind, unlinkableTransports: unlinkableTransports(ctx.cfg), baseUrl: ctx.cfg.siteUrl });
 }

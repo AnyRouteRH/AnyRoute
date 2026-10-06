@@ -55,12 +55,12 @@ export function statusRoutes(app: Hono, ctx: Ctx) {
   app.get("/api/v1/status/incidents.atom", async (c) => {
     c.header("Cache-Control", "public, max-age=60");
     c.header("Content-Type", "application/atom+xml; charset=utf-8");
-    return c.body(atomFeed(base(), await feedList()));
+    return c.body(atomFeed(base(), await feedList(), undefined, ctx.cfg.siteUrl.replace(/\/$/, "")));
   });
   app.get("/api/v1/status/incidents.rss", async (c) => {
     c.header("Cache-Control", "public, max-age=60");
     c.header("Content-Type", "application/rss+xml; charset=utf-8");
-    return c.body(rssFeed(base(), await feedList()));
+    return c.body(rssFeed(base(), await feedList(), undefined, ctx.cfg.siteUrl.replace(/\/$/, "")));
   });
 
   app.get("/api/v1/status/incidents", async (c) => {

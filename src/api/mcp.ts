@@ -357,7 +357,7 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
       registered_on_chain: d.checks?.registered_on_chain === true,
       ...(d.gateway ? { gateway: d.gateway } : {}),
       not_checked: d.not_checked,
-      verify_page: `${ctx.cfg.publicUrl}/verify?p=${encodeURIComponent(d.provider)}`,
+      verify_page: `${ctx.cfg.siteUrl}/verify?p=${encodeURIComponent(d.provider)}`,
     });
   };
 

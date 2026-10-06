@@ -57,7 +57,7 @@ export async function profileCard(ctx: Ctx, row: typeof agentProfiles.$inferSele
   const keys = row.certificates.length ? await ctx.signer.jwks() : { keys: [] };
   const certificates = [];
   for (const c of row.certificates) if (await verifyRecordCertificate(c, { keys, nowMs })) certificates.push({ ...c, valid: true });
-  return { name, description, url: `${ctx.cfg.publicUrl}/agents/profile/?id=${row.slug}`, capabilities,
+  return { name, description, url: `${ctx.cfg.siteUrl}/agents/profile/?id=${row.slug}`, capabilities,
     provider: { organization: "AnyRoute" }, ...(homepage ? { homepage } : {}), ...(endpoint ? { endpoint } : {}), ...(payout_wallet ? { payout_wallet } : {}),
     anyroute: { id: row.slug, rulebook_summary: summary, certificates, status: { sealed: "unavailable", attested: "unavailable" }, ...(await cardExtras(ctx, row)),
       notice: "Owner-supplied profile and tags. Rulebook enforcement and router-signed records cover requests through AnyRoute only. Publishing links the selected certificates to this profile. Host sealing and attestation are not established by a rulebook or certificate." } };

@@ -101,7 +101,7 @@ const schema = z.object({
   HOST: z.string().default("127.0.0.1"),
   PORT: int(8787),
   PUBLIC_BASE_URL: z.string().default("http://127.0.0.1:8787"),
-  // Public website address shown to people (e.g. in copy-paste examples); default: PUBLIC_BASE_URL. Not used for receipts or issuers.
+  // B116: address shown in links people open; default: PUBLIC_BASE_URL. Signed receipt issuers stay unchanged.
   SITE_URL: z.string().url().optional(),
   // Passkeys for organisation members (WebAuthn). Default: the host and origin of PUBLIC_BASE_URL, where the dashboard is served.
   WEBAUTHN_RP_ID: opt,
