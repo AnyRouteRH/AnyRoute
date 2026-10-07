@@ -43,10 +43,12 @@ test("initial seed stays unknown; later observations survive concurrent refreshe
   try {
     expect((await recordModelArrivals(r.ctx.db, ["sample/baseline"], now)).get("sample/baseline")).toBeNull();
     const [one, two] = await Promise.all([recordModelArrivals(r.ctx.db, ["sample/baseline", "sample/new"], now + 1), recordModelArrivals(r.ctx.db, ["sample/baseline", "sample/new"], now + 2)]);
-    expect(one.get("sample/new")).toBe(now + 1);
-    expect(two.get("sample/new")).toBe(now + 1);
+    // The seed row lock serializes the two refreshes; whichever takes it first records the date and both agree on it.
+    const first = one.get("sample/new")!;
+    expect([now + 1, now + 2]).toContain(first);
+    expect(two.get("sample/new")).toBe(first);
     await recordModelArrivals(r.ctx.db, [], now + 3);
-    expect((await recordModelArrivals(r.ctx.db, ["sample/new"], now + 100)).get("sample/new")).toBe(now + 1);
+    expect((await recordModelArrivals(r.ctx.db, ["sample/new"], now + 100)).get("sample/new")).toBe(first);
     const [seed] = await r.ctx.db.select().from(kv).where(eq(kv.key, ARRIVAL_SEED));
     expect(seed!.value).toEqual({ initialized: true, seeded_at: now });
   } finally { await r.close(); }
