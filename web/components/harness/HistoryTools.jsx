@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MAX_BYTES } from "../../lib/private-history";
 import { buildSearchIndex, downloadChats, highlightParts, historyShortcut, mergeImport, parseImport, searchChats } from "../../lib/harness-history";
 import { Button, Modal } from "../UI";
+import ChatCost from "./ChatCost"; // C128
 import s from "./HistoryTools.module.css";
 
 export function useHistoryKeys(onSearch, onExport) {
@@ -131,6 +132,7 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
               <button type="button" className="text-button" onClick={() => setRename(null)}>Cancel</button>
             </form> : <button type="button" className={s.open} disabled={busy || pending} onClick={() => onOpen(chat.id)}>
               <b><Highlight text={chat.title} query={query} /></b>
+              <ChatCost chat={chat} /> {/* C128 */}
               <span>{new Date(chat.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {chat.lanes.reduce((n, l) => Math.max(n, l.messages.filter((m) => m.role === "user").length), 0)} turns</span>
               {snippet && <p><Highlight text={snippet} query={query} /></p>}
             </button>}

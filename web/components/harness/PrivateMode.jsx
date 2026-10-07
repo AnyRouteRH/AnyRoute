@@ -13,6 +13,7 @@ import { restoreLanes, snapshotLanes } from "../../lib/harness-image-history";
 import { Button, Modal } from "../UI";
 import HistoryTools, { ExportCurrent, HistoryAccess, useHistoryKeys } from "./HistoryTools";
 import { currentChat } from "../../lib/harness-history";
+import { chatCost, restoreChatCost } from "../../lib/chat-cost.js"; // C128
 import s from "./PrivateMode.module.css";
 
 // ---------------------------------------------------------------- the switch, shared by the whole page
@@ -303,12 +304,13 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
     if (!on || vault !== "open" || busy) return;
     const snap = snapshotLanes(lanes);
     if (!snap.some((l) => l.messages.length)) return;
-    const sig = JSON.stringify(snap);
+    const costSummary = chatCost(lanes); // C128: account before the content snapshot drops replies.
+    const sig = JSON.stringify([snap, costSummary]);
     if (sig === lastSaved.current) return;
     chatId.current ??= "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     lastSaved.current = sig;
     const h = history();
-    h.put({ id: chatId.current, title: titleOf(lanes), lanes: snap })
+    h.put({ id: chatId.current, title: titleOf(lanes), lanes: snap, costSummary }) // C128
       .then(() => { if (h.unlocked) setChats(h.list()); })
       .catch((e) => {
         lastSaved.current = "";
@@ -328,10 +330,10 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
     if (!chat) return;
     const fallback = priv.models?.[0]?.id || null;
     const restored = restoreLanes(chat.lanes).map((l) => ({ ...l, modelId: find(l.modelId) ? l.modelId : fallback }));
-    setLanes(restored);
+    setLanes(restoreChatCost(chat, restored)); // C128
     setFocus(0);
     chatId.current = chat.id;
-    lastSaved.current = JSON.stringify(snapshotLanes(restored));
+    lastSaved.current = JSON.stringify([snapshotLanes(restored), chatCost(restoreChatCost(chat, restored))]); // C128
     setDialog(null);
   };
 

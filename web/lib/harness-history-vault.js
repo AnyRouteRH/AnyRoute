@@ -1,6 +1,7 @@
 // These operations run inside the existing vault's serial queue. Metadata and imports are sealed with its key.
+import { costSummaryFields } from "./chat-cost.js"; // C128
 export function savedEntry(chat, previous, at) {
-  return { id: String(chat.id), title: String(previous?.title || chat.title || "Untitled").slice(0, 80), at, lanes: chat.lanes, ...(previous?.pinned ? { pinned: true } : {}) };
+  return { id: String(chat.id), title: String(previous?.title || chat.title || "Untitled").slice(0, 80), at, lanes: chat.lanes, ...(previous?.pinned ? { pinned: true } : {}), ...costSummaryFields(chat) }; // C128
 }
 
 export function historyEdits({ serial, need, seal, maxBytes, maxChats }) {

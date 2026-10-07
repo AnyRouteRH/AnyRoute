@@ -1,0 +1,4 @@
+.total { display: block; min-width: 0; font: 400 11px/1.5 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+/* C128: give the total its own header row without moving existing controls. */
+:global([data-harness-app]) div:has(> .total):has(> button) { flex-wrap: wrap; }
+:global([data-harness-app]) div:has(> .total):has(> button) > .total { flex-basis: 100%; order: 1; }

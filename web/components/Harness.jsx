@@ -1,5 +1,6 @@
 "use client";
 import ModelAlternatives from "./harness/ModelAlternatives"; import { suggestedModels, alternativeRetry } from "../lib/model-alternatives.js"; // B121
+import ChatCost from "./harness/ChatCost"; // C128
 import AddFunds from "./account/AddFunds"; import { fundingError, recoverFundingDraft } from "../lib/add-funds.js"; // ON1
 import RouteExplanation from "./harness/RouteExplanation"; // V84
 import ProofBadge from "./ProofBadge"; // U76: shared evidence labels.
@@ -1053,6 +1054,7 @@ export default function Harness() {
 
   const stop = () => controllers.current.forEach((c) => c.abort());
   const newChat = () => {
+    setLanes(ls => ls.map(({ chatCostRemainder, ...lane }) => lane)); // C128: clear saved accounting on a new chat.
     voice.stop();
     stop();
     setLanes((ls) => ls.map((l) => ({ ...l, messages: [] })));
@@ -1144,6 +1146,7 @@ export default function Harness() {
         }}
       >
         <div className={s.bar}>
+          <ChatCost lanes={lanes} /> {/* C128 */}
           {!compare && (
             <button type="button" className={s.modelBtn} onClick={() => setPalette({ lane: 0, add: false })} aria-label={`Model: ${focusModel?.name || "none"}. Change model`} aria-keyshortcuts="Meta+Shift+K Control+Shift+K">
               <b>{focusModel?.name || "Loading models"}</b>

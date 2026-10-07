@@ -1,4 +1,5 @@
 import { MAX_BYTES, MAX_CHATS, snapshotLanes, titleOf } from "./private-history.js";
+import { chatCost, costSummaryFields } from "./chat-cost.js"; // C128
 
 export const EXPORT_FORMAT = "anyroute-harness-history";
 export const EXPORT_VERSION = 1;
@@ -51,7 +52,7 @@ function validateChat(c) {
     });
     return { modelId, messages };
   });
-  return { id, title, at: c.at, pinned: c.pinned === true, lanes };
+  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...costSummaryFields(c) }; // C128
 }
 
 // Dedupe ids, plus identical conversation content with different ids. Do not overwrite anything already kept.
@@ -85,7 +86,7 @@ export function parseImport(source) {
 export function currentChat(lanes, saved, now = Date.now()) {
   const snapshot = snapshotLanes(lanes);
   if (!snapshot.some((l) => l.messages.length)) return null;
-  return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, lanes: snapshot };
+  return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, lanes: snapshot, costSummary: chatCost(lanes) }; // C128
 }
 
 export function exportJson(chats) {
