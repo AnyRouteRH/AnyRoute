@@ -94,11 +94,14 @@ export const TASKS = [
   task('privacy-notice', 'learn', 'Read the data notice', 'Read the site’s data-handling notice and privacy limits.', '/legal/privacy/', 'legal, privacy notice, data notice'),
   task('terms', 'learn', 'Read the terms', 'Read the terms for using Anyroute.', '/legal/terms/', 'legal, terms, conditions'),
 ];
+TASKS.push(task('agent-spend-glance', 'agents', 'See agent spending', 'Compare seven days of charged spending and each agent’s latest call.', '/agents/', 'agents, spend, daily, week, model, calls')); // C132
+
 
 // Tools that live inside a page tab are found through search; menus, the mobile menu and the footer stay short.
 const SEARCH_ONLY = new Set([
   'agent-guard', // V98
   'json-check', /* V83 */ 'inbox', 'activity', 'history', 'unlinkable', 'proxy', 'registry', 'routing', 'presets', 'characters', 'batches', 'teams', 'tracing', 'playground', 'evals', 'skills', 'spend', 'api-receipts', 'holders', 'settings', 'sessions', 'breakers', 'autonomy', 'profile', 'inventory-log', 'badge', 'proof-time']);
+SEARCH_ONLY.add('agent-spend-glance'); // C132
 SEARCH_ONLY.add('payments'); SEARCH_ONLY.add('get-usdg'); // ON1: funding joins Build; payment reference stays searchable.
 TASKS.push(task('get-usdg', 'build', 'Get USDG', 'How to get USDG on Robinhood Chain. USDG deposits are not switched on here yet.', '/docs/#get-usdg', 'usdg, bridge, buy, chain')); // ON1
 SEARCH_ONLY.add('spec'); // V80: keep Build at nine menu tools; spec stays searchable.

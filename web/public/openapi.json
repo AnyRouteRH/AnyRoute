@@ -194,6 +194,153 @@
     }
   ],
   "paths": {
+    "/api/v1/agents/spend": {
+      "get": {
+        "x-card": "C132",
+        "operationId": "agentSpendGlance",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "See agent charged spending over seven UTC dates",
+        "description": "Read-only; same management or owner/admin auth and account/team scope as the agents list. AGENT_POLICY_ENABLED defaults false; off returns 404. Today and six previous UTC dates, oldest first including zero days. Counts negative usage, tool_call and data_tool ledger entries by settlement time, excluding refunds, holds and estimates. Models use explicit generation links matching key/account; unlinked charges still count in totals. Top model is highest attributed spend, ties by identifier. Last request is latest retained generation time or charged ledger settlement time, including earlier dates and free recorded model calls. No retained data is added. Parent/session spend remains separate. Cache-Control: no-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7
+              ],
+              "default": 7
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Seven-day charged-spend summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "days",
+                    "from",
+                    "as_of",
+                    "data"
+                  ],
+                  "properties": {
+                    "days": {
+                      "type": "integer",
+                      "const": 7
+                    },
+                    "from": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "as_of": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key_hash",
+                          "daily",
+                          "total_usd",
+                          "top_model",
+                          "last_request_at"
+                        ],
+                        "properties": {
+                          "key_hash": {
+                            "type": "string"
+                          },
+                          "daily": {
+                            "type": "array",
+                            "minItems": 7,
+                            "maxItems": 7,
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "date",
+                                "charged_usd"
+                              ],
+                              "properties": {
+                                "date": {
+                                  "type": "string",
+                                  "format": "date"
+                                },
+                                "charged_usd": {
+                                  "type": "number",
+                                  "minimum": 0
+                                }
+                              }
+                            }
+                          },
+                          "total_usd": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "top_model": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "id",
+                              "name",
+                              "charged_usd"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "charged_usd": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            }
+                          },
+                          "last_request_at": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/api/v1/agents/approvals/{id}/approve-and-allow": {
       "get": {
         "summary": "Preview an approval's ask-first amount change",

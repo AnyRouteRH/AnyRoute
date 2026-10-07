@@ -1,5 +1,7 @@
 'use client';
 import AccountShell from '../../components/account/AccountShell';
+import { useMemo } from 'react'; // C132
+import { withSpendGlance, useSpendGlance } from '../../components/AgentSpendGlance'; // C132
 import { useAccountKey } from '../../components/account/useAccountKey';
 import { SealedBadge } from './SealedAgent';
 import TelegramLink from "./TelegramLink";
@@ -34,6 +36,8 @@ function Errors({ errors }) {
 function Spend({ agent }) {
   return <div className={s.bars}>{capBars(agent).map(bar => <div key={bar.period}><span className={s.barLabel}><span>Rolling {bar.period}</span><span>{bar.label}</span></span><progress max="100" value={bar.percent} aria-label={`Rolling ${bar.period}: ${bar.label}`}/></div>)}</div>;
 }
+
+const SpendCaps = Spend; // C132: keep the existing caps renderer inside the spend glance.
 
 // U102: the shared spending limits editor, plus the rulebook's other rules and, where it applies, Agent Guard's actions.
 // U115: `locked` while the key follows a playbook: its rules are shown read-only; Stop and Resume still work.
@@ -126,6 +130,8 @@ export default function Agents() {
   const guard = useAgentGuard(); // U102: Agent Guard's actions section shows where Guard is switched on.
   const onError = useCallback(error => { const state = errorState(error); setOff(state.off); setError(state.off ? '' : state.message); }, []);
   const request = useCallback((path,options = {}) => api(path,{ ...options,key }), [key]);
+  const glance = useSpendGlance(request, key, revision); // C132
+  const Spend = useMemo(() => withSpendGlance(SpendCaps, glance), [glance]); // C132: wrap each existing row without changing its markup.
   useEffect(() => {
     if (!key) return;
     const ac = new AbortController(); setBusy(true); setError(''); setOff(false); setLoaded(false);

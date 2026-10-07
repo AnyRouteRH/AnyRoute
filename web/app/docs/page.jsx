@@ -3,6 +3,7 @@ import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B12
 import ModelAlternativesDocs from "../../components/ModelAlternativesDocs"; // B121
 import RunwayDocs from "../../components/RunwayDocs"; // B119
 import ChatCostDocs from "../../components/ChatCostDocs"; // C128
+import AgentSpendGlanceDocs from "../../components/AgentSpendGlanceDocs"; // C132
 import RouterLimits from "../../components/RouterLimits"; // HD1
 import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
 import WeeklySummaryDocs from "../../components/WeeklySummaryDocs"; // B120
@@ -884,6 +885,7 @@ export default function Docs() {
           <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}<LaneReportDocs /> {/* Lane report */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />
+          <AgentSpendGlanceDocs /> {/* C132 */}
           <WebhookDocs/> {/* V86. */}
           <ToolsMarketDocs /> {/* v6 T */}
           <AgentAlertDocs />

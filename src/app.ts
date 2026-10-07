@@ -1,4 +1,5 @@
 import { accountRunwayRoutes } from "./api/account-runway.ts"; // B119
+import { agentSpendRoutes } from "./agents/spend-glance.ts"; // C132
 import { hardeningMiddleware, originLockMiddleware } from "./hardening/middleware.ts"; // HD1
 import { internalEnv } from "./hardening/client.ts"; // HD1
 import { initializeUpstreamMonitor } from "./rush/monitor.ts"; // ON3
@@ -231,6 +232,7 @@ export async function createApp(opts: AppOptions = {}) {
   identityRoutes(app, ctx); // v6 I
   agentSealedRoutes(app, ctx);
   agentsRoutes(app, ctx);
+  agentSpendRoutes(app, ctx); // C132
   playbooksRoutes(app, ctx); // U115: after agentsRoutes, whose /api/v1/agents/* switch also covers the follow route.
   guardRoutes(app, ctx); // V98
   agentPayRoutes(app, ctx); // Pay another agent (AGENT_PAY_ENABLED)
