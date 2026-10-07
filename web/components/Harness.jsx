@@ -1,4 +1,6 @@
 "use client";
+import ContextMeter, { useContextMeter } from "./harness/ContextMeter"; // C129
+import { contextMeter, contextSendBlock } from "../lib/context-meter.js"; // C129
 import ModelAlternatives from "./harness/ModelAlternatives"; import { suggestedModels, alternativeRetry } from "../lib/model-alternatives.js"; // B121
 import ChatCost from "./harness/ChatCost"; // C128
 import AddFunds from "./account/AddFunds"; import { fundingError, recoverFundingDraft } from "../lib/add-funds.js"; // ON1
@@ -881,6 +883,7 @@ export default function Harness() {
   // Voice mode: browser-only adapter; existing send and history paths remain the source of truth.
   const voice = useHarnessVoice({ draft, setDraft, onSend: send, busy, canSend: !!auth.key && lanes.every((l) => !!find(l.modelId)), canConverse: !!auth.key && !!focusModel && !compare, reply: lanes[0]?.messages.filter((m) => m.role === "assistant").at(-1), scope: lanes.map((l) => `${l.id}:${l.modelId}`).join("|") + `:${priv.on}`, blocked: !!(signin || editing || palette || sheet) });
   const prompts = usePromptLibrary({ privateMode: priv.on, history: promptHistory, draft, system, model: focusModel?.id, focus, busy, models: all, setDraft, setSystem, setLanes, setFocus, input, setFiles, setEditing, stopVoice: voice.stop }); // V81
+  const context = useContextMeter({ lanes, find, system, draft, files, busy, auth, priv, limits, controllers, setInflight, refreshBalance, setLanes, setFocus, setEditing, voice, needKey: reason => needKey(reason), input }); // C129
   const empty = lanes.every((l) => !l.messages.length);
   const acceptsImages = lanes.every((l) => readsImages(find(l.modelId)));
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
@@ -936,6 +939,8 @@ export default function Harness() {
     const key = authRef.current.key;
     if (modelUnavailable(model)) return patchMsg(laneId, msgId, { status: "error", error: "This model is temporarily unavailable. Choose another model." }); // ON5
     if (!model) return patchMsg(laneId, msgId, { status: "error", error: "Choose a model first." });
+    if (contextMeter({ model, messages: history, system: systemRef.current }).blocked) return patchMsg(laneId, msgId, { status: "error", error: "Context is full. Choose a model with more room or summarize before sending.", errorKind: "settings" }); // C129
+    patchMsg(laneId, msgId, { contextSystem: systemRef.current }); // C129: memory only; associates API counts with this system prompt.
     if (imageSendError(model, history)) return patchMsg(laneId, msgId, { status: "error", error: imageSendError(model, history), errorKind: "settings" });
     const { body, notes, error } = buildRequest({ model, settings: imageSettings(model, settingsRef.current, imageMode), system: systemRef.current, messages: history });
     if (error) return patchMsg(laneId, msgId, { status: "error", error, errorKind: "settings" });
@@ -1002,6 +1007,7 @@ export default function Harness() {
   function send(text, attachments = files, truncate = null) {
     const body = text.trim();
     if ((!body && !attachments.length) || busy || isPreparing()) return;
+    const contextError = contextSendBlock(lanesRef.current, find, systemRef.current, body, attachments, truncate); if (contextError) return setFileNote(contextError); // C129
     const imageError = imageSendBlock(lanesRef.current, find, attachments, truncate); if (imageError) return setFileNote(imageError);
     if (needKey("send")) return;
     if (lanes.some((l) => !find(l.modelId))) return;
@@ -1288,6 +1294,7 @@ export default function Harness() {
             if (!prompts.chooseSlash()) busy ? stop() : send(draft); // V81: slash selection never sends.
           }}
         >
+          <ContextMeter context={context} busy={busy} /> {/* C129 */}
           <PromptSlash library={prompts} /> {/* V81 */}
           <ImageMode model={focusModel} lanes={lanes} find={find} catalogue={shown} enabled={settings.imageOut} busy={busy} onChange={(imageOut) => set({ imageOut, audioOut: false })} onChoose={() => setPalette({ lane: focus, add: false, images: true })} />
           {files.length > 0 && (
@@ -1338,10 +1345,12 @@ export default function Harness() {
               }}
             />
             <ComposerVoice voice={voice} />
+            <fieldset disabled={!busy && !!context.block} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}> {/* C129 */}
             <button type="submit" className={s.send} data-busy={busy || undefined} title={imageBlock || (preparing ? "Preparing images on your device" : undefined)} disabled={!busy && (preparing || !!imageBlock || (!draft.trim() && !files.length) || !focusModel)}>
               {busy ? "Stop" : "Send"}
               <b aria-hidden="true">{busy ? "■" : "↵"}</b>
             </button>
+            </fieldset> {/* C129 */}
           </div>
           <ImageNotice files={files} enabled={acceptsImages} preparing={preparingImages} error={imageBlock} onSwitch={switchVision} available={all.some(readsImages)} />
           <VoiceFeedback voice={voice} />

@@ -3,6 +3,7 @@ const sections = [
   ["copy-as-code", "Copy a Chat conversation as code"], // C130
   ["key-expiry", "Keys that expire"], // C127
   ["getting-started", "Getting started"], // C135
+  ["context-meter", "Keep room in Chat"], // C129
   ["unused-keys", "Review unused keys"], // B125
   ["proof-pack", "Proof pack"], // B122
   ["deposit-countdown", "Deposit countdown and credit notices"], // B123

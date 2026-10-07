@@ -1,3 +1,4 @@
+import ContextMeterDocs from "../../components/ContextMeterDocs"; // C129
 import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B123
 import ModelAlternativesDocs from "../../components/ModelAlternativesDocs"; // B121
 import RunwayDocs from "../../components/RunwayDocs"; // B119
@@ -1793,6 +1794,7 @@ OK  team team_…  42 entries  3 hourly roots  head 9f2c…`}</Code>
           <NetworkStatsDocs />
           <CommerceStatsDocs /> {/* v6 L */}
           <RouteExplanationDocs /> {/* V84 */}
+          <ContextMeterDocs /> {/* C129 */}
           <h2 id="run-a-provider">Run a provider.</h2>
           <p>
             A model host runs the sidecar in front of its model server, inside a confidential VM. The sidecar hashes the weights at boot and refuses to start unless the digest is on its allow-list, binds its TLS key, receipt key and the image, compose and model digests into an Intel TDX quote, and signs a receipt for every
