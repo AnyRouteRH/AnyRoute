@@ -1,3 +1,4 @@
+import { captureProject, projectFields, assertProjectLane } from "../projects/tags.ts"; // C134
 import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
 import { rememberRoutePlan, rememberRouteResult, routeReceiptFields, routeResponseHeaders } from "../router/explain.ts"; // V84
 import { agentReservation } from "../agents/enforce.ts";
@@ -45,6 +46,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const batchLine = batchLineOf(c);
     const key = batchLine ? await batchKey(ctx, batchLine.keyHash) : bearer(c.req.header("authorization")) ? await requireKey(ctx, c.req.header("authorization")) : null;
     if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
+    captureProject(c, key); // C134
     let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null; // $ANYR holders get a higher rpm
     const from = addressBucket(c, ctx.cfg); // over Tor: the shared onion bucket, not a client address
     const lim = key
@@ -72,6 +74,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
     // A per-call payment names its payer as a wallet does: it is identity-bearing for lane "unlinkable".
     const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!paymentHeaderOf(c)), hasToken: !!pass });
+    assertProjectLane(c, disc.lane); // C134
     noteLane(c.req.raw, disc.lane); // the status page counts public-lane requests only (services/slo.ts)
     const strict = disc.max !== "any";
     const plan = (p: ProviderPrefs) =>
@@ -182,6 +185,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
         };
         const signed = ctx.signer.sign(payload);
         await ctx.db.insert(generations).values({
+          ...projectFields(c), // C134
           id,
           keyHash: key?.keyHash ?? null,
           accountId,

@@ -60,6 +60,7 @@ import AgentCertificateDocs from "../../components/AgentCertificateDocs";
 import ApproveAndAllowDocs from "../../components/ApproveAndAllowDocs"; // B118
 import AgentApprovalDocs from "../../components/AgentApprovalDocs";
 import TradingAgentDocs from "../../components/TradingAgentDocs"; // B
+import ProjectsDocs from "../../components/ProjectsDocs"; // C134
 import DecisionTagDocs from "../../components/DecisionTagDocs"; // B: decision tags
 import { API_BASE } from "../../lib/api";
 import { QUICKSTART, QUICKSTART_FLAGS } from "../../lib/providers";
@@ -900,6 +901,7 @@ export default function Docs() {
           <AgentPayDocs /> {/* Pay another agent */}
           <TradingAgentDocs /> {/* B */}
           <DecisionTagDocs /> {/* B: decision tags */}
+          <ProjectsDocs /> {/* C134 */}
           <AgentCertificateDocs /><AgentProfileDocs /><AgentIdentityDocs /><SealedAgentDocs />
           <h2 id="quickstart">Make your first API call.</h2> {/* ON2 */}
           <FirstCallDocs /> {/* ON2 */}

@@ -1,3 +1,4 @@
+import { captureProject, projectFields, assertProjectLane } from "../projects/tags.ts"; // C134
 import { agentReservation } from "../agents/enforce.ts";
 import { profileOf } from "../router/disclosure.ts";
 import { createHash } from "node:crypto";
@@ -67,10 +68,12 @@ async function runEncrypted(ctx: Ctx, c: Context) {
   const key = secret ? await resolveKey(ctx, secret) : null;
   if (secret && !key) fail(401, "Unknown API key.", "invalid_key");
   if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
+  captureProject(c, key); // C134
   const pass = key ? null : await presentBlindToken(ctx, c.req.header("authorization"));
   // Content policies cannot run on ciphertext. Refuse keys with those settings rather than bypassing them.
   if (key?.guardrails || key?.routing || key?.payWithDefault || c.req.header("x-pay-with") || c.req.header("x-wallet-auth") || paymentHeaderOf(c)) fail(400, "Encrypted chat supports prepaid keys without content policies, or blind tokens.", "e2ee_unsupported_auth");
   const disc = requestLane(ctx, c, { lane: c.req.header("x-anyroute-lane") === "unlinkable" ? "unlinkable" : "attested", disclosure: "none" }, { hasKey: !!key, hasToken: !!pass, hasWallet: !!c.req.header("x-wallet-auth") });
+  assertProjectLane(c, disc.lane); // C134
   noteLane(c.req.raw, disc.lane);
   const tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null;
   if (key) {
@@ -133,7 +136,7 @@ async function runEncrypted(ctx: Ctx, c: Context) {
       const settled = await settle(tx as unknown as Ctx["db"], id, amount, { generationId: id, description: "Encrypted chat" });
       payload.cost = picoToUsdString(settled.charged);
       const signed = ctx.signer.sign(payload);
-      await tx.insert(generations).values({ id, accountId, keyHash: key?.keyHash ?? null, modelId: model.id, providerId: PHALA_PROVIDER, mode, cost: settled.charged, upstreamCost: cost.upstream, royalty: cost.royalty, margin: cost.margin, tokensIn: (usage ?? bound).prompt, tokensOut: (usage ?? bound).completion, streamed: !!body.stream, cancelled: !complete, finishReason: complete ? finish : "error", latencyMs: Date.now() - t0, generationTimeMs: Date.now() - t0, attestationHash: p.attestationHash, receiptId: id, receipt: payload, receiptSig: signed.sig, receiptKeyId: signed.keyId, receiptLeaf: receiptLeaf(signed.bytes, signed.sigBytes), requestSha256: payload.request_sha256, responseSha256: responseHash });
+      await tx.insert(generations).values({ ...projectFields(c), id, accountId, keyHash: key?.keyHash ?? null, modelId: model.id, providerId: PHALA_PROVIDER, mode, cost: settled.charged, upstreamCost: cost.upstream, royalty: cost.royalty, margin: cost.margin, tokensIn: (usage ?? bound).prompt, tokensOut: (usage ?? bound).completion, streamed: !!body.stream, cancelled: !complete, finishReason: complete ? finish : "error", latencyMs: Date.now() - t0, generationTimeMs: Date.now() - t0, attestationHash: p.attestationHash, receiptId: id, receipt: payload, receiptSig: signed.sig, receiptKeyId: signed.keyId, receiptLeaf: receiptLeaf(signed.bytes, signed.sigBytes), requestSha256: payload.request_sha256, responseSha256: responseHash });
       if (pass) await confirmToken({ ...ctx, db: tx as unknown as Ctx["db"] }, pass, id);
     });
     if (!complete || !evidence) throw new Error("Encrypted response incomplete or gateway evidence invalid");

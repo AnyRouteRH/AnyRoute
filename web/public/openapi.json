@@ -1680,6 +1680,15 @@
         ],
         "parameters": [
           {
+            "name": "project",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9._-]{1,48}$"
+            },
+            "description": "C134: lowercase-matched call project. Activity JSON adds project on tagged calls; CSV includes a project column. This filter selects calls only."
+          },
+          {
             "name": "kind",
             "in": "query",
             "required": false,
@@ -4367,6 +4376,9 @@
             "$ref": "#/components/parameters/LaneDowngrade"
           },
           {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
+          {
             "$ref": "#/components/parameters/DecisionTag"
           }
         ],
@@ -4503,6 +4515,9 @@
           {}
         ],
         "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
           {
             "$ref": "#/components/parameters/Payment"
           },
@@ -8636,6 +8651,9 @@
         "description": "The Anthropic Messages API, for the Anthropic SDKs and Claude Code (ANTHROPIC_BASE_URL set to the router). Also served at /api/v1/messages. The request is converted to a chat completion and sent through /api/v1/chat/completions inside the router, so the key, balance, limits, lane, signed receipt and response headers are those of a chat call. Authenticate with x-api-key or Authorization: Bearer. The model is a catalog id (GET /v1/models) or a name the operator mapped with ANTHROPIC_MODEL_MAP; an unmapped claude-* name is a 404 that says the router serves open models. Text, image (base64 and URL), tool_use and tool_result blocks, tools and tool_choice, stop_sequences, top_k (dropped for a provider that does not list it) and metadata.user_id (sent to the provider as user) are converted; max_tokens above the model's output limit is lowered to it. Tools hosted by Anthropic, thinking and service_tier are accepted and not acted on (named in X-Anyroute-Ignored); PDF documents, mcp_servers and container are refused with a 400. The reply's id is the receipt id, and its anyroute object carries the lane, disclosure class, provider, cost, upstream_attestation where there is one, and the signed receipt. With stream true the events are message_start, ping, content_block_start, content_block_delta (text_delta, input_json_delta), content_block_stop, message_delta (billed usage and the anyroute object) and message_stop, or an error event in place of the ending; a request the router refuses before any output is an HTTP error instead of a stream. stop_reason is end_turn, max_tokens, tool_use or refusal, and stop_sequence only when the provider names the stop string that ended the answer. Errors have Anthropic's shape with an anyroute object carrying the router's own error type.",
         "parameters": [
           {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
+          {
             "name": "X-Anyroute-Lane",
             "in": "header",
             "required": false,
@@ -8865,6 +8883,9 @@
             "$ref": "#/components/parameters/LaneDowngrade"
           },
           {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
+          {
             "$ref": "#/components/parameters/DecisionTag"
           }
         ],
@@ -8999,6 +9020,9 @@
           }
         ],
         "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
           {
             "$ref": "#/components/parameters/PayWith"
           },
@@ -10194,6 +10218,9 @@
         ],
         "parameters": [
           {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
+          {
             "$ref": "#/components/parameters/Lane"
           },
           {
@@ -10273,6 +10300,9 @@
         ],
         "parameters": [
           {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
+          {
             "$ref": "#/components/parameters/Lane"
           },
           {
@@ -10351,6 +10381,9 @@
           }
         ],
         "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
           {
             "$ref": "#/components/parameters/Lane"
           },
@@ -10492,6 +10525,9 @@
           }
         ],
         "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
           {
             "$ref": "#/components/parameters/Lane"
           },
@@ -10819,6 +10855,9 @@
           {}
         ],
         "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
           {
             "$ref": "#/components/parameters/Payment"
           },
@@ -14739,6 +14778,9 @@
         "description": "Off by default (E2EE_PASSTHROUGH_ENABLED=false). Exact JSON bytes and encrypted fields are forwarded unchanged; SSE bytes pass through unchanged. Message content is restored inside the attested gateway enclave, which forwards it to the serving workload over a separate confidential channel. Model, sizes, timing, public keys and payment metadata remain visible. Only the phala-confidential-ai provider and text chat are supported; tools, files, search and unknown fields are refused. Holds use a conservative input-byte bound plus max_tokens. Charges trust gateway-reported usage; completion or truncation without usage charges the hold. The router cannot check the restored plaintext request hash; clients must independently verify attestation and complete signed wire receipts. Prepaid keys and blind tokens are supported.",
         "parameters": [
           {
+            "$ref": "#/components/parameters/ProjectTag"
+          },
+          {
             "in": "header",
             "name": "X-E2EE-Version",
             "required": true,
@@ -18153,6 +18195,69 @@
           }
         }
       }
+    },
+    "/api/v1/insights": {
+      "get": {
+        "operationId": "projectSpendInsights",
+        "summary": "Read spend insights",
+        "description": "C134: requires SPEND_INSIGHTS_ENABLED (default false). Existing account/key access rules apply. Project filters call charges and generation-linked refunds; unlinked refunds have no project. Optional projects breakdown uses the existing spend row fields: id, cost_usd, charged_usd, refunded_usd and calls, with null id for no project; omitted when there are no tagged records. Signed receipts and Statements are unchanged.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9._-]{1,48}$"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "UTC spend report with optional project breakdown."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -18312,6 +18417,16 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         }
+      },
+      "ProjectTag": {
+        "name": "X-Anyroute-Project",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9._-]{1,48}$"
+        },
+        "description": "C134: owner-chosen call label, lowercased; overrides the key default. Invalid labels return 400. The unlinkable lane refuses tags with project_unlinkable to prevent linking calls. Stored outside the signed receipt."
       },
       "DecisionTag": {
         "name": "X-Anyroute-Decision-Tag",
@@ -21963,6 +22078,14 @@
       "KeyCreateRequest": {
         "type": "object",
         "properties": {
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-zA-Z0-9._-]{1,48}$",
+            "description": "C134: PATCH only; set or clear a default project. POST rejects this field."
+          },
           "name": {
             "type": "string",
             "maxLength": 100
@@ -22223,6 +22346,10 @@
           "topups_this_week_usd": {
             "type": "number",
             "description": "GET /api/v1/keys/{hash} and PATCH: the auto top-ups added to this key's limit since Monday 00:00 UTC."
+          },
+          "project": {
+            "type": "string",
+            "description": "C134: lowercased default project label; omitted when unset."
           }
         }
       },

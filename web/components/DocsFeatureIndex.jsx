@@ -7,6 +7,7 @@ const sections = [
   ["agent-spend-glance", "Agent spend at a glance"], // C132
   ["appearance", "Choose light or dark"], // C126
   ["new-models", "New models this week"], // C131
+  ["projects", "Project tags"], // C134
   ["unused-keys", "Review unused keys"], // B125
   ["proof-pack", "Proof pack"], // B122
   ["deposit-countdown", "Deposit countdown and credit notices"], // B123

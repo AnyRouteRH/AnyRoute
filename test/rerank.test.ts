@@ -356,3 +356,15 @@ describe("GET /api/v1/models", () => {
     expect(all.data.length).toBeGreaterThan(j.data.length);
   });
 });
+
+// C134: reuse the existing inference route and receipt checks.
+test('C134 rerank calls store project defaults and header overrides outside receipts', async () => {
+  const owner = await h.fundedKey();
+  expect((await h.request('/api/v1/keys/' + owner.hash, { method: 'PATCH', headers: owner.auth, json: { project: 'rerank-default' } })).status).toBe(200);
+  for (const [tag, project] of [[undefined, 'rerank-default'], ['RERANK-HEADER', 'rerank-header']] as const) {
+    const r = await rerank({ model: SU, query: QUERY, documents: TEXTS }, { ...owner.auth, ...(tag ? { 'X-Anyroute-Project': tag } : {}) });
+    expect(r.status).toBe(200); await r.text();
+    const [g] = await h.ctx.db.select().from(generations).where(eq(generations.id, r.headers.get('x-receipt-id')!));
+    expect(g.project).toBe(project); expect(g.receipt).not.toHaveProperty('project');
+  }
+});

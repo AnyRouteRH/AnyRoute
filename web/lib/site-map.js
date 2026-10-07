@@ -218,3 +218,5 @@ TASKS.push({ ...task("context-meter", "chat", "Keep room in Chat", "See context 
 TASKS.push({ ...task('appearance', 'learn', 'Choose light or dark', 'Choose Light, Dark or Match device in the account menu or footer.', '/docs/#appearance', 'theme, dark, light, appearance, device'), menu: false }); // C126
 
 TASKS.push({ ...task('new-models', 'chat', 'Find new models this week', 'Browse recently added models and subscribe to the new models feed.', '/docs/#new-models', 'new models, catalogue, atom, feed, this week'), menu: false }); // C131
+
+TASKS.push({ ...task('projects', 'build', 'Group calls by project', 'Tag calls and filter Activity and Insights by project.', '/docs/#projects', 'project, tags, spending, activity, insights'), menu: false }); // C134

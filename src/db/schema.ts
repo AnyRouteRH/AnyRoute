@@ -110,6 +110,7 @@ export const keys = pgTable(
     keyAddress: text("key_address").notNull(),
     accountId: text("account_id").notNull(),
     parentHash: text("parent_hash"),
+    project: text("project"), // C134: owner-chosen default call label
     name: text("name").notNull().default(""),
     label: text("label").notNull(), // sk-ar-v1-abcd...wxyz
     budget: money("budget"), // null = unlimited (pico)
@@ -333,6 +334,7 @@ export const apps = pgTable("apps", {
 export const generations = pgTable(
   "generations",
   {
+    project: text("project"), // C134: owner-chosen label, outside the receipt
     id: text("id").primaryKey(),
     ts: ts("ts").notNull().defaultNow(),
     keyHash: text("key_hash"),
@@ -384,6 +386,7 @@ export const generations = pgTable(
   },
   (t) => [
     index("gen_ts_idx").on(t.ts),
+    index("gen_account_project_ts_idx").on(t.accountId, t.project, t.ts), // C134
     index("gen_key_ts_idx").on(t.keyHash, t.ts),
     index("gen_provider_ts_idx").on(t.providerId, t.ts),
     index("gen_anchor_idx").on(t.anchorIndex),

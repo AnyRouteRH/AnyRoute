@@ -1,3 +1,4 @@
+import { activityProject, projectActivityFilter, projectJson } from "../projects/tags.ts"; // C134
 import { sql, type SQL } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import type { KeyRow } from "../api/auth.ts";
@@ -7,9 +8,9 @@ import { picoToUsdString } from "../lib/money.ts";
 import { csvCell } from "../agents/ledger.ts";
 import { agreementScope } from "../agreements/state.ts";
 import { activityFingerprint, type ActivityQuery } from "./query.ts";
-type Raw = { id: string; at: string; kind: string; title: string; amount_pico: string; model: string | null; lane: string | null; where: string | null; key_label: string | null; receipt_id: string | null; status: string; reference: string | null; limit_pico: string | null };
+type Raw = { project?: string | null; id: string; at: string; kind: string; title: string; amount_pico: string; model: string | null; lane: string | null; where: string | null; key_label: string | null; receipt_id: string | null; status: string; reference: string | null; limit_pico: string | null };
 export function activityRow(r: Raw) {
-  return { id: r.id, at: r.at, kind: r.kind, title: r.title, amount: picoToUsdString(BigInt(r.amount_pico)), currency: "USDG",
+  return { ...projectJson(r), id: r.id, at: r.at, kind: r.kind, title: r.title, amount: picoToUsdString(BigInt(r.amount_pico)), currency: "USDG",
     model: r.model, lane: r.lane, where: r.where, key_label: r.key_label, receipt_id: r.receipt_id,
     receipt_url: r.receipt_id ? `/api/v1/receipts/${encodeURIComponent(r.receipt_id)}` : null,
     verify_url: r.receipt_id ? `/verify/?r=${encodeURIComponent(r.receipt_id)}` : null,
@@ -87,16 +88,17 @@ export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, elig
           and r.args->>'id' = p.data->>'agreementId' and r.args->>'milestone' = p.data->>'milestone')))`);
   if (!sources.length) return { data: [], next_cursor: null, scope: whole ? "account" : "key" };
   const bounded = sources.map(s => sql`(select * from (${s}) source(id,at,kind,title,amount_pico,model,lane,"where",key_label,receipt_id,status,reference,limit_pico) where
+    (${projectActivityFilter(q.project)}) and -- C134
     (${eligible ?? sql`true`}) and (${q.kind ?? null}::text is null or kind = ${q.kind ?? null}) and (${q.model ?? null}::text is null or model = ${q.model ?? null})
     and (${q.from ?? null}::timestamptz is null or at >= ${q.from ?? null}::timestamptz)
     and (${q.to ?? null}::timestamptz is null or at < ${q.to ?? null}::timestamptz)
     and (${q.cursor?.at ?? null}::timestamptz is null or (at,id collate "C") < (${q.cursor?.at ?? null}::timestamptz,${q.cursor?.id ?? null}::text collate "C"))
     order by at desc,id collate "C" desc limit ${q.limit})`);
-  const raw = rowsOf<Raw>(await ctx.db.execute(sql`select id,to_char(at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at,kind,title,amount_pico,model,lane,"where",key_label,receipt_id,status,reference,limit_pico
+  const raw = rowsOf<Raw>(await ctx.db.execute(sql`select ${activityProject} project, id,to_char(at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at,kind,title,amount_pico,model,lane,"where",key_label,receipt_id,status,reference,limit_pico
     from (${sql.join(bounded,sql` union all `)}) merged order by merged.at desc,id collate "C" desc limit ${q.limit}`));
   const last = raw.at(-1);
   return { data: raw.map(activityRow), scope: whole ? "account" : "key",
     next_cursor: raw.length === q.limit && last ? Buffer.from(JSON.stringify({ at: last.at, id: last.id, filter: fingerprint })).toString("base64url") : null };
 }
-export const ACTIVITY_CSV_COLUMNS = ["id", "at", "kind", "title", "amount", "currency", "model", "lane", "where", "key_label", "receipt_id", "receipt_url", "verify_url", "status", "reference", "approval_limit"] as const;
+export const ACTIVITY_CSV_COLUMNS = ["id", "at", "kind", "title", "amount", "currency", "model", "lane", "where", "key_label", "receipt_id", "receipt_url", "verify_url", "status", "reference", "approval_limit", "project"] as const;
 export const activityCsv = (rows: ReturnType<typeof activityRow>[]) => ACTIVITY_CSV_COLUMNS.join(",") + "\r\n" + rows.map(row => ACTIVITY_CSV_COLUMNS.map(col => csvCell(row[col])).join(",") + "\r\n").join("");

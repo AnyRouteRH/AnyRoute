@@ -1,3 +1,4 @@
+import { projectInput, projectJson } from "../projects/tags.ts"; // C134
 import { compatibilityFields, keyPagination, provisionedScope } from "../provisioning/keys.ts"; // ZK6
 import type { Context, Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -24,6 +25,7 @@ import { assertFitsOrgBudget } from "../teams/org.ts";
 import { topupInput, topupJson, topupsThisWeek } from "../ledger/topup.ts";
 
 const keySpec = z.object({
+  project: projectInput.nullable().optional(), // C134: PATCH only
   include_byok_in_limit: z.boolean().optional(), // ZK6
   scope: z.enum(["inference", "account"]).optional(), // ZK6: create only
   name: z.string().max(100).optional(),
@@ -52,6 +54,7 @@ const keySpec = z.object({
 
 export function keyJson(k: KeyRow) {
   return {
+    ...projectJson(k), // C134: omit when unset
     ...compatibilityFields(k), // ZK6: additive exact counters and issuer fields
     hash: k.keyHash,
     name: k.name,
@@ -124,6 +127,7 @@ function applySpec(v: z.infer<typeof keySpec>) {
   const budget = v.budget_usd !== undefined ? v.budget_usd : v.limit;
   return {
     ...(v.include_byok_in_limit !== undefined ? { includeByokInLimit: v.include_byok_in_limit } : {}), // ZK6
+    ...(v.project !== undefined ? { project: v.project } : {}), // C134
     ...(v.name !== undefined ? { name: v.name } : {}),
     ...(budget !== undefined ? { budget: budget == null ? null : usdToPico(budget) } : {}),
     ...(v.limit_reset !== undefined ? { budgetReset: v.limit_reset } : {}),
@@ -153,6 +157,7 @@ function keyChange(spec: z.infer<typeof keySpec>, patch: ReturnType<typeof apply
 /** Create a virtual sub-key under `caller` (same account and balance, parent = caller). The secret is
  *  returned once; only its hash is stored. Shared by POST /api/v1/keys and Agent Sessions. */
 export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeof keySpec>, db: Db | Tx = ctx.db) {
+  if (spec.project !== undefined) fail(400, "Set a default project with PATCH /api/v1/keys/:hash.", "invalid_request"); // C134
   const scope = await provisionedScope(ctx, caller, spec, db); // ZK6
   if (spec.management && !caller.management) fail(403, "Only a management key can create management keys.", "forbidden");
   const teamId = spec.team ?? (caller.management ? null : caller.teamId);
@@ -211,6 +216,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
   // With a management/admin key: a virtual sub-key sharing that account's balance.
   app.post("/api/v1/keys", async (c) => {
     const spec = keySpec.parse(await readJson(c));
+    if (spec.project !== undefined) fail(400, "Set a default project with PATCH /api/v1/keys/:hash.", "invalid_request"); // C134
     if (spec.topup !== undefined) fail(400, "Set auto top-up with PATCH /api/v1/keys/:hash once the key has a limit.", "invalid_request");
     const auth = c.req.header("authorization");
     const secret = generateApiKey();

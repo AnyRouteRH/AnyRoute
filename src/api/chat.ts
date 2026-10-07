@@ -1,3 +1,4 @@
+import { captureProject, projectFields, assertProjectLane } from "../projects/tags.ts"; // C134
 import { addSuggestions, availabilityFailure, selectWithSuggestions } from "../model-alternatives/suggest.ts"; // B121
 import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
 import { noteFailedPaidCall, noteServedCall } from "../services/makegood.ts"; // V6 R
@@ -276,6 +277,8 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
     if (wa && !pass) wallet = await walletAuth(ctx, wa, bodySha);
   }
 
+  captureProject(c, key); // C134: validate before routing or spending
+
   // ---- 2. Key presets, model resolution, guardrails, transforms --------------------------------
   const routing = (key?.routing ?? null) as { aliases?: Record<string, { model: string; provider?: ProviderPrefs; models?: string[] }>; provider?: ProviderPrefs } | null;
   const alias = typeof body.model === "string" ? routing?.aliases?.[body.model] : undefined;
@@ -306,6 +309,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   await applyRouteDefault(ctx, c, body, key, { params: requestParams(body) }); // U101: the key's default privacy route, only when the request names no lane
   const { disclosure: _wantDisclosure, lane: _wantLane, lane_downgrade: _wantDowngrade, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
   const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !!wallet || (!key && !pass && !!paymentHeaderOf(c)), hasToken: !!pass });
+  assertProjectLane(c, disc.lane); // C134
   // Private-lane traffic (and `:private`, stored as private) is published only through noisy hourly counters.
   noteLane(c.req.raw, disc.lane !== "public" ? disc.lane : (body.provider as ProviderPrefs | undefined)?.private === true || String(body.model ?? "").includes(":private") ? "attested" : "public");
   decisionTagOf(ctx.cfg.decisionTagsEnabled, c, disc.lane); // B: a malformed tag is refused before anything is priced or spent.
@@ -718,6 +722,7 @@ async function finalize(p: FinalizeInput) {
   ctx.health.record({ modelId: r.candidate.modelId, providerId: r.candidate.providerId, ok: true, latencyMs: r.latencyMs, tps, source: "traffic" });
 
   await ctx.db.insert(generations).values({
+    ...projectFields(p.c), // C134
     id,
     keyHash: billing.key?.keyHash ?? null,
     accountId: billing.accountId,
@@ -1025,6 +1030,7 @@ async function cachedResponse(ctx: Ctx, c: Context, p: { body: Record<string, un
   const signed = ctx.signer.sign(payload);
   const leaf = receiptLeaf(signed.bytes, signed.sigBytes);
   await ctx.db.insert(generations).values({
+    ...projectFields(c), // C134
     id,
     keyHash: p.billing.key?.keyHash ?? null,
     accountId: p.billing.accountId,

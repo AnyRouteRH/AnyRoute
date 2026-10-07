@@ -200,3 +200,16 @@ test("unencrypted and malformed flags do not change ordinary receipt labels", ()
     expect(privacyLabel({ provider: PROVIDER, ...flags }).label.prompt_readers.router).toBe(true);
   }
 });
+
+// C134: project labels stay outside the encrypted envelope and signed receipt.
+test("C134 encrypted calls store a key default and header override without changing receipt claims", async () => {
+  const owner = await h.fundedKey();
+  const patch = await h.request('/api/v1/keys/' + owner.hash, { method: 'PATCH', headers: owner.auth, json: { project: 'encrypted-default' } });
+  expect(patch.status).toBe(200);
+  for (const [tag, label] of [[undefined, 'encrypted-default'], ['ENCRYPTED-HEADER', 'encrypted-header']] as const) {
+    const result = await e2eeChat(body(), { ...options(), headers: { ...owner.auth, ...(tag ? { 'X-Anyroute-Project': tag } : {}) } });
+    expect(result.choices[0].message.content).toBe('Encrypted reply');
+    const row = await lastGeneration(); expect((row as any).project).toBe(label); expect(row.receipt).not.toHaveProperty('project');
+    expect(gw.state.lastHeaders.has('x-anyroute-project')).toBe(false);
+  }
+});

@@ -1,4 +1,5 @@
 import { newModelsFeedRoutes } from "./api/models-new-feed.ts"; // C131
+import { projectCors } from "./projects/cors.ts"; // C134
 import { accountRunwayRoutes } from "./api/account-runway.ts"; // B119
 import { agentSpendRoutes } from "./agents/spend-glance.ts"; // C132
 import { hardeningMiddleware, originLockMiddleware } from "./hardening/middleware.ts"; // HD1
@@ -177,6 +178,7 @@ export async function createApp(opts: AppOptions = {}) {
   app.use("*", originLockMiddleware(ctx)); // HD1: authenticate ingress before CORS, including preflights.
   // The OpenAI-style /v1/* aliases get the same CORS as /api/*, so a browser can read the receipt, lane and policy headers on either.
   const apiCors = cors({ origin: "*", allowHeaders: ["x-agent-approval", "authorization", "content-type", "x-e2ee-version", "x-client-pub-key", "x-model-pub-key", "x-e2ee-nonce", "x-e2ee-timestamp", "x-pay-with", "x-payment", "payment-signature", "payment-recovery", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "x-anyroute-lane-downgrade", "x-anyroute-decision-tag", "http-referer", "x-title", "traceparent", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"], exposeHeaders: [...EXPOSED_RESPONSE_HEADERS, ...(cfg.routeExplain ? ["x-anyroute-route"] : []), /* V84 */ ...(cfg.structuredOutputCheckEnabled ? ["x-anyroute-json-check"] : []), /* V83 */ "x-e2ee-applied", "x-e2ee-version", "x-e2ee-algo", "x-e2ee-receipt-id"] });
+  app.use("*", projectCors); // C134: after origin lock, before existing CORS
   app.use("/api/*", apiCors);
   app.use("/v1/*", apiCors);
   app.use("/ollama/*", apiCors);

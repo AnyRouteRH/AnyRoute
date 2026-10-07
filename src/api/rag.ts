@@ -345,6 +345,7 @@ export function ragRoutes(app: Hono, ctx: Ctx) {
 
     // ---- calling the router's own routes, as the caller ----------------------------------------
     const forward = new Headers({ "content-type": "application/json", authorization: c.req.header("authorization")! });
+    if (c.req.header("x-anyroute-project") !== undefined) forward.set("x-anyroute-project", c.req.header("x-anyroute-project")!); // C134
     for (const h of ["x-pay-with", "x-anyroute-lane", "x-anyroute-disclosure-max"]) {
       const v = c.req.header(h);
       if (v) forward.set(h, v);

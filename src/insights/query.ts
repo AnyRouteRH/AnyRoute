@@ -1,3 +1,4 @@
+import { projectQuery } from "../projects/tags.ts"; // C134
 import { z } from "zod";
 import { fail } from "../lib/errors.ts";
 const day = 86_400_000;
@@ -8,6 +9,6 @@ export function insightsQuery(input: Record<string, string>, now = new Date()) {
   const from = instant.parse(input.from ?? new Date(Date.parse(to) - 30 * day).toISOString());
   const duration = Date.parse(to) - Date.parse(from);
   if (duration <= 0 || duration > 92 * day) fail(400, "Choose a range of at most 92 days; from must be before to.", "invalid_request");
-  return { from, to, bucket: z.enum(["day", "week"]).parse(input.bucket ?? "day") };
+  return { from, to, project: projectQuery(input.project), bucket: z.enum(["day", "week"]).parse(input.bucket ?? "day") };
 }
 export type InsightsQuery = ReturnType<typeof insightsQuery>;

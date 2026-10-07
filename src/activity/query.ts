@@ -1,3 +1,4 @@
+import { projectQuery } from "../projects/tags.ts"; // C134
 import { z } from "zod";
 import { fail } from "../lib/errors.ts";
 import { sha256 } from "../lib/util.ts";
@@ -16,8 +17,9 @@ export function activityQuery(q: Record<string, string>) {
   } catch { fail(400, "Invalid activity cursor.", "invalid_request"); }
   return { from, to, cursor, kind: q.kind === undefined ? undefined : z.enum(ACTIVITY_KINDS).parse(q.kind),
     key: q.key === undefined ? undefined : z.string().regex(/^[a-f0-9]{64}$/).parse(q.key),
+    project: projectQuery(q.project), // C134
     model: q.model === undefined ? undefined : z.string().min(1).max(256).parse(q.model),
     limit: z.coerce.number().int().min(1).max(100).parse(q.limit ?? 50), format: z.enum(["json", "csv"]).parse(q.format ?? "json") };
 }
 export type ActivityQuery = ReturnType<typeof activityQuery>;
-export const activityFingerprint = (q: ActivityQuery, scope: object) => sha256(JSON.stringify({ scope, kind: q.kind, key: q.key, model: q.model, from: q.from, to: q.to }));
+export const activityFingerprint = (q: ActivityQuery, scope: object) => sha256(JSON.stringify({ scope, kind: q.kind, key: q.key, model: q.model, ...(q.project === undefined ? {} : { project: q.project }), from: q.from, to: q.to }));

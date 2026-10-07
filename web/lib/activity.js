@@ -3,6 +3,7 @@ export const ACTIVITY_LABELS = { call: 'Calls', approval: 'Approvals', alert: 'A
 export function activityPath(filters = {}, cursor = '', format = 'json', limit = 50) {
   const query = new URLSearchParams({ format, limit: String(limit) });
   for (const name of ['kind', 'key', 'model', 'from', 'to']) if (filters[name]) query.set(name, filters[name]);
+  if (filters.project) query.set('project', filters.project); // C134
   if (cursor) query.set('cursor', cursor);
   return '/api/v1/activity?' + query;
 }
@@ -14,7 +15,7 @@ export function activityBounds(from, to) {
   return { from: from ? new Date(from + 'T00:00:00Z').toISOString() : '', to: to ? new Date(to + 'T00:00:00Z').toISOString() : '' };
 }
 export function activityChips(filters) {
-  return Object.entries(filters).filter(([, value]) => value).map(([name, value]) => ({ name, label: name === 'kind' ? ACTIVITY_LABELS[value] : name === 'key' ? 'Selected key or agent' : `${name === 'model' ? 'Model' : name === 'from' ? 'From' : 'Before'}: ${value}` }));
+  return Object.entries(filters).filter(([, value]) => value).map(([name, value]) => ({ name, label: name === 'kind' ? ACTIVITY_LABELS[value] : name === 'key' ? 'Selected key or agent' : `${name === 'project' ? 'Project' : name === 'model' ? 'Model' : name === 'from' ? 'From' : 'Before'}: ${value}` }));
 }
 export async function exportActivity(request, filters, format, signal) {
   let cursor = '', scope, rows = [], csv = '', seen = new Set();

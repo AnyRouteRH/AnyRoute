@@ -1,4 +1,5 @@
 import { describeModelArrivals } from "./model-arrivals.ts"; // C131
+import { describeProjects } from "./projects.ts"; // C134
 import { describeLowBalance } from "./low-balance.ts"; // B119
 import { guardTables } from "./tables/agent-guard.ts"; // V98
 import { describeWeeklySummary } from "./weekly-summary.ts"; // B120
@@ -45,6 +46,7 @@ import { CATEGORIES, CATEGORY_INFO, type AboutRequest, type ColumnDoc, type Exte
 export const INVENTORY_FORMAT = "anyroute.data-inventory/1";
 
 export const TABLE_DOCS: Record<string, TableDoc> = { ...guardTables, ...agentPayTables, ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables, ...x402RecoveryTables, ...facilitatorTables, ...makegoodTables, ...toolTables, ...identityTables, ...commerceTables };
+describeProjects(TABLE_DOCS); // C134
 describeLowBalance(TABLE_DOCS); // B119
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);

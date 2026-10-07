@@ -32,6 +32,7 @@ const PEEK_MS = 4_000;
 
 /** Request headers the chat route reads: credentials, payment, routing (lane, disclosure) and tracing. */
 const FORWARD = ["authorization", "x-pay-with", "x-payment", "payment-signature", "payment-recovery", "x-wallet-auth", "x-anyroute-lane", "x-anyroute-lane-downgrade", "x-anyroute-disclosure-max", "x-anyroute-cache", "http-referer", "x-title", "traceparent", ONION_HEADER, "x-anyroute-decision-tag"];
+FORWARD.push("x-anyroute-project"); // C134
 /** Response headers passed on: the receipt, lane and policy headers, the payment headers and what a client needs to retry. */
 const PASS = [...EXPOSED_RESPONSE_HEADERS, "www-authenticate"];
 

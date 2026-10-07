@@ -1,3 +1,4 @@
+import { captureProject, projectFields, assertProjectLane } from "../projects/tags.ts"; // C134
 import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
 import { agentReservation } from "../agents/enforce.ts";
 import type { Context, Hono } from "hono";
@@ -46,6 +47,7 @@ export function rerankRoutes(app: Hono, ctx: Ctx) {
     const t0 = Date.now();
     const key = bearer(c.req.header("authorization")) ? await requireKey(ctx, c.req.header("authorization")) : null;
     if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
+    captureProject(c, key); // C134
     let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null;
     const from = addressBucket(c, ctx.cfg);
     const lim = key
@@ -72,6 +74,7 @@ export function rerankRoutes(app: Hono, ctx: Ctx) {
     await applyRouteDefault(ctx, c, body, key, { tokens: 0 }); // U101: the key's default privacy route, only when the request names no lane
     const { disclosure: _d, lane: _l, lane_downgrade: _ld, ...basePrefs } = (body.provider ?? {}) as ProviderPrefs & { lane_downgrade?: unknown };
     const disc = requestLane(ctx, c, (body.provider ?? {}) as Record<string, unknown>, { hasKey: !!key, hasWallet: !key && !pass && (!!c.req.header("x-wallet-auth") || !!paymentHeaderOf(c)), hasToken: !!pass });
+    assertProjectLane(c, disc.lane); // C134
     noteLane(c.req.raw, disc.lane); // the status page counts public-lane requests only (services/slo.ts)
     const strict = disc.max !== "any";
     const plan = (p: ProviderPrefs) =>
@@ -184,6 +187,7 @@ export function rerankRoutes(app: Hono, ctx: Ctx) {
         };
         const signed = ctx.signer.sign(payload);
         await ctx.db.insert(generations).values({
+          ...projectFields(c), // C134
           id,
           keyHash: key?.keyHash ?? null,
           accountId,

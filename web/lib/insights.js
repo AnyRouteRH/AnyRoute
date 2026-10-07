@@ -1,5 +1,6 @@
-export function insightsPath({ from, to, bucket = 'day' }) {
+export function insightsPath({ from, to, bucket = 'day', project }) {
   const query = new URLSearchParams({ bucket });
+  if (project) query.set('project', project); // C134
   if (from) query.set('from', from + 'T00:00:00Z');
   if (to) query.set('to', to + 'T00:00:00Z');
   return '/api/v1/insights?' + query;
