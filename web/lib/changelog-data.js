@@ -5,6 +5,202 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "price-notices",
+    "date": "2026-10-07",
+    "title": "Price change notices",
+    "summary": "When a model you used in the last 30 days changes price, you get an inbox notice, and a Telegram message if you linked it, with the old and new price per million tokens.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#price-notices"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/07d6baacaeb1c05544b7e04b515c01a05ad19697"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "projects",
+    "date": "2026-10-07",
+    "title": "Tag calls by project",
+    "summary": "Send X-Anyroute-Project with a call, or give a key a default project, then filter Activity and Insights by project. The tag is not part of the signed receipt.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#projects"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/d3d3beff19503f4d845d3cff476fdd71dbba8c7d"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "new-models",
+    "date": "2026-10-07",
+    "title": "New models this week",
+    "summary": "The catalogue marks models Anyroute added in the last 7 days, with a New filter, a short New this week row in Chat and on Home, and an Atom feed.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/models/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/f098cf2e7a7132a1fb61f1f42833f28bf46e3a48"
+      }
+    ],
+    "tags": [
+      "chat",
+      "build"
+    ]
+  },
+  {
+    "id": "dark-mode",
+    "date": "2026-10-07",
+    "title": "Dark mode",
+    "summary": "The whole site now has a dark theme. It follows your device by default, and you can pick Light, Dark or Match device; your choice is remembered.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#appearance"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/25257b8e55bb66ad20d6057f19e3292640a5cd97"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/7157726e18e2be90d590394d6a1995f34ed9d248"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "agent-spend-glance",
+    "date": "2026-10-07",
+    "title": "Each agent's week at a glance",
+    "summary": "Every agent on /agents shows a small 7-day spend line, its total for the week, the model it used most and when it last made a call.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/agents/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/8d051b32dee834e2c5c5a697a29b62f3e70b239d"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "context-meter",
+    "date": "2026-10-07",
+    "title": "A context meter in Chat",
+    "summary": "Chat shows how much of the model's context your conversation uses, warns when it gets full, and can summarize the chat and continue in a new one.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/harness/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/36506d8033c906d1d23d182d594a0ba136c0debc"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "getting-started",
+    "date": "2026-10-07",
+    "title": "A getting-started checklist",
+    "summary": "Home shows five first steps, from adding funds to checking a receipt, and ticks each one off from your real account as you do it.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/dashboard/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/8b59b0de93db96452659c226f07cac7f446b6b64"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "key-expiry",
+    "date": "2026-10-07",
+    "title": "Keys that expire",
+    "summary": "When you create or edit a key you can set it to expire in a day, a week, a month or on a date, and the Keys tab shows when each one expires.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#key-expiry"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/a8b84446adf31c76c0357add556185a0d807279f"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "copy-as-code",
+    "date": "2026-10-07",
+    "title": "Copy a chat as code",
+    "summary": "Chat's More menu turns the current conversation into a ready-to-run request in curl, TypeScript or Python, reading your key from ANYROUTE_API_KEY.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#copy-as-code"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/fa7f4012ac733e17080c9b7a04916657c5ac7bfa"
+      }
+    ],
+    "tags": [
+      "chat",
+      "build"
+    ]
+  },
+  {
+    "id": "chat-cost",
+    "date": "2026-10-07",
+    "title": "What a chat has cost",
+    "summary": "Chat shows a running total for the open conversation, and each saved chat in your list shows its total.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/harness/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/93fd6d99a6dc03fb2d7fb570bc0f656500a2064b"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
     "id": "rulebook-words",
     "date": "2026-10-06",
     "title": "Rulebooks in plain English",
