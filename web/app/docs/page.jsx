@@ -16,6 +16,7 @@ import ZkapiDocs from "../../components/ZkapiDocs"; // ZK9: Sepolia browser paym
 import GetUsdgDocs from "../../components/GetUsdgDocs"; // ON1
 import FirstCallDocs from "../../components/FirstCallDocs"; // ON2
 import CopyAsCodeDocs from "../../components/CopyAsCodeDocs"; // C130
+import GettingStartedDocs from "../../components/GettingStartedDocs"; // C135
 import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
 import StructuredOutputDocs from "../../components/StructuredOutputDocs"; // V83
 import StatementDocs from "../../components/StatementDocs"; // V87
@@ -896,6 +897,7 @@ export default function Docs() {
           <h2 id="quickstart">Make your first API call.</h2> {/* ON2 */}
           <FirstCallDocs /> {/* ON2 */}
           <CopyAsCodeDocs /> {/* C130 */}
+          <GettingStartedDocs /> {/* C135 */}
           <p>
             Anyroute accepts the familiar chat-completions request. Replace the base URL and key; requests, streaming, tools, provider preferences and usage fields work unchanged. Keys are self-custodial: POST /api/v1/keys (no account) returns a key and the hash to deposit USDG to.
           </p>

@@ -1,0 +1,8 @@
+.card{min-width:0}
+.card :global(.panel-heading){gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.card :global(.panel-heading) h3{margin:0}
+.steps{list-style:none;padding:0!important;margin:20px 0;display:grid;gap:12px}
+.steps li{display:flex;align-items:center;gap:12px;min-width:0}
+.steps a{padding:8px 0;overflow-wrap:anywhere;line-height:1.5}
+.steps a:focus-visible{outline:2px solid var(--signal-deep);outline-offset:4px}
+.tick{flex:none;width:24px;text-align:center;color:var(--signal-deep);font-size:20px}
