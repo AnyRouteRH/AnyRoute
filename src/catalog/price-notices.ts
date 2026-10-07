@@ -23,11 +23,13 @@ export function registerPriceNoticesJob(ctx: Ctx) {
 export async function runPriceNotices(ctx: Ctx, opts: { now?: Date; telegramFetch?: typeof fetch } = {}) {
   if (!ctx.cfg.priceNoticesEnabled || ctx.cfg.runtimeRole === "api") return { skipped: true, created: 0 };
   const now = opts.now ?? new Date(), at = now.toISOString(), day = at.slice(0, 10);
+  // Refresh before the transaction: the refresh uses its own connection (and may fetch upstream), so doing it while
+  // holding the snapshot lock deadlocks a single-connection database and holds the lock across network calls.
+  await ctx.catalog.refresh();
   const outgoing = await ctx.db.transaction(async tx => {
     // One persistent row lock serializes snapshots, account caps and inbox claims across workers.
     await tx.insert(kv).values({ key: SNAPSHOT, value: {} }).onConflictDoNothing();
     const [saved] = await tx.select().from(kv).where(eq(kv.key, SNAPSHOT)).for("update");
-    await ctx.catalog.refresh();
     const entries: [string, PriceSnapshot][] = [];
     for (const model of ctx.catalog.models.values()) {
       if (model.hidden) continue;
