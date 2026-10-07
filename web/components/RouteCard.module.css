@@ -1,6 +1,6 @@
 /* Route card: price, context, tags, routes, health and proof for one model, in the catalogue's mono detail style. */
 .card { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: 12px; text-align: left; }
-.card[data-dark] { border-color: var(--line-dark); background: var(--ink-2); color: var(--paper); }
+.card[data-dark] { border-color: var(--line-dark); background: var(--ink-2); color: var(--bone); }
 .card dl { margin: 0; }
 .card dt { font: 500 9.5px/1.3 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .card[data-dark] dt { color: var(--muted-dark); }

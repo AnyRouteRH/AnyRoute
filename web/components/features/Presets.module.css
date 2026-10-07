@@ -14,10 +14,10 @@
 .changes{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:8px}
 .changes li{display:grid;gap:3px;padding:8px 10px;overflow-wrap:anywhere;font:400 12px/1.5 var(--mono)}
 .changes li code{font-weight:600}
-.changes del{text-decoration:line-through;color:#96161b}
+.changes del{text-decoration:line-through;color:var(--danger-text)}
 .changes ins{text-decoration:none;color:var(--ink)}
-.add{background:rgba(30,120,70,.08)}
-.remove{background:rgba(150,22,27,.07)}
+.add{background:color-mix(in srgb,var(--signal-deep) 8%,transparent)}
+.remove{background:color-mix(in srgb,var(--danger) 7%,transparent)}
 .replace{background:var(--paper)}
 .pin{margin:14px 0 0;font-size:13px;color:var(--muted)}
 @media (max-width:760px){.historyGrid{grid-template-columns:minmax(0,1fr)}}

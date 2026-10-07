@@ -14,8 +14,8 @@
 
 /* the square switch, as in the bar's Compare toggle */
 .switch { position: relative; flex: none; width: 34px; height: 20px; background: var(--paper-3); box-shadow: inset 0 0 0 1px var(--line); transition: background .3s var(--ease); }
-.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: var(--white); box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .35s var(--ease-out), background .2s; }
-[aria-checked="true"] > .switch { background: var(--ink); }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: var(--white); box-shadow: 0 1px 2px color-mix(in srgb,var(--night) 25%,transparent); transition: transform .35s var(--ease-out), background .2s; }
+[aria-checked="true"] > .switch { background: var(--night); }
 [aria-checked="true"] > .switch::after { transform: translateX(14px); background: var(--signal); }
 
 /* what sits under the switch while it is on */
@@ -34,13 +34,13 @@
 .tor b { color: var(--ink); font-weight: 620; font-size: 13.5px; }
 .tor a, .dialog a { text-decoration-color: var(--signal-deep); text-decoration-thickness: 1.5px; text-underline-offset: 3px; color: var(--ink); }
 .actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
-.forget { margin-left: auto; color: #96161b; }
+.forget { margin-left: auto; color: var(--danger-text); }
 .quiet { font: 400 11px/1.5 var(--mono); color: var(--muted); }
-.bad { font-size: 13px; line-height: 1.5; color: #96161b; }
+.bad { font-size: 13px; line-height: 1.5; color: var(--danger-text); }
 
 /* dialogs (they use the site's shared modal; these are the parts inside it) */
 .dialog > p { margin-bottom: 18px; color: var(--muted); line-height: 1.5; }
-.dialog > .dialogWarn { color: #96161b; }
+.dialog > .dialogWarn { color: var(--danger-text); }
 .chats { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 6px; max-height: min(46vh, 380px); overflow-y: auto; }
 .chats li { display: flex; align-items: center; gap: 12px; background: var(--paper-2); padding-right: 14px; }
 .chatOpen { flex: 1; min-width: 0; display: grid; gap: 3px; border: 0; background: none; text-align: left; padding: 11px 14px; transition: background .15s var(--ease); }
@@ -57,7 +57,7 @@
 .label summary:hover { color: var(--ink); }
 .label summary small { font: inherit; opacity: .7; }
 .label summary mark { padding: 1px 6px; background: var(--signal-tint); color: var(--signal-deep); font-weight: 500; }
-.label summary em { font-style: normal; padding: 1px 6px; background: #fff0ef; color: #96161b; }
+.label summary em { font-style: normal; padding: 1px 6px; background: var(--danger-surface); color: var(--danger-text); }
 .labelBody { display: grid; gap: 10px; margin-top: 6px; padding: 12px 14px; background: var(--paper-2); font-size: 13.5px; line-height: 1.55; }
 .labelSummary { margin: 0; padding-left: 1.2em; display: grid; gap: 3px; }
 .labelSummary li::marker { color: var(--signal-deep); }

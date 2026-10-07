@@ -14,7 +14,7 @@
 .order li{counter-increment:rank;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
 .order li::before{content:counter(rank,decimal-leading-zero);flex:none;font:500 10px/1.4 var(--mono);color:var(--muted)}
 .order li:first-child::before{color:var(--signal-deep)}
-.warn{font:500 10px/1.4 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:#96161b}
+.warn{font:500 10px/1.4 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--danger-text)}
 .tags{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px}
 .tags li{padding:3px 7px;border:1px solid var(--line);background:var(--paper);font:400 11px/1.4 var(--mono);white-space:nowrap}
 .none{font-size:13px;color:var(--muted)}
@@ -27,7 +27,7 @@
 .langs{display:flex;flex-wrap:wrap;gap:0;margin-bottom:-1px}
 .langs button{padding:9px 12px;border:1px solid var(--line);border-bottom:0;background:var(--paper-2);font:500 10.5px/1.2 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);transition:color .2s,background .2s}
 .langs button+button{border-left:0}
-.langs button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.langs button[aria-pressed=true]{background:var(--night);border-color:var(--ink);color:var(--bone)}
 .langs button:hover:not([aria-pressed=true]){color:var(--ink)}
 .rules{position:relative;padding:22px 22px 24px;border:1px solid var(--line);border-left:3px solid var(--signal-deep);background:var(--white);font-size:14px;line-height:1.5}
 .rules ol{margin:14px 0 16px;padding:0;list-style:none;counter-reset:step;display:grid;gap:12px}
@@ -40,7 +40,7 @@
 /* ---------- editor ---------- */
 .editor{min-width:0}
 .hint{font-size:12px;line-height:1.4;color:var(--muted)}
-.fieldError{font-size:12.5px;line-height:1.4;color:#96161b}
+.fieldError{font-size:12.5px;line-height:1.4;color:var(--danger-text)}
 .group>.fieldError{margin:-4px 0 14px}
 .editor :global(.field) input[aria-invalid=true]{border-color:var(--danger)}
 .shortText{min-height:72px!important}
@@ -56,8 +56,8 @@
 .picked{margin:0 0 16px;padding:0;list-style:none;border:1px solid var(--line-strong);background:var(--white)}
 .picked li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 10px 10px 12px;border-bottom:1px solid var(--line)}
 .picked li:last-child{border-bottom:0}
-.picked li:first-child .rank{background:var(--signal);color:var(--ink)}
-.rank{display:grid;place-items:center;min-width:30px;height:24px;padding:0 5px;background:var(--ink);color:var(--paper);font:500 10px/1 var(--mono)}
+.picked li:first-child .rank{background:var(--signal);color:var(--night)}
+.rank{display:grid;place-items:center;min-width:30px;height:24px;padding:0 5px;background:var(--night);color:var(--bone);font:500 10px/1 var(--mono)}
 .pickedName{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:13px;overflow-wrap:anywhere}
 .pickedName small{font:400 10.5px/1.3 var(--mono);color:var(--muted)}
 .moves{display:flex;gap:4px}
@@ -71,7 +71,7 @@
 .results button small{grid-area:price;font:400 10.5px/1.3 var(--mono);color:var(--muted)}
 .results button b{grid-area:plus;display:grid;place-items:center;width:26px;height:26px;border:1px solid var(--line-strong);font:400 16px/1 var(--sans);transition:background .2s,color .2s}
 .results button:hover,.results button:focus-visible{background:var(--signal-tint)}
-.results button:hover b{background:var(--ink);color:var(--paper)}
+.results button:hover b{background:var(--night);color:var(--bone)}
 .params{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
 .editor :global(.note){margin:20px 0 0}
 .editor :global(.note)+:global(.note){margin-top:10px}

@@ -7,7 +7,7 @@
 /* ---------- standing: balance (ink) + tier (signal tint) ---------- */
 .standing { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; }
 .balance, .tier { position: relative; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: clamp(24px, 3vw, 36px); animation: rise .6s var(--ease-out) backwards; }
-.balance { background: var(--ink); color: var(--paper); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%); }
+.balance { background: var(--night); color: var(--bone); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%); }
 .balance :global(.eyebrow) { color: var(--muted-dark); }
 .tier { background: var(--paper-2); animation-delay: 80ms; }
 .tier[data-on] { background: var(--signal-tint); }
@@ -19,7 +19,7 @@
 .sub { max-width: 460px; font-size: 14px; line-height: 1.5; color: var(--muted-dark); }
 .tier .sub { color: var(--muted); }
 .balance :global(.button-row) { margin-top: 18px; }
-.retry { margin-top: 16px; color: var(--paper); }
+.retry { margin-top: 16px; color: var(--bone); }
 
 .progress { align-self: stretch; display: grid; gap: 10px; margin-top: 28px; max-width: 520px; }
 .progress span { font: 500 11px/1.4 var(--mono); letter-spacing: .03em; color: var(--muted-dark); }
@@ -41,8 +41,8 @@
 .rung:hover { background: var(--paper-2); }
 .rungName { font-size: 20px; font-weight: 620; letter-spacing: -.03em; color: var(--ink); }
 .rungMin { font: 500 12px/1.4 var(--mono); color: var(--ink); }
-.rung[data-current] { background: var(--ink); color: var(--muted-dark); }
-.rung[data-current] .rungName, .rung[data-current] .rungMin { color: var(--paper); }
+.rung[data-current] { background: var(--night); color: var(--muted-dark); }
+.rung[data-current] .rungName, .rung[data-current] .rungMin { color: var(--bone); }
 .rung[data-current] .rungName::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 12px; vertical-align: .12em; background: var(--signal); }
 .you { justify-self: end; font: 600 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--signal); }
 

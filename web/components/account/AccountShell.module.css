@@ -34,3 +34,7 @@
 :global(.account-preview-grid) span{color:var(--muted);font-size:13px;line-height:1.5}
 /* Phones: the sidebar becomes one swipeable row of sections. */
 @media(max-width:800px){.shell{grid-template-columns:minmax(0,1fr);gap:16px}.sidebar{padding:6px;min-width:0}.sidebar nav{display:flex;gap:4px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}.sidebar nav div{display:flex;gap:4px}.sidebar nav :global(.eyebrow){display:none}.sidebar a{flex:none;white-space:nowrap;scroll-snap-align:start}.connection{margin-top:6px;padding:6px 8px 2px}.cards{grid-template-columns:1fr}:global(.account-preview-grid){grid-template-columns:1fr}}
+
+/* C126: appearance token overrides. */
+
+.sidebar a[aria-current]{background:var(--night);color:var(--bone)}

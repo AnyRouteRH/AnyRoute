@@ -33,6 +33,8 @@ COPY spec /spec
 COPY WHITEPAPER.md /WHITEPAPER.md
 # The build writes the installable app's service worker from the exported shell.
 COPY web/scripts/build-pwa.mjs ./scripts/build-pwa.mjs
+# C126: build-pwa imports the offline dark/light palette builder.
+COPY web/scripts/build-theme.mjs ./scripts/build-theme.mjs
 # The build first checks public wording (changelog, whitepaper) with these build-time-only scripts.
 COPY web/scripts/check-public-wording.mjs web/scripts/whitepaper-wording.mjs ./scripts/
 RUN pnpm build

@@ -15,9 +15,9 @@
 .steps li:last-child { border-right: 0; }
 .steps li span { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line-strong); font-size: 11px; }
 .steps li[data-done] { color: var(--signal-deep); }
-.steps li[data-done] span { background: var(--signal-tint); border-color: rgba(10, 125, 49, .35); }
+.steps li[data-done] span { background: var(--signal-tint); border-color: color-mix(in srgb,var(--signal-deep) 35%,transparent); }
 .steps li[data-current] { color: var(--ink); box-shadow: inset 0 3px 0 var(--signal-deep); }
-.steps li[data-current] span { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.steps li[data-current] span { background: var(--night); border-color: var(--ink); color: var(--bone); }
 @media (max-width: 720px) {
   .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .steps li { border-bottom: 1px solid var(--line); }
@@ -48,13 +48,13 @@
 .facts dd { margin: 0; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-all; }
 @media (max-width: 560px) { .facts div { grid-template-columns: 1fr; } }
 
-.rate { display: grid; gap: 6px; margin: 0 0 16px; padding: 16px 18px; background: var(--ink); color: var(--paper); }
+.rate { display: grid; gap: 6px; margin: 0 0 16px; padding: 16px 18px; background: var(--night); color: var(--bone); }
 .rate p { margin: 0; font-size: clamp(18px, 4.6vw, 24px); font-weight: 640; letter-spacing: -.04em; line-height: 1.15; overflow-wrap: anywhere; }
 .rate small { font-size: 12px; line-height: 1.5; color: var(--muted-dark); }
 .rate :global(.eyebrow) { color: var(--muted-dark); }
 .rate[data-state="live"] p { color: var(--signal); }
 .rate[data-state="unavailable"] { box-shadow: inset 4px 0 0 var(--warn); }
-.rate[data-state="unavailable"] p { color: var(--warn); }
+.rate[data-state="unavailable"] p { color: var(--code-amber); }
 .receive { margin: 0 0 8px; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
 .warn { margin: 8px 0; padding: 10px 12px; border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--white)); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 

@@ -1,5 +1,5 @@
 .filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .filters button { border: 1px solid var(--line); padding: 10px; background: var(--white); font: 500 11px/1.4 var(--mono); min-height: 44px; }
-.filters button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.filters button[aria-pressed="true"] { background: var(--night); color: var(--bone); border-color: var(--ink); }
 .filters span { margin-left: 4px; opacity: .7; }
 @media (max-width: 480px) { .filters button { flex: 1 1 45%; } }

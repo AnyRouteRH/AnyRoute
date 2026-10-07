@@ -9,7 +9,7 @@
 .balance span { font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 
 /* ---------- the rate ---------- */
-.rate { position: relative; display: grid; gap: 8px; padding: 18px 18px 16px; background: var(--ink); color: var(--paper); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%); }
+.rate { position: relative; display: grid; gap: 8px; padding: 18px 18px 16px; background: var(--night); color: var(--bone); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%); }
 .rate[data-state="unavailable"] { background: var(--ink-2); box-shadow: inset 4px 0 0 var(--warn); }
 .rate[data-state="loading"] { background: var(--ink-3); }
 .rate :global(.eyebrow) { color: var(--muted-dark); }
@@ -19,7 +19,7 @@
 .rateDetail { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted-dark); }
 .rateFacts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 0; padding: 0; list-style: none; font: 400 11px/1.5 var(--mono); color: var(--muted-dark); }
 .rateFacts li { overflow-wrap: anywhere; }
-.rateNote { margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--line-dark); font-size: 12px; line-height: 1.5; color: var(--paper); }
+.rateNote { margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--line-dark); font-size: 12px; line-height: 1.5; color: var(--bone); }
 
 /* ---------- send ---------- */
 .send { display: grid; gap: 4px; }
@@ -47,7 +47,7 @@
 .addr small { font-size: 12px; line-height: 1.5; color: var(--muted); }
 .qr { width: 164px; max-width: 100%; padding: 6px; background: var(--white); border: 1px solid var(--line-strong); }
 .qr svg { width: 100%; height: auto; }
-.official { margin: 0; padding: 10px 12px; border-left: 3px solid var(--danger); background: #fff0ef; color: #96161b; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.official { margin: 0; padding: 10px 12px; border-left: 3px solid var(--danger); background: var(--danger-surface); color: var(--danger-text); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* ---------- tracker ---------- */
 .track { display: grid; gap: 10px; }
@@ -67,7 +67,7 @@
 .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 0; list-style: none; }
 .steps li { display: grid; gap: 6px; font: 500 9px/1.2 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .steps li::before { content: ""; display: block; height: 4px; background: var(--paper-3); }
-.steps li[data-done]::before { background: var(--ink); }
+.steps li[data-done]::before { background: var(--night); }
 .steps li[data-done] { color: var(--ink); }
 .steps li[data-current]::before { background: var(--signal); }
 .steps li[data-current="warn"]::before { background: var(--warn); }

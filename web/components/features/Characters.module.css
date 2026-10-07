@@ -5,7 +5,7 @@
 .label{display:block;margin-bottom:8px;font-size:13px;font-weight:500}
 .fileInput{width:100%;font:400 13px var(--sans);color:var(--muted);padding:6px 0}
 .fileInput::file-selector-button{margin-right:12px;padding:10px 14px;border:1px solid var(--line-strong);background:var(--white);color:var(--ink);font:500 11px/1 var(--mono);letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:background .2s,color .2s}
-.fileInput:hover::file-selector-button{background:var(--ink);color:var(--paper)}
+.fileInput:hover::file-selector-button{background:var(--night);color:var(--bone)}
 .fileInput:focus-visible{outline:2px solid var(--signal-deep);outline-offset:3px}
 .parsed{display:grid;gap:6px;margin:0 0 18px;padding:14px 16px;background:var(--white);min-width:0}
 .parsed strong{font-weight:600;font-size:16px;overflow-wrap:anywhere}

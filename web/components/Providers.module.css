@@ -13,7 +13,7 @@
 .filter { display: inline-flex; border: 1px solid var(--line-strong); background: var(--white); }
 .filter button { min-height: 46px; padding: 0 14px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--ink); font: 500 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; cursor: pointer; }
 .filter button:last-child { border-right: 0; }
-.filter button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.filter button[aria-pressed="true"] { background: var(--night); color: var(--bone); }
 .filter button:hover:not([aria-pressed="true"]) { background: var(--paper-2); }
 @media (max-width: 640px) {
   .tools { grid-template-columns: 1fr; }
@@ -26,8 +26,8 @@
 /* ---------- state marks: always words, never colour alone ---------- */
 .mark { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--line); background: var(--paper-2); font: 500 10px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: var(--ink); }
 .mark::before { content: ""; width: 6px; height: 6px; flex: none; background: currentColor; }
-.mark[data-state="attested"] { background: var(--signal-tint); border-color: rgba(10, 125, 49, .35); color: var(--signal-deep); }
-.mark[data-state="simulated"] { background: #fff6e0; border-color: rgba(190, 130, 10, .4); color: #7a5300; }
+.mark[data-state="attested"] { background: var(--signal-tint); border-color: color-mix(in srgb,var(--signal-deep) 35%,transparent); color: var(--signal-deep); }
+.mark[data-state="simulated"] { background: var(--warn-surface); border-color: color-mix(in srgb,var(--warn) 40%,transparent); color: var(--warn-text); }
 .mark[data-state="unverified"] { color: var(--muted); }
 .mark[data-state="unverified"]::before { background: transparent; border: 1px solid currentColor; }
 

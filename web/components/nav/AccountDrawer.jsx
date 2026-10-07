@@ -1,4 +1,5 @@
 'use client';
+import ThemeToggle from '../ThemeToggle'; // C126
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../UI';
@@ -52,6 +53,7 @@ export default function AccountDrawer({ apiKey, snapshot, onClose }) {
     onCancel={event => { event.preventDefault(); if (armed) setArmed(null); else onClose(); }} onClose={() => { if (!dialog.current?.open) onClose(); }} onClick={event => { if (event.target === event.currentTarget || event.target.closest?.('a[href]:not([target])')) onClose(); }}>
     <div className={s.panel}>
       <div className="modal-head"><h2 id="account-drawer-title">Your account</h2><button type="button" className="icon-button" aria-label="Close account updates" onClick={onClose}>×</button></div>
+      <ThemeToggle/> {/* C126 */}
       <section className={s.section} aria-labelledby="account-drawer-balance">
         <h3 id="account-drawer-balance">Balance</h3>
         <p className={s.amount}>{snapshot?.balance != null ? formatBalance(snapshot.balance) : snapshot ? 'Unavailable' : 'Reading…'}</p>

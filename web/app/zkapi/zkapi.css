@@ -16,6 +16,6 @@
 .zkapi-panel .ar-button{white-space:normal;line-height:1.4;text-align:left;min-height:46px}
 .zkapi-answer{padding:20px;background:var(--paper-2);width:100%;overflow-wrap:anywhere}
 .zkapi-answer p{white-space:pre-wrap;margin-bottom:16px}
-.zkapi-status{position:sticky;bottom:12px;background:var(--ink);color:var(--paper);padding:18px;overflow-wrap:anywhere}
+.zkapi-status{position:sticky;bottom:12px;background:var(--night);color:var(--bone);padding:18px;overflow-wrap:anywhere}
 .zkapi-status:empty{display:none}
 @media(max-width:500px){.zkapi-panel .button-row{width:100%}.zkapi-panel .button-row .ar-button{width:100%}.zkapi-panel{gap:14px}.zkapi-limits{padding:20px}}

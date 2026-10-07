@@ -1,4 +1,5 @@
 'use client';
+import { canvasColors } from '../lib/canvas-colors.js'; // C126
 import {useEffect,useRef} from 'react';
 import {MARK_LEFT,MARK_RIGHT} from './Logo';
 
@@ -13,7 +14,7 @@ const PROVIDERS=['North Compute','Vector Inference','East Cloud'];
 export default function RouteField({onRoute}){
   const ref=useRef(null);const cb=useRef(onRoute);cb.current=onRoute;
   useEffect(()=>{
-    const canvas=ref.current,ctx=canvas.getContext('2d');
+    const canvas=ref.current,ctx=canvas.getContext('2d');const palette=canvasColors(canvas);
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
     const markL=new Path2D(MARK_LEFT),markR=new Path2D(MARK_RIGHT);
     let w=0,h=0,dpr=1,cx=0,cy=0,radius=0,nodes=[],raf=0,running=false,t0=performance.now(),call=null,seq=1041,pointer={x:0,y:0,tx:0,ty:0};
@@ -33,31 +34,31 @@ export default function RouteField({onRoute}){
       ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
       nodes.forEach(n=>pos(n,t));
       // orbit rings
-      ctx.strokeStyle='rgba(245,245,240,.06)';ctx.lineWidth=1;[.55,.85,1.1].forEach(s=>{ctx.beginPath();ctx.ellipse(cx,cy,radius*s,radius*s*.82,0,0,Math.PI*2);ctx.stroke()});
+      ctx.strokeStyle=palette.alpha('bone',.06);ctx.lineWidth=1;[.55,.85,1.1].forEach(s=>{ctx.beginPath();ctx.ellipse(cx,cy,radius*s,radius*s*.82,0,0,Math.PI*2);ctx.stroke()});
       // call lifecycle: 0-0.7s consider candidates, 0.7-1.5s request out, 1.5-2.3s response back, then settle
       if(!call||t-call.t>3.1){call=newCall(t)}const age=t-call.t;
       if(age>2.3&&!call.done){call.done=true;call.winner.heat=1;cb.current?.({...call,model:call.winner.label})}
       nodes.forEach(n=>{
         const cand=call.candidates.includes(n)&&age<.9;const win=n===call.winner&&age<2.6;const [qx,qy]=ctrl(n);
         ctx.beginPath();ctx.moveTo(cx,cy);ctx.quadraticCurveTo(qx,qy,n.x,n.y);
-        ctx.strokeStyle=win&&age>.7?'rgba(31,225,90,.85)':cand?'rgba(245,245,240,.28)':`rgba(245,245,240,${.05+n.heat*.3})`;ctx.lineWidth=win&&age>.7?1.6:1;
-        if(win&&age>.7){ctx.shadowColor='rgba(31,225,90,.8)';ctx.shadowBlur=12}ctx.stroke();ctx.shadowBlur=0;
+        ctx.strokeStyle=win&&age>.7?palette.alpha('signal',.85):cand?palette.alpha('bone',.28):palette.alpha('bone',.05+n.heat*.3);ctx.lineWidth=win&&age>.7?1.6:1;
+        if(win&&age>.7){ctx.shadowColor=palette.alpha('signal',.8);ctx.shadowBlur=12}ctx.stroke();ctx.shadowBlur=0;
         n.heat*=.985;
-        const s=win?7:5;ctx.fillStyle=win?'#1fe15a':cand?'rgba(245,245,240,.9)':'rgba(245,245,240,.55)';
+        const s=win?7:5;ctx.fillStyle=win?palette.value('signal'):cand?palette.alpha('bone',.9):palette.alpha('bone',.55);
         ctx.fillRect(n.x-s/2,n.y-s/2,s,s);
-        if(!win){ctx.fillStyle='#0b0c0b';ctx.fillRect(n.x-s/2+1.2,n.y-s/2+1.2,s-2.4,s-2.4)}
-        ctx.font='500 10px "Martian Mono Variable", ui-monospace, monospace';ctx.fillStyle=win?'rgba(31,225,90,1)':`rgba(245,245,240,${cand?.75:.32})`;
+        if(!win){ctx.fillStyle=palette.value('night');ctx.fillRect(n.x-s/2+1.2,n.y-s/2+1.2,s-2.4,s-2.4)}
+        ctx.font='500 10px "Martian Mono Variable", ui-monospace, monospace';ctx.fillStyle=win?palette.alpha('signal',1):palette.alpha('bone',cand?1:.85);
         const tw=ctx.measureText(n.label).width;let right=n.x>=cx;if(right&&n.x+12+tw>w-6)right=false;else if(!right&&n.x-12-tw<6)right=true;ctx.textAlign=right?'left':'right';ctx.fillText(n.label,n.x+(right?12:-12),n.y+3.5);
       });
       // packets on the winning route
       if(age>.7&&age<2.3){const out=age<1.5;const k=out?(age-.7)/.8:1-(age-1.5)/.8;const e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
-        for(let i=0;i<7;i++){const kk=Math.max(0,Math.min(1,e-(out?1:-1)*i*.025));const [px,py]=quad(call.winner,kk);ctx.fillStyle=`rgba(31,225,90,${1-i/7})`;const s=4-i*.4;ctx.fillRect(px-s/2,py-s/2,s,s)}}
+        for(let i=0;i<7;i++){const kk=Math.max(0,Math.min(1,e-(out?1:-1)*i*.025));const [px,py]=quad(call.winner,kk);ctx.fillStyle=palette.alpha('signal',1-i/7);const s=4-i*.4;ctx.fillRect(px-s/2,py-s/2,s,s)}}
       // router: the mark, a pulse ring on each call
-      const pulse=Math.max(0,1-age/1.2);ctx.strokeStyle=`rgba(31,225,90,${pulse*.6})`;ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,26+(1-pulse)*40,0,Math.PI*2);ctx.stroke();
-      ctx.fillStyle='#0b0c0b';ctx.fillRect(cx-30,cy-30,60,60);ctx.strokeStyle='rgba(245,245,240,.25)';ctx.strokeRect(cx-30.5,cy-30.5,61,61);
+      const pulse=Math.max(0,1-age/1.2);ctx.strokeStyle=palette.alpha('signal',pulse*.6);ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,26+(1-pulse)*40,0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle=palette.value('night');ctx.fillRect(cx-30,cy-30,60,60);ctx.strokeStyle=palette.alpha('bone',.25);ctx.strokeRect(cx-30.5,cy-30.5,61,61);
       ctx.save();ctx.translate(cx,cy);ctx.scale(40/982,40/982);ctx.translate(-627,-618);
-      const sy=940-((age%1.6)/1.6)*700;ctx.fillStyle='#1fe15a';ctx.fillRect(616,sy,22,90);ctx.fillStyle='#f5f5f0';ctx.fill(markL);ctx.fill(markR);ctx.restore();
-      ctx.font='500 9px "Martian Mono Variable", ui-monospace, monospace';ctx.textAlign='center';ctx.fillStyle='rgba(245,245,240,.5)';ctx.fillText('ROUTER',cx,cy+46);
+      const sy=940-((age%1.6)/1.6)*700;ctx.fillStyle=palette.value('signal');ctx.fillRect(616,sy,22,90);ctx.fillStyle=palette.value('bone');ctx.fill(markL);ctx.fill(markR);ctx.restore();
+      ctx.font='500 9px "Martian Mono Variable", ui-monospace, monospace';ctx.textAlign='center';ctx.fillStyle=palette.alpha('bone',.85);ctx.fillText('ROUTER',cx,cy+46);
     };
     const loop=now=>{draw(now);if(running)raf=requestAnimationFrame(loop)};
     const start=()=>{if(running||reduced)return;running=true;raf=requestAnimationFrame(loop)};const stop=()=>{running=false;cancelAnimationFrame(raf)};

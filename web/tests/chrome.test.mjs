@@ -25,13 +25,13 @@ test('only the landing Hero carries the dark hero attribute', () => {
 
 test('the fixed header is opaque ink in every tone, with light identity and controls', () => {
   const header = rule(css, '.site-header');
-  assert.match(header, /background:var\(--ink\)/);
-  assert.match(header, /color:var\(--paper\)/);
+  assert.match(header, /background:var\(--night\)/); // C126: invariant dark brand surface
+  assert.match(header, /color:var\(--bone\)/); // C126: invariant light brand text
   assert.match(header, /border-bottom:1px solid var\(--line-dark\)/);
   assert.doesNotMatch(css, /\.site-header\[data-tone[^}]*\{[^}]*(?:background|color)/);
   assert.match(read('components/Logo.jsx'), /function Wordmark[\s\S]*?fill="currentColor"/);
   assert.match(rule(css, '.site-header .ar-button:not(.secondary)'), /--bg:var\(--paper\);--fg:var\(--ink\)/);
-  assert.match(rule(css, '.site-header .ar-button.secondary'), /--fg:var\(--paper\);--fill:var\(--paper\);--fill-fg:var\(--ink\)/);
+  assert.match(rule(css, '.site-header .ar-button.secondary'), /--fg:var\(--bone\);--fill:var\(--bone\);--fill-fg:var\(--night\)/);
   assert.match(rule(css, '.site-header :focus-visible'), /outline-color:var\(--signal\)/);
   // Clipped buttons need an inset focus cue as well as the outer outline.
   assert.match(rule(css, '.site-header .ar-button:focus-visible'), /box-shadow:inset 0 0 0 2px var\(--ink\)/);

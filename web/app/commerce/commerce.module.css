@@ -17,7 +17,7 @@
 .windows { display: flex; flex-wrap: wrap; gap: 2px; }
 .windows button { border: 0; padding: 10px 14px; background: var(--paper-2); font: 500 11px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); transition: background .2s, color .2s; }
 .windows button:hover { background: var(--paper-3); color: var(--ink); }
-.windows button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.windows button[aria-pressed="true"] { background: var(--night); color: var(--bone); }
 
 /* ---------- paired figures ---------- */
 .pairs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; margin: 0; }
@@ -41,7 +41,7 @@
 .bar[data-empty] { background: var(--paper-3); }
 .bar span[data-kind="filtered"], .key[data-kind="filtered"] { background: var(--signal-deep); }
 .bar span[data-kind="unanchored"], .key[data-kind="unanchored"] { background: var(--muted-dark); }
-.bar span[data-kind="same_owner"], .key[data-kind="same_owner"] { background: var(--ink); }
+.bar span[data-kind="same_owner"], .key[data-kind="same_owner"] { background: var(--night); }
 .bar span[data-kind="round_trip"], .key[data-kind="round_trip"] { background: var(--muted); }
 .bar span[data-kind="funding_link"], .key[data-kind="funding_link"] { background: var(--warn); }
 @media (prefers-reduced-motion: no-preference) {

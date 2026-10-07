@@ -28,9 +28,9 @@
 /* Words, not colour alone: the state is always spelled out. */
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--line); background: var(--paper-2); font: 500 10px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
 .pill::before { content: ""; width: 6px; height: 6px; flex: none; background: currentColor; }
-.pill[data-tone="ok"] { background: var(--signal-tint); border-color: rgba(10, 125, 49, .35); color: var(--signal-deep); }
-.pill[data-tone="warn"] { background: #fff6e0; border-color: rgba(190, 130, 10, .4); color: #7a5300; }
-.pill[data-tone="bad"] { background: #fff0ef; border-color: rgba(229, 72, 77, .4); color: #96161b; }
+.pill[data-tone="ok"] { background: var(--signal-tint); border-color: color-mix(in srgb,var(--signal-deep) 35%,transparent); color: var(--signal-deep); }
+.pill[data-tone="warn"] { background: var(--warn-surface); border-color: color-mix(in srgb,var(--warn) 40%,transparent); color: var(--warn-text); }
+.pill[data-tone="bad"] { background: var(--danger-surface); border-color: color-mix(in srgb,var(--danger) 40%,transparent); color: var(--danger-text); }
 
 /* ---------- windows and bars ---------- */
 .windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 32px; }
@@ -64,7 +64,7 @@
 .facts > div { display: grid; grid-template-columns: minmax(140px, 200px) minmax(0, 1fr); gap: 4px 24px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .facts dt { font: 500 10px/1.6 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding-top: 3px; }
 .facts dd { margin: 0; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
-.facts dd[data-state="seen"] strong { color: #96161b; }
+.facts dd[data-state="seen"] strong { color: var(--danger-text); }
 .facts dd[data-state="changed"] strong { color: var(--ink); }
 .facts dd[data-state="unknown"] { color: var(--muted); }
 @media (max-width: 640px) { .facts > div { grid-template-columns: 1fr; } .facts dt { padding-top: 0; } }

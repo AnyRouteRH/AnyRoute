@@ -37,3 +37,9 @@
 .actions .confirm { max-width: 100%; padding-block: 10px; white-space: normal; text-align: left; text-transform: none; line-height: 1.35; letter-spacing: .02em; }
 .foot { margin: 0; padding-top: 20px; border-top: 1px solid var(--line); }
 @media (max-width: 600px) { .panel { padding-inline: 16px; } }
+
+/* C126: appearance token overrides. */
+
+.badge { position: absolute; top: -4px; right: -4px; padding: 2px 4px; min-width: 16px; background: var(--signal); color: var(--night); font: 10px var(--mono); text-align: center; }
+
+.drawer::backdrop { background: color-mix(in srgb,var(--night) 60%,transparent); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }

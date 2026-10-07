@@ -1,8 +1,8 @@
-.code { min-width: 0; margin: .3em 0 1em; background: var(--ink); color: var(--paper); }
+.code { min-width: 0; margin: .3em 0 1em; background: var(--night); color: var(--bone); }
 .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 14px; padding: 8px 14px; background: var(--ink-2); font: 500 10.5px var(--mono); color: var(--muted-dark); }
 .language { min-width: 0; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px 16px; }
-.header :global(.text-button) { min-height: 32px; color: var(--paper); font-size: 10px; }
+.header :global(.text-button) { min-height: 32px; color: var(--bone); font-size: 10px; }
 .code pre { margin: 0; padding: 14px 16px 18px; overflow-x: auto; font-size: 12.5px; line-height: 1.65; }
 .code pre:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
 .preview { background: var(--paper); color: var(--ink); border: 1px solid var(--line); }
@@ -16,7 +16,7 @@
 .height input { min-width: 80px; max-width: 100%; flex: 1; accent-color: var(--signal-deep); }
 .dialog { position: fixed; inset: 0; width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; padding: 16px; border: 0; background: var(--paper); color: var(--ink); }
 .dialog[open] { display: flex; flex-direction: column; }
-.dialog::backdrop { background: var(--ink); }
+.dialog::backdrop { background: var(--night); }
 .dialogHead { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .dialogHead h2 { font: 620 24px/1.1 var(--sans); letter-spacing: -.04em; }
 .dialogHead button { min-height: 40px; }

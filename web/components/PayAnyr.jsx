@@ -35,8 +35,8 @@ function QrCode({ text }) {
   return (
     <div className={styles.qr}>
       <svg viewBox={`-4 -4 ${code.n + 8} ${code.n + 8}`} role="img" aria-label={`QR code of the escrow address ${text}`} shapeRendering="crispEdges">
-        <rect x="-4" y="-4" width={code.n + 8} height={code.n + 8} fill="#fff" />
-        <path d={code.d} fill="#0b0c0b" />
+        <rect x="-4" y="-4" width={code.n + 8} height={code.n + 8} fill="var(--qr-paper)" />
+        <path d={code.d} fill="var(--mark)" />
       </svg>
     </div>
   );

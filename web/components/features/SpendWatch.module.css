@@ -9,20 +9,20 @@
 .segmented button { min-height: 40px; padding: 0 14px; border: 0; background: none; font: 500 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); white-space: nowrap; transition: background .2s, color .2s, box-shadow .3s var(--ease-out); }
 .segmented button + button { border-left: 1px solid var(--line); }
 .segmented button:hover { color: var(--ink); background: var(--paper-2); }
-.segmented button[aria-pressed="true"] { background: var(--ink); color: var(--paper); box-shadow: inset 0 -3px 0 var(--signal); }
+.segmented button[aria-pressed="true"] { background: var(--night); color: var(--bone); box-shadow: inset 0 -3px 0 var(--signal); }
 .segmented button:focus-visible { outline-offset: -3px; }
 
 /* ---------- banners ---------- */
-.sampleBanner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 24px; padding: 12px 16px; border: 1px solid rgba(243, 180, 63, .6); border-left: 3px solid var(--warn); background: repeating-linear-gradient(-45deg, rgba(243, 180, 63, .09) 0 6px, transparent 6px 14px), var(--white); font-size: 13px; line-height: 1.45; }
-.anomaly { display: flex; gap: 16px; align-items: flex-start; margin: 0 0 24px; padding: 16px 20px; border: 1px solid rgba(243, 180, 63, .7); border-left: 4px solid var(--warn); background: #fff7e6; animation: rise .5s var(--ease-out) backwards; }
+.sampleBanner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 24px; padding: 12px 16px; border: 1px solid color-mix(in srgb,var(--warn) 60%,transparent); border-left: 3px solid var(--warn); background: repeating-linear-gradient(-45deg, color-mix(in srgb,var(--warn) 9%,transparent) 0 6px, transparent 6px 14px), var(--white); font-size: 13px; line-height: 1.45; }
+.anomaly { display: flex; gap: 16px; align-items: flex-start; margin: 0 0 24px; padding: 16px 20px; border: 1px solid color-mix(in srgb,var(--warn) 70%,transparent); border-left: 4px solid var(--warn); background: var(--warn-surface); animation: rise .5s var(--ease-out) backwards; }
 .anomaly strong { font-size: 16px; font-weight: 620; letter-spacing: -.01em; }
-.anomaly p { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: #4a4128; }
+.anomaly p { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: var(--warn-text); }
 .anomalyMark { flex: none; width: 11px; height: 11px; margin-top: 6px; background: var(--warn); transform: rotate(45deg); animation: pulse 2.2s var(--ease) infinite; }
-@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(243, 180, 63, .55); } 50% { box-shadow: 0 0 0 6px rgba(243, 180, 63, 0); } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb,var(--warn) 55%,transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 
 /* ---------- tiles ---------- */
-.tiles[data-sample] :global(.metric) { background: repeating-linear-gradient(-45deg, rgba(243, 180, 63, .06) 0 6px, transparent 6px 14px), var(--white); }
+.tiles[data-sample] :global(.metric) { background: repeating-linear-gradient(-45deg, color-mix(in srgb,var(--warn) 6%,transparent) 0 6px, transparent 6px 14px), var(--white); }
 .tiles :global(.metric > span:last-child) { font-family: var(--mono); font-size: 11px; letter-spacing: .02em; }
 
 /* ---------- panels ---------- */
@@ -35,7 +35,7 @@
 .muted { color: var(--muted); }
 
 /* ---------- chart (plain SVG, measured to its container) ---------- */
-.chart { position: relative; overflow: hidden; background: var(--ink); color: var(--paper); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%); }
+.chart { position: relative; overflow: hidden; background: var(--night); color: var(--bone); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%); }
 .svg { display: block; max-width: none; touch-action: pan-y; cursor: crosshair; }
 .svg:focus { outline: none; }
 .svg:focus-visible { outline: 2px solid var(--signal); outline-offset: -3px; }
@@ -43,21 +43,21 @@
 .baseline { stroke: var(--line-dark-strong); stroke-width: 1; shape-rendering: crispEdges; }
 .axis { fill: var(--muted-dark); font: 500 10px var(--mono); letter-spacing: .03em; }
 .bar { fill: var(--signal); transform-box: fill-box; transform-origin: bottom; animation: grow .8s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 9ms); transition: fill .15s; }
-.barToday { fill: #8ff0ad; }
+.barToday { fill: var(--success-text); }
 .barSpike { fill: var(--warn); }
 .barActive { fill: var(--paper); }
 .chartSample .bar:not(.barActive) { fill-opacity: .72; }
 .cursor { stroke: var(--line-dark-strong); stroke-dasharray: 2 3; pointer-events: none; }
-.watermark { fill: rgba(245, 245, 240, .38); font: 600 11px var(--mono); letter-spacing: .24em; }
+.watermark { fill: color-mix(in srgb,var(--bone) 38%,transparent); font: 600 11px var(--mono); letter-spacing: .24em; }
 @keyframes grow { from { transform: scaleY(0); } }
-.tooltip { position: absolute; top: 10px; z-index: 1; display: grid; gap: 2px; min-width: 150px; padding: 8px 12px 9px; transform: translateX(-50%); border-top: 2px solid var(--signal); background: var(--paper); color: var(--ink); text-align: center; font: 500 10.5px/1.35 var(--mono); letter-spacing: .02em; pointer-events: none; box-shadow: 0 14px 30px -18px rgba(0, 0, 0, .8); }
+.tooltip { position: absolute; top: 10px; z-index: 1; display: grid; gap: 2px; min-width: 150px; padding: 8px 12px 9px; transform: translateX(-50%); border-top: 2px solid var(--signal); background: var(--paper); color: var(--ink); text-align: center; font: 500 10.5px/1.35 var(--mono); letter-spacing: .02em; pointer-events: none; box-shadow: 0 14px 30px -18px color-mix(in srgb,var(--night) 80%,transparent); }
 .tooltip strong { font: 620 17px/1.1 var(--sans); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .tooltip span { color: var(--muted); }
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin-top: 14px; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .legend > span { display: inline-flex; align-items: center; gap: 8px; }
 .keyBar, .keyToday { display: inline-block; width: 10px; height: 10px; background: var(--signal); box-shadow: inset 0 0 0 1px var(--signal-deep); }
-.keyToday { background: #8ff0ad; }
-.keySpike { background: var(--warn); box-shadow: inset 0 0 0 1px #b07b12; }
+.keyToday { background: var(--success-text); }
+.keySpike { background: var(--warn); box-shadow: inset 0 0 0 1px var(--warn-text); }
 .legend .legendTotal { margin-left: auto; color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 11px; }
 
 /* ---------- breakdowns ---------- */
@@ -76,8 +76,8 @@
 .budgetHead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .budgetHead strong { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .budgetPct { flex: none; font: 500 11px/1.4 var(--mono); color: var(--muted); }
-.budget[data-level="warn"] .budgetPct { color: #8a5a00; }
-.budget[data-level="over"] .budgetPct { color: #96161b; }
+.budget[data-level="warn"] .budgetPct { color: var(--warn-text); }
+.budget[data-level="over"] .budgetPct { color: var(--danger-text); }
 .meter { position: relative; height: 8px; overflow: hidden; background: var(--paper-3); }
 .meter i { position: absolute; inset: 0 auto 0 0; background: var(--signal-deep); transform-origin: left; animation: fill 1s var(--ease-out) backwards; }
 .budget[data-level="warn"] .meter i { background: var(--warn); }
@@ -95,7 +95,7 @@
 .delivery::before { content: ""; flex: none; width: 7px; height: 7px; background: var(--muted); transform: translateY(-1px); }
 .delivery[data-tone="delivered"]::before { background: var(--signal-deep); box-shadow: 0 0 0 3px var(--signal-tint); }
 .delivery[data-tone="waiting"]::before { background: var(--warn); }
-.delivery[data-tone="failed"] { color: #96161b; }
+.delivery[data-tone="failed"] { color: var(--danger-text); }
 .delivery[data-tone="failed"]::before { background: var(--danger); }
 .delivery[data-tone="off"] { color: var(--muted); }
 .delivery[data-tone="off"]::before { background: none; box-shadow: inset 0 0 0 1px var(--muted); }

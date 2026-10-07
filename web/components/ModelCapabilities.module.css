@@ -7,4 +7,4 @@
 .guide li { margin-bottom: 8px; }
 .guide a { text-decoration: underline; text-underline-offset: 3px; }
 .guide[data-dark] { color: var(--muted-dark); }
-.guide[data-dark] b, .guide[data-dark] a { color: var(--paper); }
+.guide[data-dark] b, .guide[data-dark] a { color: var(--bone); }

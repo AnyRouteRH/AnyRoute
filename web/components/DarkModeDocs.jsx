@@ -1,0 +1,3 @@
+export default function DarkModeDocs() {
+  return <section id="appearance"><h2>Choose light or dark</h2><p>Choose Light, Dark or Match device under Appearance in the account menu or footer. Match device follows your device setting, including changes while a page is open.</p><p>Your choice stays in this browser until you change it or clear browser data. If browser storage is unavailable, it lasts for this page. It is applied before the page appears. No API key is needed and no preference is sent to Anyroute. This changes the website’s appearance; images keep their original colours.</p></section>;
+}

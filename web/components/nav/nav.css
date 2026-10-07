@@ -8,7 +8,7 @@
 .task-disclosure>button span{color:var(--muted-dark)}
 .site-search-button{margin-left:auto;border:1px solid var(--line-dark);padding-inline:12px;flex:none}
 .site-search-button kbd{font:400 10px var(--mono);color:var(--muted-dark)}
-.task-panel{position:absolute;top:var(--header);left:var(--gutter);right:var(--gutter);padding:20px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:var(--ink);border:1px solid var(--line-dark);box-shadow:0 20px 40px rgba(0,0,0,.25);max-height:calc(100svh - var(--header) - 24px);overflow:auto}
+.task-panel{position:absolute;top:var(--header);left:var(--gutter);right:var(--gutter);padding:20px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:var(--night);border:1px solid var(--line-dark);box-shadow:0 20px 40px color-mix(in srgb,var(--night) 25%,transparent);max-height:calc(100svh - var(--header) - 24px);overflow:auto}
 .task-panel[hidden]{display:none}
 .site-header .task-panel a{display:block;padding:14px;opacity:1;white-space:normal;border:1px solid transparent}
 .site-header .task-panel a::after{display:none}

@@ -11,7 +11,7 @@
 .mark { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--paper-2); font: 500 10px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: var(--ink); }
 .mark::before { content: ""; width: 6px; height: 6px; flex: none; background: currentColor; }
 .mark[data-state="passing"] { background: var(--signal-tint); color: var(--signal-deep); }
-.mark[data-state="failing"] { background: #fff6e0; color: #7a5300; }
+.mark[data-state="failing"] { background: var(--warn-surface); color: var(--warn-text); }
 .mark[data-state="delisted"] { color: var(--muted); }
 .mark[data-state="unchecked"] { color: var(--muted); }
 .mark[data-state="unchecked"]::before { background: transparent; border: 1px solid currentColor; }

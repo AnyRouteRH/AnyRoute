@@ -56,7 +56,7 @@
 .timeline li > div { display: grid; gap: 2px; min-width: 0; }
 .timeline strong { font-weight: 600; }
 .timeline li > div > span { color: var(--muted); overflow-wrap: anywhere; }
-.timeline li[data-kind="changed"] { background: var(--ink); color: var(--paper); }
+.timeline li[data-kind="changed"] { background: var(--night); color: var(--bone); }
 .timeline li[data-kind="changed"] .when, .timeline li[data-kind="changed"] li > div > span, .timeline li[data-kind="changed"] > div > span { color: var(--muted-dark); }
 .timeline li[data-kind="failed"] { background: var(--paper-3); }
 .when { font: 500 11px/1.9 var(--mono); letter-spacing: .03em; color: var(--muted); }
@@ -65,7 +65,7 @@
 .digests > div { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; }
 .digests dt { font: 500 10px/1.8 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted-dark); }
 .digests dd { margin: 0; min-width: 0; }
-.digests code { font-size: 11px; overflow-wrap: anywhere; color: var(--paper); }
+.digests code { font-size: 11px; overflow-wrap: anywhere; color: var(--bone); }
 @media (max-width: 640px) { .digests > div { grid-template-columns: 1fr; gap: 0; } }
 
 /* ---------- badge ---------- */

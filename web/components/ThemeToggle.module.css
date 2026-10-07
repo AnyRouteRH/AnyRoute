@@ -1,0 +1,3 @@
+.control { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-block: 16px; font: 500 13px/1.5 var(--sans); color: inherit; }
+.control select { max-width: 100%; min-height: 44px; padding: 8px 32px 8px 12px; border: 1px solid var(--line-dark-strong); background: var(--night); color: var(--bone); border-radius: 0; }
+.control select:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }

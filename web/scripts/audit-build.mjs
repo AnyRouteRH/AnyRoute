@@ -70,3 +70,5 @@ let pdfNote='';
 }
 auditShippedWordingLists(root);
 console.log(`PASS: ${routes.length} routes; ${count} local asset/link references; no stray files.${pdfNote}`);
+
+import {auditTheme} from './audit-theme.mjs'; auditTheme(root); // C126

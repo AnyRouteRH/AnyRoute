@@ -6,7 +6,7 @@
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .panel > button { justify-self: start; max-width: 100%; white-space: normal; }
 .panel a, .approval a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-.error { color: #96161b; }
+.error { color: var(--danger-text); }
 .approval { display: grid; gap: 12px; margin: 14px 0; padding: 16px; background: var(--paper-2); border: 1px solid var(--line); color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .approval b { color: var(--ink); }
 .limits summary:focus-visible, .panel button:focus-visible, .approval button:focus-visible, .panel a:focus-visible, .approval a:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }

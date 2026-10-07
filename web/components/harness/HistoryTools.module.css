@@ -21,7 +21,7 @@
 .actions { padding: 0 14px 12px; }
 .actions button { font-size: 12px; }
 .actions button[aria-pressed="true"] { color: var(--signal-deep); }
-.delete { margin-left: auto; color: #96161b; }
+.delete { margin-left: auto; color: var(--danger-text); }
 .rename { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
 .exports { display: grid; gap: 8px; padding: 14px; background: var(--paper-2); }
 .exports > div { justify-content: space-between; }

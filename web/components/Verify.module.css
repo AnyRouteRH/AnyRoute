@@ -26,13 +26,13 @@
 /* ---------- state marks: always words, never colour alone ---------- */
 .state { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--line); background: var(--paper-2); font: 500 10px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: var(--ink); }
 .state::before { content: ""; width: 6px; height: 6px; flex: none; background: currentColor; }
-.state[data-state="yes"] { background: var(--signal-tint); border-color: rgba(10, 125, 49, .35); color: var(--signal-deep); }
-.state[data-state="partial"] { background: #fff6e0; border-color: rgba(190, 130, 10, .4); color: #7a5300; }
-.state[data-state="bad"], .state[data-state="simulated"] { background: #fff0ef; border-color: rgba(229, 72, 77, .4); color: #96161b; }
+.state[data-state="yes"] { background: var(--signal-tint); border-color: color-mix(in srgb,var(--signal-deep) 35%,transparent); color: var(--signal-deep); }
+.state[data-state="partial"] { background: var(--warn-surface); border-color: color-mix(in srgb,var(--warn) 40%,transparent); color: var(--warn-text); }
+.state[data-state="bad"], .state[data-state="simulated"] { background: var(--danger-surface); border-color: color-mix(in srgb,var(--danger) 40%,transparent); color: var(--danger-text); }
 .state[data-state="no"], .state[data-state="unknown"], .state[data-state="known"], .state[data-state="not_checked"] { color: var(--muted); }
 .state[data-state="no"]::before, .state[data-state="unknown"]::before, .state[data-state="known"]::before, .state[data-state="not_checked"]::before { background: transparent; border: 1px solid currentColor; }
-.state[data-state="pass"] { background: var(--signal-tint); border-color: rgba(10, 125, 49, .35); color: var(--signal-deep); }
-.state[data-state="fail"] { background: #fff0ef; border-color: rgba(229, 72, 77, .4); color: #96161b; }
+.state[data-state="pass"] { background: var(--signal-tint); border-color: color-mix(in srgb,var(--signal-deep) 35%,transparent); color: var(--signal-deep); }
+.state[data-state="fail"] { background: var(--danger-surface); border-color: color-mix(in srgb,var(--danger) 40%,transparent); color: var(--danger-text); }
 
 /* ---------- facts ---------- */
 .panel { border: 1px solid var(--line); background: var(--white); }

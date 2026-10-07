@@ -1,5 +1,5 @@
 .attach { flex: none; display: grid; place-items: center; width: 40px; height: 44px; border: 0; padding: 0; background: none; color: var(--muted-dark); }
-.attach:hover:not([aria-disabled="true"]) { color: var(--signal); }
+.attach:hover:not([aria-disabled="true"]) { color: var(--signal-deep); }
 .attach[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 .attach:focus-visible { outline: 2px solid var(--signal); outline-offset: -4px; }
 .notice { margin-top: 8px !important; font: 400 10.5px/1.6 var(--mono); color: var(--muted); }

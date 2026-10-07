@@ -1,4 +1,4 @@
 .ladder { display: grid; gap: .65rem; padding: 0; list-style: none; }
-.ladder li { border: 1px solid var(--border, #d9ddd8); padding: 1rem; display: grid; gap: .35rem; }
+.ladder li { border: 1px solid var(--border, var(--paper-3)); padding: 1rem; display: grid; gap: .35rem; }
 .ladder .current { border: 2px solid currentColor; }
 .ladder span { font-size: .875rem; }

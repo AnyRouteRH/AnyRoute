@@ -1,3 +1,4 @@
+import {buildOfflineTheme} from './build-theme.mjs'; // C126
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -6,6 +7,7 @@ import { shellRoute, createShellWorker } from '../lib/harness-sw.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export function buildPwa(root) {
+  buildOfflineTheme(root); // C126
   const assets = {};
   const add = (url, file = path.join(root, url)) => {
     if (!fs.statSync(file).isFile()) throw new Error('Shell asset is not a file');

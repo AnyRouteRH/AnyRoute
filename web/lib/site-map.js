@@ -214,3 +214,5 @@ TASKS.push({ ...task('rulebook-words', 'agents', 'Read your rulebook in plain En
 TASKS.push({ ...task('copy-as-code', 'chat', 'Copy a Chat conversation as code', 'Take the selected conversation and its settings into curl, TypeScript or Python.', '/harness/', 'copy as code, request, curl, typescript, python, conversation'), menu: false }); // C130
 
 TASKS.push({ ...task("context-meter", "chat", "Keep room in Chat", "See context use and summarize a conversation to continue with more room.", "/docs/#context-meter", "context, tokens, window, summarize, summary, chat"), menu: false }); // C129
+
+TASKS.push({ ...task('appearance', 'learn', 'Choose light or dark', 'Choose Light, Dark or Match device in the account menu or footer.', '/docs/#appearance', 'theme, dark, light, appearance, device'), menu: false }); // C126

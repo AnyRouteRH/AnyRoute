@@ -1,4 +1,5 @@
 import ContextMeterDocs from "../../components/ContextMeterDocs"; // C129
+import DarkModeDocs from '../../components/DarkModeDocs'; // C126
 import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B123
 import ModelAlternativesDocs from "../../components/ModelAlternativesDocs"; // B121
 import RunwayDocs from "../../components/RunwayDocs"; // B119
@@ -874,6 +875,7 @@ export default function Docs() {
           </div>
           <DocsFeatureIndex />
           <ChatCostDocs /> {/* C128 */}
+          <DarkModeDocs/> {/* C126 */}
           <DepositCountdownDocs /> {/* B123 */}
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
           <KeyProvisioningDocs /> {/* ZK6 */}

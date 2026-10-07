@@ -22,6 +22,6 @@
 .pill { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 4px 8px; background: var(--paper-3); font: 500 10px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; color: var(--muted); }
 .pill::before { content: ""; width: 6px; height: 6px; flex: none; background: currentColor; }
 .pill[data-state="on"] { background: var(--signal-tint); color: var(--signal-deep); }
-.pill[data-state="pilot"] { background: var(--ink); color: var(--paper); }
+.pill[data-state="pilot"] { background: var(--night); color: var(--bone); }
 .pill[data-state="unknown"] { background: var(--paper-2); color: var(--ink); white-space: normal; }
 .pill[data-state="loading"] { background: var(--paper-2); }
