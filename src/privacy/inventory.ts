@@ -1,3 +1,4 @@
+import { describeModelArrivals } from "./model-arrivals.ts"; // C131
 import { describeLowBalance } from "./low-balance.ts"; // B119
 import { guardTables } from "./tables/agent-guard.ts"; // V98
 import { describeWeeklySummary } from "./weekly-summary.ts"; // B120
@@ -48,6 +49,7 @@ describeLowBalance(TABLE_DOCS); // B119
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);
 describeWeeklySummary(TABLE_DOCS); // B120
+describeModelArrivals(TABLE_DOCS); // C131
 export { EXTERNAL };
 
 // ---- consistency -----------------------------------------------------------------------------------------------------

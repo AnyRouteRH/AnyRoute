@@ -1,3 +1,4 @@
+import { recordModelArrivals } from "./model-arrivals.ts"; // C131
 import { invalidateCatalogJson } from "../rush/cache.ts"; // ON3
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -54,6 +55,8 @@ export class Catalog {
   gpuAttested = new Map<string, GpuAttestedRecord>();
   /** Per provider, the log entry and registry transaction of the measurement its attestations bound most recently. */
   manifests = new Map<string, ManifestRef>();
+  trackArrivals = false; // C131
+  addedAt = new Map<string, number | null>(); // C131
   loadedAt = 0;
   private loading: Promise<void> | null = null;
 
@@ -95,6 +98,7 @@ export class Catalog {
           list.push({ ...offer, provider });
           byModel.set(offer.modelId, list);
         }
+        if (this.trackArrivals) this.addedAt = await recordModelArrivals(this.db, m.map(x => x.id)); // C131
         this.models = new Map(m.map((x) => [x.id, x]));
         this.providers = pm;
         this.disclosure = new Map(d.map((x) => [x.providerId, x]));

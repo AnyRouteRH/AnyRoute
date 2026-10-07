@@ -89,6 +89,7 @@ export function normalizeModel(raw, order = 0) {
     attested: raw.disclosure?.best === "attested" || (!raw.disclosure && !!raw.attested_available),
     disclosure: raw.disclosure?.best || (raw.attested_available ? "attested" : null),
     created: Number(raw.created || 0),
+    added_at: raw.added_at ?? null, // C131
     order,
     description: raw.description || "",
   };

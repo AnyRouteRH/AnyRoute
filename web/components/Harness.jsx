@@ -1,6 +1,7 @@
 "use client";
 import ContextMeter, { useContextMeter } from "./harness/ContextMeter"; // C129
 import { contextMeter, contextSendBlock } from "../lib/context-meter.js"; // C129
+import { NewModelsRow } from "./NewModels"; // C131
 import ModelAlternatives from "./harness/ModelAlternatives"; import { suggestedModels, alternativeRetry } from "../lib/model-alternatives.js"; // B121
 import ChatCost from "./harness/ChatCost"; // C128
 import AddFunds from "./account/AddFunds"; import { fundingError, recoverFundingDraft } from "../lib/add-funds.js"; // ON1
@@ -188,6 +189,7 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
         </div>
       </div>
       <div className={s.railList} tabIndex={-1}>
+        {!loading && !error && <NewModelsRow models={models} onChoose={onPick} dark />} {/* C131 */}
         {error && (
           <div className={s.railNote}>
             <p>{error}</p>

@@ -216,3 +216,5 @@ TASKS.push({ ...task('copy-as-code', 'chat', 'Copy a Chat conversation as code',
 TASKS.push({ ...task("context-meter", "chat", "Keep room in Chat", "See context use and summarize a conversation to continue with more room.", "/docs/#context-meter", "context, tokens, window, summarize, summary, chat"), menu: false }); // C129
 
 TASKS.push({ ...task('appearance', 'learn', 'Choose light or dark', 'Choose Light, Dark or Match device in the account menu or footer.', '/docs/#appearance', 'theme, dark, light, appearance, device'), menu: false }); // C126
+
+TASKS.push({ ...task('new-models', 'chat', 'Find new models this week', 'Browse recently added models and subscribe to the new models feed.', '/docs/#new-models', 'new models, catalogue, atom, feed, this week'), menu: false }); // C131

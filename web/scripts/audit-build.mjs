@@ -1,3 +1,4 @@
+import { routerModelsFeedLink } from "./audit-new-models.mjs"; // C131
 import { auditShippedWordingLists } from './check-public-wording.mjs';
 import fs from 'node:fs';
 import {auditNetwork} from './audit-network.mjs';
@@ -24,6 +25,7 @@ for(const route of routes){
  const html=fs.readFileSync(file,'utf8');assert(html.includes('Anyroute'),`Wrong brand ${route}`);
  for(const match of html.matchAll(/(?:href|src)="(\/[^"#?]*)(?:[?#][^"]*)?"/g)){
   const value=match[1];if(value.startsWith('//'))continue;
+  if(routerModelsFeedLink(value, root))continue; // C131: API route tested by model-arrivals.test.ts.
   let target=path.join(root,decodeURIComponent(value));
   if(fs.existsSync(target)&&fs.statSync(target).isDirectory())target=path.join(target,'index.html');
   assert(fs.existsSync(target),`Missing ${value} from ${route}`);count++;

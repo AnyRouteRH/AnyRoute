@@ -153,6 +153,7 @@ export function modelJson(ctx: Ctx, m: ModelRow) {
     hugging_face_id: m.hfRepo ?? "",
     name: m.name,
     created: m.createdUnix,
+    ...(ctx.cfg.modelArrivalsEnabled ? { added_at: ctx.catalog.addedAt?.get(m.id) ?? null } : {}), // C131
     description: m.description,
     context_length: m.ctx,
     architecture: {

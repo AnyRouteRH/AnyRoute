@@ -18127,6 +18127,32 @@
         },
         "operationId": "setLowBalanceSetting"
       }
+    },
+    "/api/v1/models/new.atom": {
+      "get": {
+        "summary": "C131: new models feed",
+        "description": "Visible models first observed in the catalogue in the last 30 days. Baseline arrivals are unknown and excluded. Empty when MODEL_ARRIVALS_ENABLED is off (default). Public, cached for 30 seconds.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Atom feed",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/atom+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -20750,6 +20776,12 @@
           "supported_parameters"
         ],
         "properties": {
+          "added_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "C131: first catalogue observation in Unix seconds. Null for baseline models whose arrival is unknown. Present only when MODEL_ARRIVALS_ENABLED is on (default false). Independent of created; removed/reintroduced IDs keep their original observation."
+          },
           "availability": {
             "type": "string",
             "enum": [
@@ -22122,7 +22154,14 @@
           "created_at"
         ],
         "properties": {
-          "expires_at": { "type": ["string", "null"], "format": "date-time", "description": "C127: The key’s expiry, or null for no expiry. Expired credentials are refused with HTTP 401 key_expired; stored disabled is independent." },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "C127: The key’s expiry, or null for no expiry. Expired credentials are refused with HTTP 401 key_expired; stored disabled is independent."
+          },
           "hash": {
             "type": "string"
           },

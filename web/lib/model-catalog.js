@@ -1,3 +1,4 @@
+import { isNewModel, NEW_MODELS_FILTER } from "./new-models.js"; // C131
 import { MODEL_CAPABILITIES, modelCapabilities } from "./model-capabilities.js";
 
 export const CATALOG_SORTS = [
@@ -24,7 +25,7 @@ export function filterModels(models, { query = "", tags = [], sort = "name" } = 
     priceOut: (a, b) => price(a, "completion") - price(b, "completion"),
     context: (a, b) => context(b) - context(a),
   }[sort];
-  return searchModels(models, query).filter(model => tags.every(key => modelCapabilities(model).includes(key)))
+  return searchModels(models, query).filter(model => tags.every(key => key === NEW_MODELS_FILTER ? isNewModel(model) : modelCapabilities(model).includes(key)))
     .sort((a, b) => (compare?.(a, b) || 0) || nameOrder(a, b));
 }
 // Counts reflect the current query and all selected tags, as in the Harness picker.

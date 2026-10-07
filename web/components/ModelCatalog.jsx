@@ -1,4 +1,5 @@
 "use client";
+import { NewModelBadge, NewModelsFilter } from "./NewModels"; // C131
 import { useEffect, useMemo, useState } from "react";
 import { api, toCatalogModel } from "../lib/api";
 import { modelUnavailable } from "../lib/model-availability.js"; // ON5
@@ -40,6 +41,7 @@ export default function ModelCatalog({ onChoose }) {
       <label className="select-label"><span className="sr-only">Sort models</span><select aria-label="Sort models" value={sort} onChange={e => setSort(e.target.value)}>{CATALOG_SORTS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
     </div>
     <div className={s.filters} role="group" aria-label="Filter by capability">{MODEL_CAPABILITIES.map(tag => <button type="button" key={tag.key} title={tag.explanation} aria-pressed={tags.includes(tag.key)} onClick={() => toggle(tag.key)} disabled={!tags.includes(tag.key) && !counts[tag.key]}>{tag.label} <span>{counts[tag.key]}</span></button>)}</div>
+    <NewModelsFilter tags={tags} onToggle={toggle} /> {/* C131 */}
     <CapabilityGuide />
     <div className="catalog-meta"><p className="catalog-note">Live catalog{observedAt ? " · updated " + observedAt.toLocaleTimeString("en-GB") : ""} · Prices are per 1M tokens from the cheapest live provider; routing may pick another provider by uptime and quality.</p>{models && !error && <span className="catalog-count" aria-live="polite">{visible.length} of {models.length} models</span>}</div>
     {error && <div className="empty"><h3>The model catalog could not be loaded.</h3><p>{error}</p><Button secondary onClick={() => setAttempt(n => n + 1)}>Retry</Button></div>}
@@ -48,6 +50,7 @@ export default function ModelCatalog({ onChoose }) {
       const model = toCatalogModel(raw);
       return <article className="route-card model-card" key={model.id} style={{ "--i": Math.min(i, 10) }}>
         <div className="eyebrow">{model.author}<span className="live-square" />{model.type}</div>
+        <NewModelBadge model={raw} /> {/* C131 */}
         <h3>{model.name}</h3><p>{model.description}</p><CapabilityChips model={raw} />
         <div className="model-meta"><span>{model.context} context</span><span>{model.providers} provider{model.providers === 1 ? "" : "s"}</span></div>
         <div className="model-meta"><span>${perM(model.price)} / 1M input</span><span>${perM(model.output)} / 1M output</span></div>

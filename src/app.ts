@@ -1,3 +1,4 @@
+import { newModelsFeedRoutes } from "./api/models-new-feed.ts"; // C131
 import { accountRunwayRoutes } from "./api/account-runway.ts"; // B119
 import { agentSpendRoutes } from "./agents/spend-glance.ts"; // C132
 import { hardeningMiddleware, originLockMiddleware } from "./hardening/middleware.ts"; // HD1
@@ -138,6 +139,7 @@ export async function createApp(opts: AppOptions = {}) {
   const signer = new ReceiptSigner(handle.db, cfg.appSecret, cfg.receipts.rotationDays, cfg.receipts.signingKey);
   await signer.init();
   const catalog = new Catalog(handle.db);
+  catalog.trackArrivals = cfg.modelArrivalsEnabled; // C131
   await catalog.refresh();
   const health = new HealthTracker(cfg.routing.outageWindowMs);
   configureNetworkRouting(health, cfg.networkWeights);
@@ -211,6 +213,7 @@ export async function createApp(opts: AppOptions = {}) {
   batchesRoutes(app, ctx);
   rerankRoutes(app, ctx);
   modelsRoutes(app, ctx);
+  newModelsFeedRoutes(app, ctx); // C131
   generationRoutes(app, ctx);
   activityRoutes(app, ctx);
   statementRoutes(app, ctx); // V87

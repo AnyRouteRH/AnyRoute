@@ -1,3 +1,4 @@
+import { modelArrivalsEnv } from "./catalog/model-arrivals-config.ts"; // C131
 import { depositPingsEnv } from "./pay/deposit-pings-config.ts"; // B123
 import { hardeningEnv, hardeningSettings } from "./hardening/config.ts"; // HD1
 import { rpcEnv, rpcSettings } from "./chain/rpc-config.ts"; // RPC1: private transport settings.
@@ -73,6 +74,7 @@ const schema = z.object({
   ...hardeningEnv, // HD1
   ...fastCreditEnv, // V97
   ...depositPingsEnv, // B123
+  ...modelArrivalsEnv, // C131
   ...identityEnv, // v6 I
   ...zkapiPageEnv, // ZK10
   ...toolsEnv, // v6 T
@@ -647,6 +649,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   return {
     fastCredit: fastCreditSettings(e), // V97
     depositPingsEnabled: e.DEPOSIT_PINGS_ENABLED, // B123
+    modelArrivalsEnabled: e.MODEL_ARRIVALS_ENABLED, // C131
     env: e.ANYROUTE_ENV,
     production,
     developerFirstCallEnabled: e.DEVELOPER_FIRST_CALL_ENABLED, // ON2
