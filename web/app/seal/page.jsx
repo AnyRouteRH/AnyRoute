@@ -446,7 +446,7 @@ export default function SealPage() {
             <p>
               The table above is about the repository. This panel is about the router serving this page: what it reports about itself right now in its public status document. Anything it reports as off says so.
             </p>
-            <p>Encrypted chat and automatic host admission are switched on at anyroute.tech. Bonds are indexed from HostBond; payouts, fee buy-and-burn and slashing are not switched on yet. The live panel below reports the router’s current status.</p>
+            <p>Encrypted chat and automatic host admission are switched on at anyroute.tech. Bonds are indexed from HostBond; payouts and slashing are not switched on yet, and $ANYR burns are coming soon. The live panel below reports the router’s current status.</p>
             <SealLive />
 
             <h2 id="public-spec">Why a public specification changes the ecosystem.</h2>

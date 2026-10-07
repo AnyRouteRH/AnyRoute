@@ -6,7 +6,7 @@ Anyroute combines a shared inference API, USDG accounting, privacy lanes, signed
 
 The hosted service has SEAL attested serving, key transparency anchored in Sigstore Rekor, per-host receipt anchoring, Tor onion access with blind tokens, encrypted chat, private files and a data inventory. The network is open for approved Intel TDX hosts, with fresh evidence, signed policy and sanctions screening. Agent rulebooks, approvals on /agents and Telegram, ledgers, alerts, circuit breakers, progressive autonomy, certificates, public profiles and network statistics are switched on. Sealed hosting is available, but no sealed agent is registered at anyroute.tech yet.
 
-On ordinary paths the router reads request text in memory; correctly client-encrypted chat forwards ciphertext instead. Network host payouts, the planned 5% network-fee purchase and burn of $ANYR, and host-bond slashing are not switched on yet. Agreements between agents are live, with their escrow and dispute contracts deployed; automatic jury rulings are switched on. Next are agent wallets with on-chain rules, GPU hosts on the network and network payouts. This paper separates those states from existing behavior, explains the trust required by each path and gives references for independent inspection. It describes software and protocol mechanics, not an offer or investment advice.
+On ordinary paths the router reads request text in memory; correctly client-encrypted chat forwards ciphertext instead. Network host payouts and host-bond slashing are not switched on yet, and $ANYR burns are coming soon. Agreements between agents are live, with their escrow and dispute contracts deployed; automatic jury rulings are switched on. Next are agent wallets with on-chain rules, GPU hosts on the network and network payouts. This paper separates those states from existing behavior, explains the trust required by each path and gives references for independent inspection. It describes software and protocol mechanics, not an offer or investment advice.
 
 ## 2. The problem
 
@@ -233,9 +233,9 @@ The contract has an unbonding cooldown, slash proposal and dispute process; exec
 
 ### 6.5 Payouts and the network fee
 
-Payouts are not switched on yet; no network host payouts are being made. The planned 5% network fee to purchase and burn $ANYR is also not switched on yet. Code availability does not establish current payments.
+Payouts are not switched on yet; no network host payouts are being made. $ANYR burns are coming soon. Code availability does not establish current payments.
 
-Activation requires additional configuration, sanctions checks, anchoring, contract-payment setup and appropriate signers. Fee-burn execution needs its own contracts and signer. Passing safeguards does not itself switch a feature on.
+Activation requires additional configuration, sanctions checks, anchoring, contract-payment setup and appropriate signers. Passing safeguards does not itself switch a feature on.
 
 ### 6.6 Joining
 
@@ -319,9 +319,9 @@ If the pool history, liquidity, deviation or source checks do not provide a usab
 
 Deposited tokens remain in escrow and the resulting credit is for inference. The flow creates an operational relationship with the escrow operator. It is separate from x402 USDG authorization and from blind-token redemption. A wallet-linked escrow deposit does not itself hide who funded an account.
 
-### 8.2 The planned network-fee burn
+### 8.2 $ANYR burns
 
-The network payout design includes a 5% fee intended to purchase and burn $ANYR. Network payouts and this burn path are not switched on yet. The executor has its own adapter, minimum-output oracle, keeper and daily USDG cap, with owner-only changes recorded by events. It checks fresh nonzero oracle floors, actual received tokens and unique operation IDs, then transfers acquired tokens to the dead address; total supply stays unchanged. The design has separate accrual, payout, fee-burn configuration and execution code; the presence of those components does not establish current token purchases, burns or transfers to hosts.
+$ANYR burns are coming soon. Network payouts are not switched on yet. The repository includes burn-related contract and keeper code; its presence does not establish current token purchases, burns or transfers to hosts.
 
 HostBond uses USDG collateral, and the router's inference settlement unit is USDG. Those distinctions matter when inspecting the system: a host bond is USDG collateral and a prepaid inference credit is not an ownership claim. This discussion is limited to mechanics. It is not an offer or investment advice.
 
@@ -411,7 +411,7 @@ Next are switching on x402 per-call payments; agent wallets with on-chain rules;
 
 Current network admission covers the approved Intel TDX build; existing attested inference providers do not establish GPU-host network admission.
 
-Several repository paths await activation rather than a new concept: network host payouts, the planned 5% network-fee purchase and burn of $ANYR, host-bond slashing, email alerts and SDK releases on npm and PyPI are not switched on yet. Their presence in code does not change their status. Activation must satisfy the relevant configuration, role and evidence requirements before public claims change.
+Several repository paths await activation rather than a new concept: network host payouts, host-bond slashing, email alerts and SDK releases on npm and PyPI are not switched on yet, and $ANYR burns are coming soon. Their presence in code does not change their status. Activation must satisfy the relevant configuration, role and evidence requirements before public claims change.
 
 ## 12. References
 

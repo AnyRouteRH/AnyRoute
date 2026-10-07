@@ -10,6 +10,6 @@ test('payout copy opens only on a strict flag; missing or unreachable status sta
 });
 test('fee wording and exact operator field use the runtime payout response', () => {
   const copy = readFileSync(new URL('../components/NetworkPayoutCopy.jsx', import.meta.url), 'utf8');
-  assert.match(copy, /payoutStatus/); assert.match(copy, /Payouts to network hosts aren’t switched on yet/); assert.match(copy, /network fee buys and burns \$ANYR/);
+  assert.match(copy, /payoutStatus/); assert.match(copy, /Payouts to network hosts aren’t switched on yet/); assert.match(copy, /\$ANYR burns are coming soon/); assert.doesNotMatch(copy, /\d+% network fee|Weekly/); // burns stay undefined until they are live
   const dashboard = readFileSync(new URL('../components/NetworkHostPayout.jsx', import.meta.url), 'utf8'); assert.match(dashboard, /accrued_net_usdg_units !== undefined/);
 });

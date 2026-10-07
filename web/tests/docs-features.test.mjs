@@ -57,7 +57,7 @@ test('hosted enablement keeps self-host defaults and accurately separates unavai
   const bonds = read('components/NetworkBondsNote.jsx');
   assert.match(bonds, /https:\/\/robinhoodchain.blockscout.com\/address\/0x2921d34fd86d3323a5369a270a82814a74250518/);
   assert.match(bonds, /no bond or deposit at anyroute.tech/);
-  assert.match(bonds, /Payouts, fee buy-and-burn and slashing are not switched on at anyroute.tech yet/);
+  assert.match(bonds, /Payouts and slashing are not switched on at anyroute.tech yet, and \$ANYR burns are coming soon/);
   assert.match(read('app/network/NetworkContent.jsx'), /<NetworkBondsNote \/>/);
   assert.match(read('components/NetworkPayoutDocs.jsx'), /No payouts are being made/);
   assert.match(read('components/AgentApprovalDocs.jsx'), /Telegram linking and approvals are switched on at anyroute\.tech/);
