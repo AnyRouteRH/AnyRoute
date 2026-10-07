@@ -1,0 +1,14 @@
+.menu { position: relative; font-size: 13px; }
+.menu summary { cursor: pointer; padding: 8px; min-height: 36px; }
+.actions { position: absolute; right: 0; top: 100%; z-index: 40; width: 170px; background: var(--paper-2); border: 1px solid var(--line); padding: 4px; box-shadow: 0 12px 24px #0002; }
+.actions button { width: 100%; border: 0; padding: 12px; background: none; color: var(--ink); text-align: left; font: 500 13px var(--sans); }
+.actions button:hover:not(:disabled) { background: var(--paper-3); }
+.actions button:disabled { opacity: .5; }
+.body { display: grid; gap: 14px; min-width: 0; }
+.body p { color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tabs button { border: 0; padding: 10px 12px; min-height: 40px; background: var(--paper-2); color: var(--ink); font: 500 13px var(--sans); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.panel { min-width: 0; }
+.panel pre { padding: 14px; margin: 10px 0 0; max-height: 40vh; overflow: auto; background: var(--ink); color: var(--paper); font: 400 11px/1.6 var(--mono); }
+.menu summary:focus-visible, .actions button:focus-visible, .tabs button:focus-visible, .panel:focus-visible, .panel pre:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 2px; }

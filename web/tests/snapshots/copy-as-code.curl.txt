@@ -1,0 +1,54 @@
+# 2 images omitted. Add image links before sending to include them.
+# 1 file omitted. Add file contents before sending to include them.
+curl --fail-with-body --no-buffer 'https://anyroute.tech/api/v1/chat/completions' \
+  -H "Authorization: Bearer $ANYROUTE_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -H 'x-anyroute-lane: attested' \
+  -H 'X-Anyroute-Decision-Tag: sha256:decision-hash' \
+  --data-raw '{
+  "model": "sample/text-vision",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Be brief."
+    },
+    {
+      "role": "user",
+      "content": "Explain \"it’s fine\".\nThen say hello."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call-1",
+          "type": "function",
+          "function": {
+            "name": "lookup",
+            "arguments": "{\"topic\":\"hello\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call-1",
+      "content": "Hello 🌍"
+    },
+    {
+      "role": "assistant",
+      "content": "It means everything is okay."
+    },
+    {
+      "role": "user",
+      "content": "What about these?"
+    }
+  ],
+  "response_format": {
+    "type": "json_object"
+  },
+  "temperature": 0,
+  "max_tokens": 64,
+  "seed": 7,
+  "stream": true
+}'

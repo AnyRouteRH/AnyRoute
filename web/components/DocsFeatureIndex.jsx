@@ -1,5 +1,6 @@
 const sections = [
   ["chat-cost", "This chat’s cost"], // C128
+  ["copy-as-code", "Copy a Chat conversation as code"], // C130
   ["unused-keys", "Review unused keys"], // B125
   ["proof-pack", "Proof pack"], // B122
   ["deposit-countdown", "Deposit countdown and credit notices"], // B123

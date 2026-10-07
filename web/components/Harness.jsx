@@ -32,6 +32,7 @@ import AppShell from "./harness/AppShell";
 import Limits, { ReplyApproval, useHarnessLimits } from "./harness/Limits"; // U77: router-enforced chat controls.
 import { Button, CopyButton, Modal } from "./UI";
 import s from "./Harness.module.css";
+import CopyAsCode from "./harness/CopyAsCode"; // C130
 import { modelUnavailable, selectableModels } from "../lib/model-availability.js"; // ON5
 import { useCatalogRefresh } from "./harness/useCatalogRefresh"; // ON5
 import catalogStyles from "./ModelPickerCapabilities.module.css";
@@ -1159,6 +1160,7 @@ export default function Harness() {
             </button>
           )}
           <div className={s.barRight}>
+            <CopyAsCode model={focusModel} settings={settings} system={system} messages={focusLane?.messages} headers={{ "x-title": "Anyroute Harness", ...priv.headers() }} apiKey={auth.key} busy={busy} /> {/* C130 */}
             <button id="prompt-library" type="button" className={s.barLink} aria-keyshortcuts="Meta+Shift+P Control+Shift+P" onClick={prompts.open}>Prompts</button> {/* V81 */}
             <button type="button" className={s.barToggle} aria-pressed={compare} onClick={toggleCompare} disabled={!models.length}>
               <i className={s.switch} aria-hidden="true" />
