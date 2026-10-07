@@ -9,6 +9,7 @@ import AgentPayDocs from "../../components/AgentPayDocs"; // Pay another agent
 import FastCreditDocs from '../../components/FastCreditDocs'; // V97
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
 import UnusedKeysDocs from "../../components/UnusedKeysDocs"; // B125
+import KeyExpiryDocs from "../../components/KeyExpiryDocs"; // C127
 import FacilitatorDocs from "../../components/FacilitatorDocs"; // v6 F: hosted x402 facilitator.
 import ToolsMarketDocs from "../../components/ToolsMarketDocs"; // v6 T: paid x402 tools.
 import ZkapiDocs from "../../components/ZkapiDocs"; // ZK9: Sepolia browser payment.
@@ -874,6 +875,7 @@ export default function Docs() {
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
           <KeyProvisioningDocs /> {/* ZK6 */}
           <UnusedKeysDocs /> {/* B125 */}
+          <KeyExpiryDocs /> {/* C127 */}
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
           <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs /><ReplayRulesDocs /><PlaybooksDocs /><StopUntilDocs /><RulebookWordsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs /> {/* B117 B124 */}

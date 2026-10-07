@@ -1,4 +1,9 @@
 "use client";
+import { KeyExpiryContext, useKeyExpiry, useExpiryClock } from "./account/useKeyExpiry"; // C127
+import { KeyExpiryStatus, KeyExpiryRestore } from "./account/KeyExpiry.js"; // C127
+import { expiryKeyFields, withKeyExpiry } from "../lib/key-expiry.js"; // C127
+import { api as accountKeyRequest } from "../lib/api"; // C127
+import "./account/key-expiry.css"; // C127
 import LowBalanceSetting from "./runway/LowBalanceSetting"; // B119
 import DepositCreditStatus from './account/DepositCreditStatus'; // V97
 import DepositProgress from './account/DepositProgress'; // V97B
@@ -216,6 +221,7 @@ function ReceiptTable({ receipts, onInspect, emptyAction, live, emptyTitle, empt
 // U104: creates a key (with an optional starting total budget) or renames one. A live key's total budget is changed
 // afterwards in its Spending limits, beside the caps.
 function KeyDialog({ existing, onSave, onClose, live }) {
+  const expiry = useKeyExpiry(existing, live); onSave = expiry.wrapSave(onSave); // C127
   const [name, setName] = useState(existing?.name || "");
   const [budget, setBudget] = useState(existing?.budget == null ? (existing ? "" : "10") : String(existing.budget));
   const [error, setError] = useState("");
@@ -249,6 +255,7 @@ function KeyDialog({ existing, onSave, onClose, live }) {
         <Field label="Key name" id="key-name">
           <input id="key-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required placeholder="e.g. Research agent" autoFocus />
         </Field>
+        {expiry.fields} {/* C127 */}
         {withBudget && (
           <Field label={live ? KEY_BUDGET_WORDS.label : "Total sample budget / USDG"} id="key-budget">
             <input id="key-budget" type="number" min="0.000001" max="100000" step="any" value={budget} onChange={(e) => setBudget(e.target.value)} required={!live} placeholder={live ? "No total budget" : undefined} />
@@ -776,6 +783,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState(null);
   const [apiKey, setApiKey] = useAccountKey();
   const [ws, setWs] = useState(null); // live workspace
+  const expiryNow = useExpiryClock(ws?.keys); // C127
   const [secrets, setSecrets] = useState({}); // key hash -> secret, for keys created in this session
   const [catalog, setCatalog] = useState([]);
   const [liveProviders, setLiveProviders] = useState(null);
@@ -961,6 +969,7 @@ export default function Dashboard() {
     chainKeyHash: k.chain_key_hash,
     current: k.hash === ws?.me?.hash,
     secret: secrets[k.hash],
+    ...expiryKeyFields(k, expiryNow), // C127
   }));
   const liveSession = ws?.session
     ? {
@@ -1053,6 +1062,7 @@ export default function Dashboard() {
     setTimeout(() => refresh().catch(() => {}), 1500);
   }
   async function saveKeyValues(values) {
+    const api = withKeyExpiry(accountKeyRequest, values); // C127: attach expiry to the existing create/update request.
     if (!live) {
       if (modal.data) update((s) => ({ ...s, keys: s.keys.map((k) => (k.id === modal.data.id ? { ...k, ...values } : k)) }));
       else {
@@ -1428,7 +1438,9 @@ export default function Dashboard() {
                     <article className={"key-card" + (k.active ? "" : " is-revoked")} key={k.id} style={{ "--i": i }}>
                       <div>
                         <h3>{k.name}</h3>
+                        <KeyExpiryStatus value={k.expiresAt} now={expiryNow}> {/* C127 */}
                         <span className={"badge " + (k.active ? "green" : "")}>{k.active ? (k.current ? "Active · this browser" : "Active") : "Revoked"}</span>
+                        </KeyExpiryStatus> {/* C127 */}
                       </div>
                       <code className="key-token">{k.token}</code>
                       {live && <KeyLastUsed value={ws?.keys?.find(key => key.hash === k.id)?.last_used} current={k.current}/>} {/* B125 */}
@@ -1455,6 +1467,7 @@ export default function Dashboard() {
                             Revoke
                           </button>
                         ) : (
+                          <KeyExpiryRestore value={k.expiresAt} team={k.team} now={expiryNow} onEdit={() => setModal({ type: "key", data: k })}> {/* C127 */}
                           <button
                             className="text-button"
                             onClick={async () => {
@@ -1474,6 +1487,7 @@ export default function Dashboard() {
                           >
                             {live ? "Restore key" : "Restore sample key"}
                           </button>
+                          </KeyExpiryRestore>
                         )}
                       </div>
                       <div className="card-ramp" />
@@ -1847,7 +1861,9 @@ export default function Dashboard() {
       </section>
       </AccountShell>
       {modal?.type === "receipt" && <ReceiptDetails receipt={modal.data} apiKey={apiKey} status={status} onClose={() => setModal(null)} />}
+      <KeyExpiryContext.Provider value={ws?.me}> {/* C127 */}
       {modal?.type === "key" && <KeyDialog live={live} existing={modal.data} onClose={() => setModal(null)} onSave={saveKeyValues} />}
+      </KeyExpiryContext.Provider> {/* C127 */}
       {modal?.type === "limits" && <KeyLimits apiKey={apiKey} keyHash={modal.data.id} name={modal.data.name} current={modal.data.current} topup={modal.data.topup} budget={modal.data.budget} reset={modal.data.reset} spent={modal.data.spent} onSaved={() => refresh().catch(() => {})} onClose={() => setModal(null)} />}
       {modal?.type === "session" && <SessionDialog live={live} tokens={ws?.tokens || []} paywith={ws?.paywith || {}} existing={modal.data} onClose={() => setModal(null)} onSave={saveSession} />}
       {modal?.type === "provider" && (

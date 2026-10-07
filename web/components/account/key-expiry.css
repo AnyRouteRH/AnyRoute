@@ -1,0 +1,5 @@
+/* C127: keep expiry text beside the status, and let long key names wrap on phones. */
+.key-expiry-status{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;max-width:100%}
+.key-expiry-status .help-text{margin:0}
+.key-card:has(.key-expiry-status)>div:first-child{flex-wrap:wrap}
+@media(max-width:600px){.key-expiry-status{align-items:flex-start}}

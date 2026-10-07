@@ -21975,6 +21975,7 @@
           "created_at"
         ],
         "properties": {
+          "expires_at": { "type": ["string", "null"], "format": "date-time", "description": "C127: The key’s expiry, or null for no expiry. Expired credentials are refused with HTTP 401 key_expired; stored disabled is independent." },
           "hash": {
             "type": "string"
           },
