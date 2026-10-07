@@ -1,5 +1,6 @@
 import { depositPingItems } from "./deposit-pings.ts"; // B123
 import { lowBalanceInbox } from "../account/low-balance.ts"; // B119
+import { priceNoticeItems } from "../catalog/price-notices.ts"; // C133
 import { createHmac } from "node:crypto";
 import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -38,6 +39,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
   type Item = { id: string; at: string; kind: string; title: string; status: string | null; href: string; amount?: string; key_label?: string | null; model?: string | null; approval_id?: string; approval_limit?: string; expires_at?: string; can_decide?: boolean; intent?: ReturnType<typeof inboxIntent>; unread: boolean };
   const items: Item[] = [];
   let capped = false;
+  if (scope.whole && key.management) { const notices = await priceNoticeItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // C133
   if (scope.whole) { const notices = await depositPingItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // B123
   const unread = (at: string) => !since || micros(at) > micros(since);
   if (ctx.cfg.agentPolicyEnabled) {

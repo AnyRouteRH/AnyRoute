@@ -376,6 +376,7 @@ const schema = z.object({
   // Optional Telegram bot (BotFather token, a secret). Without it the bot never starts.
   TELEGRAM_BOT_TOKEN: opt,
   LOW_BALANCE_ALERTS_ENABLED: bool.default(false), // B119
+  PRICE_NOTICES_ENABLED: bool.default(false), // C133
   TELEGRAM_LINKING_ENABLED: bool.default(false),
   WEEKLY_SUMMARY_ENABLED: bool.default(false), // B120
 
@@ -545,6 +546,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("weekly-summary"); // B120
       allowed.push("deposit-pings"); // B123
       allowed.push("low-balance-alerts"); // B119
+      allowed.push("price-notices"); // C133
       allowed.push("webhooks"); // V86: bounded event delivery.
       allowed.push("makegood-payouts"); // V6 R: on-chain make-good refunds.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
@@ -683,6 +685,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     port: e.PORT,
     publicUrl: e.PUBLIC_BASE_URL.replace(/\/$/, ""),
     lowBalanceAlertsEnabled: e.LOW_BALANCE_ALERTS_ENABLED, // B119
+    priceNoticesEnabled: e.PRICE_NOTICES_ENABLED, // C133
     siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),
     webauthn: {
       rpId: e.WEBAUTHN_RP_ID ?? new URL(e.PUBLIC_BASE_URL).hostname,

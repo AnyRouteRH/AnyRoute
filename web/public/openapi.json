@@ -1777,6 +1777,7 @@
     "/api/v1/inbox": {
       "get": {
         "operationId": "listInbox",
+        "x-c133-price-notices": "With PRICE_NOTICES_ENABLED (default false), active account management keys excluding sessions receive price_notice items for catalogue changes of at least 1% to models used by the account in the last 30 days. Fields: id, at, kind, title, model (null for grouped changes), status (null), href (/models/), unread. Existing since filtering applies. First snapshot is silent. At most five items per account per UTC day: four individual and one grouped item whose count can update. Ordinary keys, sessions and team-only administrators do not see account-wide price notices. Rows are retained for 30 UTC days while enabled. No new endpoint or authentication change.",
         "summary": "List items that need attention",
         "description": "Pending approvals with their expiry, alerts, deposits, key auto top-ups, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items. B119: when LOW_BALANCE_ALERTS_ENABLED is true, account-scope inboxes also include low-balance crossings with kind low_balance, id, at, title, amount (decimal USD balance), status null, href /dashboard/#money, and unread. Session and ordinary key-scope inboxes cannot see these account alerts.",
         "security": [

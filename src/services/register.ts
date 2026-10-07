@@ -1,5 +1,6 @@
 import { runDepositPings } from "../pay/deposit-pings.ts"; // B123
 import { registerLowBalanceJob } from "../account/low-balance.ts"; // B119
+import { registerPriceNoticesJob } from "../catalog/price-notices.ts"; // C133
 import { registerRushJobs } from "../rush/monitor.ts"; // ON3
 import { registerWeeklySummaryJob } from "../telegram/weekly-summary.ts"; // B120
 import { reconcileToolCalls } from "../tools/call.ts"; // v6 T
@@ -45,6 +46,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   const { cfg, jobs } = ctx;
   if (cfg.depositPingsEnabled && cfg.runtimeRole !== "api") jobs.register("deposit-pings", 5_000, () => runDepositPings(ctx)); // B123
   registerLowBalanceJob(ctx); // B119
+  registerPriceNoticesJob(ctx); // C133
   registerAgreementJobs(ctx, router);
   registerRushJobs(ctx); // ON3
   registerWeeklySummaryJob(ctx); // B120

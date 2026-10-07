@@ -20,6 +20,7 @@ import { dataToolStores } from "./data-tools.ts"; // B: market-data tools and de
 import { webhookBodyReader, webhookStores } from "./webhooks.ts"; // V86: event delivery.
 import { makegoodStores } from "./makegood.ts"; // V6 R: make-good refunds.
 import { inboxStores } from "./inbox.ts"; // U78: account inbox inventory.
+import { priceNoticeStores } from "./price-notices.ts"; // C133
 import { activityStores } from "./activity.ts";
 import { profileBodyReader } from "./profiles.ts";
 import { sealedBodyReaders, sealedOtherStores } from "./sealed.ts";
@@ -762,6 +763,7 @@ export const EXTERNAL: ExternalDoc = {
     evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify(redactRpcFields({ t: new Date().toISOString(), level, msg, ...fields })")],
   },
   otherStores: [
+    ...priceNoticeStores, // C133
     ...rushStores, // ON3
     ...toolsStores, // v6 T
     ...webhookStores, // V86.
