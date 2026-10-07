@@ -41,7 +41,7 @@ Known trust boundaries remain: hardware/vendor attestation, issuer/keeper report
 | CreditMintEvents: recordPurchase/publishKeyset/setMintSigner | MINT_SIGNER; owner | Planned lock | Nonzero IDs/address, duplicates forbidden; events |
 | KmsGovernance: image/compose/KMS allow-list add/remove, setKmsRoot/bumpEpoch | owner | Planned lock | Set uniqueness, root/transcript checks; events |
 
-AgreementEscrow is ownerless: its payer, payee and selected dispute oracle are per-agreement capabilities; these are not administrative ownership roles. AnyrToken is fixed supply and ownerless. NetworkFeeBurn has owner-controlled adapter, minimum-output oracle, keeper and daily cap settings; each setter emits an event. Its daily cap is in USDG base units; zero disables swaps and lowering it does not reset usage. This executor is not deployed or switched on yet.
+AgreementEscrow is ownerless: its payer, payee and selected dispute oracle are per-agreement capabilities; these are not administrative ownership roles. $ANYR is the token at 0xa4dDF89A40A35264E9D7F896a1ef01C59b1e977a on Robinhood Chain; this repository does not deploy or control it. NetworkFeeBurn has owner-controlled adapter, minimum-output oracle, keeper and daily cap settings; each setter emits an event. Its daily cap is in USDG base units; zero disables swaps and lowering it does not reset usage. This executor is not deployed or switched on yet.
 
 ## Governance completion plan
 

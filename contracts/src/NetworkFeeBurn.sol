@@ -10,7 +10,7 @@ import {IBuybackPriceOracle} from "./interfaces/IBuybackPriceOracle.sol";
 
 /// @notice Dedicated network-fee swaps with their own adapter, oracle and daily limit.
 /// Fund this contract with fee USDG. Its adapter must authorize this contract as a caller.
-/// AnyrToken has no holder burn function: the output is transferred to the dead address.
+/// The output is transferred to the dead address.
 contract NetworkFeeBurn is Ownable2Step, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
     IERC20 public immutable usdg;

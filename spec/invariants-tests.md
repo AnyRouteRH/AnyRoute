@@ -68,7 +68,7 @@ FOUNDRY_PROFILE=audit forge test --root contracts --match-test invariant_
 
 The audit profile uses 1,024 runs × 128 depth. Count **actual** calls from successful logs; a configured depth, discarded/reverted call or failed suite is not qualifying evidence. Source-level run/depth overrides were removed. Handler edge arithmetic is bounded before addition; invalid business operations are preconditioned/no-ops or expected rejections without weakening the conservation assertions. Lifecycle regressions ensure new handlers exercise real deposits, exits, claims and gas charges.
 
-CallPay and swap adapters are transient forwarding paths rather than persistent user-liability ledgers; their transfer/refund/reentrancy/fuzz tests remain in their unit suites. AnyrToken is fixed supply, APIU is included through capacity accounting, and oracle/registry modules do not hold user funds. This classification does not exclude rescue and external-token behavior from security review.
+CallPay and swap adapters are transient forwarding paths rather than persistent user-liability ledgers; their transfer/refund/reentrancy/fuzz tests remain in their unit suites. APIU is included through capacity accounting, and oracle/registry modules do not hold user funds. This classification does not exclude rescue and external-token behavior from security review.
 
 [Chain incident drill](../test/chain-monitor.test.ts), [compiled runtime proof](../test/runtime-proof.test.ts), [build input binding](../test/deployment-build.test.ts), [sponsorship account identity](../test/paymaster-account-policy.test.ts), and [PGlite/PostgreSQL jury retry](../test/agreements.test.ts) cover the additional remediation boundaries.
 

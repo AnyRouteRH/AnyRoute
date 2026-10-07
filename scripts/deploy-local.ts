@@ -30,7 +30,7 @@ const keep = process.argv.includes("--keep");
 // because the keys written to .env.local are derived from anvil's mnemonic).
 const ROLE_VARS = [
   "ROUTER", "SETTLEMENT", "ANCHORER", "KEEPER", "OPS_WALLET", "PAYMASTER_SIGNER", "REFUND_POOL", "CALLPAY_TREASURY",
-  "REGISTRAR", "GUARDIAN", "SLASHER", "SLASHER_SAFE", "OWNER_SAFE", "ANYR_RECIPIENTS", "USDG", "DEPLOYMENTS_PATH",
+  "REGISTRAR", "GUARDIAN", "SLASHER", "SLASHER_SAFE", "OWNER_SAFE", "USDG", "DEPLOYMENTS_PATH",
   "CONFIG_PATH", "PAYMASTER_DAILY_CAP", "PAYMASTER_DEPOSIT", "PAYMASTER_STAKE",
 ];
 

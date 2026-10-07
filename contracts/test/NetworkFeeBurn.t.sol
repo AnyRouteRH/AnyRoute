@@ -3,7 +3,7 @@ pragma solidity 0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {NetworkFeeBurn} from "../src/NetworkFeeBurn.sol";
-import {AnyrToken} from "../src/AnyrToken.sol";
+import {MockStockToken} from "../src/mocks/MockStockToken.sol";
 import {IBuybackPriceOracle} from "../src/interfaces/IBuybackPriceOracle.sol";
 import {IBuybackAdapter} from "../src/interfaces/IBuybackAdapter.sol";
 import {MockUSDG} from "../src/mocks/MockUSDG.sol";
@@ -39,11 +39,11 @@ contract ReentrantNetworkAdapter is IBuybackAdapter {
     }
 }
 contract NetworkFeeBurnTest is Test {
-    NetworkFeeBurn burn; AnyrToken anyr; MockUSDG usdg; MockBuybackAdapter adapter; NetworkFloor oracle;
+    NetworkFeeBurn burn; MockStockToken anyr; MockUSDG usdg; MockBuybackAdapter adapter; NetworkFloor oracle;
     address keeper = makeAddr("keeper"); bytes32 id = keccak256("fee-period");
     function setUp() public {
         vm.warp(1800000000);
-        anyr = new AnyrToken([address(this), makeAddr("team"), makeAddr("liquidity"), makeAddr("community")]);
+        anyr = new MockStockToken("Anyroute (mock)", "ANYR", 18); anyr.mint(address(this), 1_000_000_000e18);
         usdg = new MockUSDG(); adapter = new MockBuybackAdapter(10e18, 1e6);
         oracle = new NetworkFloor(); oracle.configure(1, block.timestamp, false);
         burn = new NetworkFeeBurn(anyr, usdg, address(this), keeper, adapter, 10_000e6); burn.setBuybackPriceOracle(oracle);

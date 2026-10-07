@@ -346,7 +346,6 @@ contract DeployProductionForkTest is Test {
         roles.refundPool = makeAddr("refundPool");
         roles.callPayTreasury = makeAddr("treasury");
         roles.guardian = roles.ownerSafe;
-        roles.anyrRecipients = [makeAddr("a0"), makeAddr("a1"), makeAddr("a2"), makeAddr("a3")];
         roles.sealPublisher = makeAddr("sealPublisher");
         roles.mintSigner = makeAddr("mintSigner");
 
@@ -367,7 +366,7 @@ contract DeployProductionForkTest is Test {
         assertTrue(UniswapV3Adapter(d.uniswapV3Adapter).isCaller(d.payWithStock));
         assertEq(AnyrPaymaster(payable(d.paymaster)).verifyingSigner(), r.paymasterSigner);
         assertEq(AnyrPaymaster(payable(d.paymaster)).getDeposit(), 0.05 ether);
-        assertEq(IERC20(d.anyrToken).balanceOf(r.anyrRecipients[0]), 800_000_000e18);
+        assertEq(d.anyrToken, 0xa4dDF89A40A35264E9D7F896a1ef01C59b1e977a); // the live $ANYR, not a new token
 
         uint256 n = script.stockCount();
         assertEq(n, 13);

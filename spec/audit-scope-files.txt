@@ -3,7 +3,6 @@ contracts/script/DeployAgreements.s.sol
 contracts/script/DeployIdentity.s.sol
 contracts/src/APIU.sol
 contracts/src/AnyrPaymaster.sol
-contracts/src/AnyrToken.sol
 contracts/src/BlindIssuer.sol
 contracts/src/CallPay.sol
 contracts/src/CapacityCommit.sol

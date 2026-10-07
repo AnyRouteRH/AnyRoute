@@ -12,7 +12,6 @@ import {IStakeManager} from "account-abstraction/interfaces/IStakeManager.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 
-import {AnyrToken} from "../src/AnyrToken.sol";
 import {Credits} from "../src/Credits.sol";
 import {CallPay} from "../src/CallPay.sol";
 import {ReceiptAnchor} from "../src/ReceiptAnchor.sol";
@@ -55,20 +54,21 @@ interface IDeploymentSafeLike {
 ///
 /// Production (MOCK unset):
 ///   DEPLOYER_PRIVATE_KEY=... OWNER_SAFE=... SLASHER_SAFE=... ROUTER=... SETTLEMENT=... ANCHORER=... KEEPER=...
-///   OPS_WALLET=... PAYMASTER_SIGNER=... REFUND_POOL=... CALLPAY_TREASURY=... ANYR_RECIPIENTS=a,b,c,d \
+///   OPS_WALLET=... PAYMASTER_SIGNER=... REFUND_POOL=... CALLPAY_TREASURY=... \
 ///   forge script script/Deploy.s.sol --rpc-url rhc --broadcast
 ///   Optional: USDG (default config), REGISTRAR (default ROUTER), GUARDIAN (default OWNER_SAFE), CONFIG_PATH,
 ///   SEAL_PUBLISHER (manifest/policy publisher, default ANCHORER), MINT_SIGNER (credit mint, default ANCHORER),
 ///   PAYMASTER_DAILY_CAP (wei, default 0.01 ether), PAYMASTER_DEPOSIT / PAYMASTER_STAKE (wei, default 0),
 ///   PAYMASTER_UNSTAKE_DELAY (s, default 86400), WETH_USDG_V3_FEE (default 100), DEPLOYMENTS_PATH,
 ///   SAFE_BATCH_PATH (must stay under ./deployments, see fs_permissions).
+///   $ANYR is not deployed here: the live token is read from the config (`.anyr.address`).
 ///   Every contract is deployed with the deployer as owner, configured, then `transferOwnership(timelock)`.
 ///   This includes the SEAL contracts (SealMeasurementRegistry, PolicyRegistry, KmsGovernance, HostBond,
 ///   CreditMintEvents); their guardian is GUARDIAN and HostBond's slasher/refund pool are SLASHER_SAFE/REFUND_POOL.
 ///   The deployer stays owner until the timelock (24h, proposer/executor = OWNER_SAFE) executes the
 ///   acceptOwnership batch written to deployments/<chainid>-accept-ownership.json (Safe Transaction Builder).
 ///
-/// Local (MOCK=1): mocks for USDG (EIP-3009), NVDA, its feed, the swap venue and the buyback venue; a local
+/// Local (MOCK=1): mocks for USDG (EIP-3009), ANYR, NVDA, its feed, the swap venue and the buyback venue; a local
 /// EntryPoint v0.7 and PoolManager; owner = deployer (no timelock). Role addresses default to anvil accounts
 /// #1..#6 (mnemonic "test test ... junk"), accounts #7..#9 are funded with mock USDG and NVDA.
 ///   MOCK=1 forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8546 --broadcast
@@ -108,7 +108,6 @@ contract Deploy is Script {
         address refundPool;
         address callPayTreasury;
         address guardian;
-        address[4] anyrRecipients;
         address sealPublisher; // SEAL manifest + attestation policy publisher (measurement service)
         address mintSigner; // anonymous-credit mint signer (CreditMintEvents)
     }
@@ -200,7 +199,6 @@ contract Deploy is Script {
         r.paymasterSigner = _anvil(5);
         r.keeper = _anvil(6);
         r.guardian = deployer;
-        r.anyrRecipients = [deployer, deployer, deployer, deployer];
         r.sealPublisher = r.anchorer;
         r.mintSigner = r.anchorer;
     }
@@ -245,7 +243,9 @@ contract Deploy is Script {
         _d.entryPoint = vm.parseJsonAddress(cfg, ".entryPointV07");
         _d.poolManager = vm.parseJsonAddress(cfg, ".uniswap.v4PoolManager");
         _d.swapRouter02 = vm.parseJsonAddress(cfg, ".uniswap.v3SwapRouter02");
+        _d.anyrToken = vm.parseJsonAddress(cfg, ".anyr.address");
         require(_d.usdg.code.length != 0 && _d.entryPoint.code.length != 0, "Deploy: USDG/EntryPoint missing");
+        require(_d.anyrToken.code.length != 0, "Deploy: ANYR missing");
         require(
             _d.poolManager.code.length != 0 && _d.swapRouter02.code.length != 0, "Deploy: Uniswap missing"
         );
@@ -258,7 +258,6 @@ contract Deploy is Script {
 
         _d.uniswapV4Adapter = address(new UniswapV4Adapter(IPoolManager(_d.poolManager), deployer));
         _d.uniswapV3Adapter = address(new UniswapV3Adapter(ISwapRouter02(_d.swapRouter02), deployer));
-        _d.anyrToken = address(new AnyrToken(r.anyrRecipients));
         // Buybacks go through the V3 adapter, in the Uniswap V3 ANYR/USDG pool whose TWAP sets the buyback floor
         // (TwapBuybackPriceOracle); the route and the oracle are enabled together once that pool exists, see
         // `deployBuybackOracle`. The network executor is deployed separately before that step.
@@ -372,12 +371,10 @@ contract Deploy is Script {
         _d.poolManager = address(new PoolManager(deployer));
         _d.uniswapV4Adapter = address(new UniswapV4Adapter(IPoolManager(_d.poolManager), deployer));
 
-        AnyrToken anyr = new AnyrToken(r.anyrRecipients);
+        MockStockToken anyr = new MockStockToken("Anyroute (mock)", "ANYR", 18);
         _d.anyrToken = address(anyr);
         _d.buybackAdapter = address(new MockBuybackAdapter(100e18, 1e6)); // 1 USDG = 100 ANYR
-        if (anyr.balanceOf(deployer) >= 10_000_000e18) {
-            require(anyr.transfer(_d.buybackAdapter, 10_000_000e18));
-        }
+        anyr.mint(_d.buybackAdapter, 10_000_000e18);
 
         _deployCore(deployer);
 
@@ -536,9 +533,6 @@ contract Deploy is Script {
         r.guardian = vm.envOr("GUARDIAN", r.ownerSafe);
         r.sealPublisher = vm.envOr("SEAL_PUBLISHER", r.anchorer);
         r.mintSigner = vm.envOr("MINT_SIGNER", r.anchorer);
-        address[] memory rec = vm.envAddress("ANYR_RECIPIENTS", ",");
-        require(rec.length == 4, "Deploy: ANYR_RECIPIENTS needs 4 addresses (80/10/5/5)");
-        r.anyrRecipients = [rec[0], rec[1], rec[2], rec[3]];
     }
 
     function _localRolesFromEnv() internal view returns (Roles memory r) {
@@ -555,9 +549,6 @@ contract Deploy is Script {
         r.guardian = vm.envOr("GUARDIAN", r.guardian);
         r.sealPublisher = vm.envOr("SEAL_PUBLISHER", r.anchorer);
         r.mintSigner = vm.envOr("MINT_SIGNER", r.anchorer);
-        address[] memory none = new address[](0);
-        address[] memory rec = vm.envOr("ANYR_RECIPIENTS", ",", none);
-        if (rec.length == 4) r.anyrRecipients = [rec[0], rec[1], rec[2], rec[3]];
     }
 
     function _requireRoles(Roles memory r, bool prod) internal pure {
@@ -604,7 +595,7 @@ contract Deploy is Script {
     ///                poolManager, swapRouter02, timelock, buybackAdapter, sealMeasurementRegistry,
     ///                policyRegistry, kmsGovernance, hostBond, creditMintEvents, skillRegistry },
     ///   roles: { ownerSafe, slasher, router, settlement, anchorer, registrar, keeper, paymasterSigner,
-    ///            refundPool, callPayTreasury, guardian, anyrRecipients[4], creditors[], adapterCallers[],
+    ///            refundPool, callPayTreasury, guardian, creditors[], adapterCallers[],
     ///            sealPublisher, mintSigner },
     ///   params: { timelockMinDelay, maxStaleness, applyUiMultiplier, payWithStockMaxSlipBps,
     ///             paymasterDailyCap, paymasterDeposit, paymasterStake },
@@ -667,11 +658,7 @@ contract Deploy is Script {
         callers[0] = _d.payWithStock;
         address[] memory creditors = new address[](1);
         creditors[0] = _d.payWithStock;
-        address[] memory rec = new address[](4);
-        for (uint256 i; i < 4; ++i) {
-            rec[i] = r.anyrRecipients[i];
-        }
-        string[] memory f = new string[](16);
+        string[] memory f = new string[](15);
         f[0] = _kvA("ownerSafe", r.ownerSafe);
         f[1] = _kvA("slasher", r.slasher);
         f[2] = _kvA("router", r.router);
@@ -683,11 +670,10 @@ contract Deploy is Script {
         f[8] = _kvA("refundPool", r.refundPool);
         f[9] = _kvA("callPayTreasury", r.callPayTreasury);
         f[10] = _kvA("guardian", r.guardian);
-        f[11] = _kv("anyrRecipients", _addrArray(rec));
-        f[12] = _kv("creditors", _addrArray(creditors));
-        f[13] = _kv("adapterCallers", _addrArray(callers));
-        f[14] = _kvA("sealPublisher", r.sealPublisher);
-        f[15] = _kvA("mintSigner", r.mintSigner);
+        f[11] = _kv("creditors", _addrArray(creditors));
+        f[12] = _kv("adapterCallers", _addrArray(callers));
+        f[13] = _kvA("sealPublisher", r.sealPublisher);
+        f[14] = _kvA("mintSigner", r.mintSigner);
         return _obj(f);
     }
 

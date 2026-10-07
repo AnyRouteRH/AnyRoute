@@ -3,14 +3,14 @@ pragma solidity 0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {NetworkFeeBurn} from "../src/NetworkFeeBurn.sol";
-import {AnyrToken} from "../src/AnyrToken.sol";
+import {MockStockToken} from "../src/mocks/MockStockToken.sol";
 import {MockUSDG} from "../src/mocks/MockUSDG.sol";
 import {MockBuybackAdapter} from "../src/mocks/MockBuybackAdapter.sol";
 import {NetworkFloor} from "./NetworkFeeBurn.t.sol";
 contract NetworkFeeConservationHandler is Test {
     NetworkFeeBurn public fee;
     MockUSDG public input;
-    AnyrToken public output;
+    MockStockToken public output;
     NetworkFloor public floor;
     address public keeper;
     uint256 public funded;
@@ -18,7 +18,7 @@ contract NetworkFeeConservationHandler is Test {
     uint256 public received;
     uint256 public destroyed;
     uint256 public count;
-    constructor(NetworkFeeBurn fee_, MockUSDG input_, AnyrToken output_, NetworkFloor floor_, address keeper_) {
+    constructor(NetworkFeeBurn fee_, MockUSDG input_, MockStockToken output_, NetworkFloor floor_, address keeper_) {
         fee = fee_; input = input_; output = output_; floor = floor_; keeper = keeper_; fund(100_000e6);
     }
     function fund(uint256 amount) public { amount = 1 + amount % 1_000_000e6; input.mint(address(fee), amount); funded += amount; }
@@ -50,7 +50,8 @@ contract NetworkFeeConservationTest is Test {
     NetworkFeeConservationHandler internal handler;
     function setUp() external {
         vm.warp(1_800_000_000); address keeper = makeAddr("keeper");
-        AnyrToken output = new AnyrToken([address(this), makeAddr("team"), makeAddr("liquidity"), makeAddr("community")]);
+        MockStockToken output = new MockStockToken("Anyroute (mock)", "ANYR", 18);
+        output.mint(address(this), 1_000_000_000e18);
         MockUSDG input = new MockUSDG(); MockBuybackAdapter adapter = new MockBuybackAdapter(10e18, 1e6);
         output.transfer(address(adapter), 100_000_000e18);
         NetworkFloor floor = new NetworkFloor();
