@@ -8,7 +8,7 @@ import { accountLinks } from "../telegram/linking.ts";
 import { sendLinkedAlert } from "../telegram/delivery.ts";
 
 export const lowBalanceText = (balance: bigint, threshold: bigint, site: string) =>
-  `Your Anyroute balance is $${(Number(picoToUsdString(balance))).toFixed(2)}, below your $${picoToUsdString(threshold)} alert. Add funds: ${site}/dashboard/#money`;
+  `Your Anyroute balance is $${(Number(picoToUsdString(balance))).toFixed(2)}, below your $${picoToUsdString(threshold)} alert. Add funds: ${site}/dashboard/#payments`;
 export function crossing(balance: bigint, threshold: bigint | null, alerted: boolean) {
   if (threshold === null) return "disabled";
   if (balance > threshold) return "rearm";
@@ -42,5 +42,5 @@ export async function runLowBalanceAlerts(ctx: Ctx, fetchImpl?: typeof fetch) {
 export async function lowBalanceInbox(ctx: Ctx, accountId: string, since: string | undefined, asOf: string) {
   if (!ctx.cfg.lowBalanceAlertsEnabled) return [];
   const rows = await ctx.db.select().from(lowBalanceAlerts).where(and(eq(lowBalanceAlerts.accountId, accountId), since ? gt(lowBalanceAlerts.createdAt, new Date(since)) : undefined, lte(lowBalanceAlerts.createdAt, new Date(asOf)))).orderBy(desc(lowBalanceAlerts.createdAt), desc(lowBalanceAlerts.id)).limit(101);
-  return rows.map(row => ({ id: `low-balance:${row.id}`, at: row.createdAt.toISOString(), kind: "low_balance", title: `Balance below your $${picoToUsdString(row.threshold)} alert`, amount: picoToUsdString(row.balance), status: null, href: "/dashboard/#money", unread: true }));
+  return rows.map(row => ({ id: `low-balance:${row.id}`, at: row.createdAt.toISOString(), kind: "low_balance", title: `Balance below your $${picoToUsdString(row.threshold)} alert`, amount: picoToUsdString(row.balance), status: null, href: "/dashboard/#payments", unread: true }));
 }

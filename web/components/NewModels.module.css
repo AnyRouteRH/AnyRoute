@@ -1,10 +1,10 @@
 /* C131 */
-.badge { display: inline-block; padding: 3px 7px; font: 500 11px/1.4 var(--mono); background: var(--signal); color: var(--ink); }
+.badge { display: inline-block; padding: 3px 7px; font: 500 11px/1.4 var(--mono); background: var(--signal); color: var(--night); }
 .filters { margin-bottom: 12px; }
 .filters button { min-height: 44px; padding: 10px 14px; border: 1px solid var(--line); background: var(--white); color: var(--ink); font: 500 11px/1.4 var(--mono); cursor: pointer; }
 .filters button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .row { --new-ink: var(--ink); --new-line: var(--line); color: var(--new-ink); min-width: 0; }
-.row[data-dark] { --new-ink: var(--paper); --new-line: #ffffff25; padding: 12px; }
+.row[data-dark] { --new-ink: var(--bone); --new-line: var(--line-dark); padding: 12px; }
 .row h3 { margin: 0 0 12px; font: 500 14px/1.5 var(--mono); }
 .row ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; }
 .row li { padding: 12px; border: 1px solid var(--new-line); min-width: 0; }

@@ -97,7 +97,7 @@ test('job claims a crossing once across concurrent workers, preserves inbox hist
   const owner = await h.newKey(), account = (await keyRow(h, owner.hash)).accountId;
   await line(account, 3_100_000_000_000n, 'deposit'); await setting(owner, 5);
   await Promise.all([runLowBalanceAlerts(h.ctx), runLowBalanceAlerts(h.ctx)]);
-  const first = await alerts(owner); expect(first).toHaveLength(1); expect(first[0]).toMatchObject({ amount: '3.1', href: '/dashboard/#money', unread: true });
+  const first = await alerts(owner); expect(first).toHaveLength(1); expect(first[0]).toMatchObject({ amount: '3.1', href: '/dashboard/#payments', unread: true });
   await setting(owner, 5); await runLowBalanceAlerts(h.ctx); expect(await alerts(owner)).toHaveLength(1);
   await line(account, 1_900_000_000_000n, 'deposit'); await runLowBalanceAlerts(h.ctx);
   expect((await h.ctx.db.select().from(accounts).where(eq(accounts.id, account)))[0].lowBalanceAlerted).toBe(true);
@@ -120,7 +120,7 @@ test('Telegram uses the existing authorized link and site URL; failed sends do n
   const fetchImpl = (async (_url: unknown, init: any) => { sent.push(JSON.parse(init.body)); return Response.json({ ok: true, result: { message_id: 1 } }); }) as typeof fetch;
   await runLowBalanceAlerts(h.ctx, fetchImpl);
   expect(sent).toHaveLength(1);
-  expect(sent[0].text).toBe('Your Anyroute balance is $3.10, below your $5 alert. Add funds: https://funding.example/dashboard/#money');
+  expect(sent[0].text).toBe('Your Anyroute balance is $3.10, below your $5 alert. Add funds: https://funding.example/dashboard/#payments');
   await runLowBalanceAlerts(h.ctx, fetchImpl); expect(sent).toHaveLength(1);
   await setting(owner, 6); const failing = (async () => { throw new Error('delivery unavailable'); }) as typeof fetch;
   await runLowBalanceAlerts(h.ctx, failing); await runLowBalanceAlerts(h.ctx, fetchImpl); expect(sent).toHaveLength(1); expect(await alerts(owner)).toHaveLength(2);
