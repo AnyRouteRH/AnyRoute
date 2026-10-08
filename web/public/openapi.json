@@ -1,5 +1,11 @@
 {
-  "x-anyroute-telegram-photos": { "card": "D142", "flag": "TELEGRAM_PHOTOS_ENABLED", "default": false, "documentation": "/docs/#telegram-photos", "description": "Private human Telegram photos only. Connected API key auth on existing POST /api/v1/chat/completions; existing multimodal messages, billing, spending limits, receipts and attested-lane guard. Largest available size up to 8 MB; baseline JPEG coefficients re-encoded without EXIF or application metadata in memory. No photo persistence. Caption or fixed question. Non-vision models receive up to three catalog vision suggestions and /model instructions. No new HTTP endpoint or request field. Off preserves the text-only reply." },
+  "x-anyroute-telegram-photos": {
+    "card": "D142",
+    "flag": "TELEGRAM_PHOTOS_ENABLED",
+    "default": false,
+    "documentation": "/docs/#telegram-photos",
+    "description": "Private human Telegram photos only. Connected API key auth on existing POST /api/v1/chat/completions; existing multimodal messages, billing, spending limits, receipts and attested-lane guard. Largest available size up to 8 MB; baseline JPEG coefficients re-encoded without EXIF or application metadata in memory. No photo persistence. Caption or fixed question. Non-vision models receive up to three catalog vision suggestions and /model instructions. No new HTTP endpoint or request field. Off preserves the text-only reply."
+  },
   "openapi": "3.1.0",
   "x-agreements-jury": {
     "internal_flag": "AGREEMENT_JURY_INTERNAL_ENABLED",
@@ -195,7 +201,122 @@
     }
   ],
   "paths": {
-    "/harness/": { "get": { "x-card": "D137", "summary": "Open a shared Chat draft", "description": "Static Chat page; optional plain-text share fields prefill an unsent draft. Title cap 512, text cap 16000, URL cap 2048, combined cap 16384 characters. GET queries may reach hosting access logs. Sending separately requires normal Chat authentication and user action.", "security": [], "parameters": [{ "name": "share_title", "in": "query", "schema": { "type": "string", "maxLength": 512 } }, { "name": "share_text", "in": "query", "schema": { "type": "string", "maxLength": 16000 } }, { "name": "share_url", "in": "query", "schema": { "type": "string", "maxLength": 2048 } }, { "name": "share_id", "in": "query", "description": "Opaque single-use worker-memory handoff id, usable for five minutes.", "schema": { "type": "string" } }, { "name": "share_error", "in": "query", "schema": { "type": "string", "enum": ["invalid", "size", "images", "empty"] } }], "responses": { "200": { "description": "Chat with an unsent draft" } } }, "post": { "summary": "Receive a phone share in the installed app", "description": "Intercepted by the installed service worker, not a router endpoint. Original images remain in worker memory until single-use handoff, eviction or worker termination; expired shares are removed on the next share or handoff. Up to two pending shares. No body is forwarded to the server. Page uses the existing JPEG re-encoding path before attachment; never auto-sends. Without the worker this POST is unsupported.", "security": [], "parameters": [{ "name": "share_target", "in": "query", "required": true, "schema": { "type": "string", "enum": ["1"] } }], "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "type": "object", "properties": { "share_title": { "type": "string", "maxLength": 512 }, "share_text": { "type": "string", "maxLength": 16000 }, "share_url": { "type": "string", "maxLength": 2048 }, "share_files": { "type": "array", "maxItems": 6, "description": "PNG, JPEG, WebP or GIF only, each nonempty and at most 8 MB; entire multipart body at most 48 MB plus 64 KB.", "items": { "type": "string", "format": "binary" } } } } } } }, "responses": { "303": { "description": "Redirect to Chat with a handoff id or a fixed share error; no inference request" } } } },
+    "/harness/": {
+      "get": {
+        "x-card": "D137",
+        "summary": "Open a shared Chat draft",
+        "description": "Static Chat page; optional plain-text share fields prefill an unsent draft. Title cap 512, text cap 16000, URL cap 2048, combined cap 16384 characters. GET queries may reach hosting access logs. Sending separately requires normal Chat authentication and user action.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "share_title",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "name": "share_text",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 16000
+            }
+          },
+          {
+            "name": "share_url",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "share_id",
+            "in": "query",
+            "description": "Opaque single-use worker-memory handoff id, usable for five minutes.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "share_error",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "invalid",
+                "size",
+                "images",
+                "empty"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chat with an unsent draft"
+          }
+        }
+      },
+      "post": {
+        "summary": "Receive a phone share in the installed app",
+        "description": "Intercepted by the installed service worker, not a router endpoint. Original images remain in worker memory until single-use handoff, eviction or worker termination; expired shares are removed on the next share or handoff. Up to two pending shares. No body is forwarded to the server. Page uses the existing JPEG re-encoding path before attachment; never auto-sends. Without the worker this POST is unsupported.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "share_target",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "share_title": {
+                    "type": "string",
+                    "maxLength": 512
+                  },
+                  "share_text": {
+                    "type": "string",
+                    "maxLength": 16000
+                  },
+                  "share_url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "share_files": {
+                    "type": "array",
+                    "maxItems": 6,
+                    "description": "PNG, JPEG, WebP or GIF only, each nonempty and at most 8 MB; entire multipart body at most 48 MB plus 64 KB.",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "303": {
+            "description": "Redirect to Chat with a handoff id or a fixed share error; no inference request"
+          }
+        }
+      }
+    },
     "/api/v1/agents/spend": {
       "get": {
         "x-card": "C132",
@@ -1779,6 +1900,7 @@
     "/api/v1/inbox": {
       "get": {
         "operationId": "listInbox",
+        "x-d141-quiet-agent-alerts": "With QUIET_AGENT_ALERTS_ENABLED (default false) and AGENT_POLICY_ENABLED, account-management and current owning-team owner/admin inboxes include quiet-agent items; ordinary and session keys receive none. Fields: id (random quiet notice id), at (notice timestamp), kind (quiet-agent), title (readable agent name, window and last charged call or Guard decision time), status (quiet), href (/agents/), key_label (current name), unread (true). since and as_of filtering apply, with at most 100 items returned and capped when more exist. History is bounded to 100 per agent and 90 days. Off contributes no items. D141.",
         "x-c133-price-notices": "With PRICE_NOTICES_ENABLED (default false), active account management keys excluding sessions receive price_notice items for catalogue changes of at least 1% to models used by the account in the last 30 days. Fields: id, at, kind, title, model (null for grouped changes), status (null), href (/models/), unread. Existing since filtering applies. First snapshot is silent. At most five items per account per UTC day: four individual and one grouped item whose count can update. Ordinary keys, sessions and team-only administrators do not see account-wide price notices. Rows are retained for 30 UTC days while enabled. No new endpoint or authentication change.",
         "summary": "List items that need attention",
         "description": "Pending approvals with their expiry, alerts, deposits, key auto top-ups, agreement events and status updates for hosts the account operates, under the same access rules as /api/v1/activity. Pass since (the seen time the browser keeps) to mark newer items. B119: when LOW_BALANCE_ALERTS_ENABLED is true, account-scope inboxes also include low-balance crossings with kind low_balance, id, at, title, amount (decimal USD balance), status null, href /dashboard/#money, and unread. Session and ordinary key-scope inboxes cannot see these account alerts.",
@@ -18260,6 +18382,194 @@
             "$ref": "#/components/responses/NotFound"
           }
         }
+      }
+    },
+    "/api/v1/agents/{key_hash}/quiet-alert": {
+      "get": {
+        "operationId": "getQuietAgentAlert",
+        "summary": "Read quiet-agent alert settings",
+        "description": "D141. Requires QUIET_AGENT_ALERTS_ENABLED and AGENT_POLICY_ENABLED. Management keys or owning team owner/admin keys only; inference and session keys refused. Off returns 404. Settings are outside the rulebook. One inbox notice per quiet period; Telegram is attempted once if linked. Charged calls and Guard decisions re-arm; stopped keys are excluded. Checks run every five minutes.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quiet alert setting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "key_hash",
+                        "hours"
+                      ],
+                      "properties": {
+                        "key_hash": {
+                          "type": "string"
+                        },
+                        "hours": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "enum": [
+                            null,
+                            1,
+                            3,
+                            6,
+                            12,
+                            24,
+                            72
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "tags": [
+          "Agent rulebook"
+        ]
+      },
+      "put": {
+        "operationId": "putQuietAgentAlert",
+        "summary": "Set a quiet-agent alert window",
+        "description": "D141. Requires QUIET_AGENT_ALERTS_ENABLED and AGENT_POLICY_ENABLED. Management keys or owning team owner/admin keys only; inference and session keys refused. Off returns 404. Settings are outside the rulebook. One inbox notice per quiet period; Telegram is attempted once if linked. Charged calls and Guard decisions re-arm; stopped keys are excluded. Checks run every five minutes.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quiet alert setting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "key_hash",
+                        "hours"
+                      ],
+                      "properties": {
+                        "key_hash": {
+                          "type": "string"
+                        },
+                        "hours": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "enum": [
+                            null,
+                            1,
+                            3,
+                            6,
+                            12,
+                            24,
+                            72
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "hours"
+                ],
+                "properties": {
+                  "hours": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "enum": [
+                      null,
+                      1,
+                      3,
+                      6,
+                      12,
+                      24,
+                      72
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "tags": [
+          "Agent rulebook"
+        ]
       }
     }
   },

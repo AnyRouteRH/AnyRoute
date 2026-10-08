@@ -71,6 +71,7 @@ function measurementPublicKey(raw: string | undefined): string | null {
 }
 
 const schema = z.object({
+  QUIET_AGENT_ALERTS_ENABLED: bool.default(false), // D141
   ...hardeningEnv, // HD1
   ...fastCreditEnv, // V97
   ...depositPingsEnv, // B123
@@ -548,6 +549,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("deposit-pings"); // B123
       allowed.push("low-balance-alerts"); // B119
       allowed.push("price-notices"); // C133
+      allowed.push("quiet-agent-alerts"); // D141
       allowed.push("webhooks"); // V86: bounded event delivery.
       allowed.push("makegood-payouts"); // V6 R: on-chain make-good refunds.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
@@ -698,6 +700,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     adminToken: e.ADMIN_TOKEN,
     agentProfilesEnabled: e.AGENT_PROFILES_ENABLED,
     agentPolicyEnabled: e.AGENT_POLICY_ENABLED,
+    quietAgentAlertsEnabled: e.QUIET_AGENT_ALERTS_ENABLED, // D141
     agentRulebookWordsEnabled: e.AGENT_RULEBOOK_WORDS_ENABLED, // B124
     agentGuardEnabled: e.AGENT_GUARD_ENABLED, // V98
     agentPayEnabled: e.AGENT_PAY_ENABLED,

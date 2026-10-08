@@ -24,6 +24,7 @@ import { dataToolStores } from "./data-tools.ts"; // B: market-data tools and de
 import { webhookBodyReader, webhookStores } from "./webhooks.ts"; // V86: event delivery.
 import { makegoodStores } from "./makegood.ts"; // V6 R: make-good refunds.
 import { inboxStores } from "./inbox.ts"; // U78: account inbox inventory.
+import { quietAlertBodyReader, quietAlertStores } from "./quiet-agent-alerts.ts"; // D141
 import { priceNoticeStores } from "./price-notices.ts"; // C133
 import { activityStores } from "./activity.ts";
 import { profileBodyReader } from "./profiles.ts";
@@ -423,6 +424,7 @@ const addressReaders: Touchpoint[] = [
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
   telegramPhotoReader, // D142
+  quietAlertBodyReader, // D141
   weeklySummaryReader, // B120
   modelAlternativesReader, // B121
   lowBalanceReader, // B119
@@ -768,6 +770,7 @@ export const EXTERNAL: ExternalDoc = {
     evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify(redactRpcFields({ t: new Date().toISOString(), level, msg, ...fields })")],
   },
   otherStores: [
+    ...quietAlertStores, // D141
     ...priceNoticeStores, // C133
     ...rushStores, // ON3
     ...toolsStores, // v6 T

@@ -1,3 +1,4 @@
+import { describeQuietAlerts } from "./quiet-agent-alerts.ts"; // D141
 import { describeModelArrivals } from "./model-arrivals.ts"; // C131
 import { describeProjects } from "./projects.ts"; // C134
 import { describeLowBalance } from "./low-balance.ts"; // B119
@@ -52,6 +53,7 @@ describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);
 describeWeeklySummary(TABLE_DOCS); // B120
 describeModelArrivals(TABLE_DOCS); // C131
+describeQuietAlerts(TABLE_DOCS); // D141
 export { EXTERNAL };
 
 // ---- consistency -----------------------------------------------------------------------------------------------------

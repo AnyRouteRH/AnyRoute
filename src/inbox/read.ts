@@ -1,5 +1,6 @@
 import { depositPingItems } from "./deposit-pings.ts"; // B123
 import { lowBalanceInbox } from "../account/low-balance.ts"; // B119
+import { quietInboxItems } from "../agents/quiet-alerts.ts"; // D141
 import { priceNoticeItems } from "../catalog/price-notices.ts"; // C133
 import { createHmac } from "node:crypto";
 import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
@@ -41,6 +42,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
   let capped = false;
   if (scope.whole && key.management) { const notices = await priceNoticeItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // C133
   if (scope.whole) { const notices = await depositPingItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // B123
+  if (scope.whole) { const notices = await quietInboxItems(ctx, key, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D141
   const unread = (at: string) => !since || micros(at) > micros(since);
   if (ctx.cfg.agentPolicyEnabled) {
     const pending = await ctx.db.select({ id: agentApprovals.id, at: agentApprovals.requestedAt, expires: agentApprovals.expiresAt, limit: agentApprovals.maxCostPico, intent: agentApprovals.intent, label: keys.name }).from(agentApprovals).innerJoin(keys, eq(keys.keyHash, agentApprovals.keyHash)).where(and(

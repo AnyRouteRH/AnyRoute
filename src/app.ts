@@ -1,5 +1,6 @@
 import { newModelsFeedRoutes } from "./api/models-new-feed.ts"; // C131
 import { projectCors } from "./projects/cors.ts"; // C134
+import { quietAgentAlertRoutes } from "./api/quiet-agent-alerts.ts"; // D141
 import { accountRunwayRoutes } from "./api/account-runway.ts"; // B119
 import { agentSpendRoutes } from "./agents/spend-glance.ts"; // C132
 import { hardeningMiddleware, originLockMiddleware } from "./hardening/middleware.ts"; // HD1
@@ -238,6 +239,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentSealedRoutes(app, ctx);
   agentsRoutes(app, ctx);
   agentSpendRoutes(app, ctx); // C132
+  quietAgentAlertRoutes(app, ctx); // D141
   playbooksRoutes(app, ctx); // U115: after agentsRoutes, whose /api/v1/agents/* switch also covers the follow route.
   guardRoutes(app, ctx); // V98
   agentPayRoutes(app, ctx); // Pay another agent (AGENT_PAY_ENABLED)
