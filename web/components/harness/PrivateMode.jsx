@@ -529,8 +529,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
         />
       )}
       {dialog === "access" && <HistoryAccess onClose={() => setDialog(null)} onEnable={() => { if (!busy) { flip(); setDialog(null); } }} />}
-      {dialog === "export" && <ExportCurrent chat={current} savedAnswers={historyRef.current?.unlocked ? historyRef.current.listSavedAnswers().filter((a) => a.chatId === current?.id || savedAnswerOnScreen(a, lanes)) : []} onClose={() => setDialog(null)} />}
-      {dialog === "export" && <ExportCurrent chat={current} folders={historyRef.current?.unlocked ? historyRef.current.listFolders() : []} onClose={() => setDialog(null)} />}
+      {dialog === "export" && <ExportCurrent chat={current} savedAnswers={historyRef.current?.unlocked ? historyRef.current.listSavedAnswers().filter((a) => a.chatId === current?.id || savedAnswerOnScreen(a, lanes)) : []} folders={historyRef.current?.unlocked ? historyRef.current.listFolders() : []} onClose={() => setDialog(null)} />}
       {dialog === "forget" && <ForgetDialog onForget={forgetAll} onClose={() => setDialog(null)} />}
       <p className="sr-only" aria-live="polite">
         {announce}

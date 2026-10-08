@@ -131,15 +131,12 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
     return subtle().deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations: rounds }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
   }
 
-  async function seal(s, chats, prompts = s.prompts, savedAnswers = s.savedAnswers) { // V81: preserve prompts across history writes.
+  async function seal(s, chats, prompts = s.prompts, savedAnswers = s.savedAnswers, folders = s.folders) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    if (savedAnswers !== undefined) validateSavedAnswers(savedAnswers); // D140
-    const plain = enc.encode(JSON.stringify({ chats, ...(savedAnswers === undefined ? {} : { savedAnswers }), ...(prompts === undefined ? {} : { prompts }) })); // V81
-    if (plain.length > MAX_BYTES + PRIVATE_PROMPT_BYTES + SAVED_ANSWER_BYTES + 4096) throw fail("too_large"); // D140: separate history, prompt and saved-answer budgets plus the envelope.
-  async function seal(s, chats, prompts = s.prompts, folders = s.folders) { // V81: preserve prompts across history writes.
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const plain = enc.encode(JSON.stringify({ chats, ...(folders === undefined ? {} : { folders }), ...(prompts === undefined ? {} : { prompts }) })); // V81
-    if (plain.length > MAX_BYTES + PRIVATE_PROMPT_BYTES + 4096) throw fail("too_large"); // V81: history budget + prompt budget + envelope; history trimming is unchanged.
+    if (savedAnswers !== undefined) validateSavedAnswers(savedAnswers);
+    folderDocument(chats, folders);
+    const plain = enc.encode(JSON.stringify({ chats, ...(folders === undefined ? {} : { folders }), ...(savedAnswers === undefined ? {} : { savedAnswers }), ...(prompts === undefined ? {} : { prompts }) }));
+    if (plain.length > MAX_BYTES + PRIVATE_PROMPT_BYTES + SAVED_ANSWER_BYTES + 4096) throw fail("too_large"); // Separate budgets for chats/folders, prompts and saved answers.
     const ct = new Uint8Array(await subtle().encrypt({ name: "AES-GCM", iv, additionalData: AAD }, s.key, plain));
     await storage.set({ v: VERSION, kdf: KDF, iterations: s.rounds, salt: b64(s.salt), iv: b64(iv), ct: b64(ct) });
   }
@@ -206,9 +203,8 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
         }
         if (!Array.isArray(doc?.chats)) throw fail("unreadable");
         const savedAnswers = validateSavedAnswers(doc.savedAnswers); // D140
-        session = { key, salt, rounds: record.iterations, chats: doc.chats, savedAnswers, ...(doc.prompts === undefined ? {} : { prompts: validatePrompts(doc.prompts) }) }; // V81
         const folders = folderDocument(doc.chats, doc.folders).folders; // D143: old vaults have no folders.
-        session = { key, salt, rounds: record.iterations, folders, chats: doc.chats, ...(doc.prompts === undefined ? {} : { prompts: validatePrompts(doc.prompts) }) }; // V81
+        session = { key, salt, rounds: record.iterations, folders, savedAnswers, chats: doc.chats, ...(doc.prompts === undefined ? {} : { prompts: validatePrompts(doc.prompts) }) }; // V81
       }),
 
     /** Chats, newest first: id, title, when, and how many turns. Nothing else leaves the vault through this. */

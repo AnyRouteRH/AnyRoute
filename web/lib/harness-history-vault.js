@@ -8,8 +8,6 @@ export function savedEntry(chat, previous, at) {
 
 export function historyEdits({ serial, need, seal, maxBytes, maxChats }) {
   const commit = async (s, chats, savedAnswers = s.savedAnswers) => {
-    if (chats.length > maxChats || new TextEncoder().encode(JSON.stringify({ chats })).length > maxBytes) {
-  const commit = async (s, chats) => {
     if (chats.length > maxChats || new TextEncoder().encode(JSON.stringify({ chats, ...(s.folders === undefined ? {} : { folders: s.folders }) })).length > maxBytes) {
       throw new Error("History is full. Export or delete conversations before importing more.");
     }

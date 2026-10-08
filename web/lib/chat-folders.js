@@ -1,3 +1,4 @@
+import { mergeSavedAnswers, savedAnswersFromExport } from "./saved-answers.js";
 // D143: folders are metadata inside the existing encrypted history, never a separate browser store.
 import { buildSearchIndex, mergeImport, parseImport, searchChats } from './harness-history.js';
 
@@ -56,7 +57,7 @@ export function moveChat(state, id, folderId = null) {
   }) };
 }
 export function deleteFolder(state, id) {
-  return { folders: state.folders.filter(folder => folder.id !== id), chats: state.chats.map(chat => {
+  return { ...state, folders: state.folders.filter(folder => folder.id !== id), chats: state.chats.map(chat => {
     if (chat.folderId !== id) return chat;
     const { folderId, ...rest } = chat;
     return rest;
@@ -70,7 +71,8 @@ export function searchFolder(chats, query, folderId = null) {
 }
 export function parseFolderImport(source) {
   const chats = parseImport(source);
-  return folderDocument(chats, JSON.parse(source).folders);
+  const savedAnswers = savedAnswersFromExport(source);
+  return { ...folderDocument(chats, JSON.parse(source).folders), ...(savedAnswers.length ? { savedAnswers } : {}) };
 }
 // Existing chats always win; imported folder ids are remapped when another folder owns the id.
 export function mergeFolderImport(existing, incoming, makeId) {
@@ -88,13 +90,13 @@ export function mergeFolderImport(existing, incoming, makeId) {
   return { chats: [...existing.chats, ...additions].sort((a, b) => b.at - a.at), folders, count: additions.length, skipped };
 }
 export function folderVaultEdits({ serial, need, seal, maxBytes, makeId }) {
-  const state = s => ({ chats: s.chats, folders: s.folders || [] });
+  const state = s => ({ chats: s.chats, folders: s.folders || [], savedAnswers: s.savedAnswers || [] });
   const change = fn => serial(async () => {
     const s = need(), next = fn(state(s));
     folderDocument(next.chats, next.folders);
     if (new TextEncoder().encode(JSON.stringify({ chats: next.chats, folders: next.folders })).length > maxBytes) throw new Error('History is full. Export or delete conversations before importing more.');
-    await seal(s, next.chats, s.prompts, next.folders);
-    s.chats = next.chats; s.folders = next.folders;
+    await seal(s, next.chats, s.prompts, next.savedAnswers, next.folders);
+    s.chats = next.chats; s.folders = next.folders; s.savedAnswers = next.savedAnswers;
     return next;
   });
   return {
@@ -103,6 +105,6 @@ export function folderVaultEdits({ serial, need, seal, maxBytes, makeId }) {
     renameFolder: (id, name) => change(state => renameFolder(state, id, name)),
     deleteFolder: id => change(state => deleteFolder(state, id)),
     moveChat: (id, folderId) => change(state => moveChat(state, id, folderId)),
-    importFolderHistory: incoming => change(state => mergeFolderImport(state, incoming, makeId)),
+    importFolderHistory: incoming => change(state => ({ ...mergeFolderImport(state, incoming, makeId), savedAnswers: mergeSavedAnswers(state.savedAnswers, incoming.savedAnswers || []) })),
   };
 }
