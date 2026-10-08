@@ -5,6 +5,205 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "rulebook-history",
+    "date": "2026-10-08",
+    "title": "Rulebook history and restore",
+    "summary": "Every change to an agent's rulebook is kept as a version. The History list shows when it changed, which key saved it and what changed in plain words, and you can restore any version.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#rulebook-history"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/9e68eadf39c1ba745b7f6b1070d46e6502462f62"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "project-budgets",
+    "date": "2026-10-08",
+    "title": "Monthly budgets for projects",
+    "summary": "Give a project a monthly budget. Calls tagged with that project are refused before anything is charged once it's spent, and you get a notice at 80%.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#project-budgets"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/be9d587000d99445bfacb204923be468f2494d18"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "scheduled-prompts",
+    "date": "2026-10-08",
+    "title": "Scheduled prompts",
+    "summary": "Run a prompt every hour, every day or every Monday, billed to a key you choose under its limits and rules, with a maximum cost per run. Each answer lands in your inbox and Telegram.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#scheduled-prompts"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/354e05566816872f11be3d931d0b26314046d9e7"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/2aa45721e4f53fe3dac6e3a894af56f5d8d12363"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "idempotency",
+    "date": "2026-10-08",
+    "title": "Retry without paying twice",
+    "summary": "Send an Idempotency-Key with an API call and a retry of the same request within 24 hours gets the first answer and receipt back instead of being charged again.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#idempotency"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/26bb750d4b2bf0e2c7143dd2dd527067d23c6b8e"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "security-alerts",
+    "date": "2026-10-08",
+    "title": "Security alerts",
+    "summary": "Get an inbox notice and a Telegram message when a key is created or switched off, a limit or rulebook changes, a wallet signs in, or Telegram is linked, with which key made the change.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#security-alerts"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ea256360406ccb6bb5da24057bb26aafb8c2c7cf"
+      }
+    ],
+    "tags": [
+      "build",
+      "agents"
+    ]
+  },
+  {
+    "id": "quiet-agent-alerts",
+    "date": "2026-10-08",
+    "title": "Know when an agent goes quiet",
+    "summary": "Pick a window per agent, from 1 to 72 hours, and get told when it makes no calls for that long.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#quiet-agent-alerts"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/901daef385976e9d3b25129a897ed71bf94c9b76"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "telegram-photos",
+    "date": "2026-10-08",
+    "title": "Ask the Telegram bot about a photo",
+    "summary": "Send the Anyroute bot a photo with a question and a model that reads images answers it. Metadata is removed and the photo isn't saved.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#telegram-photos"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/fdc52cd73f7748520ec45771449af426656a4f45"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "share-to-anyroute",
+    "date": "2026-10-08",
+    "title": "Share to Anyroute from your phone",
+    "summary": "With the app installed, share text, links or photos from any app and Chat opens with them as a draft.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#share-to-anyroute"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/1b35bbced62d1bacd785c02ab1481cda6561433d"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "chat-folders",
+    "date": "2026-10-08",
+    "title": "Chat folders",
+    "summary": "Put chats into folders, filter by folder and search within one. Folders stay in your browser with your encrypted history and come with your exports.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/harness/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/550cf3fd6c3aa5eaa213bf374f055968137da208"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/0fe94c6b9028abfd53c98f026aae7578a622dffc"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "saved-answers",
+    "date": "2026-10-08",
+    "title": "Saved answers",
+    "summary": "Save any reply with its question, cost and receipt to a Saved list you can search, and keep it even after the chat is deleted.",
+    "links": [
+      {
+        "label": "Open page",
+        "href": "/harness/"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/723510004bd4608b3512c0b0a7d33b4e67c6b357"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
     "id": "price-notices",
     "date": "2026-10-07",
     "title": "Price change notices",
