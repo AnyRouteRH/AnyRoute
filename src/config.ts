@@ -375,6 +375,7 @@ const schema = z.object({
 
   // Optional Telegram bot (BotFather token, a secret). Without it the bot never starts.
   TELEGRAM_BOT_TOKEN: opt,
+  TELEGRAM_PHOTOS_ENABLED: bool.default(false), // D142
   LOW_BALANCE_ALERTS_ENABLED: bool.default(false), // B119
   PRICE_NOTICES_ENABLED: bool.default(false), // C133
   TELEGRAM_LINKING_ENABLED: bool.default(false),
@@ -854,6 +855,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     skills: skillsSettings(e, production),
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
+    telegramPhotosEnabled: e.TELEGRAM_PHOTOS_ENABLED, // D142
     telegram: { botToken: e.TELEGRAM_BOT_TOKEN, linkingEnabled: e.TELEGRAM_LINKING_ENABLED },
     weeklySummaryEnabled: e.WEEKLY_SUMMARY_ENABLED, // B120
     backup: { required: e.BACKUP_REQUIRED, maxAgeHours: e.BACKUP_MAX_AGE_HOURS },

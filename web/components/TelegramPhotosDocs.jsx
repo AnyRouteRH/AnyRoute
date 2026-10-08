@@ -1,0 +1,7 @@
+export default function TelegramPhotosDocs() {
+  return <section id="telegram-photos"><h2>Send photos in Telegram</h2>
+    <p>Send a photo to the bot with a caption, or send it on its own to ask “What is in this picture?” Choose a model that reads images with /model. If your model cannot read images, the bot suggests up to three available models and explains how to switch.</p>
+    <p>Photo support is not switched on yet. TELEGRAM_PHOTOS_ENABLED defaults to false and the bot needs TELEGRAM_BOT_TOKEN to run. With photo support off, photos receive the existing reply asking for text. When enabled, the bot downloads the largest available size that fits 8 MB and sends it through POST /api/v1/chat/completions using your connected API key and chosen model. Billing, spending limits and signed receipts work as they do for text; /private on keeps the same attested-lane checks.</p>
+    <p>Anyroute reads the photo and caption in memory. Before sending, the bot removes EXIF, comments and other application metadata from the JPEG and copies the image data unchanged; anything that isn't a well-formed JPEG within the size limits is refused. The bot and router do not save the photo or caption. Ordinary request digests, billing records and receipts remain. Telegram and the model provider can read the image and apply their own retention policies. Each photo is a separate request, with no chat history.</p>
+  </section>;
+}

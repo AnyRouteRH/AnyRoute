@@ -1,4 +1,5 @@
 {
+  "x-anyroute-telegram-photos": { "card": "D142", "flag": "TELEGRAM_PHOTOS_ENABLED", "default": false, "documentation": "/docs/#telegram-photos", "description": "Private human Telegram photos only. Connected API key auth on existing POST /api/v1/chat/completions; existing multimodal messages, billing, spending limits, receipts and attested-lane guard. Largest available size up to 8 MB; baseline JPEG coefficients re-encoded without EXIF or application metadata in memory. No photo persistence. Caption or fixed question. Non-vision models receive up to three catalog vision suggestions and /model instructions. No new HTTP endpoint or request field. Off preserves the text-only reply." },
   "openapi": "3.1.0",
   "x-agreements-jury": {
     "internal_flag": "AGREEMENT_JURY_INTERNAL_ENABLED",

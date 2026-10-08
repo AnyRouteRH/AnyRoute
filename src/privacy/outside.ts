@@ -1,5 +1,6 @@
 import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { chatFoldersBrowser } from "./chat-folders"; // D143
+import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
 import { gettingStartedBrowser } from "./getting-started.ts"; // C135
 import { shareToAnyrouteBrowser } from "./share-to-anyroute.ts"; // D137
@@ -421,6 +422,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  telegramPhotoReader, // D142
   weeklySummaryReader, // B120
   modelAlternativesReader, // B121
   lowBalanceReader, // B119

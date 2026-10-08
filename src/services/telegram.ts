@@ -1,3 +1,4 @@
+import { hasPhoto, photoCaption, photoCapability, PHOTO_HELP, prepareTelegramPhoto, visionReply, type PhotoMessage, type TgPhoto } from "../telegram/photos.ts"; // D142
 import { deliverTelegramApprovals, handleLinkedUpdate } from "../telegram/delivery.ts";
 import { eq } from "drizzle-orm";
 import { KEY_RE } from "../chain/keys.ts";
@@ -31,14 +32,14 @@ const CHAT_TIMEOUT_MS = 130_000;
 const CATALOG_TTL_MS = 60_000;
 const KEY_IN_TEXT = /sk-ar-v1-[0-9a-f]{64}/;
 
-export type TgMessage = { message_id: number; from?: { id: number; is_bot?: boolean }; chat: { id: number; type: string }; text?: string };
+export type TgMessage = { message_id: number; from?: { id: number; is_bot?: boolean }; chat: { id: number; type: string }; text?: string } & PhotoMessage;
 export type TgUpdate = { update_id: number; message?: TgMessage; callback_query?: { id: string; from: { id: number; is_bot?: boolean }; data?: string; message?: TgMessage } };
 /** How the bot reaches the router: in production the app's own `request`, so no network hop. */
 export type RouterCall = (path: string, init?: RequestInit) => Response | Promise<Response>;
 type Row = { v: 1; key?: string; model?: string; private?: boolean };
 type Lane = "public" | "attested";
 /** `gpu` (attested listing only): the latest verified gateway receipt for the model asserted GPU attestation; null when unknown. */
-type CatalogModel = { id: string; name: string; prompt: string; completion: string; gpu: boolean | null };
+type CatalogModel = { id: string; name: string; prompt: string; completion: string; gpu: boolean | null; vision?: boolean };
 /** The parts of a router receipt payload the bot reads. */
 type ReceiptPayload = { provider?: unknown; disclosure?: unknown; lane?: unknown; attestation_simulated?: unknown; upstream_attestation?: { attested?: unknown; gpu_attested?: unknown } };
 const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -185,18 +186,20 @@ export class TelegramBot {
     const chat = m.chat.id;
     const uid = m.from.id;
     const say = (text: string) => this.send(chat, text);
-    if (typeof m.text !== "string") return say("I can only read text messages. Send me a question, or /help.");
-    const text = m.text.trim();
+    const photo = this.ctx.cfg.telegramPhotosEnabled && hasPhoto(m) ? m.photo : undefined; // D142
+    if (!photo && typeof m.text !== "string") return say("I can only read text messages. Send me a question, or /help.");
+    const text = photo ? photoCaption(m) : m.text!.trim(); // D142
     const cmd = /^\/([A-Za-z_]+)(?:@\w+)?(?:\s+([\s\S]*))?$/.exec(text);
     const name = cmd?.[1].toLowerCase();
     const arg = (cmd?.[2] ?? "").trim();
 
-    if (name === "key") return this.connect(uid, m, arg);
+    if (!photo && name === "key") return this.connect(uid, m, arg);
     // A key pasted anywhere else must never reach a model: delete it and point to /key.
     if (KEY_IN_TEXT.test(text)) {
       const gone = await this.deleteMessage(chat, m.message_id);
       return say(`That looks like an AnyRoute API key, so I did not send it to any model.${gone ? " I deleted your message." : " Please delete your message."} To connect it, send /key followed by the key.`);
     }
+    if (photo) return this.answer(uid, chat, text, photo); // D142
     switch (name) {
       case "start": return say(this.intro(true));
       case "help": return say(this.intro(false));
@@ -219,6 +222,7 @@ export class TelegramBot {
       "",
       `Connect: create a budget-capped API key at ${site}/dashboard (a spend limit keeps a chat bot safe to run), then send /key sk-ar-v1-... I delete your message right away and store the key encrypted.`,
       "",
+      ...(this.ctx.cfg.telegramPhotosEnabled ? [PHOTO_HELP, ""] : []), // D142
       "Then just send a message. Commands:",
       "/model <id>  set your default model",
       "/models <search>  find models with prices",
@@ -339,7 +343,7 @@ export class TelegramBot {
       const res = await this.opts.router(lane === "attested" ? "/api/v1/models?lane=attested" : "/api/v1/models", { signal: AbortSignal.timeout(15_000) });
       if (!res.ok) throw new Error("catalog");
       const data = ((await res.json()) as { data?: { id: string; name?: string; pricing?: { prompt?: string; completion?: string }; gpu_attested?: unknown }[] }).data ?? [];
-      const models = data.map((x) => ({ id: x.id, name: x.name ?? "", prompt: x.pricing?.prompt ?? "0", completion: x.pricing?.completion ?? "0", gpu: typeof x.gpu_attested === "boolean" ? x.gpu_attested : null }));
+      const models = data.map((x) => ({ id: x.id, name: x.name ?? "", prompt: x.pricing?.prompt ?? "0", completion: x.pricing?.completion ?? "0", gpu: typeof x.gpu_attested === "boolean" ? x.gpu_attested : null, ...photoCapability(x) }));
       this.catalogCache[lane] = { at: Date.now(), models };
       return models;
     } catch {
@@ -349,7 +353,7 @@ export class TelegramBot {
 
   // ---- Chat ------------------------------------------------------------------------------------
 
-  private async answer(uid: number, chat: number, text: string) {
+  private async answer(uid: number, chat: number, text: string, photo?: TgPhoto[]) {
     // One request at a time per user; claimed synchronously so two quick messages can't both pass.
     if (this.busy.has(uid)) return this.send(chat, "I'm still answering your previous message. One at a time, please.");
     if (this.busy.size >= MAX_INFLIGHT) return this.send(chat, "I'm busy right now. Please try again in a moment.");
@@ -366,13 +370,24 @@ export class TelegramBot {
       const model = row.model ?? DEFAULT_MODEL;
       // Private mode asks the router for the attested lane; the router, not this bot, decides who may answer.
       const priv = row.private === true;
+      // D142: prepare only after the same connected-key, busy and rate-limit checks as text.
+      let requestContent: string | { type: string; text?: string; image_url?: { url: string } }[] = text;
+      if (photo) {
+        const models = await this.catalog(priv ? "attested" : "public");
+        if (!models) return await this.send(chat, "I couldn't load the model catalog right now. Please try again in a moment.");
+        if (!models.find((x) => x.id === model)?.vision) return await this.send(chat, visionReply(model, models));
+        try {
+          const url = await prepareTelegramPhoto(photo, { token: this.opts.token, fetch: this.opts.fetch, getFile: (id) => this.api.call("getFile", { file_id: id }) });
+          requestContent = [{ type: "text", text }, { type: "image_url", image_url: { url } }];
+        } catch { return await this.send(chat, "This photo could not be prepared. Send a JPEG photo up to 8 MB and try again."); }
+      }
       const t0 = Date.now();
       let res: Response;
       try {
         res = await this.opts.router("/api/v1/chat/completions", {
           method: "POST",
           headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-          body: JSON.stringify({ model, messages: [{ role: "user", content: text }], max_tokens: MAX_TOKENS, ...(priv ? { provider: { lane: "attested" } } : {}) }),
+          body: JSON.stringify({ model, messages: [{ role: "user", content: requestContent }], max_tokens: MAX_TOKENS, ...(priv ? { provider: { lane: "attested" } } : {}) }),
           signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
         });
       } catch {
