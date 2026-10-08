@@ -11,6 +11,7 @@
 
 import { promptVaultEdits, PRIVATE_PROMPT_BYTES } from "./harness-prompt-vault.js"; // V81: same encrypted vault.
 import { validatePrompts } from "./harness-prompts.js"; // V81: validate decrypted prompt data.
+import { SAVED_ANSWER_BYTES, savedAnswerEdits, validateSavedAnswers } from "./saved-answers.js"; // D140
 import { receiptLane } from "./private-mode.js";
 import { historyEdits, savedEntry } from "./harness-history-vault.js";
 
@@ -129,10 +130,11 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
     return subtle().deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations: rounds }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
   }
 
-  async function seal(s, chats, prompts = s.prompts) { // V81: preserve prompts across history writes.
+  async function seal(s, chats, prompts = s.prompts, savedAnswers = s.savedAnswers) { // V81: preserve prompts across history writes.
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const plain = enc.encode(JSON.stringify({ chats, ...(prompts === undefined ? {} : { prompts }) })); // V81
-    if (plain.length > MAX_BYTES + PRIVATE_PROMPT_BYTES + 4096) throw fail("too_large"); // V81: history budget + prompt budget + envelope; history trimming is unchanged.
+    if (savedAnswers !== undefined) validateSavedAnswers(savedAnswers); // D140
+    const plain = enc.encode(JSON.stringify({ chats, ...(savedAnswers === undefined ? {} : { savedAnswers }), ...(prompts === undefined ? {} : { prompts }) })); // V81
+    if (plain.length > MAX_BYTES + PRIVATE_PROMPT_BYTES + SAVED_ANSWER_BYTES + 4096) throw fail("too_large"); // D140: separate history, prompt and saved-answer budgets plus the envelope.
     const ct = new Uint8Array(await subtle().encrypt({ name: "AES-GCM", iv, additionalData: AAD }, s.key, plain));
     await storage.set({ v: VERSION, kdf: KDF, iterations: s.rounds, salt: b64(s.salt), iv: b64(iv), ct: b64(ct) });
   }
@@ -148,6 +150,7 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
   const turns = (chat) => Math.max(0, ...((chat.lanes || []).map((l) => (l.messages || []).filter((m) => m.role === "user").length)));
 
   return {
+    ...savedAnswerEdits({ serial, need, seal }), // D140
     ...historyEdits({ serial, need, seal, maxBytes: MAX_BYTES, maxChats: MAX_CHATS }),
     ...promptVaultEdits({ serial, need, seal }), // V81
     /** Whether a vault is stored in this browser (locked or not). */
@@ -196,7 +199,8 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
           throw fail("unreadable");
         }
         if (!Array.isArray(doc?.chats)) throw fail("unreadable");
-        session = { key, salt, rounds: record.iterations, chats: doc.chats, ...(doc.prompts === undefined ? {} : { prompts: validatePrompts(doc.prompts) }) }; // V81
+        const savedAnswers = validateSavedAnswers(doc.savedAnswers); // D140
+        session = { key, salt, rounds: record.iterations, chats: doc.chats, savedAnswers, ...(doc.prompts === undefined ? {} : { prompts: validatePrompts(doc.prompts) }) }; // V81
       }),
 
     /** Chats, newest first: id, title, when, and how many turns. Nothing else leaves the vault through this. */

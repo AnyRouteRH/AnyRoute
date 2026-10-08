@@ -1,3 +1,4 @@
+import { mergeSavedAnswers } from "./saved-answers.js"; // D140
 // These operations run inside the existing vault's serial queue. Metadata and imports are sealed with its key.
 import { costSummaryFields } from "./chat-cost.js"; // C128
 export function savedEntry(chat, previous, at) {
@@ -5,12 +6,13 @@ export function savedEntry(chat, previous, at) {
 }
 
 export function historyEdits({ serial, need, seal, maxBytes, maxChats }) {
-  const commit = async (s, chats) => {
+  const commit = async (s, chats, savedAnswers = s.savedAnswers) => {
     if (chats.length > maxChats || new TextEncoder().encode(JSON.stringify({ chats })).length > maxBytes) {
       throw new Error("History is full. Export or delete conversations before importing more.");
     }
-    await seal(s, chats);
+    await seal(s, chats, s.prompts, savedAnswers);
     s.chats = chats;
+    s.savedAnswers = savedAnswers; // D140
   };
   return {
     edit: (id, patch) => serial(async () => {
@@ -24,11 +26,11 @@ export function historyEdits({ serial, need, seal, maxBytes, maxChats }) {
       await commit(s, chats);
     }),
     // Callers validate and deduplicate before this merge. Existing ids are never overwritten.
-    importChats: (incoming) => serial(async () => {
+    importChats: (incoming, incomingAnswers = []) => serial(async () => {
       const s = need();
       const ids = new Set(s.chats.map((c) => c.id));
       const additions = incoming.filter((c) => !ids.has(c.id) && !!ids.add(c.id));
-      await commit(s, [...s.chats, ...additions].sort((a, b) => b.at - a.at));
+      await commit(s, [...s.chats, ...additions].sort((a, b) => b.at - a.at), mergeSavedAnswers(s.savedAnswers || [], incomingAnswers)); // D140
       return additions.length;
     }),
   };

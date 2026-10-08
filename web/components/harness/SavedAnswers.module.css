@@ -1,0 +1,14 @@
+/* D140 */
+.body { display: grid; gap: 14px; min-width: 0; color: var(--ink); }
+.body p, .meta { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.search { display: grid; gap: 8px; font-size: 13px; }
+.search input { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font: inherit; }
+.list { list-style: none; padding: 2px; margin: 0; display: grid; gap: 8px; max-height: 45vh; overflow-y: auto; }
+.open { display: grid; gap: 8px; width: 100%; text-align: left; padding: 14px; border: 0; background: var(--paper-2); color: var(--ink); overflow-wrap: anywhere; }
+.open:hover { background: var(--paper-3); }
+.open span, .open small { color: var(--muted); }
+.answer { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow-y: auto; font-size: 14px; line-height: 1.7; padding: 12px; background: var(--paper-2); }
+.question { overflow-wrap: anywhere; font-size: 16px; }
+.actions { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+.body button:focus-visible, .body input:focus-visible, .body a:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 2px; }
+@media (max-width: 540px) { .body button, .actions a { min-height: 36px; } }

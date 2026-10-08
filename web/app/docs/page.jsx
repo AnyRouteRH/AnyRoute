@@ -1,3 +1,4 @@
+import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import ContextMeterDocs from "../../components/ContextMeterDocs"; // C129
 import DarkModeDocs from '../../components/DarkModeDocs'; // C126
 import NewModelsDocs from "../../components/NewModelsDocs"; // C131
@@ -878,6 +879,7 @@ export default function Docs() {
           </div>
           <DocsFeatureIndex />
           <ChatCostDocs /> {/* C128 */}
+          <SavedAnswersDocs /> {/* D140 */}
           <DarkModeDocs/> {/* C126 */}
           <NewModelsDocs /> {/* C131 */}
           <DepositCountdownDocs /> {/* B123 */}

@@ -1,4 +1,6 @@
 "use client";
+import { savedAnswerOnScreen } from "../../lib/saved-answers.js"; // D140
+import { SavedHistoryBridge } from "./SavedAnswers"; // D140
 import { proofBadges } from "../../lib/proof-badge.js";
 import ProofBadge from "../ProofBadge";
 // Private mode for the Harness: one switch under the header bar, a privacy label under each reply, and history that
@@ -211,6 +213,7 @@ function ForgetDialog({ onForget, onClose }) {
     <Modal title="Forget everything?" onClose={onClose}>
       <div className={s.dialog}>
         <p>This deletes the encrypted history and saved private prompts from this browser and clears the conversation on screen. It cannot be undone.</p>
+        <p>Saved answers are also deleted.</p> {/* D140 */}
         <div className="button-row">
           <Button
             type="button"
@@ -240,7 +243,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
   const historyRef = useRef(null);
   const history = () => (historyRef.current ??= createHistory({ storage: browserStorage() }));
   const [vault, setVault] = useState("none"); // none | checking | locked | open
-  useEffect(() => { onHistory?.(on && vault === "open" ? historyRef.current : null); }, [on, vault, onHistory]); // V81
+  useEffect(() => { onHistory?.(vault === "open" ? historyRef.current : null); }, [on, vault, onHistory]); // V81
   const [chats, setChats] = useState([]);
   const [dialog, setDialog] = useState(null); // create | unlock | list | forget
   const [note, setNote] = useState("");
@@ -281,6 +284,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
       setDialog(null);
       return;
     }
+    if (historyRef.current?.unlocked) { setVault("open"); return; } // D140: Saved may have unlocked the same vault.
     let live = true;
     setVault("checking");
     history()
@@ -328,6 +332,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
   const openChat = (id) => {
     const chat = history().get(id);
     if (!chat) return;
+    if (!on) priv.setOn(true); // D140: reopen kept chats with their existing Private mode flow.
     const fallback = priv.models?.[0]?.id || null;
     const restored = restoreLanes(chat.lanes).map((l) => ({ ...l, modelId: find(l.modelId) ? l.modelId : fallback }));
     setLanes(restoreChatCost(chat, restored)); // C128
@@ -351,11 +356,23 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
     setAnnounce("Everything was forgotten.");
   };
 
+  // D140: unlock the existing vault for saved replies without clearing an ordinary Chat conversation.
+  const savedAccess = async () => {
+    if (history().unlocked) { setDialog("list"); return; }
+    try { setDialog(await history().exists() ? "saved-unlock" : "saved-create"); }
+    catch {
+      historyRef.current = createHistory({ storage: memoryStorage() });
+      setNote("This browser does not allow saving here, so history lasts until this tab closes.");
+      setDialog("saved-create");
+    }
+  };
+
   const tor = priv.tor;
   const empty = priv.models && !priv.error && priv.models.length === 0;
 
   return (
     <section className={s.strip} data-on={on || undefined} aria-label="Private mode">
+      <SavedHistoryBridge currentId={() => chatId.current} onOpen={openChat} onAccess={savedAccess} /> {/* D140 */}
       <div className={s.row}>
         <button type="button" role="switch" aria-checked={on} className={s.toggle} onClick={flip} disabled={busy} title={busy ? "Wait for the reply to finish" : undefined}>
           <i className={s.switch} aria-hidden="true" />
@@ -464,7 +481,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
         </div>
       )}
 
-      {dialog === "create" && (
+      {(dialog === "create" || dialog === "saved-create") && (
         <PassphraseDialog
           mode="create"
           persistent={history().persistent}
@@ -475,7 +492,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
           }}
         />
       )}
-      {dialog === "unlock" && (
+      {(dialog === "unlock" || dialog === "saved-unlock") && (
         <PassphraseDialog
           mode="unlock"
           onClose={() => setDialog(null)}
@@ -512,7 +529,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
         />
       )}
       {dialog === "access" && <HistoryAccess onClose={() => setDialog(null)} onEnable={() => { if (!busy) { flip(); setDialog(null); } }} />}
-      {dialog === "export" && <ExportCurrent chat={current} onClose={() => setDialog(null)} />}
+      {dialog === "export" && <ExportCurrent chat={current} savedAnswers={historyRef.current?.unlocked ? historyRef.current.listSavedAnswers().filter((a) => a.chatId === current?.id || savedAnswerOnScreen(a, lanes)) : []} onClose={() => setDialog(null)} />}
       {dialog === "forget" && <ForgetDialog onForget={forgetAll} onClose={() => setDialog(null)} />}
       <p className="sr-only" aria-live="polite">
         {announce}

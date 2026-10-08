@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { savedAnswersFromExport, savedAnswerOnScreen } from "../../lib/saved-answers.js"; // D140
 import { MAX_BYTES } from "../../lib/private-history";
 import { buildSearchIndex, downloadChats, highlightParts, historyShortcut, mergeImport, parseImport, searchChats } from "../../lib/harness-history";
 import { Button, Modal } from "../UI";
@@ -37,7 +38,7 @@ function ExportButtons({ onExport, disabled = false }) {
   </div>;
 }
 
-export function ExportCurrent({ chat, onClose }) {
+export function ExportCurrent({ chat, savedAnswers = [], onClose }) {
   const [error, setError] = useState("");
   return <Modal title="Export current chat" onClose={onClose}>
     <div className={s.body}>
@@ -45,7 +46,7 @@ export function ExportCurrent({ chat, onClose }) {
       <p>Includes saved text, model details, receipt IDs and attachment names. Attachment contents, reasoning and tool traffic are left out.</p>
       {error && <p className="error" role="alert">{error}</p>}
       {chat ? <ExportButtons onExport={(format) => {
-        try { downloadChats([chat], format); onClose(); } catch (e) { setError(e.message); }
+        try { downloadChats([chat], format, globalThis, savedAnswers); onClose(); } catch (e) { setError(e.message); }
       }} /> : <p>Finish a message before exporting this conversation.</p>}
     </div>
   </Modal>;
@@ -87,18 +88,20 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
     finally { if (live.current) setPending(false); }
   };
   const exporting = (list, format) => {
-    try { downloadChats(list, format); setNote("Download ready. The file contains readable text."); setError(""); }
+    try { downloadChats(list, format, globalThis, history.listSavedAnswers().filter((a) => list === all || list.some((c) => c.id === a.chatId || savedAnswerOnScreen(a, c.lanes)))); setNote("Download ready. The file contains readable text."); setError(""); }
     catch (e) { setError(e.message); }
   };
   const importFile = async (chosen) => {
     if (!chosen) return;
     await run(async () => {
       if (chosen.size > MAX_BYTES * 2) throw new Error("Choose a history JSON file smaller than 4 MB.");
-      const incoming = parseImport(await chosen.text());
+      const source = await chosen.text(); // D140
+      const incoming = parseImport(source);
+      const savedAnswers = savedAnswersFromExport(source); // D140
       if (!live.current || !history.unlocked) return;
       const existing = history.list().map((c) => history.get(c.id));
       const { additions, skipped } = mergeImport(existing, incoming);
-      const count = await history.importChats(additions);
+      const count = await history.importChats(additions, savedAnswers);
       if (live.current && history.unlocked) {
         onChange();
         setNote(`Imported ${count} ${count === 1 ? "chat" : "chats"}. Skipped ${skipped} ${skipped === 1 ? "duplicate" : "duplicates"}.`);
@@ -147,7 +150,8 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
       </div>
       <div className={s.exports}>
         {current && <div><span>Export current</span><ExportButtons disabled={busy} onExport={(format) => exporting([current], format)} /></div>}
-        <div><span>Export all {all.length} saved chats</span><ExportButtons disabled={!all.length} onExport={(format) => exporting(all, format)} /></div>
+        <div><span>Export all {all.length} saved chats</span><ExportButtons disabled={!all.length && !history.listSavedAnswers().length} onExport={(format) => exporting(all, format)} /></div>
+        <p>Saved answers are included, even when their chats have been deleted.</p> {/* D140 */}
         <p>Downloads contain readable text, model details, receipt IDs and attachment names. Keep them somewhere you trust. Attachment contents, reasoning and tool traffic are left out.</p>
       </div>
       <Button type="button" secondary onClick={onLock}>Lock history</Button>

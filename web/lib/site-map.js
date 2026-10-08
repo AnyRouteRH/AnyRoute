@@ -221,3 +221,5 @@ TASKS.push({ ...task('appearance', 'learn', 'Choose light or dark', 'Choose Ligh
 TASKS.push({ ...task('new-models', 'chat', 'Find new models this week', 'Browse recently added models and subscribe to the new models feed.', '/docs/#new-models', 'new models, catalogue, atom, feed, this week'), menu: false }); // C131
 
 TASKS.push({ ...task('projects', 'build', 'Group calls by project', 'Tag calls and filter Activity and Insights by project.', '/docs/#projects', 'project, tags, spending, activity, insights'), menu: false }); // C134
+
+TASKS.push({ ...task("saved-answers", "chat", "Find saved answers", "Save replies in encrypted browser history and search them later.", "/docs/#saved-answers", "saved answers, save, replies, chat, search, history, export"), menu: false }); // D140

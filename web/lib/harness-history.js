@@ -1,3 +1,4 @@
+import { validateSavedAnswers } from "./saved-answers.js"; // D140
 import { MAX_BYTES, MAX_CHATS, snapshotLanes, titleOf } from "./private-history.js";
 import { chatCost, costSummaryFields } from "./chat-cost.js"; // C128
 
@@ -80,6 +81,7 @@ export function parseImport(source) {
   let doc;
   try { doc = JSON.parse(source); } catch { bad(); }
   if (doc?.format !== EXPORT_FORMAT || doc.version !== EXPORT_VERSION || !Array.isArray(doc.chats) || doc.chats.length > MAX_CHATS) bad();
+  validateSavedAnswers(doc.savedAnswers); // D140
   return doc.chats.map(validateChat);
 }
 
@@ -89,8 +91,8 @@ export function currentChat(lanes, saved, now = Date.now()) {
   return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, lanes: snapshot, costSummary: chatCost(lanes) }; // C128
 }
 
-export function exportJson(chats) {
-  return JSON.stringify({ format: EXPORT_FORMAT, version: EXPORT_VERSION, chats }, null, 2) + "\n";
+export function exportJson(chats, savedAnswers = []) {
+  return JSON.stringify({ format: EXPORT_FORMAT, version: EXPORT_VERSION, chats, ...(savedAnswers.length ? { savedAnswers: validateSavedAnswers(savedAnswers) } : {}) }, null, 2) + "\n";
 }
 
 const literal = (value) => String(value).replace(/[\\`*_{}[\]()#+.!|>~-]/g, "\\$&").replace(/[\r\n]+/g, " ");
@@ -109,10 +111,10 @@ export function exportMarkdown(chats) {
   }).join("\n---\n\n");
 }
 
-export function downloadChats(chats, format, scope = globalThis) {
-  if (!chats.length) throw new Error("There are no conversations to export.");
+export function downloadChats(chats, format, scope = globalThis, savedAnswers = []) {
+  if (!chats.length && !savedAnswers.length) throw new Error("There are no conversations to export.");
   const json = format === "json";
-  const blob = new Blob([json ? exportJson(chats) : exportMarkdown(chats)], { type: json ? "application/json" : "text/markdown;charset=utf-8" });
+  const blob = new Blob([json ? exportJson(chats, savedAnswers) : exportMarkdown(chats) + savedAnswers.map((a) => `\n\n# Saved answer\n\n${a.question}\n\n${a.answer}\n\nModel: ${literal(a.model)} · Saved: ${new Date(a.at).toISOString()} · Cost: ${a.cost === null ? "Not reported" : a.cost}\nReceipt: ${literal(a.receiptId)}`).join("\n")], { type: json ? "application/json" : "text/markdown;charset=utf-8" });
   const url = scope.URL.createObjectURL(blob);
   const link = scope.document.createElement("a");
   link.href = url;

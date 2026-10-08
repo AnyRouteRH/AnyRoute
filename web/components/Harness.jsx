@@ -1,4 +1,5 @@
 "use client";
+import { SavedAnswersProvider, SavedAnswersButton, SaveAnswer } from "./harness/SavedAnswers"; // D140
 import ContextMeter, { useContextMeter } from "./harness/ContextMeter"; // C129
 import { contextMeter, contextSendBlock } from "../lib/context-meter.js"; // C129
 import { NewModelsRow } from "./NewModels"; // C131
@@ -159,6 +160,7 @@ function Rail({ models, routes, loading, error, onRetry, activeId, onPick, favs,
       <div className={s.railHead}>
         <div className={s.railTitle}>
           <h2>Models</h2>
+          <SavedAnswersButton /> {/* D140 */}
           <span className={s.count} aria-live="polite">
             {loading ? "Loading" : `${list.length} of ${all.length}`}
           </span>
@@ -518,6 +520,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
           </span>
         </footer>
       )}
+      {!streaming && <SaveAnswer msg={msg} />} {/* D140 */}
       <ReplyPrivacy msg={msg} open={last} />
     </article>
   );
@@ -1122,6 +1125,7 @@ export default function Harness() {
   useEffect(() => setMod(isMac() ? "⌘" : "Ctrl"), []);
 
   return (
+    <SavedAnswersProvider history={promptHistory} lanes={lanes} busy={busy}> {/* D140 */}
     <div className={s.harness} data-harness-app data-compare={compare || undefined}>
       <Rail
         models={models}
@@ -1168,6 +1172,7 @@ export default function Harness() {
             </button>
           )}
           <div className={s.barRight}>
+            <SavedAnswersButton /> {/* D140: access on narrow screens. */}
             <CopyAsCode model={focusModel} settings={settings} system={system} messages={focusLane?.messages} headers={{ "x-title": "Anyroute Harness", ...priv.headers() }} apiKey={auth.key} busy={busy} /> {/* C130 */}
             <button id="prompt-library" type="button" className={s.barLink} aria-keyshortcuts="Meta+Shift+P Control+Shift+P" onClick={prompts.open}>Prompts</button> {/* V81 */}
             <button type="button" className={s.barToggle} aria-pressed={compare} onClick={toggleCompare} disabled={!models.length}>
@@ -1390,5 +1395,6 @@ export default function Harness() {
         {announce}
       </p>
     </div>
+    </SavedAnswersProvider> /* D140 */
   );
 }
