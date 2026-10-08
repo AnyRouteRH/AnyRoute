@@ -4,6 +4,7 @@
 // under the account lock that enforcement also takes, so the next request of every following key sees the new rules:
 // the same evaluator, the same reads and no cache, exactly as when a key's own rulebook is saved.
 import { and, asc, eq, ne, sql } from "drizzle-orm";
+import { recordPolicyVersion } from "./policy-version-record.ts"; // D144
 import type { Db, Tx } from "../db/client.ts";
 import { teams } from "../db/schema.ts";
 import { fail } from "../lib/errors.ts";
@@ -80,6 +81,7 @@ export async function updatePlaybook(db: Db, accountId: string, id: string, patc
     if (rules && followers.length) {
       await tx.update(agentPolicies).set({ version: spec.version, spec, sha256, updatedAt: now, updatedBy: actor }).where(eq(agentPolicies.playbookId, id));
       for (const keyHash of followers) await appendEvent(tx, { keyHash, kind: "policy_set", policySha256: sha256 }, now);
+      for (const keyHash of followers) await recordPolicyVersion(tx, keyHash, spec, actor, "playbook", now); // D144
     }
     const change = await record(tx, updated!, rules ? "update" : "rename", followers.length, actor, now);
     return { row: updated!, followers, change, rules };
@@ -102,6 +104,7 @@ export async function followPlaybook(db: Db, key: { keyHash: string; accountId: 
       const values = { version: book.spec.version, spec: book.spec, sha256: book.sha256, updatedAt: now, updatedBy: actor, playbookId: book.id };
       const [row] = await tx.insert(agentPolicies).values({ keyHash: key.keyHash, ...values }).onConflictDoUpdate({ target: agentPolicies.keyHash, set: values }).returning();
       await appendEvent(tx, { keyHash: key.keyHash, kind: "policy_set", policySha256: book.sha256 }, now);
+      await recordPolicyVersion(tx, key.keyHash, book.spec, actor, "playbook", now); // D144
       return { row: row as PolicyRow, playbook: book, previous: current ?? null, changed: true };
     }
     if (!current?.playbookId) return { row: current ?? null, playbook: null, previous: current ?? null, changed: false };
@@ -109,6 +112,7 @@ export async function followPlaybook(db: Db, key: { keyHash: string; accountId: 
     // The copy is already the playbook's current rules; writing them again makes the key's own rulebook explicit.
     const [row] = await tx.update(agentPolicies).set({ playbookId: null, version: book!.spec.version, spec: book!.spec, sha256: book!.sha256, updatedAt: now, updatedBy: actor }).where(eq(agentPolicies.keyHash, key.keyHash)).returning();
     if (book!.sha256 !== current.sha256) await appendEvent(tx, { keyHash: key.keyHash, kind: "policy_set", policySha256: book!.sha256 }, now);
+    await recordPolicyVersion(tx, key.keyHash, book!.spec, actor, "playbook", now); // D144
     return { row: row as PolicyRow, playbook: book!, previous: current, changed: true };
   });
 }
@@ -124,6 +128,7 @@ export async function deletePlaybook(db: Db, accountId: string, id: string, copy
       fail(409, `${followers.length} ${followers.length === 1 ? "key follows" : "keys follow"} this playbook. Move them to another playbook or stop them following it first, or delete with ?unlink=copy so each keeps these rules as its own.`, "playbook_followed", { followers: followers.length });
     const now = new Date();
     if (followers.length) await tx.update(agentPolicies).set({ playbookId: null, updatedAt: now, updatedBy: actor }).where(eq(agentPolicies.playbookId, id));
+    for (const keyHash of followers) await recordPolicyVersion(tx, keyHash, row.spec, actor, "playbook", now); // D144
     await tx.delete(playbooks).where(eq(playbooks.id, id));
     const change = await record(tx, row, "delete", followers.length, actor, now);
     return { row, followers, change };

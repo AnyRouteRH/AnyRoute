@@ -19536,6 +19536,241 @@
         ],
         "description": "Requires an active account management owner key; session and team-scoped keys cannot manage these account-wide limits. Budget amounts use USD and calendar months UTC."
       }
+    },
+    "/api/v1/agents/{key_hash}/policy/versions": {
+      "get": {
+        "x-card": "D144",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "agentPolicyVersions",
+        "summary": "Read saved rulebook versions",
+        "description": "Requires the same Bearer owner/admin, management, account and team scope as PUT policy. Session and inference-only keys are refused. AGENT_POLICY_ENABLED defaults false; off returns 404. Cache-Control: no-store. Returns at most 50 retained revisions newest first by id, including repeated saves. Diffs use the shared plain-English sentence formatter and compare consecutive versions. The migration only retains the current rules and their last-update metadata; lost earlier rules are not recovered. Full readable rulebooks and saving key hashes remain until operator deletion, including after removing the current rulebook.",
+        "responses": {
+          "200": {
+            "description": "Saved versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "maxItems": 50,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "key_hash",
+                          "sha256",
+                          "spec",
+                          "saved_at",
+                          "saved_by",
+                          "source",
+                          "diff"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "key_hash": {
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          "spec": {
+                            "$ref": "#/components/schemas/AgentPolicy"
+                          },
+                          "saved_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "saved_by": {
+                            "type": "string",
+                            "description": "Saving principal key hash; migration copies use the current row’s last updater."
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "save",
+                              "approve_and_allow",
+                              "restore",
+                              "playbook"
+                            ]
+                          },
+                          "diff": {
+                            "type": "object",
+                            "required": [
+                              "added",
+                              "removed"
+                            ],
+                            "properties": {
+                              "added": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "removed": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/policy/restore": {
+      "post": {
+        "x-card": "D144",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "operationId": "restoreAgentPolicy",
+        "summary": "Restore saved rules as a new revision",
+        "description": "Requires the same Bearer owner/admin, management, account and team scope as PUT policy. Session and inference-only keys are refused. AGENT_POLICY_ENABLED defaults false; off returns 404. Cache-Control: no-store. The SHA-256 must belong to this key’s history. Validates the saved spec and digest, saves a new restore revision and appends policy_set to the existing hash chain in one account-locked transaction. Keeps Stop state and inherited rules. Following playbook keys are refused until they stop following.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sha256"
+                ],
+                "properties": {
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rules restored as a normal save",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "key_hash",
+                        "policy",
+                        "sha256",
+                        "version"
+                      ],
+                      "properties": {
+                        "key_hash": {
+                          "type": "string"
+                        },
+                        "policy": {
+                          "$ref": "#/components/schemas/AgentPolicy"
+                        },
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "const": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "This key follows a playbook, or the saved rules do not match their digest.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

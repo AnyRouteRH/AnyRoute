@@ -4,6 +4,7 @@ import { describeScheduledPrompts } from "./scheduled-prompts.ts"; // D136
 import { describeModelArrivals } from "./model-arrivals.ts"; // C131
 import { describeProjects } from "./projects.ts"; // C134
 import { describeProjectBudgets } from "./project-budgets.ts"; // D139
+import { describePolicyHistory } from "./policy-history.ts"; // D144
 import { describeLowBalance } from "./low-balance.ts"; // B119
 import { guardTables } from "./tables/agent-guard.ts"; // V98
 import { describeWeeklySummary } from "./weekly-summary.ts"; // B120
@@ -54,6 +55,7 @@ describeScheduledPrompts(TABLE_DOCS); // D136
 describeProjects(TABLE_DOCS); // C134
 describeSecurityAlerts(TABLE_DOCS); // D138
 describeProjectBudgets(TABLE_DOCS); // D139
+describePolicyHistory(TABLE_DOCS); // D144
 describeLowBalance(TABLE_DOCS); // B119
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);

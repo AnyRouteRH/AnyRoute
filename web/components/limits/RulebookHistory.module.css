@@ -1,0 +1,6 @@
+.history { margin-block: 1rem; overflow-wrap: anywhere; }
+.history summary { cursor: pointer; font-weight: 600; }
+.versions { padding-inline-start: 1.25rem; }
+.versions > li { padding-block: 1rem; border-bottom: 1px solid var(--line); }
+.versions h4 { margin-block: 0.75rem 0.25rem; }
+.versions ul { padding-inline-start: 1.25rem; margin-bottom: 1rem; }

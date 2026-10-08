@@ -81,6 +81,7 @@ import { agentCertificatesRoutes } from "./api/agent-certificates.ts";
 import { guardRoutes } from "./api/guard.ts"; // V98
 import { agentPayRoutes } from "./api/agent-pay.ts"; // Pay another agent
 import { agentsRoutes } from "./api/agents.ts";
+import { agentPolicyHistoryRoutes } from "./api/agent-policy-history.ts"; // D144
 import { playbooksRoutes } from "./api/playbooks.ts"; // U115
 import { agentApprovalMiddleware, agentApprovalsRoutes } from "./api/agent-approvals.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
@@ -248,6 +249,7 @@ export async function createApp(opts: AppOptions = {}) {
   identityRoutes(app, ctx); // v6 I
   agentSealedRoutes(app, ctx);
   agentsRoutes(app, ctx);
+  agentPolicyHistoryRoutes(app, ctx); // D144
   agentSpendRoutes(app, ctx); // C132
   quietAgentAlertRoutes(app, ctx); // D141
   playbooksRoutes(app, ctx); // U115: after agentsRoutes, whose /api/v1/agents/* switch also covers the follow route.

@@ -1,5 +1,6 @@
 import { recordPolicySecurity } from "../security-alerts/records.ts"; // D138
 import { actionState } from "./guard-state.ts";
+import { recordPolicyVersion } from "./policy-version-record.ts"; // D144
 import { loadBreakerState } from "./breaker-state.ts";
 import { and, desc, eq, getTableColumns, lt, sql } from "drizzle-orm";
 import { checkpointAutonomy, readAutonomy, autonomyRetention } from "./autonomy.ts";
@@ -81,6 +82,7 @@ export async function setPolicy(db: Db, accountId: string, keyHash: string, poli
     const sha256 = agentPolicySha256(policy);
     const [row] = await tx.insert(agentPolicies).values({ keyHash, version: policy.version, spec: policy, sha256, updatedBy: actor }).onConflictDoUpdate({ target: agentPolicies.keyHash, set: { version: policy.version, spec: policy, sha256, updatedBy: actor, updatedAt: new Date() } }).returning();
     await appendEvent(tx, { keyHash, kind: "policy_set", policySha256: sha256 });
+    await recordPolicyVersion(tx, keyHash, policy, actor, "save"); // D144
     return row;
   });
 }

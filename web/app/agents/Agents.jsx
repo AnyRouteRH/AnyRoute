@@ -13,6 +13,7 @@ import { DAYS, LIMITS, FEATURE_OFF, capBars, reasonText, decisionText, intentSum
 import { stoppedLabel } from '../../lib/stop-until'; // B117
 import { LIMIT_WORDS as W, limitsFromRulebook, rulebookFromLimits } from '../../lib/spending-limits';
 import RulebookCard from '../../components/limits/RulebookSentences'; // B124
+import RulebookHistory from '../../components/limits/RulebookHistory'; // D144
 import SpendingLimits, { LimitGroup, useAgentGuard } from '../../components/limits/SpendingLimits';
 import ReplayResult, { ReplayButton, useRuleReplay } from '../../components/limits/ReplayRules'; // Replay your rules
 import s from './agents.module.css';
@@ -110,6 +111,7 @@ function AgentDetail({ agent, request, refreshList, refreshVersion, onError, gua
       <FollowPlaybook id="rulebook" keyHash={agent.key_hash} playbook={agent.playbook ?? null} request={request} disabled={busy} onChanged={() => { setNotice('Updated.'); refreshList(); setRevision(r => r+1); }}/>
       {record && <><h3>{W.title}</h3><RulebookCard policy={policy} inherited={(agent.policies ?? []).filter(p => p.inherited)} stop={stop} busy={busy}><RulebookForm key={revision} policy={policy} hasPolicy={!!policy} busy={busy} locked={!!agent.playbook} guard={guard} request={request} keyHash={agent.key_hash} onSave={body => mutate(() => request(path+'/policy',{ method:'PUT',body }))} onRemove={() => mutate(() => request(path+'/policy',{ method:'DELETE' }))}/></RulebookCard></>} {/* B124 */}
       <p className="help-text">{W.scopeOnly}</p>
+      {record && <RulebookHistory key={agent.key_hash} keyHash={agent.key_hash} request={request} playbook={agent.playbook} revision={revision + refreshVersion} disabled={busy} onRestored={() => mutate(async () => true)}/>} {/* D144 */}
     </section>
     <section className="control-panel"><h2>Event log</h2><p className="help-text">Newest first, 50 per page. These intents contain model, lane, estimated cost and tools; no prompt or response text is shown.</p>
       {!events.length && <p>{busy ? 'Reading events…' : readError ? 'Events could not be read.' : 'No events recorded.'}</p>}

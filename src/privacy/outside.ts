@@ -4,6 +4,8 @@ import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
 import { securityAlertReader, securityAlertStores } from "./security-alerts.ts"; // D138
 import { scheduledPromptsReader, scheduledPromptsStores } from "./scheduled-prompts.ts"; // D136
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
+import { policyHistoryBodyReader } from "./policy-history.ts"; // D144
+import { describePolicyHistoryReaders } from "./policy-history.ts"; // D144
 import { gettingStartedBrowser } from "./getting-started.ts"; // C135
 import { shareToAnyrouteBrowser } from "./share-to-anyroute.ts"; // D137
 import { idempotencyFamily, idempotencyReader, idempotencyMemory } from "./idempotency.ts"; // D145
@@ -443,6 +445,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   toolsBodyReader, // v6 T
   agentPayBodyReader, // Pay another agent
   approveAndAllowBodyReader, // B118
+  policyHistoryBodyReader, // D144
   provisioningBodyReader, inferenceModelReader, // ZK6
   structuredOutputReader, // V83
   webhookBodyReader, // V86.
@@ -739,6 +742,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
 
 const noLog = (item: string, file: string, contains: string): { item: string; evidence: Evidence[] } => ({ item, evidence: [ev(file, contains)] });
 
+describePolicyHistoryReaders(bodyReaders); // D144
 export const EXTERNAL: ExternalDoc = {
   redis: {
     summary:

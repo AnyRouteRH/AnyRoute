@@ -15,6 +15,7 @@ COPY src/network/payout-schema.ts ./src/network/payout-schema.ts
 COPY src/network/bond-schema.ts ./src/network/bond-schema.ts
 COPY src/agents/profile-schema.ts ./src/agents/profile-schema.ts
 COPY src/agents/schema.ts ./src/agents/schema.ts
+COPY src/agents/policy-versions-schema.ts ./src/agents/policy-versions-schema.ts
 COPY src/agents/approval-schema.ts ./src/agents/approval-schema.ts
 COPY src/agents/guard-schema.ts ./src/agents/guard-schema.ts
 COPY src/agents/pay-schema.ts ./src/agents/pay-schema.ts

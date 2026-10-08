@@ -62,6 +62,7 @@ import PlaybooksDocs from "../../components/PlaybooksDocs"; // U115
 import StopUntilDocs from "../../components/StopUntilDocs"; // B117
 import DefaultRouteDocs from "../../components/DefaultRouteDocs";
 import RulebookWordsDocs from "../../components/RulebookWordsDocs"; // B124
+import RulebookHistoryDocs from "../../components/RulebookHistoryDocs"; // D144
 import StarterSetupsDocs from "../../components/StarterSetupsDocs"; // U103
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentCertificateDocs from "../../components/AgentCertificateDocs";
@@ -899,6 +900,7 @@ export default function Docs() {
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
           <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs /><ReplayRulesDocs /><PlaybooksDocs /><StopUntilDocs /><RulebookWordsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs /> {/* B117 B124 */}
+          <RulebookHistoryDocs /> {/* D144 */}
           <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}<LaneReportDocs /> {/* Lane report */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />

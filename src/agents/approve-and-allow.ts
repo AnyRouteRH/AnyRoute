@@ -1,5 +1,6 @@
 // B118: reuse the approval decision and policy hash chain under one account lock.
 import { and, eq } from "drizzle-orm";
+import { recordPolicyVersion } from "./policy-version-record.ts"; // D144
 import type { Db, Tx } from "../db/client.ts";
 import { fail } from "../lib/errors.ts";
 import { picoToUsdString, usdToPico } from "../lib/money.ts";
@@ -52,6 +53,7 @@ export async function approveAndAllow(db: Db, accountId: string, row: ApprovalRo
     const policy = preview.change.policy, sha256 = agentPolicySha256(policy);
     await tx.update(agentPolicies).set({ spec: policy, version: policy.version, sha256, updatedBy: actor, updatedAt: new Date() }).where(eq(agentPolicies.keyHash, current.keyHash));
     await appendEvent(tx, { keyHash: current.keyHash, kind: "policy_set", policySha256: sha256 });
+    await recordPolicyVersion(tx, current.keyHash, policy, actor, "approve_and_allow"); // D144
     const approved = await decideApproval(db, accountId, current.id, actor, "approve", tx);
     return { approved, change: preview.data, policy: { policy, version: policy.version, sha256 } };
   });

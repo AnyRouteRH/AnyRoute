@@ -393,6 +393,13 @@
       "when": 1791600057000,
       "tag": "0057_project_budgets",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1791600058000,
+      "tag": "0058_policy_versions",
+      "breakpoints": true
     }
   ]
 }

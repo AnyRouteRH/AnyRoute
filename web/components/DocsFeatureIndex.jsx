@@ -32,6 +32,7 @@ const sections = [
   ["replay-rules", "Replay your rules"],
   ["playbooks", "Playbooks"],
   ["rulebook-words", "Rulebooks in plain English"], // B124
+  ["rulebook-history", "Rulebook history"], // D144
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
   ["approve-and-allow", "Allow this next time"], // B118
