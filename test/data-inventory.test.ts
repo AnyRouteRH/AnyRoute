@@ -266,8 +266,8 @@ describe("Redis", () => {
     expect(families.some((f) => f.key.startsWith("bull:anyroute-jobs-"))).toBe(true);
   });
 
-  test("only the response cache and x402 payment recovery are marked as holding answer text, and they are the only keys that are not a counter or a marker", () => {
-    expect(families.filter((f) => f.requestText === "answer-text").map((f) => f.key)).toEqual(["cache:<sha256>", "x402paid:<sha256>"]);
+  test("only the response cache, retry protection and x402 payment recovery are marked as holding answer text, and they are the only keys that are not a counter or a marker", () => {
+    expect(families.filter((f) => f.requestText === "answer-text").map((f) => f.key)).toEqual(["idempotency:<sha256>", "cache:<sha256>", "x402paid:<sha256>"]);
   });
 
   test("the stated lifetime of a rate-limit key is what the limiter sets", () => {

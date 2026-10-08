@@ -127,6 +127,7 @@ TASKS.push({ ...task('why-this-route', 'learn', 'Understand a route', 'See why e
 TASKS.push({ ...task('decision-tags', 'verify', 'Tie an order to the model call behind it', 'Sign an order’s hash into a call’s receipt and check it later.', '/docs/#decision-tags', 'decision tag, decision receipt, order, trade, hash, agent guard, informed by'), menu: false }); // B: search-only until switched on.
 TASKS.push({ ...task('lane-report', 'verify', 'See where your calls ran', 'Calls and spend by lane, the share on proven hardware and each provider’s evidence.', '/dashboard/#statements', 'lane, lanes, lane report, attested, unlinkable, public, proven hardware, where, evidence'), menu: false }); // Lane report: search-only, on Statements.
 TASKS.push({ ...task('insights', 'build', 'See where your money goes', 'See spend by model, key and lane, and the same abilities for less.', '/dashboard/#insights', 'spend, insights, cost, model, key, agent, lane'), menu: false }); // V88: search-only.
+TASKS.push({ ...task('idempotency', 'build', 'Retry without paying twice', 'Keep the same retry key to recover a reply and its receipt without another charge.', '/docs/#idempotency', 'retry, idempotency, receipt, charge'), menu: false }); // D145
 export const menuTasks = group => TASKS.filter(item => item.group === group && item.menu);
 TASKS.push({ ...task('chat-cost', 'chat', 'See this chat’s cost', 'See the running cost and reply count across Chat lanes and saved chats.', '/docs/#chat-cost', 'chat, cost, total, replies, compare, spending, history'), menu: false }); // C128
 

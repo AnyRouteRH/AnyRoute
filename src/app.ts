@@ -120,6 +120,7 @@ import { tlogRoutes } from "./tlog/routes.ts";
 import { statusRoutes } from "./api/status.ts";
 import { networkRoutes } from "./network/waitlist.ts";
 import { skillsRoutes } from "./api/skills.ts";
+import { idempotencyCors, idempotencyMiddleware } from "./idempotency/middleware.ts"; // D145
 import { startStatusLoop, statusMiddleware } from "./services/slo.ts";
 
 export type AppOptions = {
@@ -182,6 +183,7 @@ export async function createApp(opts: AppOptions = {}) {
   // The OpenAI-style /v1/* aliases get the same CORS as /api/*, so a browser can read the receipt, lane and policy headers on either.
   const apiCors = cors({ origin: "*", allowHeaders: ["x-agent-approval", "authorization", "content-type", "x-e2ee-version", "x-client-pub-key", "x-model-pub-key", "x-e2ee-nonce", "x-e2ee-timestamp", "x-pay-with", "x-payment", "payment-signature", "payment-recovery", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "x-anyroute-lane-downgrade", "x-anyroute-decision-tag", "http-referer", "x-title", "traceparent", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"], exposeHeaders: [...EXPOSED_RESPONSE_HEADERS, ...(cfg.routeExplain ? ["x-anyroute-route"] : []), /* V84 */ ...(cfg.structuredOutputCheckEnabled ? ["x-anyroute-json-check"] : []), /* V83 */ "x-e2ee-applied", "x-e2ee-version", "x-e2ee-algo", "x-e2ee-receipt-id"] });
   app.use("*", projectCors); // C134: after origin lock, before existing CORS
+  app.use("*", idempotencyCors); // D145
   app.use("/api/*", apiCors);
   app.use("/v1/*", apiCors);
   app.use("/ollama/*", apiCors);
@@ -207,6 +209,7 @@ export async function createApp(opts: AppOptions = {}) {
   app.use("*", onionIngress(cfg)); // onion requests: drop every client address header before any route reads one
   app.use("*", statusMiddleware(ctx)); // public-lane outcomes per API surface for /api/v1/status/slo; private lanes are not counted here
   app.use("*", inferenceScopeMiddleware(ctx)); // ZK6: deny by default before account middleware.
+  idempotencyMiddleware(app, ctx); // D145: authenticated replays precede approval consumption and billing.
   app.use("*", agentLedgerMiddleware(ctx));
   app.use("*", agentApprovalMiddleware(ctx));
   paymentRecovery(app, ctx); // a lost x402 answer is sent again, never paid twice; outside every other route middleware

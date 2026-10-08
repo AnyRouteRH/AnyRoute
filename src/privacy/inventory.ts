@@ -215,6 +215,7 @@ export function summarize(tables: TableOut[], ext: ExternalDoc): Summary {
   else facts.push(`Some columns hold a network address: ${list(holdsAddress.map((c) => c.id))}.`);
 
   const caveats: { title: string; text: string }[] = [];
+  for (const f of ext.redis.families.filter(x => x.key.startsWith("idempotency:") && x.requestText === "answer-text")) caveats.push({ title: "Retry without paying twice keeps a reply when you ask", text: `${f.purpose} ${f.ttl} Without Redis, entries live in one router process only and are lost at restart. The router still reads request and reply text in memory.` }); // D145
   for (const f of sealed)
     caveats.push({
       title: "The response cache keeps answers when you ask it to",

@@ -5,6 +5,7 @@ import { securityAlertReader, securityAlertStores } from "./security-alerts.ts";
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
 import { gettingStartedBrowser } from "./getting-started.ts"; // C135
 import { shareToAnyrouteBrowser } from "./share-to-anyroute.ts"; // D137
+import { idempotencyFamily, idempotencyReader, idempotencyMemory } from "./idempotency.ts"; // D145
 import { modelAlternativesReader } from "./model-alternatives.ts"; // B121
 import { lowBalanceReader } from "./low-balance.ts"; // B119
 import { anonymousRateFamily, hardeningAddresses, hardeningBodies } from "./hardening.ts"; // HD1
@@ -69,6 +70,7 @@ function limit(o: { prefix: string; shape: string; purpose: string; holds: Redis
 const ADDRESS_NOTE = "The caller's network address is part of the key. Over Tor the address is replaced by the word onion, so no address is used.";
 
 const redisFamilies: RedisFamily[] = [
+  idempotencyFamily, // D145
   anonymousRateFamily, // HD1
   ...toolsRateFamilies, // v6 T
   agentPayRateFamily, // Pay another agent
@@ -427,6 +429,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   telegramPhotoReader, // D142
   quietAlertBodyReader, // D141
   securityAlertReader, // D138
+  idempotencyReader, // D145
   weeklySummaryReader, // B120
   modelAlternativesReader, // B121
   lowBalanceReader, // B119
@@ -774,6 +777,7 @@ export const EXTERNAL: ExternalDoc = {
   otherStores: [
     ...quietAlertStores, // D141
     ...securityAlertStores, // D138
+    idempotencyMemory, // D145
     ...priceNoticeStores, // C133
     ...rushStores, // ON3
     ...toolsStores, // v6 T

@@ -453,6 +453,7 @@ export function privacyLabel(receipt: unknown, opts: LabelOptions = {}): Privacy
     out.summary[3] = "Kept: ciphertext wire hashes, counts or billing bounds, charge, timing and E2EE verification metadata. No content copy.";
   }
   out.short = shortLine(out);
+  if (out.label.prompt_readers.router !== false) out.label.stored.text += " If this API-key call opted in with Idempotency-Key, retry protection keeps its reply, status and receipt headers encrypted in Redis or router memory for 24 hours from the first request. Replies can echo request text. Stream replies are not kept; their receipt headers are kept instead. The receipt does not record this header, so this label cannot establish whether a copy was kept. The router can read this content; encryption is at rest. Without Redis, protection ends at restart and does not span processes."; // D145: receipts do not record opt-in retention.
   return out;
 }
 

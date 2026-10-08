@@ -4475,6 +4475,18 @@
         ],
         "parameters": [
           {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "D145: opt-in API-key retry protection, scoped to account + API key + retry key for 24 hours from the first request. Canonical body and endpoint must match. Reply encrypted at rest. Headerless behavior is unchanged. See /docs/#idempotency.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[!-~]{1,128}$"
+            }
+          },
+          {
             "$ref": "#/components/parameters/Referer"
           },
           {
@@ -4519,9 +4531,21 @@
           }
         },
         "responses": {
+          "422": {
+            "description": "Idempotency-Key already used with a different canonical body or endpoint (idempotency_key_reused)."
+          },
           "200": {
             "description": "Completion JSON, or SSE events followed by data: [DONE] when stream is true.",
             "headers": {
+              "Idempotent-Replay": {
+                "description": "true when the original kept result is returned, without another charge or receipt.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                }
+              },
               "X-Anyroute-Route": {
                 "$ref": "#/components/headers/RouteExplanation"
               },
@@ -4642,6 +4666,18 @@
         ],
         "parameters": [
           {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "D145: opt-in API-key retry protection, scoped to account + API key + retry key for 24 hours from the first request. Canonical body and endpoint must match. Reply encrypted at rest. Headerless behavior is unchanged. See /docs/#idempotency.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[!-~]{1,128}$"
+            }
+          },
+          {
             "$ref": "#/components/parameters/ProjectTag"
           },
           {
@@ -4674,9 +4710,21 @@
           }
         },
         "responses": {
+          "422": {
+            "description": "Idempotency-Key already used with a different canonical body or endpoint (idempotency_key_reused)."
+          },
           "200": {
             "description": "Embedding response with usage and signed receipt.",
             "headers": {
+              "Idempotent-Replay": {
+                "description": "true when the original kept result is returned, without another charge or receipt.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                }
+              },
               "X-Anyroute-Route": {
                 "$ref": "#/components/headers/RouteExplanation"
               },
@@ -8982,6 +9030,18 @@
         ],
         "parameters": [
           {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "D145: opt-in API-key retry protection, scoped to account + API key + retry key for 24 hours from the first request. Canonical body and endpoint must match. Reply encrypted at rest. Headerless behavior is unchanged. See /docs/#idempotency.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[!-~]{1,128}$"
+            }
+          },
+          {
             "$ref": "#/components/parameters/Referer"
           },
           {
@@ -9026,9 +9086,21 @@
           }
         },
         "responses": {
+          "422": {
+            "description": "Idempotency-Key already used with a different canonical body or endpoint (idempotency_key_reused)."
+          },
           "200": {
             "description": "A Response object, or the Responses event stream when stream is true.",
             "headers": {
+              "Idempotent-Replay": {
+                "description": "true when the original kept result is returned, without another charge or receipt.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                }
+              },
               "X-Anyroute-Disclosure": {
                 "$ref": "#/components/headers/Disclosure"
               },
@@ -10982,6 +11054,18 @@
         ],
         "parameters": [
           {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "D145: opt-in API-key retry protection, scoped to account + API key + retry key for 24 hours from the first request. Canonical body and endpoint must match. Reply encrypted at rest. Headerless behavior is unchanged. See /docs/#idempotency.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[!-~]{1,128}$"
+            }
+          },
+          {
             "$ref": "#/components/parameters/ProjectTag"
           },
           {
@@ -11014,9 +11098,21 @@
           }
         },
         "responses": {
+          "422": {
+            "description": "Idempotency-Key already used with a different canonical body or endpoint (idempotency_key_reused)."
+          },
           "200": {
             "description": "Results best first, with usage, cost and a signed receipt.",
             "headers": {
+              "Idempotent-Replay": {
+                "description": "true when the original kept result is returned, without another charge or receipt.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                }
+              },
               "X-Anyroute-Disclosure": {
                 "$ref": "#/components/headers/Disclosure"
               },
@@ -18678,6 +18774,160 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/messages": {
+      "post": {
+        "operationId": "createMessage",
+        "summary": "Create a message",
+        "description": "D145: also served under /v1. Idempotency-Key is optional and requires an API key with the usual inference role. Messages accepts x-api-key or Authorization: Bearer. Matching retries return the kept final JSON and receipt headers without another charge. Streams return 409 with receipt_id when complete. Results are encrypted and expire 24 hours from the first request. See /docs/#idempotency.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "D145: opt-in API-key retry protection, scoped to account + API key + retry key for 24 hours from the first request. Canonical body and endpoint must match. Reply encrypted at rest. Headerless behavior is unchanged. See /docs/#idempotency.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[!-~]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inference reply or original kept result.",
+            "headers": {
+              "Idempotent-Replay": {
+                "description": "true for a kept-result replay.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "idempotency_in_progress or idempotency_result_not_kept, with original receipt_id when available."
+          },
+          "422": {
+            "description": "idempotency_key_reused: different body or endpoint."
+          },
+          "503": {
+            "description": "idempotency_unavailable: no new protected call runs."
+          }
+        }
+      }
+    },
+    "/api/v1/completions": {
+      "post": {
+        "operationId": "createCompletion",
+        "summary": "Create a text completion",
+        "description": "D145: also served under /v1. Idempotency-Key is optional and requires an API key with the usual inference role. Messages accepts x-api-key or Authorization: Bearer. Matching retries return the kept final JSON and receipt headers without another charge. Streams return 409 with receipt_id when complete. Results are encrypted and expire 24 hours from the first request. See /docs/#idempotency.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "D145: opt-in API-key retry protection, scoped to account + API key + retry key for 24 hours from the first request. Canonical body and endpoint must match. Reply encrypted at rest. Headerless behavior is unchanged. See /docs/#idempotency.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[!-~]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inference reply or original kept result.",
+            "headers": {
+              "Idempotent-Replay": {
+                "description": "true for a kept-result replay.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "idempotency_in_progress or idempotency_result_not_kept, with original receipt_id when available."
+          },
+          "422": {
+            "description": "idempotency_key_reused: different body or endpoint."
+          },
+          "503": {
+            "description": "idempotency_unavailable: no new protected call runs."
           }
         }
       }
@@ -32506,5 +32756,16 @@
         "additionalProperties": true
       }
     }
+  },
+  "x-idempotency": {
+    "card": "D145",
+    "documentation": "/docs/#idempotency",
+    "ttl_seconds": 86400,
+    "auth": "current API key and usual inference role; Messages also accepts x-api-key",
+    "replay_header": "Idempotent-Replay: true",
+    "409": "idempotency_in_progress or idempotency_result_not_kept with original receipt_id when available",
+    "422": "idempotency_key_reused",
+    "503": "idempotency_unavailable; new protected call refused before billing",
+    "streams": "not kept; completed retries return 409 with original receipt id"
   }
 }
