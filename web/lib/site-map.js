@@ -213,6 +213,7 @@ TASKS.push({ ...task('proof-pack-check', 'verify', 'Check a proof pack', 'Check 
 TASKS.push(task('deposit-countdown', 'build', 'Follow a deposit', 'Read about finality estimates and optional credit notices.', '/docs/#deposit-countdown', 'deposit, countdown, finality, credited, telegram')); // B123
 TASKS.push({ ...task('rulebook-words', 'agents', 'Read your rulebook in plain English', 'See spending caps, allowed models and working hours as short sentences.', '/docs/#rulebook-words', 'rules, rulebook, limits, plain english'), menu: false }); // B124: search only
 TASKS.push({ ...task('copy-as-code', 'chat', 'Copy a Chat conversation as code', 'Take the selected conversation and its settings into curl, TypeScript or Python.', '/harness/', 'copy as code, request, curl, typescript, python, conversation'), menu: false }); // C130
+TASKS.push({ ...task('share-to-anyroute', 'chat', 'Share to Anyroute from your phone', 'Bring text, links or images into a Chat draft from your phone’s share sheet.', '/docs/#share-to-anyroute', 'share, share sheet, phone, mobile, images, links, draft'), menu: false }); // D137
 
 TASKS.push({ ...task("context-meter", "chat", "Keep room in Chat", "See context use and summarize a conversation to continue with more room.", "/docs/#context-meter", "context, tokens, window, summarize, summary, chat"), menu: false }); // C129
 

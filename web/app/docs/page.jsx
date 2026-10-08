@@ -1,6 +1,7 @@
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
 import ContextMeterDocs from "../../components/ContextMeterDocs"; // C129
+import ShareToAnyrouteDocs from "../../components/ShareToAnyrouteDocs"; // D137
 import DarkModeDocs from '../../components/DarkModeDocs'; // C126
 import NewModelsDocs from "../../components/NewModelsDocs"; // C131
 import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B123
@@ -912,6 +913,7 @@ export default function Docs() {
           <h2 id="quickstart">Make your first API call.</h2> {/* ON2 */}
           <FirstCallDocs /> {/* ON2 */}
           <CopyAsCodeDocs /> {/* C130 */}
+          <ShareToAnyrouteDocs /> {/* D137 */}
           <GettingStartedDocs /> {/* C135 */}
           <p>
             Anyroute accepts the familiar chat-completions request. Replace the base URL and key; requests, streaming, tools, provider preferences and usage fields work unchanged. Keys are self-custodial: POST /api/v1/keys (no account) returns a key and the hash to deposit USDG to.

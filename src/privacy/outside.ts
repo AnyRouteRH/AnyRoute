@@ -2,6 +2,7 @@ import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { chatFoldersBrowser } from "./chat-folders"; // D143
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
 import { gettingStartedBrowser } from "./getting-started.ts"; // C135
+import { shareToAnyrouteBrowser } from "./share-to-anyroute.ts"; // D137
 import { modelAlternativesReader } from "./model-alternatives.ts"; // B121
 import { lowBalanceReader } from "./low-balance.ts"; // B119
 import { anonymousRateFamily, hardeningAddresses, hardeningBodies } from "./hardening.ts"; // HD1
@@ -874,6 +875,7 @@ export const EXTERNAL: ExternalDoc = {
       { store: "IndexedDB", holds: "Chat history is opt-in and encrypted with the browser history passphrase in the existing anyroute-private-history vault (memory only when storage is unavailable). Alongside saved conversations, costSummary keeps microUsd as an integer decimal string and replies as a count, summed across comparison lanes from the displayed reply costs. Totals include replies omitted from saved content; failed replies add zero dollars. Totals and counts are encrypted with the conversation, not stored separately or sent to the router. Locking drops the decrypted history from memory; Forget deletes the vault. Older chats without this summary use the costs in their retained replies.", evidence: [ev("web/lib/private-history.js", "const ct = new Uint8Array(await subtle().encrypt"), ev("web/components/harness/PrivateMode.jsx", "const costSummary = chatCost(lanes);"), ev("web/lib/harness-history-vault.js", "...costSummaryFields(chat)")] }, // C128
       savedAnswersBrowser, // D140
       gettingStartedBrowser, // C135
+      shareToAnyrouteBrowser, // D137
       { store: "localStorage", holds: "Appearance choice: anyroute-theme-v1 stores only light or dark until changed or browser data is cleared. Match device removes the key. The preference is never sent to the router; denied storage keeps the choice only on the current page.", evidence: [ev("web/lib/theme.js", "export const THEME_KEY = 'anyroute-theme-v1';")] }, // C126
       { store: "Cache Storage", holds: "The installable Harness keeps only the static app shell, offline page, scripts, styles, fonts and icons in a browser cache named anyroute-shell- followed by a build digest. Each cached file must match its exported SHA-256. Requests, replies, API responses and URLs with query strings are never cached. A new active app version removes older app caches; browser settings can clear them at any time. No additional data is stored by the router.", evidence: [ev("web/lib/harness-sw.js", "Runtime requests never populate Cache Storage."), ev("web/lib/harness-sw.js", "if (actual !== expected) throw new Error('Shell content changed');")] },
       { store: "sessionStorage", holds: "The API key you pasted into the dashboard, for the length of the tab. It is removed when the tab closes and is never written to localStorage.", evidence: [ev("web/lib/api.js", "sessionStorage.setItem(keyStore, secret);")] },

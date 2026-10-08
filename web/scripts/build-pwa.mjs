@@ -4,6 +4,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { shellRoute, createShellWorker } from '../lib/harness-sw.js';
+import { createShareWorker } from '../lib/share-worker.js'; // D137
+import { parseSharedDraft } from '../lib/share-draft.js'; // D137
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export function buildPwa(root) {
@@ -37,6 +39,7 @@ export function buildPwa(root) {
   }
   const cacheName = 'anyroute-shell-' + hash(JSON.stringify(sorted) + shellRoute.toString() + createShellWorker.toString()).slice(0, 24);
   fs.writeFileSync(path.join(root, 'sw.js'), `// Static app shell only; generated from exported file hashes.\nconst shellRoute = ${shellRoute.toString()};\nconst createShellWorker = ${createShellWorker.toString()};\ncreateShellWorker(${JSON.stringify({ assets: sorted, cacheName })}, self);\n`);
+  fs.appendFileSync(path.join(root, 'sw.js'), `\n// D137: transient phone-share draft handoff.\nconst parseSharedDraft = ${parseSharedDraft.toString()};\nconst createShareWorker = ${createShareWorker.toString()};\ncreateShareWorker(${JSON.stringify({ cacheName })}, self, parseSharedDraft);\n`); // D137
   return { assets: sorted, cacheName };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

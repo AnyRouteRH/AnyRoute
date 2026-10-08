@@ -6,6 +6,17 @@
   "start_url": "/harness/",
   "scope": "/",
   "display": "standalone",
+  "share_target": {
+    "action": "/harness/?share_target=1",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "share_title",
+      "text": "share_text",
+      "url": "share_url",
+      "files": [{ "name": "share_files", "accept": ["image/png", ".png", "image/jpeg", ".jpg", ".jpeg", "image/webp", ".webp", "image/gif", ".gif"] }]
+    }
+  },
   "background_color": "#f5f5f0",
   "theme_color": "#0b0c0b",
   "icons": [

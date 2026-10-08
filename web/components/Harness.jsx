@@ -1,6 +1,7 @@
 "use client";
 import { SavedAnswersProvider, SavedAnswersButton, SaveAnswer } from "./harness/SavedAnswers"; // D140
 import ContextMeter, { useContextMeter } from "./harness/ContextMeter"; // C129
+import SharedDraft, { useSharedDraft } from "./harness/SharedDraft"; // D137
 import { contextMeter, contextSendBlock } from "../lib/context-meter.js"; // C129
 import { NewModelsRow } from "./NewModels"; // C131
 import ModelAlternatives from "./harness/ModelAlternatives"; import { suggestedModels, alternativeRetry } from "../lib/model-alternatives.js"; // B121
@@ -894,6 +895,7 @@ export default function Harness() {
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
   // H1: on-device preparation and capability guards, shared by paste, drop and the picker.
   const { addFiles, preparing, preparingImages, isPreparing } = useImageAttachments({ files, setFiles, setNote: setFileNote, acceptsImages, acceptsFiles });
+  const sharedDraft = useSharedDraft({ setDraft, addFiles, acceptsImages }); // D137
   const imageBlock = imageSendBlock(lanes, find, files);
   const switchVision = () => setPalette({ lane: Math.max(0, lanes.findIndex((l) => !readsImages(find(l.modelId)))), add: false, vision: true });
 
@@ -1303,6 +1305,7 @@ export default function Harness() {
         >
           <ContextMeter context={context} busy={busy} /> {/* C129 */}
           <PromptSlash library={prompts} /> {/* V81 */}
+          <SharedDraft share={sharedDraft} signedIn={!!auth.key} onSignIn={() => setSignin("send")} onChooseModel={switchVision} /> {/* D137 */}
           <ImageMode model={focusModel} lanes={lanes} find={find} catalogue={shown} enabled={settings.imageOut} busy={busy} onChange={(imageOut) => set({ imageOut, audioOut: false })} onChoose={() => setPalette({ lane: focus, add: false, images: true })} />
           {files.length > 0 && (
             <ul className={s.tray} aria-label="Attachments">
