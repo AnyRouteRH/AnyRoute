@@ -4,6 +4,7 @@ import { registerScheduledPrompts } from "../schedules/worker.ts"; // D136
 import { registerLowBalanceJob } from "../account/low-balance.ts"; // B119
 import { registerQuietAlertsJob } from "../agents/quiet-alerts.ts"; // D141
 import { registerPriceNoticesJob } from "../catalog/price-notices.ts"; // C133
+import { registerProjectBudgetTelegramJob } from "../projects/budget-notices.ts"; // D139
 import { registerRushJobs } from "../rush/monitor.ts"; // ON3
 import { registerWeeklySummaryJob } from "../telegram/weekly-summary.ts"; // B120
 import { reconcileToolCalls } from "../tools/call.ts"; // v6 T
@@ -46,6 +47,7 @@ import { expirePaidResults } from "../pay/recovery.ts";
 import { runAgentPayVerify } from "../agents/pay.ts"; // Pay another agent
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
+  registerProjectBudgetTelegramJob(ctx); // D139
   const { cfg, jobs } = ctx;
   registerSecurityAlertsJob(ctx); // D138
   if (cfg.depositPingsEnabled && cfg.runtimeRole !== "api") jobs.register("deposit-pings", 5_000, () => runDepositPings(ctx)); // B123

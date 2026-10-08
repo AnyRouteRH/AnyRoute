@@ -21,6 +21,7 @@ import { webhookRoutes } from "./webhooks/routes.ts"; // V86: signed destination
 import { makegoodRoutes } from "./services/makegood.ts"; // V6 R: make-good refunds.
 import { scheduledPromptRoutes } from "./api/schedules.ts"; // D136
 import { inboxRoutes } from "./api/inbox.ts"; // U78: account inbox.
+import { projectBudgetRoutes } from "./api/project-budgets.ts"; // D139
 import { activityRoutes } from "./api/activity.ts";
 import { networkStatsRoutes } from "./network/stats.ts";
 import { commerceStatsRoutes } from "./commerce/stats.ts"; // v6 L
@@ -233,6 +234,7 @@ export async function createApp(opts: AppOptions = {}) {
   scheduledPromptRoutes(app, ctx, (path, init, env) => app.request(path, init, internalEnv(env) as never)); // D136
   inboxRoutes(app, ctx); // U78: account inbox.
   securityAlertsRoutes(app, ctx); // D138
+  projectBudgetRoutes(app, ctx); // D139
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
   keysRoutes(app, ctx);
   teamsRoutes(app, ctx);

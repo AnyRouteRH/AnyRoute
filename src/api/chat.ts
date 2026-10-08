@@ -430,6 +430,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
     await reserve(ctx.db, {
       ...agentReservation(ctx, () => ({ models: attemptable.map(t => t.model.id), lane: disc.lane, max_output_tokens: Math.max(...attemptable.map(t => maxOutputTokens(body, t.cand, t.model, promptTokens))), body })),
       id: holdId,
+      ...projectFields(c), // D139
       accountId: billing.accountId,
       keyHash: billing.key?.keyHash ?? null,
       amount: hold,

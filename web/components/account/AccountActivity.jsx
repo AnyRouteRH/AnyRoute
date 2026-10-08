@@ -1,5 +1,6 @@
 'use client';
 import ProjectFilter from './ProjectFilter.js'; // C134
+import ProjectBudget from './ProjectBudget.jsx'; // D139
 import { useProjectActivity } from '../../lib/project-activity.js'; // C134
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api.js';
@@ -53,6 +54,7 @@ export default function AccountActivity({ apiKey, keys = [], recent = false }) {
         <button className="button secondary" type="submit">Apply filters</button>
       </form>
       <div className="activity-filters"><ProjectFilter value={project} onChange={changeProject}/></div> {/* C134 */}
+      <ProjectBudget apiKey={apiKey} project={project}/> {/* D139 */}
       <div className="activity-kinds" aria-label="Applied filters">{activityChips(filters).map(chip => <button key={chip.name} className="activity-chip" onClick={() => { setFilters(old => ({ ...old, [chip.name]: '' })); setForm(old => ({ ...old, [chip.name]: '' })); }}>Remove {chip.label} ×</button>)}</div>
       <div className="activity-actions"><button className="text-button" onClick={() => setRevision(old => old + 1)} disabled={busy || exporting}>Refresh</button>{['csv', 'json'].map(format => <button key={format} className="text-button" disabled={exporting || busy} onClick={() => download(format)}>Export {format.toUpperCase()}</button>)}{exporting && <button className="text-button" onClick={() => exportController.current?.abort()}>Cancel export</button>}<a className="inline-link" href="/dashboard/#spend-watch">Open spending tools</a></div>
       <p className="help-text">{page.scope === 'account' ? 'Account access; agent events follow your team permissions.' : 'This key’s visible activity.'} Alerts cover the retained feed. Receipts show what was recorded; use their checks to inspect the evidence. Some oracle events appear after their ruling is linked. Exports read successive pages; records can change while you export.</p></>}

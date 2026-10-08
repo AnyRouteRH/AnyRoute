@@ -382,6 +382,7 @@ const schema = z.object({
   SCHEDULED_PROMPTS_ENABLED: bool.default(false), // D136
   PRICE_NOTICES_ENABLED: bool.default(false), // C133
   ...securityAlertsEnv, // D138
+  PROJECT_BUDGET_TELEGRAM_ENABLED: bool.default(false), // D139
   TELEGRAM_LINKING_ENABLED: bool.default(false),
   WEEKLY_SUMMARY_ENABLED: bool.default(false), // B120
 
@@ -608,6 +609,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   if (e.AGENT_PAY_ENABLED && (!e.USDG_ADDRESS || /^0x0{40}$/.test(e.USDG_ADDRESS))) throw new Error("AGENT_PAY_ENABLED requires USDG_ADDRESS.");
   if (e.TELEGRAM_LINKING_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("TELEGRAM_LINKING_ENABLED requires AGENT_POLICY_ENABLED.");
   if (e.WEEKLY_SUMMARY_ENABLED && !e.TELEGRAM_LINKING_ENABLED) throw new Error("WEEKLY_SUMMARY_ENABLED requires TELEGRAM_LINKING_ENABLED."); // B120
+  if (e.PROJECT_BUDGET_TELEGRAM_ENABLED && !e.TELEGRAM_LINKING_ENABLED) throw new Error("PROJECT_BUDGET_TELEGRAM_ENABLED requires TELEGRAM_LINKING_ENABLED."); // D139
   if (e.TELEGRAM_LINKING_ENABLED && e.RUNTIME_ROLE !== "api" && !e.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_LINKING_ENABLED requires TELEGRAM_BOT_TOKEN on the worker (or a combined role).");
   if (e.TELEGRAM_BOT_TOKEN && !/^\d{3,20}:[A-Za-z0-9_-]{20,}$/.test(e.TELEGRAM_BOT_TOKEN)) throw new Error("TELEGRAM_BOT_TOKEN must be the token BotFather issued (<id>:<secret>).");
   // The webhook is optional: without it the alert-notifier job only records state. Never echo the URL.
@@ -694,6 +696,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     scheduledPromptsEnabled: e.SCHEDULED_PROMPTS_ENABLED, // D136
     priceNoticesEnabled: e.PRICE_NOTICES_ENABLED, // C133
     securityAlertsEnabled: e.SECURITY_ALERTS_ENABLED, // D138
+    projectBudgetTelegramEnabled: e.PROJECT_BUDGET_TELEGRAM_ENABLED, // D139
     siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),
     webauthn: {
       rpId: e.WEBAUTHN_RP_ID ?? new URL(e.PUBLIC_BASE_URL).hostname,

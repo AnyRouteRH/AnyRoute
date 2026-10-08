@@ -114,7 +114,7 @@ export function rerankRoutes(app: Hono, ctx: Ctx) {
       await claimToken(ctx, pass);
     }
     try {
-      await reserve(ctx.db, { ...agentReservation(ctx, () => ({ models: [r.model.id], lane: disc.lane, max_output_tokens: 0, body })), id, accountId, keyHash: key?.keyHash ?? null, amount: hold * 2n + 1n, ttlMs: ctx.cfg.routing.providerTimeoutMs * 2 });
+      await reserve(ctx.db, { ...projectFields(c), ...agentReservation(ctx, () => ({ models: [r.model.id], lane: disc.lane, max_output_tokens: 0, body })), id, accountId, keyHash: key?.keyHash ?? null, amount: hold * 2n + 1n, ttlMs: ctx.cfg.routing.providerTimeoutMs * 2 });
     } catch (e) {
       if (pass) await unclaimToken(ctx, pass);
       throw e;

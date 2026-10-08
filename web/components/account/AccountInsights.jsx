@@ -1,5 +1,6 @@
 'use client';
 import ProjectFilter from './ProjectFilter.js'; // C134
+import ProjectBudget from './ProjectBudget.jsx'; // D139
 import ProjectBreakdown from './ProjectBreakdown.js'; // C134
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
@@ -32,6 +33,7 @@ export default function AccountInsights({ apiKey, compareHref = '/cost/' }) {
       <p className="help-text">Charged: {report.totals.charged_usd} USDG · Refunded: {report.totals.refunded_usd} USDG. Average is net spend divided by calls, truncated to 12 decimal places. Hardware share counts signed receipts recording a successful hardware check for that call; missing evidence and stored answers do not count. This does not prove answer quality or hide ordinary prompts from the router.</p>
       <section className="control-panel"><h3>Spend over time</h3><p className="help-text">{report.bucket==='week'?'Weeks start Monday UTC; edge weeks cover only the selected range.':'Days use UTC.'} Bars show net spend; refunds can make it negative.</p><InsightsChart rows={insightSeries(report)}/></section>
       <ProjectBreakdown rows={report.projects}/> {/* C134 */}
+      <ProjectBudget apiKey={apiKey} project={query.project || ''}/> {/* D139 */}
       <div className={s.grid}><Breakdown title="By model" rows={report.models}/><Breakdown title="By key or agent" rows={report.keys} keyLabels/><Breakdown title="By lane" rows={report.lanes}/><Breakdown title="Top models by cost" rows={report.top_models_by_cost}/><Breakdown title="Top models by calls" rows={report.top_models_by_calls}/></div>
       <p className="help-text">Model and key lists include up to 100 groups ranked by cost and up to 100 ranked by calls. Totals include all visible records. Unknown means no model or lane was recorded.</p>
       <section className="control-panel"><h3>Same abilities, lower price</h3><p>This is a price comparison, not a quality claim. Compare currently live endpoints with the same capability tags, at least the same context window and all your recorded lanes, with the same or stronger recorded disclosure class. Unknown lane or disclosure records have no suggestions. Estimates reprice your input/output token mix and call count at current token and request rates. They exclude refunds, cache discounts, royalties, account fees and extra reasoning, image or search charges. Routing and future usage can change the price.</p>

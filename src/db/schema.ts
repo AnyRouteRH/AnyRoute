@@ -1,5 +1,6 @@
 export * from "../schedules/schema.ts"; // D136
 export * from "./low-balance.ts"; // B119
+export * from "./project-budgets.ts"; // D139
 export * from "../network/bond-schema.ts";
 import { sql } from "drizzle-orm";
 import {

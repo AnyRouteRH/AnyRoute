@@ -1,3 +1,4 @@
+import { projectFields } from "../projects/tags.ts"; // D139
 import { inheritRoutePlan, routeResponseHeaders } from "../router/explain.ts"; // V84
 import { agentReservation, enforceAgentCouncil } from "../agents/enforce.ts";
 import { randomBytes } from "node:crypto";
@@ -137,17 +138,18 @@ function maxOutFor(ctx: Ctx, targets: RouteTarget[], body: Record<string, unknow
 }
 
 /** Reserve every hold or none: a failure part-way releases what was already held. */
-async function reserveAll(ctx: Ctx, billing: Chat.Billing, holds: { holdId: string; hold: Pico; targets: RouteTarget[]; body: Record<string, unknown>; promptTokens: number }[], paywithNote: string | undefined, lane: "public" | "attested" | "unlinkable") {
-  if (!ctx.cfg.agentPolicyEnabled) return reserveAllUnchecked(ctx, billing, holds, paywithNote, lane);
-  return enforceAgentCouncil(ctx, billing, () => holds.map(h => ({ ...h, models: h.targets.map(t => t.model.id), max_output_tokens: maxOutFor(ctx, h.targets, h.body, h.promptTokens) })), lane, ctx => reserveAllUnchecked(ctx, billing, holds, paywithNote, lane));
+async function reserveAll(ctx: Ctx, billing: Chat.Billing, holds: { holdId: string; hold: Pico; targets: RouteTarget[]; body: Record<string, unknown>; promptTokens: number }[], paywithNote: string | undefined, lane: "public" | "attested" | "unlinkable", project?: string) {
+  if (!ctx.cfg.agentPolicyEnabled) return reserveAllUnchecked(ctx, billing, holds, paywithNote, lane, project);
+  return enforceAgentCouncil(ctx, billing, () => holds.map(h => ({ ...h, models: h.targets.map(t => t.model.id), max_output_tokens: maxOutFor(ctx, h.targets, h.body, h.promptTokens) })), lane, ctx => reserveAllUnchecked(ctx, billing, holds, paywithNote, lane, project));
 }
-async function reserveAllUnchecked(ctx: Ctx, billing: Chat.Billing, holds: { holdId: string; hold: Pico; targets: RouteTarget[]; body: Record<string, unknown>; promptTokens: number }[], paywithNote: string | undefined, lane: "public" | "attested" | "unlinkable") {
+async function reserveAllUnchecked(ctx: Ctx, billing: Chat.Billing, holds: { holdId: string; hold: Pico; targets: RouteTarget[]; body: Record<string, unknown>; promptTokens: number }[], paywithNote: string | undefined, lane: "public" | "attested" | "unlinkable", project?: string) {
   const held: string[] = [];
   try {
     for (const h of holds) {
       await reserve(ctx.db, {
         ...agentReservation(ctx, () => ({ models: h.targets.map(t => t.model.id), lane, max_output_tokens: maxOutFor(ctx, h.targets, h.body, h.promptTokens), body: h.body })),
         id: h.holdId,
+        project, // D139
         accountId: billing.accountId,
         keyHash: billing.key?.keyHash ?? null,
         amount: h.hold,
@@ -355,7 +357,7 @@ export async function runCouncil(tk: Toolkit, p: Base): Promise<Response> {
   if (billing.key?.tpm) await tk.limitOrThrow(ctx, `kt:${billing.key.keyHash}`, legs.reduce((s, l) => s + l.promptTokens, judgeWorstTokens), scaleLimit(billing.key.tpm, tier), "tokens");
   const bill: Chat.Billing = billing;
 
-  await reserveAll(ctx, bill, [...legs, { holdId: judgeHoldId, hold: judgeHold, targets: judgeTargets, body: judgeBase, promptTokens: judgeWorstTokens }], paywithNote, disc.lane);
+  await reserveAll(ctx, bill, [...legs, { holdId: judgeHoldId, hold: judgeHold, targets: judgeTargets, body: judgeBase, promptTokens: judgeWorstTokens }], paywithNote, disc.lane, projectFields(c).project);
   const open = new Set([...legs.map((l) => l.holdId), judgeHoldId]);
   const abort = new AbortController();
   c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });
@@ -574,7 +576,7 @@ export async function runDual(tk: Toolkit, p: DualInput): Promise<Response> {
   if (billing.key?.tpm) await tk.limitOrThrow(ctx, `kt:${billing.key.keyHash}`, promptTokens * 2, scaleLimit(billing.key.tpm, tier), "tokens");
   const bill: Chat.Billing = billing;
 
-  await reserveAll(ctx, bill, legs, paywithNote, disc.lane);
+  await reserveAll(ctx, bill, legs, paywithNote, disc.lane, projectFields(c).project);
   const open = new Set(legs.map((l) => l.holdId));
   const abort = new AbortController();
   c.req.raw.signal?.addEventListener("abort", () => abort.abort(new DOMException("client disconnected", "AbortError")), { once: true });

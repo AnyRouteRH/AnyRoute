@@ -6,6 +6,7 @@ import { ApiError, fail } from "../lib/errors.ts";
 import { type Pico, picoToUsd } from "../lib/money.ts";
 import { log, uid } from "../lib/util.ts";
 import { applyTopup } from "./topup.ts";
+import { assertProjectBudget, recordProjectReservation, settleProjectReservation } from "../projects/budgets.ts"; // D139
 
 // Money invariants (enforced here and by DB triggers, see drizzle/0001_invariants.sql):
 // - The ledger is append-only; ledger.ref is UNIQUE, which makes every credit idempotent.
@@ -72,6 +73,7 @@ function periodStart(reset: string | null, at: Date): Date | null {
 }
 
 export type ReserveInput = {
+  project?: string; // D139
   agent?: AgentReservation | (() => AgentReservation);
   id: string;
   accountId: string;
@@ -134,6 +136,7 @@ async function reserveUnchecked(db: Db, r: ReserveInput): Promise<Pico> {
       }
     }
     const existing = await tx.select({ id: holds.id }).from(holds).where(eq(holds.id, r.id));
+    await assertProjectBudget(tx, r); // D139
     if (existing.length) fail(409, "This request id was already submitted.", "duplicate_request");
     await tx.insert(holds).values({
       id: r.id,
@@ -143,6 +146,7 @@ async function reserveUnchecked(db: Db, r: ReserveInput): Promise<Pico> {
       kind: r.kind ?? "usage",
       expiresAt: new Date(Date.now() + (r.ttlMs ?? 15 * 60_000)),
     });
+    await recordProjectReservation(tx, r); // D139
     return { value: r.amount };
   });
   if ("refusal" in out) throw out.refusal;
@@ -200,6 +204,7 @@ export async function settle(
         if (k?.topup) await applyTopup(tx, k, `settle:${holdId}`);
       }
     }
+    await settleProjectReservation(tx, holdId, charged); // D139
     return { charged, uncovered };
   });
 }

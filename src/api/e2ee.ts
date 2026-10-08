@@ -98,7 +98,7 @@ async function runEncrypted(ctx: Ctx, c: Context) {
   const hold = priceUsage(cand, model, bound, mode, { ...ctx.cfg.fees, royaltyBps: ctx.cfg.fees.defaultRoyaltyBps }, false).total;
   const id = genId(); const accountId = key?.accountId ?? BLIND_POOL;
   if (pass) { requireValue(ctx, pass, hold); await claimToken(ctx, pass); }
-  try { await reserve(ctx.db, { ...agentReservation(ctx, () => ({ models: [model.id], lane: disc.lane, max_output_tokens: body.max_tokens, body })), id, accountId, keyHash: key?.keyHash, amount: hold, ttlMs: 15 * 60_000 }); }
+  try { await reserve(ctx.db, { ...projectFields(c), ...agentReservation(ctx, () => ({ models: [model.id], lane: disc.lane, max_output_tokens: body.max_tokens, body })), id, accountId, keyHash: key?.keyHash, amount: hold, ttlMs: 15 * 60_000 }); }
   catch (e) { if (pass) await unclaimToken(ctx, pass); throw e; }
   const abort = new AbortController();
   const signal = AbortSignal.any([abort.signal, c.req.raw.signal, AbortSignal.timeout(Math.min(p.timeoutMs ?? ctx.cfg.routing.providerTimeoutMs, 600_000))]);

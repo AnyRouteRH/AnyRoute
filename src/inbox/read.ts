@@ -4,6 +4,7 @@ import { depositPingItems } from "./deposit-pings.ts"; // B123
 import { lowBalanceInbox } from "../account/low-balance.ts"; // B119
 import { quietInboxItems } from "../agents/quiet-alerts.ts"; // D141
 import { priceNoticeItems } from "../catalog/price-notices.ts"; // C133
+import { projectBudgetInbox } from "../projects/budget-notices.ts"; // D139
 import { createHmac } from "node:crypto";
 import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -43,6 +44,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
   const items: Item[] = [];
   let capped = false;
   { const notices = await securityInbox(ctx, key, scope.whole, since, asOf); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D138
+  if (scope.whole && key.management) { const notices = await projectBudgetInbox(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D139
   if (scope.whole && key.management) { const notices = await priceNoticeItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // C133
   if (scope.whole) { const notices = await depositPingItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // B123
   if (scope.whole) { const notices = await quietInboxItems(ctx, key, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D141

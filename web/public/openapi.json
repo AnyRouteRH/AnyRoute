@@ -48,6 +48,10 @@
   ],
   "tags": [
     {
+      "name": "Projects",
+      "description": "D139: monthly project budgets"
+    },
+    {
       "name": "Facilitator",
       "description": "Hosted x402 facilitator for USDG on Robinhood Chain (eip155:4663), x402 v1 and v2, scheme exact. Settlement is transferWithAuthorization from the payer straight to payTo; the relay key only pays gas. FACILITATOR_ENABLED defaults to false; while it is off every /facilitator route answers 503 facilitator_disabled. GET /api/v1/status reports data.facilitator."
     },
@@ -19319,6 +19323,219 @@
           }
         ]
       }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "List account projects with charged spend and budgets for the current UTC month",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project monthly accounting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ProjectBudget"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "description": "Requires an active account management owner key; session and team-scoped keys cannot manage these account-wide limits. Budget amounts use USD and calendar months UTC."
+      }
+    },
+    "/api/v1/projects/{name}/budget": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Read a project budget and current UTC month charged spend",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project monthly accounting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ProjectBudget"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9._-]{1,48}$"
+            }
+          }
+        ],
+        "description": "Requires an active account management owner key; session and team-scoped keys cannot manage these account-wide limits. Budget amounts use USD and calendar months UTC."
+      },
+      "put": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Set a recurring monthly project budget",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project monthly accounting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ProjectBudget"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "budget_usd"
+                ],
+                "properties": {
+                  "budget_usd": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9._-]{1,48}$"
+            }
+          }
+        ],
+        "description": "Requires an active account management owner key; session and team-scoped keys cannot manage these account-wide limits. Budget amounts use USD and calendar months UTC."
+      },
+      "delete": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Remove a project budget; preserve charged history and notices",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project monthly accounting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ProjectBudget"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9._-]{1,48}$"
+            }
+          }
+        ],
+        "description": "Requires an active account management owner key; session and team-scoped keys cannot manage these account-wide limits. Budget amounts use USD and calendar months UTC."
+      }
     }
   },
   "components": {
@@ -33359,6 +33576,77 @@
           }
         },
         "additionalProperties": true
+      },
+      "ProjectBudget": {
+        "type": "object",
+        "required": [
+          "name",
+          "month",
+          "spent_usd",
+          "held_usd",
+          "budget_usd"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}$"
+          },
+          "spent_usd": {
+            "type": "string",
+            "description": "Decimal USD amount"
+          },
+          "held_usd": {
+            "type": "string",
+            "description": "Decimal USD amount"
+          },
+          "budget_usd": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Monthly cap in USD; null means absent"
+          }
+        }
+      },
+      "ProjectBudgetExceeded": {
+        "type": "object",
+        "description": "Inference refuses before contacting a provider when project charged spend plus pending holds and the request estimate exceeds its monthly budget. Nothing is charged.",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "project_budget_exceeded"
+              },
+              "message": {
+                "type": "string"
+              },
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string"
+                  },
+                  "month": {
+                    "type": "string"
+                  },
+                  "budget_usd": {
+                    "type": "string"
+                  },
+                  "spent_usd": {
+                    "type": "string"
+                  },
+                  "held_usd": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -33372,5 +33660,8 @@
     "422": "idempotency_key_reused",
     "503": "idempotency_unavailable; new protected call refused before billing",
     "streams": "not kept; completed retries return 409 with original receipt id"
+  },
+  "x-project-budget-refusal": {
+    "$ref": "#/components/schemas/ProjectBudgetExceeded"
   }
 }
