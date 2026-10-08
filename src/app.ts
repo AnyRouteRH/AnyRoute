@@ -19,6 +19,7 @@ import { laneReportRoutes } from "./api/lane-report.ts"; // Lane report
 import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
 import { webhookRoutes } from "./webhooks/routes.ts"; // V86: signed destinations.
 import { makegoodRoutes } from "./services/makegood.ts"; // V6 R: make-good refunds.
+import { scheduledPromptRoutes } from "./api/schedules.ts"; // D136
 import { inboxRoutes } from "./api/inbox.ts"; // U78: account inbox.
 import { activityRoutes } from "./api/activity.ts";
 import { networkStatsRoutes } from "./network/stats.ts";
@@ -229,6 +230,7 @@ export async function createApp(opts: AppOptions = {}) {
   laneReportRoutes(app, ctx); // Lane report: read-only, with statements
   insightsRoutes(app, ctx); // V88: read-only, off by default.
   accountRunwayRoutes(app, ctx); // B119
+  scheduledPromptRoutes(app, ctx, (path, init, env) => app.request(path, init, internalEnv(env) as never)); // D136
   inboxRoutes(app, ctx); // U78: account inbox.
   securityAlertsRoutes(app, ctx); // D138
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.

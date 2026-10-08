@@ -1,3 +1,4 @@
+import { scheduleCallOf, scheduleKey, enforceScheduleCost } from "../schedules/caller.ts"; // D136
 import { captureProject, projectFields, assertProjectLane } from "../projects/tags.ts"; // C134
 import { addSuggestions, availabilityFailure, selectWithSuggestions } from "../model-alternatives/suggest.ts"; // B121
 import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
@@ -250,14 +251,15 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   const secret = bearer(c.req.header("authorization"));
   // A line of a batch (POST /api/v1/batches), dispatched in process by the batch runner as the key that submitted it.
   const batchLine = batchLineOf(c);
+  const scheduled = scheduleCallOf(c); // D136
   let key: KeyRow | null = null;
   let wallet: { accountId: string; wallet: string; exists: boolean } | null = null;
   // A verified Privacy Pass token (Authorization: PrivateToken), when ANYROUTE_FEATURE_BLIND is on.
   let pass: BlindPass | null = null;
   // $ANYR holder tier of the wallet behind this request (null unless HOLDER_TIERS is live).
   let tier: HolderTier | null = null;
-  if (batchLine || secret) {
-    key = batchLine ? await batchKey(ctx, batchLine.keyHash) : await resolveKey(ctx, secret!);
+  if (batchLine || scheduled || secret) {
+    key = batchLine ? await batchKey(ctx, batchLine.keyHash) : scheduled ? await scheduleKey(ctx, scheduled) : await resolveKey(ctx, secret!);
     if (!key) fail(401, "Unknown API key. Create one (POST /api/v1/keys) or deposit USDG to its key hash first.", "invalid_key");
     await requireRole(ctx, key, ["owner", "admin", "member"]);
     tier = await holderTier(ctx, walletOfAccount(key.accountId));
@@ -322,6 +324,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
 
   if (batchLine && (stream || body.verify != null || (ctx.cfg.features.council && body.model === COUNCIL_MODEL)))
     fail(400, "Batch lines cannot stream, use council mode or use dual verification.", "invalid_request");
+  if (scheduled && (stream || body.cache != null || body.verify != null || body.model === COUNCIL_MODEL)) fail(400, "Schedules need a single, uncached text reply.", "invalid_schedule_model"); // D136
   // Council mode (`model: "anyroute/council"`): several member calls plus a judge call, each billed and receipted.
   if (ctx.cfg.features.council && body.model === COUNCIL_MODEL) return runCouncil(toolkit, { ctx, c, kind, body, bodySha, t0, key, wallet, tier, prefs, disc });
 
@@ -409,6 +412,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   const worst = maxPico(...attemptable.map(({ cand, model }) => worstCase(cand, model, body, promptTokens, modeForPrice, fees, byok.has(cand.providerId))));
   const hold = batchLine ? batchHold(worst, batchLine.discountBps) : worst; // a batch line is held at its discounted worst case
 
+  enforceScheduleCost(scheduled, hold); // D136: before any reservation or provider call
   if (!billing) {
     const r = await payPerCall(ctx, c, { pricePico: hold, bodySha, modelId: primary.id });
     billing = { mode: "per_call", accountId: r.accountId, payer: r.payer, paymentTx: r.txHash, paymentResponse: r.paymentResponse };
@@ -421,7 +425,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   }
   if (billing.key?.tpm) await limitOrThrow(ctx, `kt:${billing.key.keyHash}`, promptTokens, scaleLimit(billing.key.tpm, tier), "tokens");
 
-  const holdId = batchLine?.generationId ?? genId(); // a batch line's id is chosen by the runner, so an interrupted line can be traced to its charge
+  const holdId = scheduled?.generationId ?? batchLine?.generationId ?? genId(); // a batch line's id is chosen by the runner, so an interrupted line can be traced to its charge
   try {
     await reserve(ctx.db, {
       ...agentReservation(ctx, () => ({ models: attemptable.map(t => t.model.id), lane: disc.lane, max_output_tokens: Math.max(...attemptable.map(t => maxOutputTokens(body, t.cand, t.model, promptTokens))), body })),
@@ -621,7 +625,7 @@ async function finalize(p: FinalizeInput) {
   const batchLine = batchLineOf(p.c);
   const cost = batchLine ? batchPrice(listCost, batchLine.discountBps) : { ...listCost, batchDiscount: 0n };
   const id = p.holdId;
-  const budget = p.extra?.budget;
+  const budget = scheduleCallOf(p.c)?.maxCostPico ?? p.extra?.budget; // D136: cap settlement even if upstream reports excessive usage
   const overBudget = budget != null && cost.total > budget;
   // A blind token pays for at most its face value: anything above the hold would come out of the pool's other tokens.
   const settleAmount = billing.mode === "blind" && cost.total > billing.hold ? billing.hold : cost.total;

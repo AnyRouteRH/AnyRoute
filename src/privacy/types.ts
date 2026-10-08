@@ -5,7 +5,7 @@ export const CATEGORIES = ["request", "billing", "receipts", "keys", "providers"
 export type Category = (typeof CATEGORIES)[number];
 
 export const CATEGORY_INFO: Record<Category, { label: string; summary: string }> = {
-  request: { label: "Request records", summary: "One row per call: which model and provider answered, how many tokens, what it cost and when. Never the text of the call." },
+  request: { label: "Request records", summary: "Ordinary call rows hold the model, provider, token counts, cost and timing, without the text. Owner-chosen scheduled run replies are also described here and stored encrypted at rest." },
   billing: { label: "Billing", summary: "Balances, the append-only ledger, spending holds, per-call payment quotes and what providers are owed." },
   receipts: { label: "Receipts & proofs", summary: "Signing keys, anchors and the transparency log that let anyone check a receipt without asking us." },
   keys: { label: "Keys & auth", summary: "API keys (stored as hashes), teams with their passkey and wallet members and audit log, agent sessions, keys you bring, and the issuer and gateway keys behind blind tokens and Oblivious HTTP." },

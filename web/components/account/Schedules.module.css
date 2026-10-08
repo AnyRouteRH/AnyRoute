@@ -1,0 +1,9 @@
+.form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4, 1rem); margin-block: 1.5rem; }
+.form label { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+.form input, .form select, .form textarea { width: 100%; min-width: 0; background: var(--paper); color: var(--ink); border: 1px solid var(--line); padding: .75rem; border-radius: .25rem; font: inherit; }
+.form input:focus-visible, .form textarea:focus-visible, .form select:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.wide { grid-column: 1 / -1; }
+.list { padding: 0; list-style: none; }
+.list li { padding-block: 1rem; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.reply { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .form { grid-template-columns: minmax(0, 1fr); } }

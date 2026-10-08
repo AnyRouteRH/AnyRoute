@@ -379,6 +379,13 @@
       "when": 1791500055000,
       "tag": "0055_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1791600056000,
+      "tag": "0056_scheduled_prompts",
+      "breakpoints": true
     }
   ]
 }

@@ -15,20 +15,21 @@ const MOVED = {
   Agents: { rulebook: 'Keys & limits', sessions: 'Keys & limits', directory: 'Keys & limits' },
   Money: { insights: 'Overview', 'account-activity': 'Overview', statements: 'Billing', 'account-payments': 'Billing', holders: 'Billing', spend: 'Keys & limits', 'api-receipts': 'Billing' },
   Account: { 'account-keys': 'Keys & limits', 'account-export': 'Settings', teams: 'Keys & limits', providers: 'Build', settings: 'Settings', webhooks: 'Settings', keep: 'Settings' },
+  Scheduled: { schedules: 'Schedules' }, // D136
   New: { playbooks: 'Keys & limits' }, // U115
 };
 
-test('one account map includes every section once in five tabs', () => {
-  assert.deepEqual(ACCOUNT_GROUPS.map(group => group.title), ['Overview', 'Build', 'Keys & limits', 'Billing', 'Settings']);
-  assert.deepEqual(ACCOUNT_GROUPS.map(group => group.id), ['overview', 'build', 'keys', 'billing', 'settings']);
+test('one account map includes every section once in six tabs', () => {
+  assert.deepEqual(ACCOUNT_GROUPS.map(group => group.title), ['Overview', 'Build', 'Keys & limits', 'Billing', 'Schedules', 'Settings']);
+  assert.deepEqual(ACCOUNT_GROUPS.map(group => group.id), ['overview', 'build', 'keys', 'billing', 'schedules', 'settings']);
   const ids = ACCOUNT_GROUPS.flatMap(group => group.ids);
-  assert.equal(ids.length, 28); assert.equal(new Set(ids).size, 28);
+  assert.equal(ids.length, 29); assert.equal(new Set(ids).size, 29);
   assert.deepEqual(new Set(ids), new Set(ACCOUNT_SECTIONS.map(section => section.taskId)));
   assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'keys').ids, ['account-keys', 'rulebook', 'playbooks', 'sessions', 'spend', 'teams', 'directory']);
   assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'billing').ids, ['account-payments', 'api-receipts', 'statements', 'holders']);
   assert.deepEqual(ACCOUNT_GROUPS.find(group => group.id === 'settings').ids, ['settings', 'account-export', 'webhooks', 'keep']);
   const moved = Object.assign({}, ...Object.values(MOVED));
-  assert.equal(Object.keys(moved).length, 28);
+  assert.equal(Object.keys(moved).length, 29);
   for (const [id, title] of Object.entries(moved)) assert.equal(ACCOUNT_GROUPS.find(group => group.ids.includes(id))?.title, title, id);
   // Each tab opens on a dashboard section, so a tab click stays on the page.
   for (const group of ACCOUNT_GROUPS) assert.ok(groupSections(group)[0].hash, group.id);
@@ -40,7 +41,7 @@ test('one account map includes every section once in five tabs', () => {
 
 test('every legacy dashboard deep link selects its view; overview and unknown hashes select Home', () => {
   const legacy = ['playground','saved-routes','presets','characters','eval-lab','batch-studio','models','api-keys','agent-sessions','teams','skills','receipts','spend-watch','payments','holders','providers','settings'];
-  assert.equal(dashboardSections.length, 24);
+  assert.equal(dashboardSections.length, 25);
   for (const hash of legacy) {
     const title = sectionFromHash('#' + hash);
     assert.notEqual(title, 'Home', hash);
@@ -49,17 +50,17 @@ test('every legacy dashboard deep link selects its view; overview and unknown ha
   }
   for (const hash of ['', '#overview', '#home', '#missing']) assert.equal(sectionFromHash(hash), 'Home');
   // U104: each tab id is a hash too, opening that tab's first section, with an anchor on the page.
-  assert.deepEqual(Object.fromEntries(ACCOUNT_GROUPS.map(group => [group.id, sectionFromHash('#' + group.id)])), { overview: 'Home', build: 'Playground', keys: 'API keys', billing: 'Payments', settings: 'Settings' });
+  assert.deepEqual(Object.fromEntries(ACCOUNT_GROUPS.map(group => [group.id, sectionFromHash('#' + group.id)])), { overview: 'Home', build: 'Playground', keys: 'API keys', billing: 'Payments', schedules: 'Schedules', settings: 'Settings' });
   const anchors = renderToStaticMarkup(h(AccountAnchors));
   for (const id of ['overview', ...ACCOUNT_GROUPS.map(group => group.id), ...dashboardSections.map(section => section.hash)]) assert.equal(anchors.split(`id="${id}"`).length, 2, id);
 });
 
-test('five tabs and the current tab’s sections use real links and mark only where you are', () => {
+test('six tabs and the current tab’s sections use real links and mark only where you are', () => {
   const reached = new Set();
   for (const [current, tab] of [['Home', 'Overview'], ['Agents', 'Keys & limits'], ['Receipts', 'Billing'], ['Webhooks', 'Settings'], ['Providers', 'Build']]) {
     const tabs = renderToStaticMarkup(h(AccountTabs, { current }));
     assert.match(tabs, /^<nav class="dashboard-nav" aria-label="Account">/);
-    assert.equal((tabs.match(/<a /g) || []).length, 5); assert.equal((tabs.match(/aria-current="true"/g) || []).length, 1);
+    assert.equal((tabs.match(/<a /g) || []).length, 6); assert.equal((tabs.match(/aria-current="true"/g) || []).length, 1);
     assert.match(tabs, new RegExp(`aria-current="true"[^>]*>${tab.replace('&', '&amp;')}</a>`));
     for (const group of ACCOUNT_GROUPS) assert.ok(tabs.includes(`href="${groupSections(group)[0].href}"`), group.id);
     const html = renderToStaticMarkup(h(AccountNavigation, { current }));

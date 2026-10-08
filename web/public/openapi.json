@@ -1931,7 +1931,8 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "x-D138-security-alerts": "When SECURITY_ALERTS_ENABLED: security items have kind security, id, at, title, status null, href /dashboard/#settings and unread. Account management keys see all account security items; team owners/admins see only their team; session and ordinary keys see none. since filters event time. One item per recorded event, including changes by the current key. Claimed items expire after 90 days while the worker is enabled."
+        "x-D138-security-alerts": "When SECURITY_ALERTS_ENABLED: security items have kind security, id, at, title, status null, href /dashboard/#settings and unread. Account management keys see all account security items; team owners/admins see only their team; session and ordinary keys see none. since filters event time. One item per recorded event, including changes by the current key. Claimed items expire after 90 days while the worker is enabled.",
+        "x-d136-scheduled-prompts": "When SCHEDULED_PROMPTS_ENABLED is true, owner inboxes include finished retained runs visible in their paying-key team scope: kind schedule, id, at, title (name and first 300 reply characters or failure code), status, href to the authenticated saved result, unread. Inference and session keys never receive these items. Deleting the schedule removes its inbox items."
       }
     },
     "/api/v1/inbox/seen": {
@@ -18931,6 +18932,393 @@
           }
         }
       }
+    },
+    "/api/v1/schedules": {
+      "get": {
+        "operationId": "listSchedules",
+        "tags": [
+          "Scheduled prompts"
+        ],
+        "summary": "List saved prompts",
+        "description": "D136: SCHEDULED_PROMPTS_ENABLED defaults to false. Requires an active owner or management Bearer key; inference, session and team administrator keys are refused. Paying keys must belong to the owner and its team scope.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ScheduledPrompt"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSchedule",
+        "tags": [
+          "Scheduled prompts"
+        ],
+        "summary": "Save a scheduled prompt",
+        "description": "D136: SCHEDULED_PROMPTS_ENABLED defaults to false. Requires an active owner or management Bearer key; inference, session and team administrator keys are refused. Paying keys must belong to the owner and its team scope.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ScheduledPrompt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduledPromptInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedules/{id}": {
+      "get": {
+        "operationId": "readSchedule",
+        "tags": [
+          "Scheduled prompts"
+        ],
+        "summary": "Read a saved prompt",
+        "description": "D136: SCHEDULED_PROMPTS_ENABLED defaults to false. Requires an active owner or management Bearer key; inference, session and team administrator keys are refused. Paying keys must belong to the owner and its team scope.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ScheduledPrompt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateSchedule",
+        "tags": [
+          "Scheduled prompts"
+        ],
+        "summary": "Edit or pause a scheduled prompt",
+        "description": "D136: SCHEDULED_PROMPTS_ENABLED defaults to false. Requires an active owner or management Bearer key; inference, session and team administrator keys are refused. Paying keys must belong to the owner and its team scope.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ScheduledPrompt"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduledPromptPatch"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteSchedule",
+        "tags": [
+          "Scheduled prompts"
+        ],
+        "summary": "Delete a prompt and its saved runs",
+        "description": "D136: SCHEDULED_PROMPTS_ENABLED defaults to false. Requires an active owner or management Bearer key; inference, session and team administrator keys are refused. Paying keys must belong to the owner and its team scope.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule and all saved runs deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/schedules/{id}/runs": {
+      "get": {
+        "operationId": "listScheduleRuns",
+        "tags": [
+          "Scheduled prompts"
+        ],
+        "summary": "Read the last ten saved results",
+        "description": "D136: SCHEDULED_PROMPTS_ENABLED defaults to false. Requires an active owner or management Bearer key; inference, session and team administrator keys are refused. Paying keys must belong to the owner and its team scope.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ScheduledPromptRun"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/schedules/{id}/run-now": {
+      "post": {
+        "operationId": "runScheduleNow",
+        "tags": [
+          "Scheduled prompts"
+        ],
+        "summary": "Run a saved prompt now",
+        "description": "D136: SCHEDULED_PROMPTS_ENABLED defaults to false. Requires an active owner or management Bearer key; inference, session and team administrator keys are refused. Paying keys must belong to the owner and its team scope.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ScheduledPromptRun"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Agent-Approval",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Existing single-use approval, checked against the ordinary inference intent and estimated cost."
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -19178,6 +19566,16 @@
           }
         }
       },
+      "Conflict": {
+        "description": "Run active, slot already claimed or schedule limit reached. D136.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
       "BadRequest": {
         "description": "The request body, JSON or parameters failed validation. error.type is, for example, invalid_request, invalid_json or invalid_guardrails; do not retry the same request unchanged.",
         "content": {
@@ -19342,6 +19740,213 @@
       }
     },
     "schemas": {
+      "ScheduledPromptInput": {
+        "x-card": "D136",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "prompt",
+          "model",
+          "key_hash",
+          "cadence",
+          "max_cost_usd"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64000,
+            "description": "Complete prompt stored encrypted at rest under a router-held secret; Anyroute can read it."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "key_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "hourly",
+              "daily",
+              "monday"
+            ]
+          },
+          "time_utc": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "description": "Required for daily and monday. UTC HH:MM; null for hourly."
+          },
+          "max_cost_usd": {
+            "oneOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              },
+              {
+                "type": "string",
+                "pattern": "^[0-9]+(\\.[0-9]{1,12})?$"
+              }
+            ],
+            "description": "Required positive ceiling, at most 1000 USD; form starts at 0.05. Refused before inference if worst-case hold exceeds it."
+          },
+          "paused": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "ScheduledPromptPatch": {
+        "x-card": "D136",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64000,
+            "description": "Complete prompt stored encrypted at rest under a router-held secret; Anyroute can read it."
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "key_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "hourly",
+              "daily",
+              "monday"
+            ]
+          },
+          "time_utc": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "description": "Required for daily and monday. UTC HH:MM; null for hourly."
+          },
+          "max_cost_usd": {
+            "oneOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000
+              },
+              {
+                "type": "string",
+                "pattern": "^[0-9]+(\\.[0-9]{1,12})?$"
+              }
+            ],
+            "description": "Required positive ceiling, at most 1000 USD; form starts at 0.05. Refused before inference if worst-case hold exceeds it."
+          },
+          "paused": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "ScheduledPrompt": {
+        "x-card": "D136",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ScheduledPromptInput"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "consecutive_failures": {
+                "type": "integer"
+              },
+              "next_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        ]
+      },
+      "ScheduledPromptRun": {
+        "x-card": "D136",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "reply": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Full decrypted saved reply. Stored encrypted at rest, last ten runs only."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Bounded refusal or failure code; no upstream error message."
+          },
+          "generation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "AgentReplay": {
         "type": "object",
         "required": [

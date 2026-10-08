@@ -379,6 +379,7 @@ const schema = z.object({
   TELEGRAM_BOT_TOKEN: opt,
   TELEGRAM_PHOTOS_ENABLED: bool.default(false), // D142
   LOW_BALANCE_ALERTS_ENABLED: bool.default(false), // B119
+  SCHEDULED_PROMPTS_ENABLED: bool.default(false), // D136
   PRICE_NOTICES_ENABLED: bool.default(false), // C133
   ...securityAlertsEnv, // D138
   TELEGRAM_LINKING_ENABLED: bool.default(false),
@@ -690,6 +691,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     port: e.PORT,
     publicUrl: e.PUBLIC_BASE_URL.replace(/\/$/, ""),
     lowBalanceAlertsEnabled: e.LOW_BALANCE_ALERTS_ENABLED, // B119
+    scheduledPromptsEnabled: e.SCHEDULED_PROMPTS_ENABLED, // D136
     priceNoticesEnabled: e.PRICE_NOTICES_ENABLED, // C133
     securityAlertsEnabled: e.SECURITY_ALERTS_ENABLED, // D138
     siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),

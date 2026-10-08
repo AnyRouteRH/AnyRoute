@@ -137,11 +137,13 @@ TASKS.push({ ...task('commerce', 'verify', 'Read the commerce ledger', 'See anch
 
 // Account sections share the task map; existing dashboard hashes remain stable.
 // U104: five account tabs. Each opens its first section; its id is also a dashboard hash (#keys opens API keys).
+TASKS.push({ ...task('schedules', 'build', 'Schedule a prompt', 'Run saved prompts on a schedule using your key’s limits and rulebook.', '/dashboard/#schedules', 'schedule, prompt, recurring, hourly, daily, monday'), menu: false }); // D136
 export const ACCOUNT_GROUPS = [
   { id: 'overview', title: 'Overview', ids: ['dashboard', 'inbox', 'account-activity', 'insights'] },
   { id: 'build', title: 'Build', ids: ['playground', 'models', 'routing', 'presets', 'characters', 'evals', 'batches', 'skills', 'providers'] },
   { id: 'keys', title: 'Keys & limits', ids: ['account-keys', 'rulebook', 'playbooks', 'sessions', 'spend', 'teams', 'directory'] },
   { id: 'billing', title: 'Billing', ids: ['account-payments', 'api-receipts', 'statements', 'holders'] },
+  { id: 'schedules', title: 'Schedules', ids: ['schedules'] }, // D136
   { id: 'settings', title: 'Settings', ids: ['settings', 'account-export', 'webhooks', 'keep'] },
 ];
 TASKS.push(task('account-keys', 'build', 'Manage account keys', 'Explore API keys, then connect to create keys and set budgets.', '/dashboard/#api-keys', 'api keys, budget'));
@@ -150,6 +152,7 @@ TASKS.find(item => item.id === 'account-payments').menu = true; // ON1: Build me
 for (const id of ['account-keys']) TASKS.find(item => item.id === id).menu = false;
 const accountSection = (taskId, title, hash, description, start) => ({ taskId, title, hash, description, start, href: hash ? '/dashboard/#' + hash : TASKS.find(item => item.id === taskId).href });
 export const ACCOUNT_SECTIONS = [
+  accountSection('schedules', 'Schedules', 'schedules', 'Save prompts to run on a schedule with your key’s limits and rulebook.', 'Connect an owner key to save schedules and read results.'), // D136
   accountSection('insights', 'Insights', 'insights', 'Explore spending by day or week, model, key or agent and lane, with live price comparisons.', 'Connect your key to see where your money goes.'), // V88: signed-out preview.
   accountSection('webhooks', 'Webhooks', null, 'Inspect event destinations, signing availability and delivery history.', 'Connect an owner key to manage webhook destinations and see deliveries.'), // V86.
   accountSection('inbox', 'Inbox', 'inbox', 'Review pending approvals and new alerts, deposits, agreement events and host updates.', 'Connect your key to check items that need your attention.'),

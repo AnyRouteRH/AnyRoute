@@ -1,3 +1,4 @@
+export * from "../schedules/schema.ts"; // D136
 export * from "./low-balance.ts"; // B119
 export * from "../network/bond-schema.ts";
 import { sql } from "drizzle-orm";
@@ -20,6 +21,7 @@ import {
 
 // Money columns are pico-USD (1e-12 USD) bigints unless named *_usdg (USDG base units, 1e-6)
 // or *_raw (token base units). Inference records retain hashes; opted-in agreement evidence and jury reasons retain content (see inventory).
+// D136: owner-chosen scheduled prompts and replies retain encrypted content under the router-held secret.
 
 const money = (name: string) => bigint(name, { mode: "bigint" });
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });

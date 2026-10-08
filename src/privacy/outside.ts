@@ -2,6 +2,7 @@ import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { chatFoldersBrowser } from "./chat-folders"; // D143
 import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
 import { securityAlertReader, securityAlertStores } from "./security-alerts.ts"; // D138
+import { scheduledPromptsReader, scheduledPromptsStores } from "./scheduled-prompts.ts"; // D136
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
 import { gettingStartedBrowser } from "./getting-started.ts"; // C135
 import { shareToAnyrouteBrowser } from "./share-to-anyroute.ts"; // D137
@@ -430,6 +431,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   quietAlertBodyReader, // D141
   securityAlertReader, // D138
   idempotencyReader, // D145
+  scheduledPromptsReader, // D136
   weeklySummaryReader, // B120
   modelAlternativesReader, // B121
   lowBalanceReader, // B119
@@ -778,6 +780,7 @@ export const EXTERNAL: ExternalDoc = {
     ...quietAlertStores, // D141
     ...securityAlertStores, // D138
     idempotencyMemory, // D145
+    ...scheduledPromptsStores, // D136
     ...priceNoticeStores, // C133
     ...rushStores, // ON3
     ...toolsStores, // v6 T

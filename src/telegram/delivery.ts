@@ -1,3 +1,4 @@
+import type { KeyRow } from "../api/auth.ts"; // D136
 import { plainApprovalText } from "../agents/rulebook-approval-text.ts"; // B124
 import { handleGuardResume } from "./guard-resume.ts"; // V98
 import { guardApprovalText } from "./guard-text.ts";
@@ -37,7 +38,7 @@ async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Not
   await ctx.db.update(kv).set({ value: { ...notice, status }, updatedAt: new Date() }).where(eq(kv.key, key));
 }
 /** Delivery holds the link lock until the send ends: an acknowledged unlink stops later sends. */
-export async function sendLinkedAlert(ctx: Ctx, link: Link, text: string, keyHash: string, fetchImpl?: typeof fetch) {
+export async function sendLinkedAlert(ctx: Ctx, link: Link, text: string, keyHash: string, fetchImpl?: typeof fetch, authorize?: (ctx: Ctx, key: KeyRow) => Promise<unknown>) {
   if (!ctx.cfg.telegram.linkingEnabled || !ctx.cfg.telegram.botToken) return false;
   return ctx.db.transaction(async tx => {
     await lockLinks(tx);
@@ -45,13 +46,14 @@ export async function sendLinkedAlert(ctx: Ctx, link: Link, text: string, keyHas
     if (!live || live.generation !== link.generation) return false;
     try {
       const scoped = { ...ctx, db: tx as unknown as Db };
+      if (authorize) await authorize(scoped, await validPrincipal(scoped, live)); // D136: optional audience guard inside the send lock
       await ownedKey(scoped, await validPrincipal(scoped, live), keyHash);
       await new TelegramApi(ctx.cfg.telegram.botToken!, fetchImpl).call("sendMessage", { chat_id: live.uid, text, link_preview_options: { is_disabled: true } }, AbortSignal.timeout(5_000));
       return true;
     } catch { return false; }
   });
 }
-export async function linkedAlertTargets(ctx: Ctx, account: string, keyHash: string, text: string, fetchImpl?: typeof fetch) {
+export async function linkedAlertTargets(ctx: Ctx, account: string, keyHash: string, text: string, fetchImpl?: typeof fetch, authorize?: (ctx: Ctx, key: KeyRow) => Promise<unknown>) {
   if (!ctx.cfg.telegram.linkingEnabled) return [];
   const rows = await ctx.db.select().from(kv).where(and(like(kv.key, "telegram-link:%"), sql`${kv.value}->>'account' = ${account}`)).limit(20);
   const targets = [];
@@ -59,7 +61,7 @@ export async function linkedAlertTargets(ctx: Ctx, account: string, keyHash: str
     const link = row.value as Link;
     try {
       await ownedKey(ctx, await validPrincipal(ctx, link), keyHash);
-      targets.push({ id: `telegram:${link.uid}`, send: () => sendLinkedAlert(ctx, link, text, keyHash, fetchImpl) });
+      targets.push({ id: `telegram:${link.uid}`, send: () => sendLinkedAlert(ctx, link, text, keyHash, fetchImpl, authorize) });
     } catch { /* Role and team scope match the dashboard. */ }
   }
   return targets;

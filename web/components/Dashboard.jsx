@@ -21,6 +21,7 @@ import AccountInbox from "./account/AccountInbox"; // U78: account inbox.
 import AccountActivity from "./account/AccountActivity";
 import AccountUnusedKeys from "./account/AccountUnusedKeys"; import KeyLastUsed from "./account/KeyLastUsed.js"; // B125
 import ProofBadge from "./ProofBadge"; // U76: account receipt marks.
+import AccountSchedules from "./account/AccountSchedules"; // D136
 import AccountShell from "./account/AccountShell";
 import AccountAnchors from "./account/AccountAnchors.js";
 import AccountHome from "./account/AccountHome";
@@ -1280,6 +1281,7 @@ export default function Dashboard() {
           {tab === "Statements" && apiKey && <AccountLaneReport key={`lane-report-${apiKey}`} apiKey={apiKey}/>} {/* Lane report */}
           {tab === "Statements" && apiKey && <AccountProofPack key={`proof-pack-${apiKey}`} apiKey={apiKey}/>} {/* U100 */}
           {tab === "Insights" && signedIn && <AccountInsights key={apiKey} apiKey={apiKey}/>} {/* V88: no figures before connection. */}
+          {tab === "Schedules" && apiKey && <AccountSchedules key={apiKey} apiKey={apiKey} keys={ws?.keys || []}/>} {/* D136 */}
           {tab === "Inbox" && apiKey && <AccountInbox key={apiKey} apiKey={apiKey}/>}
           {tab === "Playbooks" && <Playbooks key={apiKey} live={live && signedIn} apiKey={apiKey}/>} {/* U115 */}
           {tab === "Activity" && ws && <AccountActivity apiKey={apiKey} keys={ws.keys}/>}
