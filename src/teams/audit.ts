@@ -1,3 +1,4 @@
+import { recordTeamSecurity } from "../security-alerts/records.ts"; // D138
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.ts";
@@ -101,6 +102,7 @@ export async function appendAudit(db: Db | Tx, teamId: string, actor: string, ac
     const prevHash = last?.hash ?? GENESIS;
     const hash = chainHash(prevHash, entry);
     await tx.insert(teamAudit).values({ teamId, seq: entry.seq, at, actor, action, target, detail, prevHash, hash });
+    await recordTeamSecurity(tx, entry); // D138
     return { ...entry, prev_hash: prevHash, hash };
   };
   // Inside a caller's transaction this is a savepoint and the row lock lives as long as the caller's transaction.

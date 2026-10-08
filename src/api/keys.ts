@@ -1,3 +1,4 @@
+import { recordKeySecurity } from "../security-alerts/records.ts"; // D138
 import { projectInput, projectJson } from "../projects/tags.ts"; // C134
 import { compatibilityFields, keyPagination, provisionedScope } from "../provisioning/keys.ts"; // ZK6
 import type { Context, Hono } from "hono";
@@ -197,6 +198,7 @@ export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeo
     await appendAudit(db, teamId, await actorOf(db, caller), "key.create", d.keyHash, { role, limit_usd: limit == null ? null : picoToUsd(limit) });
   }
   const [row] = await db.select().from(keys).where(eq(keys.keyHash, d.keyHash));
+  await recordKeySecurity(ctx, db, row, caller); // D138
   return { row, secret };
 }
 
@@ -229,6 +231,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
       const patch = { ...applySpec({ ...spec, management: undefined, team: undefined }), ...tracingPatch(ctx, spec, null) };
       if (Object.keys(patch).length) await ctx.db.update(keys).set(patch).where(eq(keys.keyHash, k.keyHash));
       const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, k.keyHash));
+      await recordKeySecurity(ctx, ctx.db, row, row); // D138
       return c.json({ data: keyJson(row), key: secret, deposit: depositInfo(ctx, row) }, 201);
     }
     const caller = await sub(ctx, c);
@@ -271,6 +274,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     if (Object.keys(patch).length) await ctx.db.update(keys).set(patch).where(eq(keys.keyHash, k.keyHash));
     if (k.teamId && Object.keys(patch).length) await appendAudit(ctx.db, k.teamId, await actorOf(ctx.db, caller), "key.update", k.keyHash, keyChange(spec, patch));
     const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, k.keyHash));
+    await recordKeySecurity(ctx, ctx.db, row, caller, k); // D138
     return c.json({ data: await keyJsonWithTracing(ctx, row) });
   });
   app.delete("/api/v1/keys/:hash", async (c) => {
@@ -280,6 +284,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     if (k.keyHash === caller.keyHash) fail(400, "A key cannot delete itself; disable it with PATCH instead.", "invalid_request");
     // Keys are disabled rather than removed: generations and on-chain balances reference them.
     await ctx.db.update(keys).set({ disabled: true }).where(eq(keys.keyHash, k.keyHash));
+    if (!k.disabled) await recordKeySecurity(ctx, ctx.db, { ...k, disabled: true }, caller, k); // D138
     if (k.teamId && !k.disabled) await appendAudit(ctx.db, k.teamId, await actorOf(ctx.db, caller), "key.disable", k.keyHash, {});
     return c.json({ deleted: true, data: { hash: k.keyHash, deleted: true } }); // ZK6
   });
@@ -526,6 +531,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
       if (!used.length || value.expires < Date.now()) fail(401, "Wallet challenge is expired or already consumed.", "invalid_wallet_auth");
       await ensureAccount(tx, accountId, "wallet", value.address);
       const [key] = await tx.insert(keys).values({ keyHash: d.keyHash, chainKeyHash: d.chainKeyHash, keyAddress: d.keyAddress, accountId, label: d.label, name: v.name ?? "wallet", management: true, rpm: ctx.cfg.limits.defaultRpm || null }).returning();
+      await recordKeySecurity(ctx, tx, key, key, undefined, value.address); // D138
       return key;
     });
     return c.json({ data: keyJson(row), key: secret }, 201);

@@ -1,3 +1,4 @@
+import { recordPolicySecurity } from "../security-alerts/records.ts"; // D138
 import { actionState } from "./guard-state.ts";
 import { loadBreakerState } from "./breaker-state.ts";
 import { and, desc, eq, getTableColumns, lt, sql } from "drizzle-orm";
@@ -25,6 +26,7 @@ export async function appendEvent(tx: Db | Tx, entry: Pick<EventRow, "keyHash" |
   const row = { ...entry, ts: now, decision: entry.decision ?? null, reasons: entry.reasons ?? [], intent: entry.intent ?? null, prevHash };
   const hash = eventHash(prevHash, { key_hash: row.keyHash, ts: now.toISOString(), kind: row.kind, decision: row.decision, reasons: row.reasons, intent: row.intent, policy_sha256: row.policySha256 });
   const [inserted] = await tx.insert(agentPolicyEvents).values({ ...row, hash }).returning();
+  await recordPolicySecurity(tx, inserted); // D138
   await checkpointAutonomy(tx, inserted, now);
   await linkLedgerEvent(tx, inserted.id, inserted.kind, now);
   await captureAgentAlert(tx, inserted);

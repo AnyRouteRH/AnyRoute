@@ -1930,7 +1930,8 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
-        }
+        },
+        "x-D138-security-alerts": "When SECURITY_ALERTS_ENABLED: security items have kind security, id, at, title, status null, href /dashboard/#settings and unread. Account management keys see all account security items; team owners/admins see only their team; session and ordinary keys see none. since filters event time. One item per recorded event, including changes by the current key. Claimed items expire after 90 days while the worker is enabled."
       }
     },
     "/api/v1/inbox/seen": {
@@ -18570,6 +18571,115 @@
         "tags": [
           "Agent rulebook"
         ]
+      }
+    },
+    "/api/v1/account/security-alerts": {
+      "get": {
+        "operationId": "getSecurityAlerts",
+        "summary": "Read security alerts preference",
+        "description": "D138: SECURITY_ALERTS_ENABLED defaults to false (404 while off). Active account management Bearer key required; session keys and team administrators refused. Preference defaults on. Responses use no-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved preference",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "enabled"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchSecurityAlerts",
+        "summary": "Save security alerts preference",
+        "description": "D138: SECURITY_ALERTS_ENABLED defaults to false (404 while off). Active account management Bearer key required; session keys and team administrators refused. Preference defaults on. Responses use no-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved preference",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "enabled"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   },

@@ -1,3 +1,4 @@
+import { securityContext } from "../security-alerts/records.ts"; // D138
 import { eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import type { Db } from "../db/client.ts";
@@ -28,7 +29,7 @@ export async function handleGuardResume(ctx: Ctx, api: TelegramApi, update: TgUp
       await lockAccount(tx, caller.accountId);
       const [row] = await tx.select().from(agentPolicies).where(eq(agentPolicies.keyHash, command[1]!));
       if (!row) fail(404, "Rulebook not found.", "not_found");
-      await changeKill(tx, row, false, null, caller.keyHash);
+      await securityContext.run(ctx, () => changeKill(tx, row, false, null, caller.keyHash)); // D138
       return row.killUntil; // B117
     });
     text = until ? `Agent resumed early; its stop was set until ${until.toISOString()}. Its rulebook limits still apply.` : "Agent resumed. Its rulebook limits still apply."; // B117

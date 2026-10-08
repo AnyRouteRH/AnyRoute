@@ -1,6 +1,7 @@
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
+import SecurityAlertsDocs from "../../components/security-alerts/SecurityAlertsDocs"; // D138
 import ContextMeterDocs from "../../components/ContextMeterDocs"; // C129
 import ShareToAnyrouteDocs from "../../components/ShareToAnyrouteDocs"; // D137
 import DarkModeDocs from '../../components/DarkModeDocs'; // C126
@@ -908,6 +909,7 @@ export default function Docs() {
           <AgentGuardDocs /> {/* V98 */}
           <WeeklySummaryDocs /> {/* B120 */}
           <TelegramPhotosDocs /> {/* D142 */}
+          <SecurityAlertsDocs /> {/* D138 */}
           <PriceNoticesDocs /> {/* C133 */}
           <AgentPayDocs /> {/* Pay another agent */}
           <TradingAgentDocs /> {/* B */}

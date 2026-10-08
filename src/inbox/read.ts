@@ -1,3 +1,4 @@
+import { securityInbox } from "../security-alerts/worker.ts"; // D138
 import { depositPingItems } from "./deposit-pings.ts"; // B123
 import { lowBalanceInbox } from "../account/low-balance.ts"; // B119
 import { quietInboxItems } from "../agents/quiet-alerts.ts"; // D141
@@ -40,6 +41,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
   type Item = { id: string; at: string; kind: string; title: string; status: string | null; href: string; amount?: string; key_label?: string | null; model?: string | null; approval_id?: string; approval_limit?: string; expires_at?: string; can_decide?: boolean; intent?: ReturnType<typeof inboxIntent>; unread: boolean };
   const items: Item[] = [];
   let capped = false;
+  { const notices = await securityInbox(ctx, key, scope.whole, since, asOf); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D138
   if (scope.whole && key.management) { const notices = await priceNoticeItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // C133
   if (scope.whole) { const notices = await depositPingItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // B123
   if (scope.whole) { const notices = await quietInboxItems(ctx, key, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D141

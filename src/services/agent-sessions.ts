@@ -1,3 +1,4 @@
+import { recordDisabledSecurity } from "../security-alerts/records.ts"; // D138
 import { and, count, desc, eq, inArray, isNull, lt, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Ctx } from "../context.ts";
@@ -342,6 +343,7 @@ export async function recentCalls(ctx: Ctx, keyHash: string, limit: number) {
 /** End a session now: disable its key and record the end. Idempotent; an earlier end is kept. */
 export async function endSession(ctx: Ctx, s: SessionRow) {
   await ctx.db.transaction(async (tx) => {
+    await recordDisabledSecurity(ctx, tx, [s.keyHash]); // D138
     await tx.update(keys).set({ disabled: true }).where(eq(keys.keyHash, s.keyHash));
     await tx.update(agentSessions).set({ endedAt: new Date(), endReason: "ended" }).where(and(eq(agentSessions.id, s.id), isNull(agentSessions.endedAt)));
   });

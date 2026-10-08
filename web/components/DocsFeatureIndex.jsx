@@ -4,6 +4,7 @@ const sections = [
   ["share-to-anyroute", "Share to Anyroute from your phone"], // D137
   ["telegram-photos", "Send photos in Telegram"], // D142
   ["quiet-agent-alerts", "Quiet-agent alerts"], // D141
+  ["security-alerts", "Security alerts"], // D138
   ["chat-cost", "This chat’s cost"], // C128
   ["copy-as-code", "Copy a Chat conversation as code"], // C130
   ["key-expiry", "Keys that expire"], // C127

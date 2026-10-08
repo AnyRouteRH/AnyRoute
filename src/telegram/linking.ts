@@ -1,3 +1,4 @@
+import { recordSecurity, keyActor } from "../security-alerts/records.ts"; // D138
 import { randomBytes } from "node:crypto";
 import { and, eq, like, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -64,6 +65,7 @@ export async function consumeCode(ctx: Ctx, uid: number, code: string) {
     if ((await accountLinks(tx, value.account)).some(l => l.key_hash === value.key_hash)) fail(409, "This principal already has a Telegram link. Unlink it first.");
     const link: Link = { account: value.account, key_hash: value.key_hash, uid, generation: randomBytes(9).toString("base64url"), linked_at: new Date().toISOString() };
     await tx.insert(kv).values({ key: linkKey(uid), value: link });
+    { const caller = await validPrincipal({ ...ctx, db: tx as unknown as Db }, link); await recordSecurity(ctx, tx, link.account, caller.teamId, `Telegram linked ${keyActor(caller.name)}`); } // D138
     await tx.delete(kv).where(eq(kv.key, row.key));
     return link;
   });
@@ -73,6 +75,7 @@ export async function removeLink(ctx: Ctx, uid: number) {
     await lockLinks(tx);
     const link = await readLink(tx, uid);
     if (!link) return;
+    { const [caller] = await tx.select().from(keys).where(eq(keys.keyHash, link.key_hash)); await recordSecurity(ctx, tx, link.account, caller?.teamId ?? null, "Telegram unlinked by its Telegram member"); } // D138
     await tx.delete(kv).where(eq(kv.key, linkKey(uid)));
     await tx.delete(kv).where(and(like(kv.key, "telegram-approval:%"), sql`${kv.value}->>'uid' = ${String(uid)}`));
     await tx.delete(kv).where(eq(kv.key, codeKey(link.account)));
@@ -83,6 +86,7 @@ export async function removeAccountLink(ctx: Ctx, caller: KeyRow) {
     await lockLinks(tx);
     const links = (await accountLinks(tx, caller.accountId)).filter(l => l.key_hash === caller.keyHash);
     for (const link of links) {
+      await recordSecurity(ctx, tx, caller.accountId, caller.teamId, `Telegram unlinked ${keyActor(caller.name)}`); // D138
       await tx.delete(kv).where(eq(kv.key, linkKey(link.uid)));
       await tx.delete(kv).where(and(like(kv.key, "telegram-approval:%"), sql`${kv.value}->>'uid' = ${String(link.uid)}`));
     }

@@ -1,3 +1,4 @@
+import { registerSecurityAlertsJob } from "../security-alerts/worker.ts"; // D138
 import { runDepositPings } from "../pay/deposit-pings.ts"; // B123
 import { registerLowBalanceJob } from "../account/low-balance.ts"; // B119
 import { registerQuietAlertsJob } from "../agents/quiet-alerts.ts"; // D141
@@ -45,6 +46,7 @@ import { runAgentPayVerify } from "../agents/pay.ts"; // Pay another agent
 
 export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch) {
   const { cfg, jobs } = ctx;
+  registerSecurityAlertsJob(ctx); // D138
   if (cfg.depositPingsEnabled && cfg.runtimeRole !== "api") jobs.register("deposit-pings", 5_000, () => runDepositPings(ctx)); // B123
   registerLowBalanceJob(ctx); // B119
   registerPriceNoticesJob(ctx); // C133

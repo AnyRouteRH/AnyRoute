@@ -1,3 +1,4 @@
+import { recordMemberKeySecurity, recordDisabledSecurity } from "../security-alerts/records.ts"; // D138
 import { accountDefaultScope } from "../provisioning/keys.ts"; // ZK6
 import type { Context, Hono } from "hono";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
@@ -122,6 +123,7 @@ async function issueMemberKey(ctx: Ctx, tx: Tx, team: TeamRow, principal: Princi
   const actor = principal.kind === "wallet" ? `wallet:${principal.subject}` : `passkey:${principal.id}`;
   await appendAudit(tx, team.id, actor, "key.create", d.keyHash, { via, role: principal.role, expires_at: new Date(Date.now() + SIGN_IN_KEY_TTL_MS).toISOString(), limit_usd: 0 });
   const [row] = await tx.select().from(keys).where(eq(keys.keyHash, d.keyHash));
+  await recordMemberKeySecurity(ctx, tx, row, principal.kind); // D138
   return { row: row!, secret };
 }
 
@@ -442,6 +444,7 @@ export function teamsRoutes(app: Hono, ctx: Ctx) {
   async function revoke(tx: Tx | Db, teamId: string, pid: string) {
     await tx.update(teamPrincipals).set({ disabled: true }).where(eq(teamPrincipals.id, pid));
     const issued = await tx.select({ h: teamMembers.keyHash }).from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.principalId, pid)));
+    await recordDisabledSecurity(ctx, tx, issued.map(r => r.h)); // D138
     if (issued.length) await tx.update(keys).set({ disabled: true }).where(inArray(keys.keyHash, issued.map((r) => r.h)));
     return issued.length;
   }

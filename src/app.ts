@@ -1,3 +1,4 @@
+import { securityAlertsRoutes, securityAlertsMiddleware } from "./security-alerts/routes.ts"; // D138
 import { newModelsFeedRoutes } from "./api/models-new-feed.ts"; // C131
 import { projectCors } from "./projects/cors.ts"; // C134
 import { quietAgentAlertRoutes } from "./api/quiet-agent-alerts.ts"; // D141
@@ -176,6 +177,7 @@ export async function createApp(opts: AppOptions = {}) {
   const webBuilt = existsSync(resolve(webDir, "index.html"));
   const csp = webBuilt ? siteCsp(webDir) : "frame-ancestors 'none'; object-src 'none'; base-uri 'none'";
   const app = new Hono();
+  securityAlertsMiddleware(app, ctx); // D138
   app.use("*", originLockMiddleware(ctx)); // HD1: authenticate ingress before CORS, including preflights.
   // The OpenAI-style /v1/* aliases get the same CORS as /api/*, so a browser can read the receipt, lane and policy headers on either.
   const apiCors = cors({ origin: "*", allowHeaders: ["x-agent-approval", "authorization", "content-type", "x-e2ee-version", "x-client-pub-key", "x-model-pub-key", "x-e2ee-nonce", "x-e2ee-timestamp", "x-pay-with", "x-payment", "payment-signature", "payment-recovery", "x-wallet-auth", "x-anyroute-cache", "x-anyroute-disclosure-max", "x-anyroute-lane", "x-anyroute-lane-downgrade", "x-anyroute-decision-tag", "http-referer", "x-title", "traceparent", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access"], exposeHeaders: [...EXPOSED_RESPONSE_HEADERS, ...(cfg.routeExplain ? ["x-anyroute-route"] : []), /* V84 */ ...(cfg.structuredOutputCheckEnabled ? ["x-anyroute-json-check"] : []), /* V83 */ "x-e2ee-applied", "x-e2ee-version", "x-e2ee-algo", "x-e2ee-receipt-id"] });
@@ -225,6 +227,7 @@ export async function createApp(opts: AppOptions = {}) {
   insightsRoutes(app, ctx); // V88: read-only, off by default.
   accountRunwayRoutes(app, ctx); // B119
   inboxRoutes(app, ctx); // U78: account inbox.
+  securityAlertsRoutes(app, ctx); // D138
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
   keysRoutes(app, ctx);
   teamsRoutes(app, ctx);

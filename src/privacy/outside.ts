@@ -1,6 +1,7 @@
 import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { chatFoldersBrowser } from "./chat-folders"; // D143
 import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
+import { securityAlertReader, securityAlertStores } from "./security-alerts.ts"; // D138
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
 import { gettingStartedBrowser } from "./getting-started.ts"; // C135
 import { shareToAnyrouteBrowser } from "./share-to-anyroute.ts"; // D137
@@ -425,6 +426,7 @@ const addressReaders: Touchpoint[] = [
 const bodyReaders: ExternalDoc["bodyReaders"] = [
   telegramPhotoReader, // D142
   quietAlertBodyReader, // D141
+  securityAlertReader, // D138
   weeklySummaryReader, // B120
   modelAlternativesReader, // B121
   lowBalanceReader, // B119
@@ -771,6 +773,7 @@ export const EXTERNAL: ExternalDoc = {
   },
   otherStores: [
     ...quietAlertStores, // D141
+    ...securityAlertStores, // D138
     ...priceNoticeStores, // C133
     ...rushStores, // ON3
     ...toolsStores, // v6 T

@@ -1,3 +1,4 @@
+import { securityAlertsEnv } from "./security-alerts/config.ts"; // D138
 import { modelArrivalsEnv } from "./catalog/model-arrivals-config.ts"; // C131
 import { depositPingsEnv } from "./pay/deposit-pings-config.ts"; // B123
 import { hardeningEnv, hardeningSettings } from "./hardening/config.ts"; // HD1
@@ -379,6 +380,7 @@ const schema = z.object({
   TELEGRAM_PHOTOS_ENABLED: bool.default(false), // D142
   LOW_BALANCE_ALERTS_ENABLED: bool.default(false), // B119
   PRICE_NOTICES_ENABLED: bool.default(false), // C133
+  ...securityAlertsEnv, // D138
   TELEGRAM_LINKING_ENABLED: bool.default(false),
   WEEKLY_SUMMARY_ENABLED: bool.default(false), // B120
 
@@ -689,6 +691,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     publicUrl: e.PUBLIC_BASE_URL.replace(/\/$/, ""),
     lowBalanceAlertsEnabled: e.LOW_BALANCE_ALERTS_ENABLED, // B119
     priceNoticesEnabled: e.PRICE_NOTICES_ENABLED, // C133
+    securityAlertsEnabled: e.SECURITY_ALERTS_ENABLED, // D138
     siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),
     webauthn: {
       rpId: e.WEBAUTHN_RP_ID ?? new URL(e.PUBLIC_BASE_URL).hostname,
