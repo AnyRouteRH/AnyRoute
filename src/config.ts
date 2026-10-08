@@ -554,6 +554,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("low-balance-alerts"); // B119
       allowed.push("price-notices"); // C133
       allowed.push("quiet-agent-alerts"); // D141
+      allowed.push("scheduled-prompts", "security-alerts", "project-budget-telegram"); // D136, D138, D139: their worker jobs
       allowed.push("webhooks"); // V86: bounded event delivery.
       allowed.push("makegood-payouts"); // V6 R: on-chain make-good refunds.
       allowed.push("agreement-indexer", "agreement-jury", "agreement-retention");
