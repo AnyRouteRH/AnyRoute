@@ -1,4 +1,5 @@
 import { validateSavedAnswers } from "./saved-answers.js"; // D140
+import { folderFields, validateFolders } from "./chat-folders.js"; // D143
 import { MAX_BYTES, MAX_CHATS, snapshotLanes, titleOf } from "./private-history.js";
 import { chatCost, costSummaryFields } from "./chat-cost.js"; // C128
 
@@ -53,7 +54,7 @@ function validateChat(c) {
     });
     return { modelId, messages };
   });
-  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...costSummaryFields(c) }; // C128
+  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...folderFields(c), ...costSummaryFields(c) }; // C128
 }
 
 // Dedupe ids, plus identical conversation content with different ids. Do not overwrite anything already kept.
@@ -88,11 +89,13 @@ export function parseImport(source) {
 export function currentChat(lanes, saved, now = Date.now()) {
   const snapshot = snapshotLanes(lanes);
   if (!snapshot.some((l) => l.messages.length)) return null;
-  return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, lanes: snapshot, costSummary: chatCost(lanes) }; // C128
+  return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, ...folderFields(saved || {}), lanes: snapshot, costSummary: chatCost(lanes) }; // C128
 }
 
 export function exportJson(chats, savedAnswers = []) {
   return JSON.stringify({ format: EXPORT_FORMAT, version: EXPORT_VERSION, chats, ...(savedAnswers.length ? { savedAnswers: validateSavedAnswers(savedAnswers) } : {}) }, null, 2) + "\n";
+export function exportJson(chats, folders = []) {
+  return JSON.stringify({ format: EXPORT_FORMAT, version: EXPORT_VERSION, chats, ...(folders.length ? { folders: validateFolders(folders) } : {}) }, null, 2) + "\n";
 }
 
 const literal = (value) => String(value).replace(/[\\`*_{}[\]()#+.!|>~-]/g, "\\$&").replace(/[\r\n]+/g, " ");
@@ -115,6 +118,10 @@ export function downloadChats(chats, format, scope = globalThis, savedAnswers = 
   if (!chats.length && !savedAnswers.length) throw new Error("There are no conversations to export.");
   const json = format === "json";
   const blob = new Blob([json ? exportJson(chats, savedAnswers) : exportMarkdown(chats) + savedAnswers.map((a) => `\n\n# Saved answer\n\n${a.question}\n\n${a.answer}\n\nModel: ${literal(a.model)} · Saved: ${new Date(a.at).toISOString()} · Cost: ${a.cost === null ? "Not reported" : a.cost}\nReceipt: ${literal(a.receiptId)}`).join("\n")], { type: json ? "application/json" : "text/markdown;charset=utf-8" });
+export function downloadChats(chats, format, scope = globalThis, folders = []) {
+  if (!chats.length && !folders.length) throw new Error("There are no conversations to export.");
+  const json = format === "json";
+  const blob = new Blob([json ? exportJson(chats, folders) : exportMarkdown(chats)], { type: json ? "application/json" : "text/markdown;charset=utf-8" });
   const url = scope.URL.createObjectURL(blob);
   const link = scope.document.createElement("a");
   link.href = url;

@@ -1,0 +1,24 @@
+/* D143 */
+.sidebar { min-width: 0; display: grid; align-content: start; gap: 12px; }
+.desktop { display: grid; gap: 4px; max-height: 230px; overflow-y: auto; }
+.desktop button, .move button { border: 0; background: var(--paper-2); color: var(--ink); padding: 10px; text-align: left; font: inherit; font-size: 12px; overflow-wrap: anywhere; }
+.desktop button { display: flex; justify-content: space-between; gap: 8px; }
+.desktop span { color: var(--muted); }
+.desktop button[aria-current="true"] { background: var(--signal-tint); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.controls button, .editor button { font-size: 12px; }
+.editor { display: flex; flex-wrap: wrap; gap: 10px; min-width: 0; font-size: 12px; }
+.editor p { overflow-wrap: anywhere; }
+.editor input { width: 100%; min-width: 0; border: 1px solid var(--line); padding: 10px; background: var(--paper-2); color: var(--ink); font: inherit; }
+.sidebar :is(button, input, select):focus-visible, .move :is(summary, button):focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 2px; }
+.mobile { display: none; }
+.move { font-size: 12px; min-width: 0; max-width: 100%; }
+.move summary { cursor: pointer; padding: 8px 0; }
+.move > div { display: grid; gap: 4px; max-height: 180px; overflow-y: auto; padding: 2px; }
+.move span { color: var(--muted); }
+@media (max-width: 540px) {
+  .desktop { display: none; }
+  .mobile { display: grid; gap: 6px; font-size: 12px; }
+  .mobile select { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font: inherit; }
+  .move summary, .sidebar button, .move button { min-height: 36px; }
+}

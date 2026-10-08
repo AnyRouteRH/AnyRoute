@@ -13,6 +13,7 @@ import { promptVaultEdits, PRIVATE_PROMPT_BYTES } from "./harness-prompt-vault.j
 import { validatePrompts } from "./harness-prompts.js"; // V81: validate decrypted prompt data.
 import { SAVED_ANSWER_BYTES, savedAnswerEdits, validateSavedAnswers } from "./saved-answers.js"; // D140
 import { receiptLane } from "./private-mode.js";
+import { folderDocument, folderVaultEdits } from "./chat-folders.js"; // D143
 import { historyEdits, savedEntry } from "./harness-history-vault.js";
 
 export const VERSION = 1;
@@ -135,6 +136,10 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
     if (savedAnswers !== undefined) validateSavedAnswers(savedAnswers); // D140
     const plain = enc.encode(JSON.stringify({ chats, ...(savedAnswers === undefined ? {} : { savedAnswers }), ...(prompts === undefined ? {} : { prompts }) })); // V81
     if (plain.length > MAX_BYTES + PRIVATE_PROMPT_BYTES + SAVED_ANSWER_BYTES + 4096) throw fail("too_large"); // D140: separate history, prompt and saved-answer budgets plus the envelope.
+  async function seal(s, chats, prompts = s.prompts, folders = s.folders) { // V81: preserve prompts across history writes.
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const plain = enc.encode(JSON.stringify({ chats, ...(folders === undefined ? {} : { folders }), ...(prompts === undefined ? {} : { prompts }) })); // V81
+    if (plain.length > MAX_BYTES + PRIVATE_PROMPT_BYTES + 4096) throw fail("too_large"); // V81: history budget + prompt budget + envelope; history trimming is unchanged.
     const ct = new Uint8Array(await subtle().encrypt({ name: "AES-GCM", iv, additionalData: AAD }, s.key, plain));
     await storage.set({ v: VERSION, kdf: KDF, iterations: s.rounds, salt: b64(s.salt), iv: b64(iv), ct: b64(ct) });
   }
@@ -152,6 +157,7 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
   return {
     ...savedAnswerEdits({ serial, need, seal }), // D140
     ...historyEdits({ serial, need, seal, maxBytes: MAX_BYTES, maxChats: MAX_CHATS }),
+    ...folderVaultEdits({ serial, need, seal, maxBytes: MAX_BYTES, makeId: () => "f" + crypto.randomUUID() }), // D143
     ...promptVaultEdits({ serial, need, seal }), // V81
     /** Whether a vault is stored in this browser (locked or not). */
     exists: async () => !!(await storage.get()),
@@ -201,6 +207,8 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
         if (!Array.isArray(doc?.chats)) throw fail("unreadable");
         const savedAnswers = validateSavedAnswers(doc.savedAnswers); // D140
         session = { key, salt, rounds: record.iterations, chats: doc.chats, savedAnswers, ...(doc.prompts === undefined ? {} : { prompts: validatePrompts(doc.prompts) }) }; // V81
+        const folders = folderDocument(doc.chats, doc.folders).folders; // D143: old vaults have no folders.
+        session = { key, salt, rounds: record.iterations, folders, chats: doc.chats, ...(doc.prompts === undefined ? {} : { prompts: validatePrompts(doc.prompts) }) }; // V81
       }),
 
     /** Chats, newest first: id, title, when, and how many turns. Nothing else leaves the vault through this. */
@@ -216,7 +224,7 @@ export function createHistory({ storage, crypto = globalThis.crypto, iterations 
         const s = need();
         const entry = savedEntry(chat, s.chats.find((c) => c.id === String(chat.id)), now());
         let chats = [entry, ...s.chats.filter((c) => c.id !== entry.id)].sort((a, b) => b.at - a.at).slice(0, MAX_CHATS);
-        const size = (list) => enc.encode(JSON.stringify({ chats: list })).length;
+        const size = (list) => enc.encode(JSON.stringify({ chats: list, ...(s.folders === undefined ? {} : { folders: s.folders }) })).length;
         if (size([entry]) > MAX_BYTES) throw fail("too_large");
         while (chats.length > 1 && size(chats) > MAX_BYTES) chats = chats.slice(0, -1);
         await seal(s, chats);

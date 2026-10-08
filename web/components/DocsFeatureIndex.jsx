@@ -1,5 +1,6 @@
 const sections = [
   ["saved-answers", "Save answers in Chat"], // D140
+  ["chat-folders", "Organize Chat into folders"], // D143
   ["chat-cost", "This chat’s cost"], // C128
   ["copy-as-code", "Copy a Chat conversation as code"], // C130
   ["key-expiry", "Keys that expire"], // C127

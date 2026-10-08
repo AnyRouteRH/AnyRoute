@@ -33,3 +33,9 @@
   .rename { flex-wrap: wrap; }
   .body button { min-height: 32px; }
 }
+
+/* D143 */
+.folderLayout { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr); gap: 14px; }
+.folderLayout > * { min-width: 0; }
+.scope { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+@media (max-width: 540px) { .folderLayout { grid-template-columns: minmax(0, 1fr); } }

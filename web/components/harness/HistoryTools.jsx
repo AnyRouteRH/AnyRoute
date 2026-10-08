@@ -2,8 +2,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { savedAnswersFromExport, savedAnswerOnScreen } from "../../lib/saved-answers.js"; // D140
 import { MAX_BYTES } from "../../lib/private-history";
-import { buildSearchIndex, downloadChats, highlightParts, historyShortcut, mergeImport, parseImport, searchChats } from "../../lib/harness-history";
+import { downloadChats, highlightParts, historyShortcut } from "../../lib/harness-history";
 import { Button, Modal } from "../UI";
+import ChatFolders, { ChatFolderMove, FOLDER_DRAG_TYPE } from "./ChatFolders"; // D143
+import { parseFolderImport, searchFolder } from "../../lib/chat-folders.js"; // D143
 import ChatCost from "./ChatCost"; // C128
 import s from "./HistoryTools.module.css";
 
@@ -39,6 +41,7 @@ function ExportButtons({ onExport, disabled = false }) {
 }
 
 export function ExportCurrent({ chat, savedAnswers = [], onClose }) {
+export function ExportCurrent({ chat, folders = [], onClose }) {
   const [error, setError] = useState("");
   return <Modal title="Export current chat" onClose={onClose}>
     <div className={s.body}>
@@ -47,6 +50,7 @@ export function ExportCurrent({ chat, savedAnswers = [], onClose }) {
       {error && <p className="error" role="alert">{error}</p>}
       {chat ? <ExportButtons onExport={(format) => {
         try { downloadChats([chat], format, globalThis, savedAnswers); onClose(); } catch (e) { setError(e.message); }
+        try { downloadChats([chat], format, globalThis, folders.filter(folder => folder.id === chat.folderId)); onClose(); } catch (e) { setError(e.message); }
       }} /> : <p>Finish a message before exporting this conversation.</p>}
     </div>
   </Modal>;
@@ -63,6 +67,7 @@ export function HistoryAccess({ onEnable, onClose }) {
 }
 
 export default function HistoryTools({ history, chats, current, busy, onChange, onOpen, onDelete, onLock, onClose }) {
+  const [selected, setSelected] = useState(null), [searchAll, setSearchAll] = useState(false); // D143
   const [query, setQuery] = useState("");
   const [rename, setRename] = useState(null);
   const [title, setTitle] = useState("");
@@ -76,19 +81,21 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
     return () => { live.current = false; clearTimeout(timer); };
   }, []);
   const all = useMemo(() => chats.map((c) => history.get(c.id)).filter(Boolean), [chats, history]);
-  const index = useMemo(() => buildSearchIndex(all), [all]);
-  const results = useMemo(() => searchChats(index, query), [index, query]);
+  const folders = history.listFolders(); // D143
+  const scope = selected && folders.some(folder => folder.id === selected) ? selected : null;
+  const results = useMemo(() => searchFolder(all, query, searchAll && query.trim() ? null : scope), [all, query, scope, searchAll]);
   const groups = [
     ["Pinned", results.filter(({ chat }) => chat.pinned)],
-    ["All chats", results.filter(({ chat }) => !chat.pinned)],
+    [scope && !(searchAll && query.trim()) ? folders.find(folder => folder.id === scope).name : "All chats", results.filter(({ chat }) => !chat.pinned)],
   ];
   const run = async (fn) => {
     setPending(true); setError(""); setNote("");
-    try { await fn(); } catch (e) { if (live.current) setError(e?.message || "History could not be updated."); }
+    try { await fn(); return true; } catch (e) { if (live.current) setError(e?.message || "History could not be updated."); return false; }
     finally { if (live.current) setPending(false); }
   };
   const exporting = (list, format) => {
     try { downloadChats(list, format, globalThis, history.listSavedAnswers().filter((a) => list === all || list.some((c) => c.id === a.chatId || savedAnswerOnScreen(a, c.lanes)))); setNote("Download ready. The file contains readable text."); setError(""); }
+    try { downloadChats(list, format, globalThis, list === all ? folders : folders.filter(folder => list.some(chat => chat.folderId === folder.id))); setNote("Download ready. The file contains readable text."); setError(""); }
     catch (e) { setError(e.message); }
   };
   const importFile = async (chosen) => {
@@ -102,6 +109,9 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
       const existing = history.list().map((c) => history.get(c.id));
       const { additions, skipped } = mergeImport(existing, incoming);
       const count = await history.importChats(additions, savedAnswers);
+      const incoming = parseFolderImport(await chosen.text());
+      if (!live.current || !history.unlocked) return;
+      const { count, skipped } = await history.importFolderHistory(incoming); // D143: one encrypted write for chats and folders.
       if (live.current && history.unlocked) {
         onChange();
         setNote(`Imported ${count} ${count === 1 ? "chat" : "chats"}. Skipped ${skipped} ${skipped === 1 ? "duplicate" : "duplicates"}.`);
@@ -116,6 +126,7 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
         <input type="search" ref={field} data-history-search value={query} placeholder="Search titles and messages" autoComplete="off" spellCheck={false} aria-keyshortcuts="Meta+K Control+K" onChange={(e) => setQuery(e.target.value)} />
         <kbd>⌘ / Ctrl K</kbd>
       </label>
+      {scope && <label className={s.scope}><input type="checkbox" checked={searchAll} onChange={event => setSearchAll(event.target.checked)} />Search all chats</label>}
       <div className={s.toolbar}>
         <span aria-live="polite">{results.length} {results.length === 1 ? "chat" : "chats"}{query.trim() ? " found" : " kept"}</span>
         <button type="button" className="text-button" disabled={pending} onClick={() => file.current?.click()}>Import JSON</button>
@@ -123,11 +134,17 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       {note && <p className={s.note} role="status">{note}</p>}
+      <div className={s.folderLayout}> {/* D143 */}
+        <ChatFolders chats={all} folders={folders} selected={scope} onSelect={setSelected} disabled={pending || busy}
+          onCreate={name => run(async () => { await history.createFolder(name); if (live.current && history.unlocked) onChange(); })}
+          onRename={(id, name) => run(async () => { await history.renameFolder(id, name); if (live.current && history.unlocked) onChange(); })}
+          onDelete={id => run(async () => { await history.deleteFolder(id); if (live.current && history.unlocked) { setSelected(null); onChange(); setNote("Folder deleted. Every chat is kept in All chats."); } })}
+          onMove={(id, folderId) => void run(async () => { await history.moveChat(id, folderId); if (live.current && history.unlocked) { onChange(); setNote("Chat moved."); } })} />
       <div className={s.results}>
-        {!results.length && <p className={s.note}>{query.trim() ? "No conversations match. Try another word." : "Nothing kept yet. A conversation is saved once its reply has finished."}</p>}
-        {groups.map(([label, rows]) => rows.length > 0 && <section key={label} aria-label={label}>
+        {!results.length && <p className={s.note}>{query.trim() ? "No conversations match. Try another word." : scope ? "This folder is empty. Move a chat here from All chats." : "Nothing kept yet. A conversation is saved once its reply has finished."}</p>}
+        {groups.map(([label, rows], group) => rows.length > 0 && <section key={group} aria-label={label}>
           <h3>{label}</h3>
-          <ul>{rows.map(({ chat, snippet }) => <li key={chat.id}>
+          <ul>{rows.map(({ chat, snippet }) => <li key={chat.id} draggable={!pending && !busy && rename !== chat.id} onDragStart={event => { event.dataTransfer.setData(FOLDER_DRAG_TYPE, chat.id); event.dataTransfer.effectAllowed = "move"; }}>
             {rename === chat.id ? <form className={s.rename} onSubmit={(e) => { e.preventDefault(); void run(async () => { await history.edit(chat.id, { title }); if (live.current && history.unlocked) { onChange(); setRename(null); } }); }}>
               <label className="sr-only" htmlFor="chat-title">Chat title</label>
               <input id="chat-title" autoFocus value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setRename(null); } }} />
@@ -142,16 +159,19 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
             <div className={s.actions} role="group" aria-label={`Actions for ${chat.title}`}>
               <button type="button" className="text-button" aria-pressed={chat.pinned === true} disabled={pending} onClick={() => void run(async () => { await history.edit(chat.id, { pinned: !chat.pinned }); if (live.current && history.unlocked) onChange(); })}>{chat.pinned ? "Unpin" : "Pin"}</button>
               <button type="button" className="text-button" disabled={pending} onClick={() => { setRename(chat.id); setTitle(chat.title); }}>Rename</button>
+              <ChatFolderMove chat={chat} folders={folders} disabled={pending || busy} onMove={folderId => void run(async () => { await history.moveChat(chat.id, folderId); if (live.current && history.unlocked) { onChange(); setNote("Chat moved."); } })} /> {/* D143 */}
               <span className={s.exportLabel}>Export</span><ExportButtons onExport={(format) => exporting([chat], format)} />
               <button type="button" className={`text-button ${s.delete}`} aria-label={`Delete ${chat.title}`} disabled={pending || busy} onClick={() => void run(() => onDelete(chat.id))}>Delete</button>
             </div>
           </li>)}</ul>
         </section>)}
       </div>
+      </div>
       <div className={s.exports}>
         {current && <div><span>Export current</span><ExportButtons disabled={busy} onExport={(format) => exporting([current], format)} /></div>}
         <div><span>Export all {all.length} saved chats</span><ExportButtons disabled={!all.length && !history.listSavedAnswers().length} onExport={(format) => exporting(all, format)} /></div>
         <p>Saved answers are included, even when their chats have been deleted.</p> {/* D140 */}
+        <div><span>Export all {all.length} saved chats</span><ExportButtons disabled={!all.length && !folders.length} onExport={(format) => exporting(all, format)} /></div>
         <p>Downloads contain readable text, model details, receipt IDs and attachment names. Keep them somewhere you trust. Attachment contents, reasoning and tool traffic are left out.</p>
       </div>
       <Button type="button" secondary onClick={onLock}>Lock history</Button>
