@@ -3,6 +3,7 @@ import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E15
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
+import TelegramBalanceSpendDocs from "../../components/TelegramBalanceSpendDocs"; // E152
 import SecurityAlertsDocs from "../../components/security-alerts/SecurityAlertsDocs"; // D138
 import ContextMeterDocs from "../../components/ContextMeterDocs"; // C129
 import ShareToAnyrouteDocs from "../../components/ShareToAnyrouteDocs"; // D137
@@ -919,6 +920,7 @@ export default function Docs() {
           <AgentGuardDocs /> {/* V98 */}
           <WeeklySummaryDocs /> {/* B120 */}
           <TelegramPhotosDocs /> {/* D142 */}
+          <TelegramBalanceSpendDocs /> {/* E152 */}
           <SecurityAlertsDocs /> {/* D138 */}
           <SignedInBrowsersDocs /> {/* E147 */}
           <ScheduledPromptsDocs /> {/* D136 */}

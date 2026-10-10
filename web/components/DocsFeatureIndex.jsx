@@ -6,6 +6,7 @@ const sections = [
   ["chat-folders", "Organize Chat into folders"], // D143
   ["share-to-anyroute", "Share to Anyroute from your phone"], // D137
   ["telegram-photos", "Send photos in Telegram"], // D142
+  ["telegram-balance-spend", "Check balance and spend in Telegram"], // E152
   ["quiet-agent-alerts", "Quiet-agent alerts"], // D141
   ["security-alerts", "Security alerts"], // D138
   ["idempotency", "Retry without paying twice"], // D145

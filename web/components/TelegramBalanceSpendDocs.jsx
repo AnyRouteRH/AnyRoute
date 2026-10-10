@@ -1,0 +1,10 @@
+// E152
+export default function TelegramBalanceSpendDocs() {
+  return <section id="telegram-balance-spend"><h2>Check balance and spend in Telegram</h2>
+    <p>Link your account from <a href="/agents/" className="inline-link">Agents</a>, then send /balance to see your balance and how long it might last at your seven-day pace. Send /spend for today’s charged spending, this week’s total and your three highest-spending agent keys. Connecting a Chat key with /key is separate and does not authorize these commands.</p>
+    <p>/balance uses the same settled account balance and rolling seven-day charged spending as <code>GET /api/v1/account/runway</code>. The estimate rounds down to whole days; without charged spending, the bot says there is no recent pace. This is an estimate, not a promise.</p>
+    <p>/spend reuses the charged ledger reads behind <code>GET /api/v1/agents/spend?days=7</code>, restricted to today and the current week. Days start at midnight UTC and weeks start on Monday. Usage, tool-call and data-tool debits count by settlement time. Refunds do not reduce charged spending; deposits and withdrawals do not count. Team owners and admins see only the same team keys as the Agents page; management keys see all account keys. Balance and runway remain account-wide, as on Home.</p>
+    <p>Both commands require an active account link with owner or admin authority. Disabled, expired, inference-only and session keys cannot authorize them. <code>TELEGRAM_LINKING_ENABLED</code> defaults to false for self-hosters and requires <code>AGENT_POLICY_ENABLED</code> and a configured <code>TELEGRAM_BOT_TOKEN</code> on the worker. Telegram linking is switched on at anyroute.tech. These commands add no setting, endpoint or stored data; existing API responses stay the same.</p>
+    <p>Telegram receives readable balance amounts, spending totals and visible key names. Anyroute reads existing billing records to build the reply and does not save another copy. Telegram applies its own retention policies. Without an account link, the bot asks you to link from Agents first.</p>
+  </section>;
+}
