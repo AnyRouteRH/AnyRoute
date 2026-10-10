@@ -1,4 +1,5 @@
 import { browserSessionRoutes } from "./browser-sessions/routes.ts"; // E147
+import { notificationRoutes } from "./notifications/routes.ts"; // E146
 import { securityAlertsRoutes, securityAlertsMiddleware } from "./security-alerts/routes.ts"; // D138
 import { newModelsFeedRoutes } from "./api/models-new-feed.ts"; // C131
 import { projectCors } from "./projects/cors.ts"; // C134
@@ -238,6 +239,7 @@ export async function createApp(opts: AppOptions = {}) {
   scheduledPromptRoutes(app, ctx, (path, init, env) => app.request(path, init, internalEnv(env) as never)); // D136
   inboxRoutes(app, ctx); // U78: account inbox.
   securityAlertsRoutes(app, ctx); // D138
+  notificationRoutes(app, ctx); // E146
   projectBudgetRoutes(app, ctx); // D139
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
   keysRoutes(app, ctx);

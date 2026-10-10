@@ -1,0 +1,18 @@
+.form { border: 0; padding: 0; margin: 0; min-width: 0; }
+.legend { font-weight: 600; margin-bottom: 1rem; }
+.heading, .row { display: grid; grid-template-columns: minmax(0, 1fr) 64px 80px; align-items: center; gap: 8px; }
+.heading { color: var(--muted); font-size: .8rem; padding-block: .5rem; }
+.row { border-top: 1px solid var(--line); padding-block: .75rem; }
+.switch { display: flex; align-items: center; position: relative; width: 44px; height: 44px; cursor: pointer; }
+.switch input { position: absolute; width: 44px; height: 44px; margin: 0; opacity: 0; }
+.switch span { pointer-events: none; width: 40px; height: 24px; border-radius: 24px; background: var(--paper-3); border: 1px solid var(--muted); }
+.switch span::after { content: ''; display: block; width: 16px; height: 16px; margin: 3px; border-radius: 50%; background: var(--ink); }
+.switch input:checked + span { background: var(--signal); border-color: var(--signal-deep); }
+.switch input:checked + span::after { transform: translateX(16px); background: var(--night); }
+.switch input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 3px; }
+.switch input:disabled + span { opacity: .45; }
+.quiet { margin-block: 1.5rem; }
+.times { display: flex; flex-wrap: wrap; gap: 1rem; margin-block: 1rem; }
+.times label { display: grid; gap: .4rem; }
+.times input { color: var(--ink); background: var(--paper); border: 1px solid var(--line); padding: .5rem; max-width: 100%; }
+@media (max-width: 420px) { .heading, .row { grid-template-columns: minmax(0, 1fr) 48px 68px; gap: 4px; } .row { font-size: .9rem; } }

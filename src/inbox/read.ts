@@ -1,3 +1,4 @@
+import { filterNotificationInbox, weeklyInbox } from "../notifications/inbox.ts"; // E146
 import { securityInbox } from "../security-alerts/worker.ts"; // D138
 import { scheduleInbox } from "../schedules/inbox.ts"; // D136
 import { depositPingItems } from "./deposit-pings.ts"; // B123
@@ -107,6 +108,8 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
   }
   if (scope.whole) { const alerts = await lowBalanceInbox(ctx, key.accountId, since, asOf); capped ||= alerts.length > 100; items.push(...alerts.slice(0, 100)); } // B119
   if (scope.canDecide) { const notices = await scheduleInbox(ctx, key, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D136
+  items.push(...await weeklyInbox(ctx, key, scope.whole, since)); // E146
+  await filterNotificationInbox(ctx, key.accountId, items); // E146
   items.sort((a, b) => micros(a.at) === micros(b.at) ? (a.id > b.id ? -1 : a.id < b.id ? 1 : 0) : micros(a.at) > micros(b.at) ? -1 : 1);
   return { data: items, count: items.filter(item => item.unread).length, capped, as_of: asOf, seen_scope: scope.seenScope, scope: scope.whole ? "account" : "key" };
 }

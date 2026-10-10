@@ -10,6 +10,7 @@ const sections = [
   ["telegram-balance-spend", "Check balance and spend in Telegram"], // E152
   ["quiet-agent-alerts", "Quiet-agent alerts"], // D141
   ["security-alerts", "Security alerts"], // D138
+  ["notifications", "Notifications"], // E146
   ["idempotency", "Retry without paying twice"], // D145
   ["scheduled-prompts", "Scheduled prompts"], // D136
   ["chat-cost", "This chat’s cost"], // C128

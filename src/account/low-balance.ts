@@ -35,7 +35,7 @@ export async function runLowBalanceAlerts(ctx: Ctx, fetchImpl?: typeof fetch) {
     if (!notice) continue;
     alerted++;
     // Inbox and claim are durable before the outbound attempt. No retries: a timeout may already have delivered the message.
-    for (const link of await accountLinks(ctx.db, notice.accountId)) await sendLinkedAlert(ctx, link, lowBalanceText(notice.balance, notice.threshold, ctx.cfg.siteUrl), link.key_hash, fetchImpl);
+    for (const link of await accountLinks(ctx.db, notice.accountId)) await sendLinkedAlert(ctx, link, lowBalanceText(notice.balance, notice.threshold, ctx.cfg.siteUrl), link.key_hash, fetchImpl, undefined, "low_balance"); // E146
   }
   return { alerted, rearmed };
 }

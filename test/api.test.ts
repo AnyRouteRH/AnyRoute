@@ -136,7 +136,7 @@ describe("API parity (OpenRouter shapes)", () => {
     expect((await chat(h, { authorization: "Bearer sk-ar-v1-" + "0".repeat(64) }, {})).status).toBe(401);
   });
 
-  test("privacy: only declared agreement and scheduled content is retained", async () => {
+  test("privacy: only declared agreement, scheduled and queued content is retained", async () => {
     const r = await h.ctx.db.execute(sql`SELECT table_name, column_name, data_type, udt_name FROM information_schema.columns WHERE table_schema = 'public'`);
     const cols = ((r as any).rows ?? r) as { table_name: string; column_name: string }[];
     // Hashes (…_sha256) and prices (price_…) are allowed; anything that could hold text is not.
@@ -148,7 +148,8 @@ describe("API parity (OpenRouter shapes)", () => {
     // whose name or type suggests request content or a network address (prompt, content, messages, body, text, ip, address, user_agent,
     // jsonb, inet ...) carries a reviewed justification; agreement evidence and jury answer text are explicitly declared, with no caller network address column.
     expect(checkDatabaseColumns(cols as unknown as DatabaseColumn[])).toEqual([]);
-    expect(columnsHoldingRequestData()).toEqual(["agreement_evidence.content", "agreement_jury.statement", "schedules.prompt_enc", "schedule_runs.reply_enc"]);
+    // E146: encrypted delayed scheduled-answer previews are explicitly retained in kv.
+    expect(columnsHoldingRequestData()).toEqual(["kv.value", "agreement_evidence.content", "agreement_jury.statement", "schedules.prompt_enc", "schedule_runs.reply_enc"]);
   });
 });
 

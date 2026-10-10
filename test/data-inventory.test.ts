@@ -118,10 +118,10 @@ describe("columns that look like request content or a network address", () => {
     expect(checkInventory(schema, docs).join("\n")).toContain("health.body: the review covers [type:json] but the rules flag [name:content, type:json]");
   });
 
-  test("declared agreement and scheduled content hold request text; no column holds a caller network address", () => {
+  test("declared agreement, scheduled and queued content hold request text; no column holds a caller network address", () => {
     // This is the privacy invariant stated at the top of src/db/schema.ts. A column that breaks it must say so in its verdict, and
     // then this test (and the page's headline) change on purpose, in a reviewed commit.
-    expect(columnsHoldingRequestData()).toEqual(["agreement_evidence.content", "agreement_jury.statement", "schedules.prompt_enc", "schedule_runs.reply_enc"]);
+    expect(columnsHoldingRequestData()).toEqual(["kv.value", "agreement_evidence.content", "agreement_jury.statement", "schedules.prompt_enc", "schedule_runs.reply_enc"]);
   });
 });
 

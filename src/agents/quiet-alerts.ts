@@ -95,7 +95,7 @@ export async function runQuietAlerts(ctx: Ctx, opts: { now?: Date; telegramFetch
       if (!outgoing) continue;
       created++;
       // Claim before sending: a failed send or crash may lose Telegram delivery, but cannot duplicate a claim.
-      const targets = await linkedAlertTargets(ctx, outgoing.key.accountId, outgoing.key.keyHash, outgoing.item.title, opts.telegramFetch);
+      const targets = await linkedAlertTargets(ctx, outgoing.key.accountId, outgoing.key.keyHash, outgoing.item.title, opts.telegramFetch, undefined, "quiet_agents"); // E146
       for (const target of targets) await target.send();
     }
   }

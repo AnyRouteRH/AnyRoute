@@ -86,7 +86,7 @@ export async function runPriceNotices(ctx: Ctx, opts: { now?: Date; telegramFetc
         const scoped = { ...ctx, db: tx as unknown as Db };
         const principal = await validPrincipal(scoped, link);
         if (!principal.management) return; // Account-wide history requires current management rights.
-        await sendLinkedAlert(scoped, link, notice.item.title, link.key_hash, opts.telegramFetch);
+        await sendLinkedAlert(scoped, link, notice.item.title, link.key_hash, opts.telegramFetch, undefined, "price_notices"); // E146
       });
     } catch { /* A revoked or unlinked principal receives nothing. */ }
   }

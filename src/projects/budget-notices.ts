@@ -29,7 +29,7 @@ export async function deliverProjectBudgetTelegram(ctx: Ctx, telegramFetch?: typ
         await tx.select({ hash: keys.keyHash }).from(keys).where(eq(keys.keyHash, link.key_hash)).for("share");
         const scoped = { ...ctx, db: tx as unknown as Db };
         if (!(await validPrincipal(scoped, link)).management) return;
-        await sendLinkedAlert(scoped, link, projectBudgetTitle(row) + "\nhttps://anyroute.tech/dashboard/#insights", link.key_hash, telegramFetch);
+        await sendLinkedAlert(scoped, link, projectBudgetTitle(row) + "\nhttps://anyroute.tech/dashboard/#insights", link.key_hash, telegramFetch, undefined, "project_budgets"); // E146
       });
     } catch { /* Revoked links and failed sends receive no retry. */ }
   }

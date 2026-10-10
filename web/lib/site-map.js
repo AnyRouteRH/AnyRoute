@@ -136,6 +136,7 @@ TASKS.push({ ...task('webhooks', 'build', 'Manage webhook destinations', 'Inspec
 TASKS.push({ ...task('playbooks', 'agents', 'Share one rulebook across agents', 'Keep one playbook of rules that many agents and keys follow, and change it once.', '/dashboard/#playbooks', 'playbook, shared rules, rulebook, team, agents, keys, limits'), menu: false }); // U115: search-only; the Agents menu is full.
 TASKS.push({ ...task('commerce', 'verify', 'Read the commerce ledger', 'See anchored settlements without self-dealing, beside the gross figures.', '/commerce/', 'commerce, settlements, volume, self-dealing, dune'), menu: false }); // v6 L: search-only.
 
+TASKS.push({ ...task('notifications', 'build', 'Choose notifications', 'Choose inbox and Telegram notices and quiet hours.', '/dashboard/#notifications', 'notifications, settings, telegram, inbox, quiet hours'), menu: false }); // E146
 // Account sections share the task map; existing dashboard hashes remain stable.
 // U104: five account tabs. Each opens its first section; its id is also a dashboard hash (#keys opens API keys).
 TASKS.push({ ...task('schedules', 'build', 'Schedule a prompt', 'Run saved prompts on a schedule using your key’s limits and rulebook.', '/dashboard/#schedules', 'schedule, prompt, recurring, hourly, daily, monday'), menu: false }); // D136
@@ -147,6 +148,7 @@ export const ACCOUNT_GROUPS = [
   { id: 'schedules', title: 'Schedules', ids: ['schedules'] }, // D136
   { id: 'settings', title: 'Settings', ids: ['settings', 'account-export', 'webhooks', 'keep'] },
 ];
+ACCOUNT_GROUPS.find(group => group.id === 'settings').ids.push('notifications'); // E146
 TASKS.push(task('account-keys', 'build', 'Manage account keys', 'Explore API keys, then connect to create keys and set budgets.', '/dashboard/#api-keys', 'api keys, budget'));
 TASKS.push(task('account-payments', 'build', 'Add funds', 'Connect your key and choose a token to see live deposit instructions.', '/dashboard/#payments', 'balance, deposit'));
 TASKS.find(item => item.id === 'account-payments').menu = true; // ON1: Build menu and existing Money section.
@@ -186,6 +188,7 @@ export const ACCOUNT_SECTIONS = [
 TASKS.push({ ...task('statements', 'build', 'Download a monthly statement', 'Download a signed monthly statement as JSON, or print it to PDF.', '/dashboard/#statements', 'statement, monthly, balance, money, pdf'), menu: false }, { ...task('account-export', 'build', 'Export your data', 'Download accessible account records with an inclusion manifest.', '/dashboard/#export-data', 'export, download, account, data'), menu: false });
 ACCOUNT_SECTIONS.push(accountSection('statements', 'Statements', 'statements', 'Download a signed monthly statement as JSON, or print it to PDF.', 'Connect a key to request a statement.'), accountSection('account-export', 'Export your data', 'export-data', 'Take readable account records with you in one JSON download.', 'Connect a key to export records within its access.'));
 
+ACCOUNT_SECTIONS.push(accountSection('notifications', 'Notifications', 'notifications', 'Choose your inbox and Telegram notices and quiet hours.', 'Connect an account management key to choose notifications.')); // E146
 for (const section of ACCOUNT_SECTIONS) {
   const item = TASKS.find(task => task.id === section.taskId);
   if (section.hash && item.href === '/dashboard/') item.href = section.href;

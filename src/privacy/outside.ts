@@ -2,6 +2,7 @@ import { browserSessionStores } from "./browser-sessions.ts"; // E147
 import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { chatFoldersBrowser } from "./chat-folders"; // D143
 import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
+import { notificationReader, notificationStores } from "./notifications.ts"; // E146
 import { securityAlertReader, securityAlertStores } from "./security-alerts.ts"; // D138
 import { scheduledPromptsReader, scheduledPromptsStores } from "./scheduled-prompts.ts"; // D136
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
@@ -436,6 +437,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   telegramPhotoReader, // D142
   quietAlertBodyReader, // D141
   securityAlertReader, // D138
+  notificationReader, // E146
   idempotencyReader, // D145
   scheduledPromptsReader, // D136
   weeklySummaryReader, // B120
@@ -790,6 +792,7 @@ export const EXTERNAL: ExternalDoc = {
     ...browserSessionStores, // E147
     ...quietAlertStores, // D141
     ...securityAlertStores, // D138
+    ...notificationStores, // E146
     idempotencyMemory, // D145
     ...scheduledPromptsStores, // D136
     ...priceNoticeStores, // C133

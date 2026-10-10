@@ -4472,7 +4472,18 @@
         "operationId": "listModels",
         "summary": "List public live models",
         "parameters": [
-          { "name": "health", "in": "query", "required": false, "description": "E150: recent adds measured performance for eligible funded routes; omitted by default. No key required. Alias: GET /v1/models?health=recent.", "schema": { "type": "string", "enum": ["recent"] } },
+          {
+            "name": "health",
+            "in": "query",
+            "required": false,
+            "description": "E150: recent adds measured performance for eligible funded routes; omitted by default. No key required. Alias: GET /v1/models?health=recent.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "recent"
+              ]
+            }
+          },
           {
             "name": "supported_parameters",
             "in": "query",
@@ -20191,6 +20202,752 @@
           }
         }
       }
+    },
+    "/api/v1/account/notifications": {
+      "get": {
+        "summary": "Read account notifications",
+        "description": "E146. Active management owner Bearer key; session and team keys excluded. No-store. Quiet delivery worker NOTIFICATION_QUIET_HOURS_ENABLED defaults false. Existing feature gates apply. Weekly Telegram writes existing link opt-ins; security switches share the existing preference. Defaults preserve current channels.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account notification preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "channels",
+                        "quiet_hours"
+                      ],
+                      "properties": {
+                        "channels": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "approvals",
+                            "agent_alerts",
+                            "deposits",
+                            "low_balance",
+                            "weekly_summary",
+                            "security_alerts",
+                            "quiet_agents",
+                            "price_notices",
+                            "project_budgets",
+                            "scheduled_results"
+                          ],
+                          "properties": {
+                            "approvals": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "agent_alerts": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "deposits": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "low_balance": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "weekly_summary": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "security_alerts": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "quiet_agents": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "price_notices": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "project_budgets": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "scheduled_results": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "quiet_hours": {
+                          "oneOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "from_utc",
+                                "to_utc"
+                              ],
+                              "properties": {
+                                "from_utc": {
+                                  "type": "string",
+                                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                                },
+                                "to_utc": {
+                                  "type": "string",
+                                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "telegram_linked": {
+                          "type": "boolean"
+                        },
+                        "quiet_hours_available": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Link Telegram before enabling weekly summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "readAccountNotifications"
+      },
+      "put": {
+        "summary": "Save account notifications",
+        "description": "E146. Active management owner Bearer key; session and team keys excluded. No-store. Quiet delivery worker NOTIFICATION_QUIET_HOURS_ENABLED defaults false. Existing feature gates apply. Weekly Telegram writes existing link opt-ins; security switches share the existing preference. Defaults preserve current channels.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account notification preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "channels",
+                        "quiet_hours"
+                      ],
+                      "properties": {
+                        "channels": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "approvals",
+                            "agent_alerts",
+                            "deposits",
+                            "low_balance",
+                            "weekly_summary",
+                            "security_alerts",
+                            "quiet_agents",
+                            "price_notices",
+                            "project_budgets",
+                            "scheduled_results"
+                          ],
+                          "properties": {
+                            "approvals": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "agent_alerts": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "deposits": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "low_balance": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "weekly_summary": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "security_alerts": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "quiet_agents": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "price_notices": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "project_budgets": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "scheduled_results": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "quiet_hours": {
+                          "oneOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "from_utc",
+                                "to_utc"
+                              ],
+                              "properties": {
+                                "from_utc": {
+                                  "type": "string",
+                                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                                },
+                                "to_utc": {
+                                  "type": "string",
+                                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "telegram_linked": {
+                          "type": "boolean"
+                        },
+                        "quiet_hours_available": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Link Telegram before enabling weekly summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "channels",
+                  "quiet_hours"
+                ],
+                "properties": {
+                  "channels": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "approvals",
+                      "agent_alerts",
+                      "deposits",
+                      "low_balance",
+                      "weekly_summary",
+                      "security_alerts",
+                      "quiet_agents",
+                      "price_notices",
+                      "project_budgets",
+                      "scheduled_results"
+                    ],
+                    "properties": {
+                      "approvals": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "agent_alerts": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "deposits": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "low_balance": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "weekly_summary": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "security_alerts": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "quiet_agents": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "price_notices": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "project_budgets": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "scheduled_results": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "quiet_hours": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "from_utc",
+                          "to_utc"
+                        ],
+                        "properties": {
+                          "from_utc": {
+                            "type": "string",
+                            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                          },
+                          "to_utc": {
+                            "type": "string",
+                            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "saveAccountNotifications"
+      }
     }
   },
   "components": {
@@ -23041,7 +23798,44 @@
           "supported_parameters"
         ],
         "properties": {
-          "performance": {"type": "object", "description": "E150: present only with health=recent. Best measured route median latency and throughput over 30 minutes, with at least three successful readings per metric; latency is first-token time for streams, full-response time otherwise. Observation-weighted model success rate across eligible funded routes over 30 days, including probes, excluding client rejections and rate limits; no routing prior. Unknown metrics are null. Speed is in memory and empty after restart.", "properties": {"latency_p50_ms": {"type": "number", "nullable": true, "minimum": 0}, "throughput_p50_tps": {"type": "number", "nullable": true, "minimum": 0}, "speed_window_seconds": {"type": "integer", "enum": [1800]}, "uptime_percent": {"type": "number", "nullable": true, "minimum": 0, "maximum": 100}, "uptime_window_days": {"type": "integer", "enum": [30]}, "uptime_observations": {"type": "integer", "minimum": 0}}},
+          "performance": {
+            "type": "object",
+            "description": "E150: present only with health=recent. Best measured route median latency and throughput over 30 minutes, with at least three successful readings per metric; latency is first-token time for streams, full-response time otherwise. Observation-weighted model success rate across eligible funded routes over 30 days, including probes, excluding client rejections and rate limits; no routing prior. Unknown metrics are null. Speed is in memory and empty after restart.",
+            "properties": {
+              "latency_p50_ms": {
+                "type": "number",
+                "nullable": true,
+                "minimum": 0
+              },
+              "throughput_p50_tps": {
+                "type": "number",
+                "nullable": true,
+                "minimum": 0
+              },
+              "speed_window_seconds": {
+                "type": "integer",
+                "enum": [
+                  1800
+                ]
+              },
+              "uptime_percent": {
+                "type": "number",
+                "nullable": true,
+                "minimum": 0,
+                "maximum": 100
+              },
+              "uptime_window_days": {
+                "type": "integer",
+                "enum": [
+                  30
+                ]
+              },
+              "uptime_observations": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
           "added_at": {
             "type": "integer",
             "format": "int64",

@@ -1,5 +1,6 @@
 "use client";
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
+import AccountNotifications from "./notifications/AccountNotifications"; // E146
 import SecurityAlertsSettings from "./security-alerts/SecurityAlertsSettings"; // D138
 import { KeyExpiryContext, useKeyExpiry, useExpiryClock } from "./account/useKeyExpiry"; // C127
 import { KeyExpiryStatus, KeyExpiryRestore } from "./account/KeyExpiry.js"; // C127
@@ -1284,6 +1285,7 @@ export default function Dashboard() {
           {tab === "Statements" && apiKey && <AccountProofPack key={`proof-pack-${apiKey}`} apiKey={apiKey}/>} {/* U100 */}
           {tab === "Insights" && signedIn && <AccountInsights key={apiKey} apiKey={apiKey}/>} {/* V88: no figures before connection. */}
           {tab === "Insights" && signedIn && <AccountReliability key={apiKey} apiKey={apiKey}/>} {/* E155 */}
+          {tab === "Notifications" && apiKey && <AccountNotifications key={apiKey} apiKey={apiKey}/>} {/* E146 */}
           {tab === "Schedules" && apiKey && <AccountSchedules key={apiKey} apiKey={apiKey} keys={ws?.keys || []}/>} {/* D136 */}
           {tab === "Inbox" && apiKey && <AccountInbox key={apiKey} apiKey={apiKey}/>}
           {tab === "Playbooks" && <Playbooks key={apiKey} live={live && signedIn} apiKey={apiKey}/>} {/* U115 */}

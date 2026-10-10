@@ -1,3 +1,4 @@
+import { registerNotificationQuietJob } from "../notifications/telegram.ts"; // E146
 import { registerSecurityAlertsJob } from "../security-alerts/worker.ts"; // D138
 import { runDepositPings } from "../pay/deposit-pings.ts"; // B123
 import { registerScheduledPrompts } from "../schedules/worker.ts"; // D136
@@ -50,6 +51,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   registerProjectBudgetTelegramJob(ctx); // D139
   const { cfg, jobs } = ctx;
   registerSecurityAlertsJob(ctx); // D138
+  registerNotificationQuietJob(ctx); // E146
   if (cfg.depositPingsEnabled && cfg.runtimeRole !== "api") jobs.register("deposit-pings", 5_000, () => runDepositPings(ctx)); // B123
   registerScheduledPrompts(ctx, dispatch); // D136
   registerLowBalanceJob(ctx); // B119

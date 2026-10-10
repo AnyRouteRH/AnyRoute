@@ -41,7 +41,7 @@ export async function runSecurityAlerts(ctx: Ctx, fetchImpl?: typeof fetch) {
         if (!principal.management && (!notice.team || principal.teamId !== notice.team)) return;
         const [pref] = await tx.select().from(kv).where(eq(kv.key, preferenceKey(notice.account)));
         if ((pref?.value as { enabled?: boolean } | undefined)?.enabled === false) return;
-        await sendLinkedAlert(scoped, link, notice.title, link.key_hash, fetchImpl);
+        await sendLinkedAlert(scoped, link, notice.title, link.key_hash, fetchImpl, undefined, "security_alerts"); // E146
       });
     } catch { /* Revoked links receive nothing. */ }
   }

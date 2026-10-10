@@ -1,3 +1,5 @@
+import { deferTelegram } from "../notifications/telegram.ts"; // E146
+import { channelEnabled, type NoticeType } from "../notifications/prefs.ts"; // E146
 import type { KeyRow } from "../api/auth.ts"; // D136
 import { plainApprovalText } from "../agents/rulebook-approval-text.ts"; // B124
 import { handleGuardResume } from "./guard-resume.ts"; // V98
@@ -34,11 +36,12 @@ async function noticeText(ctx: Ctx, row: ApprovalRow) {
 async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Notice, row: ApprovalRow) {
   const status = approvalStatus(row).status;
   if (status === notice.status || !notice.message_id) return;
+  const link = await readLink(ctx.db, notice.uid); if (!link || !await channelEnabled(ctx, link.account, "approvals", "telegram")) return; // E146
   await api.call("editMessageText", { chat_id: notice.uid, message_id: notice.message_id, text: await noticeText(ctx, row), reply_markup: { inline_keyboard: [] } }, AbortSignal.timeout(5_000));
   await ctx.db.update(kv).set({ value: { ...notice, status }, updatedAt: new Date() }).where(eq(kv.key, key));
 }
 /** Delivery holds the link lock until the send ends: an acknowledged unlink stops later sends. */
-export async function sendLinkedAlert(ctx: Ctx, link: Link, text: string, keyHash: string, fetchImpl?: typeof fetch, authorize?: (ctx: Ctx, key: KeyRow) => Promise<unknown>) {
+export async function sendLinkedAlert(ctx: Ctx, link: Link, text: string, keyHash: string, fetchImpl?: typeof fetch, authorize?: (ctx: Ctx, key: KeyRow) => Promise<unknown>, noticeType: NoticeType = "agent_alerts") { // E146
   if (!ctx.cfg.telegram.linkingEnabled || !ctx.cfg.telegram.botToken) return false;
   return ctx.db.transaction(async tx => {
     await lockLinks(tx);
@@ -48,12 +51,13 @@ export async function sendLinkedAlert(ctx: Ctx, link: Link, text: string, keyHas
       const scoped = { ...ctx, db: tx as unknown as Db };
       if (authorize) await authorize(scoped, await validPrincipal(scoped, live)); // D136: optional audience guard inside the send lock
       await ownedKey(scoped, await validPrincipal(scoped, live), keyHash);
+      if (await deferTelegram(scoped, live, keyHash, text, noticeType, await validPrincipal(scoped, live))) return true; // E146
       await new TelegramApi(ctx.cfg.telegram.botToken!, fetchImpl).call("sendMessage", { chat_id: live.uid, text, link_preview_options: { is_disabled: true } }, AbortSignal.timeout(5_000));
       return true;
     } catch { return false; }
   });
 }
-export async function linkedAlertTargets(ctx: Ctx, account: string, keyHash: string, text: string, fetchImpl?: typeof fetch, authorize?: (ctx: Ctx, key: KeyRow) => Promise<unknown>) {
+export async function linkedAlertTargets(ctx: Ctx, account: string, keyHash: string, text: string, fetchImpl?: typeof fetch, authorize?: (ctx: Ctx, key: KeyRow) => Promise<unknown>, noticeType: NoticeType = "agent_alerts") { // E146
   if (!ctx.cfg.telegram.linkingEnabled) return [];
   const rows = await ctx.db.select().from(kv).where(and(like(kv.key, "telegram-link:%"), sql`${kv.value}->>'account' = ${account}`)).limit(20);
   const targets = [];
@@ -61,7 +65,7 @@ export async function linkedAlertTargets(ctx: Ctx, account: string, keyHash: str
     const link = row.value as Link;
     try {
       await ownedKey(ctx, await validPrincipal(ctx, link), keyHash);
-      targets.push({ id: `telegram:${link.uid}`, send: () => sendLinkedAlert(ctx, link, text, keyHash, fetchImpl, authorize) });
+      targets.push({ id: `telegram:${link.uid}`, send: () => sendLinkedAlert(ctx, link, text, keyHash, fetchImpl, authorize, noticeType) }); // E146
     } catch { /* Role and team scope match the dashboard. */ }
   }
   return targets;
@@ -85,6 +89,7 @@ export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi) {
     }
     const pending = await tx.select({ row: agentApprovals }).from(agentApprovals).innerJoin(keys, eq(keys.keyHash, agentApprovals.keyHash)).leftJoin(kv, sql`${kv.key} = 'telegram-approval:' || ${agentApprovals.id} || ':' || ${String(link.uid)} || ':' || ${link.generation}`).where(and(eq(keys.accountId, link.account), caller.management ? undefined : eq(keys.teamId, caller.teamId!), eq(agentApprovals.status, "pending"), gt(agentApprovals.expiresAt, new Date()), isNull(kv.key))).orderBy(agentApprovals.requestedAt).limit(10);
     for (const { row } of pending) {
+      if (await deferTelegram(scoped, link, row.keyHash, "", "approvals", caller)) continue; // E146: approvals are never queued
       const key = notificationKey(row.id, link);
       const notice: Notice = { uid: link.uid, approval: row.id, generation: link.generation, expires: row.expiresAt.getTime(), status: "pending" };
       await tx.insert(kv).values({ key, value: notice });

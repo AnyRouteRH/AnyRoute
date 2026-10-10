@@ -48,7 +48,7 @@ export async function deliverScheduleNotice(ctx: Ctx, row: Schedule, run: { id: 
   const [claimed] = await ctx.db.update(scheduleRuns).set({ notified: true }).where(and(eq(scheduleRuns.id, run.id), eq(scheduleRuns.notified, false))).returning();
   if (!claimed) return;
   const text = notificationText(row.name, reply, run.reason, run.paused) + "\nhttps://anyroute.tech" + runHref(row.id, run.id);
-  for (const target of await linkedAlertTargets(ctx, row.accountId, row.keyHash, text, fetchImpl, scheduleNoticeOwner)) await target.send().catch(() => false);
+  for (const target of await linkedAlertTargets(ctx, row.accountId, row.keyHash, text, fetchImpl, scheduleNoticeOwner, "scheduled_results")) await target.send().catch(() => false); // E146
 }
 export async function executeRun(ctx: Ctx, claimed: NonNullable<Awaited<ReturnType<typeof claimRun>>>, dispatch: Dispatch, approval?: string) {
   const { row, run } = claimed;

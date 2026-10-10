@@ -1,3 +1,4 @@
+import { notificationsEnv } from "./notifications/config.ts"; // E146
 import { securityAlertsEnv } from "./security-alerts/config.ts"; // D138
 import { modelArrivalsEnv } from "./catalog/model-arrivals-config.ts"; // C131
 import { depositPingsEnv } from "./pay/deposit-pings-config.ts"; // B123
@@ -382,6 +383,7 @@ const schema = z.object({
   SCHEDULED_PROMPTS_ENABLED: bool.default(false), // D136
   PRICE_NOTICES_ENABLED: bool.default(false), // C133
   ...securityAlertsEnv, // D138
+  ...notificationsEnv, // E146
   PROJECT_BUDGET_TELEGRAM_ENABLED: bool.default(false), // D139
   TELEGRAM_LINKING_ENABLED: bool.default(false),
   WEEKLY_SUMMARY_ENABLED: bool.default(false), // B120
@@ -550,6 +552,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       const names = e.WORKER_JOBS.split(",").map((v) => v.trim()).filter(Boolean);
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
       allowed.push("weekly-summary"); // B120
+      allowed.push("notification-quiet"); // E146
       allowed.push("deposit-pings"); // B123
       allowed.push("low-balance-alerts"); // B119
       allowed.push("price-notices"); // C133
@@ -609,6 +612,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   if (e.AGENT_PAY_ENABLED && !e.AGENT_GUARD_ENABLED) throw new Error("AGENT_PAY_ENABLED requires AGENT_GUARD_ENABLED.");
   if (e.AGENT_PAY_ENABLED && (!e.USDG_ADDRESS || /^0x0{40}$/.test(e.USDG_ADDRESS))) throw new Error("AGENT_PAY_ENABLED requires USDG_ADDRESS.");
   if (e.TELEGRAM_LINKING_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("TELEGRAM_LINKING_ENABLED requires AGENT_POLICY_ENABLED.");
+  if (e.NOTIFICATION_QUIET_HOURS_ENABLED && !e.TELEGRAM_LINKING_ENABLED) throw new Error("NOTIFICATION_QUIET_HOURS_ENABLED requires TELEGRAM_LINKING_ENABLED."); // E146
   if (e.WEEKLY_SUMMARY_ENABLED && !e.TELEGRAM_LINKING_ENABLED) throw new Error("WEEKLY_SUMMARY_ENABLED requires TELEGRAM_LINKING_ENABLED."); // B120
   if (e.PROJECT_BUDGET_TELEGRAM_ENABLED && !e.TELEGRAM_LINKING_ENABLED) throw new Error("PROJECT_BUDGET_TELEGRAM_ENABLED requires TELEGRAM_LINKING_ENABLED."); // D139
   if (e.TELEGRAM_LINKING_ENABLED && e.RUNTIME_ROLE !== "api" && !e.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_LINKING_ENABLED requires TELEGRAM_BOT_TOKEN on the worker (or a combined role).");
@@ -697,6 +701,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     scheduledPromptsEnabled: e.SCHEDULED_PROMPTS_ENABLED, // D136
     priceNoticesEnabled: e.PRICE_NOTICES_ENABLED, // C133
     securityAlertsEnabled: e.SECURITY_ALERTS_ENABLED, // D138
+    notificationQuietHoursEnabled: e.NOTIFICATION_QUIET_HOURS_ENABLED, // E146
     projectBudgetTelegramEnabled: e.PROJECT_BUDGET_TELEGRAM_ENABLED, // D139
     siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),
     webauthn: {

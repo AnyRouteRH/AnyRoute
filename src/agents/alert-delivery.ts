@@ -1,3 +1,4 @@
+import { deferTelegram } from "../notifications/telegram.ts"; // E146
 import { timedAlertText } from "./stop-text.ts"; // B117
 import { sendRuleWebhook } from "../webhooks/delivery.ts"; // V86: shared signed transport.
 import { linkedAlertTargets } from "../telegram/delivery.ts";
@@ -50,6 +51,7 @@ async function targets(ctx: Ctx, account: string, alert: AgentAlert, opts: Alert
         if ((await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, key.keyHash)).limit(1)).length) continue;
         if (!["owner", "admin"].includes(await roleOf(ctx, key))) continue;
         out.push({ id: `telegram:${id}`, send: async () => {
+          if (await deferTelegram(ctx, { account, key_hash: key.keyHash, uid: Number(id), generation: key.keyHash, linked_at: new Date().toISOString() }, alert.key_hash, timedAlertText(alert) ?? `AnyRoute agent alert: ${alert.kind}${alert.window ? ` (${alert.window}, ${alert.percent}%)` : ""}. Key ${alert.key_hash}. Open /agents for details.`, "agent_alerts", key, new Date(), true)) return true; // E146
           try { await new TelegramApi(ctx.cfg.telegram.botToken!, opts.telegramFetch).call("sendMessage", { chat_id: Number(id), text: timedAlertText(alert) ?? `AnyRoute agent alert: ${alert.kind}${alert.window ? ` (${alert.window}, ${alert.percent}%)` : ""}. Key ${alert.key_hash}. Open /agents for details.`, link_preview_options: { is_disabled: true } }, AbortSignal.timeout(5_000)); return true; } catch { return false; }
         } });
         if (out.filter(t => t.id.startsWith("telegram:")).length >= 20) break;

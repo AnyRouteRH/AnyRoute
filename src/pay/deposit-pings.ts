@@ -46,7 +46,7 @@ export async function runDepositPings(ctx: Ctx, fetchImpl?: typeof fetch) {
       try {
         const principal = await validPrincipal(ctx, link);
         if (!(await activityAccess(ctx, principal)).whole || Date.parse(link.linked_at) > deposit.creditedAt!.getTime()) continue;
-        if (await sendLinkedAlert(ctx, link, text, link.key_hash, fetchImpl)) sent++;
+        if (await sendLinkedAlert(ctx, link, text, link.key_hash, fetchImpl, undefined, "deposits")) sent++; // E146
       } catch { /* Unavailable authority receives nothing. No account data enters logs. */ }
     }
   }

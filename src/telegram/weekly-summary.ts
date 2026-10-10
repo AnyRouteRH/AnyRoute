@@ -39,7 +39,7 @@ export async function runWeeklySummaries(ctx: Ctx, opts: { now?: Date; telegramF
       if (summary.topModel) summary.topModel = ctx.catalog.models.get(summary.topModel)?.name ?? summary.topModel;
       // Reuse the Telegram link limiter and its counter family. No message or key name enters Redis.
       try { await linkLimit(ctx, "summary", live.uid, RATE_PER_MINUTE); } catch { return "limited"; }
-      if (!await sendLinkedAlert(scoped, live, weeklySummaryText(week, summary, ctx.cfg.siteUrl), live.key_hash, opts.telegramFetch)) return "failed";
+      if (!await sendLinkedAlert(scoped, live, weeklySummaryText(week, summary, ctx.cfg.siteUrl), live.key_hash, opts.telegramFetch, undefined, "weekly_summary")) return "failed"; // E146
       await tx.update(accounts).set({ lastSentWeek: week.id }).where(eq(accounts.id, live.account));
       return "sent";
     });
