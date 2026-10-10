@@ -1,4 +1,5 @@
 import { recordBrowserSession } from "../browser-sessions/labels.ts"; // E147
+import { readScopeInput, readKeyFields } from "../read-only/keys.ts"; // E149
 import { allowedIpsInput } from "../key-ip/allowlist.ts"; // E148
 import { recordKeySecurity } from "../security-alerts/records.ts"; // D138
 import { projectInput, projectJson } from "../projects/tags.ts"; // C134
@@ -31,7 +32,7 @@ const keySpec = z.object({
   allowed_ips: allowedIpsInput.optional(), // E148: PATCH only
   project: projectInput.nullable().optional(), // C134: PATCH only
   include_byok_in_limit: z.boolean().optional(), // ZK6
-  scope: z.enum(["inference", "account"]).optional(), // ZK6: create only
+  scope: z.enum(readScopeInput).optional(), // ZK6: create only
   name: z.string().max(100).optional(),
   limit: z.number().nonnegative().nullable().optional(), // USD (OpenRouter provisioning API name)
   budget_usd: z.number().nonnegative().nullable().optional(), // alias of limit
@@ -84,6 +85,7 @@ export function keyJson(k: KeyRow) {
     created_at: k.createdAt.toISOString(),
     last_used: k.lastUsed?.toISOString() ?? null,
     expires_at: k.expiresAt?.toISOString() ?? null,
+    ...readKeyFields(k), // E149: do not expose the read-visibility projection as management rights.
   };
 }
 
@@ -270,6 +272,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     if (session) fail(409, "This key belongs to an agent session; manage it with /api/v1/sessions.", "session_key");
     const spec = keySpec.parse(await readJson(c));
     if (spec.scope !== undefined) fail(400, "Scope is fixed at creation; mint a new key to change it.", "invalid_request"); // ZK6
+    if (k.scope === "read" && spec.management === true) fail(403, "A read-only key cannot gain management rights.", "forbidden"); // E149
     if (k.scope === "inference" && spec.management === true) fail(403, "An inference-only key cannot gain management rights.", "forbidden"); // ZK6
     if (spec.management !== undefined && !caller.management) fail(403, "Only a management key can change management rights.", "forbidden");
     if (spec.role !== undefined) fail(400, "Change a key's role with PUT /api/v1/teams/:id/members/:hash.", "invalid_request");

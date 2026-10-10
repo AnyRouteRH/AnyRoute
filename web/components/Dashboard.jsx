@@ -1,6 +1,9 @@
 "use client";
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
 import AccountNotifications from "./notifications/AccountNotifications"; // E146
+import { api as apiRequest } from "../lib/api"; // E149
+import { useReadOnlyKey, ReadOnlyKeyBadge } from "./account/ReadOnlyKeys"; // E149
+import { withReadScope } from "../lib/read-only-keys"; // E149
 import KeyIpAllowlist, { KeyIpContext } from "./account/KeyIpAllowlist"; // E148
 import SecurityAlertsSettings from "./security-alerts/SecurityAlertsSettings"; // D138
 import { KeyExpiryContext, useKeyExpiry, useExpiryClock } from "./account/useKeyExpiry"; // C127
@@ -227,6 +230,7 @@ function ReceiptTable({ receipts, onInspect, emptyAction, live, emptyTitle, empt
 // U104: creates a key (with an optional starting total budget) or renames one. A live key's total budget is changed
 // afterwards in its Spending limits, beside the caps.
 function KeyDialog({ existing, onSave, onClose, live }) {
+  const readOnly = useReadOnlyKey(existing, live); onSave = readOnly.wrapSave(onSave); // E149
   const expiry = useKeyExpiry(existing, live); onSave = expiry.wrapSave(onSave); // C127
   const [name, setName] = useState(existing?.name || "");
   const [budget, setBudget] = useState(existing?.budget == null ? (existing ? "" : "10") : String(existing.budget));
@@ -262,6 +266,7 @@ function KeyDialog({ existing, onSave, onClose, live }) {
           <input id="key-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required placeholder="e.g. Research agent" autoFocus />
         </Field>
         {expiry.fields} {/* C127 */}
+        {readOnly.fields} {/* E149 */}
         {live && existing && <KeyIpAllowlist keyHash={existing.id} current={existing.current}/>} {/* E148 */}
         {withBudget && (
           <Field label={live ? KEY_BUDGET_WORDS.label : "Total sample budget / USDG"} id="key-budget">
@@ -1069,6 +1074,7 @@ export default function Dashboard() {
     setTimeout(() => refresh().catch(() => {}), 1500);
   }
   async function saveKeyValues(values) {
+    const accountKeyRequest = withReadScope(apiRequest, values); // E149
     const api = withKeyExpiry(accountKeyRequest, values); // C127: attach expiry to the existing create/update request.
     if (!live) {
       if (modal.data) update((s) => ({ ...s, keys: s.keys.map((k) => (k.id === modal.data.id ? { ...k, ...values } : k)) }));
@@ -1448,6 +1454,7 @@ export default function Dashboard() {
                     <article className={"key-card" + (k.active ? "" : " is-revoked")} key={k.id} style={{ "--i": i }}>
                       <div>
                         <h3>{k.name}</h3>
+                        <ReadOnlyKeyBadge value={ws?.keys?.find(key => key.hash === k.id)?.scope || (k.current ? ws?.me?.scope : undefined)}/> {/* E149 */}
                         <KeyExpiryStatus value={k.expiresAt} now={expiryNow}> {/* C127 */}
                         <span className={"badge " + (k.active ? "green" : "")}>{k.active ? (k.current ? "Active · this browser" : "Active") : "Revoked"}</span>
                         </KeyExpiryStatus> {/* C127 */}

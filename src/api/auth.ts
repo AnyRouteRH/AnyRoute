@@ -1,3 +1,4 @@
+import { readPrincipal } from "../read-only/keys.ts"; // E149
 import { and, eq, sql } from "drizzle-orm";
 import { recoverMessageAddress, type Hex } from "viem";
 import type { Ctx } from "../context.ts";
@@ -87,7 +88,7 @@ export async function requireKey(ctx: Ctx, authorization: string | undefined | n
   if (!secret) fail(401, "Provide an API key as `Authorization: Bearer sk-ar-v1-...`.", "missing_key");
   const key = await resolveKey(ctx, secret);
   if (!key) fail(401, "Unknown API key. Create one (POST /api/v1/keys) or deposit USDG to its key hash first.", "invalid_key");
-  return key;
+  return readPrincipal(key); // E149: same owner read visibility, constrained by the global scope guard.
 }
 
 export async function roleOf(ctx: Ctx, key: KeyRow): Promise<Role> {

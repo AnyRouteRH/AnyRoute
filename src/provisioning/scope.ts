@@ -1,3 +1,4 @@
+import { assertReadRoute, enforceReadInternal } from "../read-only/scope.ts"; // E149
 import type { Hono, MiddlewareHandler } from "hono";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -24,11 +25,13 @@ export function inferenceRouteAllowed(method: string, path: string, guardEnabled
 
 export function inferenceScopeMiddleware(ctx: Ctx): MiddlewareHandler {
   return async (c, next) => {
+    await enforceReadInternal(ctx, c); // E149
     // Check both credential transports, including Anthropic's x-api-key. Looking
     // up only existing hashes preserves deposit-first registration in auth.ts.
-    const secrets = new Set([bearer(c.req.header("authorization")), c.req.header("x-api-key")?.trim()].filter((s): s is string => !!s));
+    const secrets = new Set([bearer(c.req.header("authorization")), c.req.header("x-api-key")?.trim(), c.req.header("x-admin-token")?.trim()].filter((s): s is string => !!s)); // E149: /trpc also reads x-admin-token
     for (const secret of secrets) {
       const [key] = await ctx.db.select({ keyHash: keys.keyHash, scope: keys.scope }).from(keys).where(eq(keys.keyHash, sha256(secret)));
+      if (key?.scope === "read") { assertReadRoute(key.scope, c.req.method, c.req.path); await requireKey(ctx, `Bearer ${secret}`); continue; } // E149
       if (key?.scope !== "inference") continue;
       if (!inferenceRouteAllowed(c.req.method, c.req.path, ctx.cfg.agentGuardEnabled)) fail(403, "Inference-only keys may call models and data tools and read only their own generations and receipts.", "inference_only");
       await requireKey(ctx, `Bearer ${secret}`);

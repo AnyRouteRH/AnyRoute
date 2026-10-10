@@ -139,7 +139,7 @@ export const keys = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
     lastUsed: ts("last_used"),
   },
-  (t) => [uniqueIndex("keys_chain_uq").on(t.chainKeyHash), index("keys_account_idx").on(t.accountId), check("keys_scope_valid", sql`${t.scope} IS NULL OR ${t.scope} = 'inference'`), check("keys_scope_management", sql`${t.scope} IS DISTINCT FROM 'inference' OR ${t.management} = false`)], // ZK6
+  (t) => [uniqueIndex("keys_chain_uq").on(t.chainKeyHash), index("keys_account_idx").on(t.accountId), check("keys_scope_valid", sql`${t.scope} IS NULL OR ${t.scope} IN ('inference', 'read')`), check("keys_scope_read_management", sql`${t.scope} IS DISTINCT FROM 'read' OR (${t.management} = false AND ${t.teamId} IS NULL)`), check("keys_scope_management", sql`${t.scope} IS DISTINCT FROM 'inference' OR ${t.management} = false`)], // ZK6
 );
 
 // One row per auto top-up of a key's limit from the account's own credits, or per skipped top-up (deduplicated), so every

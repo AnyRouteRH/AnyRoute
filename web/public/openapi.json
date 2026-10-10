@@ -6,6 +6,7 @@
     "documentation": "/docs/#telegram-photos",
     "description": "Private human Telegram photos only. Connected API key auth on existing POST /api/v1/chat/completions; existing multimodal messages, billing, spending limits, receipts and attested-lane guard. Largest available size up to 8 MB; baseline JPEG coefficients re-encoded without EXIF or application metadata in memory. No photo persistence. Caption or fixed question. Non-vision models receive up to three catalog vision suggestions and /model instructions. No new HTTP endpoint or request field. Off preserves the text-only reply."
   },
+  "x-e149-read-only-keys": {"creation": "POST /api/v1/keys with management Bearer authentication and scope: read; omit management and team", "scope_values": ["account", "inference", "read"], "fixed_at_creation": true, "visibility": "owner account reads on the explicit GET allow-list in /docs/#read-only-keys, subject to existing feature flags and ownership guards", "refusal": "403 read_only_key for all other methods and paths, including paid GET tools, wallet actions and secret endpoints", "ip_allowlist": "Existing owner PATCH allowed_ips and ingress checks apply", "flag": null},
   "openapi": "3.1.0",
   "x-agreements-jury": {
     "internal_flag": "AGREEMENT_JURY_INTERNAL_ENABLED",
@@ -25261,6 +25262,7 @@
       "KeyCreateRequest": {
         "type": "object",
         "properties": {
+          "scope": {"type": "string", "enum": ["account", "inference", "read"], "description": "E149: create only; scope is fixed. Explicit scope requires a management Bearer key. read cannot use management or team and can never spend or write."},
           "project": {
             "type": [
               "string",
@@ -25461,6 +25463,7 @@
           "created_at"
         ],
         "properties": {
+          "scope": {"type": "string", "enum": ["account", "inference", "read"], "description": "E149: read permits owner account visibility only on the explicit GET allow-list; all other paths and methods return 403 read_only_key."},
           "expires_at": {
             "type": [
               "string",

@@ -245,3 +245,5 @@ TASKS.push({ ...task("model-pages", "chat", "Open a model page", "See a model’
 TASKS.push({ ...task('reliability-report', 'build', 'See your reliability report', 'See your recorded calls, fallback use, timing and refusal counts by model.', '/dashboard/#insights', 'reliability, success, fallback, latency, refusals, model, calls'), menu: false }); // E155
 TASKS.push({ ...task('approvers', 'agents', 'Let teammates approve', 'Choose who can review an agent’s requests in Agents, the inbox and Telegram.', '/docs/#approvers', 'approvers, team, teammates, approve, deny, permissions'), menu: false }); // E153
 TASKS.push(task("key-ip-allowlist", "build", "Limit a key to IP addresses", "Choose the addresses and network ranges that may use a key.", "/docs/#key-ip-allowlist", "ip, allowlist, cidr, ipv4, ipv6, security")); // E148
+
+TASKS.push(task("read-only-keys", "build", "Share read-only account access", "Give accountants and dashboards a key that cannot spend or change anything.", "/docs/#read-only-keys", "read only, keys, accountant, dashboard, statements, activity")); // E149

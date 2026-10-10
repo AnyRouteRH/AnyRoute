@@ -1,3 +1,4 @@
+import { assertReadProvisioning } from "../read-only/keys.ts"; // E149
 import { eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import type { Db, Tx } from "../db/client.ts";
@@ -31,7 +32,8 @@ export function keyPagination(query: Record<string, string>) {
   return { offset: integer(query.offset, 0, 0, Number.MAX_SAFE_INTEGER), limit: integer(query.limit, query.offset === undefined ? Number.MAX_SAFE_INTEGER : 100, 1, 1000) };
 }
 
-export async function provisionedScope(ctx: Ctx, caller: KeyRow, spec: { scope?: "inference" | "account"; management?: boolean }, db: Db | Tx) {
+export async function provisionedScope(ctx: Ctx, caller: KeyRow, spec: { scope?: "inference" | "account" | "read"; management?: boolean }, db: Db | Tx) {
+  assertReadProvisioning(caller, spec); // E149
   if (caller.scope === "inference") fail(403, "Inference-only keys cannot provision keys.", "inference_only");
   if (spec.scope !== undefined && !caller.management) fail(403, "Only a management key can set key scope.", "forbidden");
   const scope = spec.scope === "account" ? null : spec.scope ?? await accountDefaultScope(ctx, db, caller.accountId);

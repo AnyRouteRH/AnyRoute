@@ -1,5 +1,6 @@
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
 import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
+import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
 import KeyIpAllowlistDocs from "../../components/KeyIpAllowlistDocs"; // E148
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
@@ -905,6 +906,7 @@ export default function Docs() {
           <DepositCountdownDocs /> {/* B123 */}
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
           <KeyProvisioningDocs /> {/* ZK6 */}
+          <ReadOnlyKeysDocs /> {/* E149 */}
           <UnusedKeysDocs /> {/* B125 */}
           <KeyExpiryDocs /> {/* C127 */}
           <KeyIpAllowlistDocs /> {/* E148 */}

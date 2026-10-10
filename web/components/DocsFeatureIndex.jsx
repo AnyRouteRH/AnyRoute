@@ -3,6 +3,7 @@ const sections = [
   ["model-performance", "Sort models by speed and reliability"], // E150
   ["model-pages", "A page for every model"], // E151
   ["reliability-report", "Your reliability report"], // E155
+  ["read-only-keys", "Read-only keys for accountants and dashboards"], // E149
   ["key-ip-allowlist", "Allowed IP addresses for keys"], // E148
   ["saved-answers", "Save answers in Chat"], // D140
   ["chat-folders", "Organize Chat into folders"], // D143

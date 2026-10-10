@@ -26,6 +26,7 @@ export function agentApprovalsRoutes(app: Hono, ctx: Ctx) {
     if (!["pending", "approved", "denied", "expired", "used"].includes(status)) fail(400, "Unknown approval status.");
     const visible = await visibleApprovalKeys(ctx, caller); // E153
     if (!visible.length) return c.json({ data: [] });
+    if (caller.scope !== "read") // E149: a dashboard read must not expire or update approvals.
     for (const key of visible) await expireApprovals(ctx.db, key.hash);
     const data = await ctx.db.select().from(agentApprovals).where(and(inArray(agentApprovals.keyHash, visible.map(k => k.hash)), eq(agentApprovals.status, status as "pending"))).orderBy(desc(agentApprovals.requestedAt)).limit(100);
     c.header("Cache-Control", "no-store");

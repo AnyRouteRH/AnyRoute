@@ -58,7 +58,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
       eq(agentApprovals.status, "pending"), gt(agentApprovals.expiresAt, new Date(asOf)),
     )).orderBy(desc(agentApprovals.requestedAt), desc(agentApprovals.id)).limit(101);
     capped ||= pending.length > 100;
-    items.push(...pending.slice(0, 100).map(row => ({ id: `approval:${row.id}`, at: row.at.toISOString(), kind: "approval", title: "Approve an agent request", status: "pending", href: "/agents/", key_label: row.label, intent: inboxIntent(row.intent), approval_id: row.id, approval_limit: picoToUsdString(row.limit), expires_at: row.expires.toISOString(), can_decide: scope.canDecide, unread: true })));
+    items.push(...pending.slice(0, 100).map(row => ({ id: `approval:${row.id}`, at: row.at.toISOString(), kind: "approval", title: "Approve an agent request", status: "pending", href: "/agents/", key_label: row.label, intent: inboxIntent(row.intent), approval_id: row.id, approval_limit: picoToUsdString(row.limit), expires_at: row.expires.toISOString(), can_decide: scope.canDecide && key.scope !== "read", unread: true })));
   }
   if (ctx.cfg.agentPayEnabled) {
     // Pay another agent: the payer's keys see what they sent; the owner of an agent whose published wallet was paid sees
