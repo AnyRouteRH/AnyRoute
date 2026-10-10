@@ -86,6 +86,7 @@ import { agentPayRoutes } from "./api/agent-pay.ts"; // Pay another agent
 import { agentsRoutes } from "./api/agents.ts";
 import { agentPolicyHistoryRoutes } from "./api/agent-policy-history.ts"; // D144
 import { playbooksRoutes } from "./api/playbooks.ts"; // U115
+import { agentApproversRoutes } from "./api/agent-approvers.ts"; // E153
 import { agentApprovalMiddleware, agentApprovalsRoutes } from "./api/agent-approvals.ts";
 import { agentSessionsRoutes } from "./api/agent-sessions.ts";
 import { spendRoutes } from "./api/spend.ts";
@@ -265,6 +266,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentCertificatesRoutes(app, ctx);
   agentLedgerRoutes(app, ctx);
   agentApprovalsRoutes(app, ctx);
+  agentApproversRoutes(app, ctx); // E153
   telegramLinkingRoutes(app, ctx);
   weeklySummaryRoutes(app, ctx); // B120
   agentSessionsRoutes(app, ctx);

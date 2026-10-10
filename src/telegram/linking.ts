@@ -1,3 +1,4 @@
+import { allowApproverLink } from "./approvers.ts"; // E153
 import { recordSecurity, keyActor } from "../security-alerts/records.ts"; // D138
 import { randomBytes } from "node:crypto";
 import { and, eq, like, sql } from "drizzle-orm";
@@ -19,9 +20,10 @@ export async function linkLimit(ctx: Ctx, action: string, actor: string | number
   const result = await ctx.limiter.take(`telegram-link:${action}:${actor}`, 1, limit, 60_000);
   if (!result.ok) fail(429, "Too many Telegram link actions. Try again shortly.", "rate_limit_exceeded");
 }
-export async function validPrincipal(ctx: Ctx, link: Pick<Link, "account" | "key_hash">): Promise<KeyRow> {
+export async function validPrincipal(ctx: Ctx, link: Pick<Link, "account" | "key_hash">, approvalsOnly = false): Promise<KeyRow> {
   const [key] = await ctx.db.select().from(keys).where(and(eq(keys.keyHash, link.key_hash), eq(keys.accountId, link.account)));
   if (!key || key.disabled || (key.expiresAt && key.expiresAt <= new Date())) fail(403, "Telegram link authority is unavailable.", "forbidden");
+  if (approvalsOnly && await allowApproverLink(ctx, key)) return key; // E153
   if ((await ctx.db.select({ id: agentSessions.id }).from(agentSessions).where(eq(agentSessions.keyHash, key.keyHash)).limit(1)).length || !["owner", "admin"].includes(await roleOf(ctx, key))) fail(403, "Only owner/admin keys may link Telegram.", "forbidden");
   return key;
 }
@@ -43,7 +45,7 @@ export async function issueCode(ctx: Ctx, caller: KeyRow) {
   const expires = Date.now() + LINK_TTL_MS;
   await ctx.db.transaction(async tx => {
     await lockLinks(tx);
-    await validPrincipal({ ...ctx, db: tx as unknown as Db }, { account: caller.accountId, key_hash: caller.keyHash });
+    await validPrincipal({ ...ctx, db: tx as unknown as Db }, { account: caller.accountId, key_hash: caller.keyHash }, true);
     await pruneLinks(tx);
     const value: Code = { hash: sha256(code), account: caller.accountId, key_hash: caller.keyHash, expires };
     await tx.insert(kv).values({ key: codeKey(caller.accountId), value }).onConflictDoUpdate({ target: kv.key, set: { value, updatedAt: new Date() } });
@@ -58,14 +60,14 @@ export async function consumeCode(ctx: Ctx, uid: number, code: string) {
     const [row] = await tx.select().from(kv).where(and(like(kv.key, "telegram-link-code:%"), sql`${kv.value}->>'hash' = ${sha256(code)}`)).limit(1);
     const value = row?.value as Code | undefined;
     if (!value || value.expires <= Date.now()) fail(400, "Link code is unavailable.");
-    await validPrincipal({ ...ctx, db: tx as unknown as Db }, value);
+    await validPrincipal({ ...ctx, db: tx as unknown as Db }, value, true);
     const existing = await readLink(tx, uid);
     if (existing) fail(409, "Unlink your existing account first with /unlink.");
     // One Telegram identity per principal key; other owner/admin keys can link their own identity.
     if ((await accountLinks(tx, value.account)).some(l => l.key_hash === value.key_hash)) fail(409, "This principal already has a Telegram link. Unlink it first.");
     const link: Link = { account: value.account, key_hash: value.key_hash, uid, generation: randomBytes(9).toString("base64url"), linked_at: new Date().toISOString() };
     await tx.insert(kv).values({ key: linkKey(uid), value: link });
-    { const caller = await validPrincipal({ ...ctx, db: tx as unknown as Db }, link); await recordSecurity(ctx, tx, link.account, caller.teamId, `Telegram linked ${keyActor(caller.name)}`); } // D138
+    { const caller = await validPrincipal({ ...ctx, db: tx as unknown as Db }, link, true); await recordSecurity(ctx, tx, link.account, caller.teamId, `Telegram linked ${keyActor(caller.name)}`); } // D138
     await tx.delete(kv).where(eq(kv.key, row.key));
     return link;
   });

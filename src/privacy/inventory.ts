@@ -1,5 +1,6 @@
 import { describeBrowserSessions } from "./browser-sessions.ts"; // E147
 import { describeNotifications } from "./notifications.ts"; // E146
+import { describeAgentApprovers } from "./agent-approvers.ts"; // E153
 import { describeQuietAlerts } from "./quiet-agent-alerts.ts"; // D141
 import { describeSecurityAlerts } from "./security-alerts.ts"; // D138
 import { describeScheduledPrompts } from "./scheduled-prompts.ts"; // D136
@@ -53,6 +54,7 @@ import { CATEGORIES, CATEGORY_INFO, type AboutRequest, type ColumnDoc, type Exte
 export const INVENTORY_FORMAT = "anyroute.data-inventory/1";
 
 export const TABLE_DOCS: Record<string, TableDoc> = { ...guardTables, ...agentPayTables, ...webhookTables, ...requestTables, ...billingTables, ...receiptTables, ...keyTables, ...providerTables, ...chainTables, ...operationTables, ...characterTables, ...skillTables, ...networkTables, ...networkPayoutTables, ...sanctionsTables, ...agentTables, ...approvalTables, ...hostBondTables, ...agentLedgerTables, ...profileTables, ...agreementTables, ...x402RecoveryTables, ...facilitatorTables, ...makegoodTables, ...toolTables, ...identityTables, ...commerceTables };
+describeAgentApprovers(TABLE_DOCS); // E153
 describeScheduledPrompts(TABLE_DOCS); // D136
 describeProjects(TABLE_DOCS); // C134
 describeSecurityAlerts(TABLE_DOCS); // D138

@@ -1,4 +1,5 @@
 import { browserSessionStores } from "./browser-sessions.ts"; // E147
+import { agentApproversReader } from "./agent-approvers.ts"; // E153
 import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { chatFoldersBrowser } from "./chat-folders"; // D143
 import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
@@ -434,6 +435,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  agentApproversReader, // E153
   telegramPhotoReader, // D142
   quietAlertBodyReader, // D141
   securityAlertReader, // D138

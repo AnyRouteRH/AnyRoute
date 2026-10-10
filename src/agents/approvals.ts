@@ -1,3 +1,5 @@
+import { assertDecisionApprover } from "./approvers.ts"; // E153
+import { recordApprovalDecision } from "./approver-records.ts"; // E153
 import { recordApprovalWebhook } from "../webhooks/approvals.ts"; // V86: transaction-bound notices.
 import { ledgerApproval } from "./ledger-context.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -74,9 +76,11 @@ export async function decideApproval(db: Db, accountId: string, id: string, acto
     await lockAccount(tx, accountId);
     const [row] = await tx.select().from(agentApprovals).where(eq(agentApprovals.id, id)).for("update");
     if (!row) fail(404, "Approval not found.", "not_found");
+    await assertDecisionApprover(db, tx, accountId, actor, row.keyHash); // E153
     const now = new Date();
     if (statusAt(row, now) !== "pending") fail(409, "Approval is no longer pending.", "agent_approval_unavailable");
     const [updated] = await tx.update(agentApprovals).set({ status: action === "approve" ? "approved" : "denied", decidedAt: now, decidedBy: actor }).where(eq(agentApprovals.id, id)).returning();
+    await recordApprovalDecision(db, tx, updated); // E153
     await event(tx, updated, action === "approve" ? "approval_approved" : "approval_denied", undefined, now);
     await recordApprovalWebhook(db, tx, updated, true); // V86.
     return updated;

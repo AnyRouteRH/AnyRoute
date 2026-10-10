@@ -73,6 +73,7 @@ import StarterSetupsDocs from "../../components/StarterSetupsDocs"; // U103
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentCertificateDocs from "../../components/AgentCertificateDocs";
 import ApproveAndAllowDocs from "../../components/ApproveAndAllowDocs"; // B118
+import AgentApproversDocs from "../../components/AgentApproversDocs"; // E153
 import AgentApprovalDocs from "../../components/AgentApprovalDocs";
 import TradingAgentDocs from "../../components/TradingAgentDocs"; // B
 import ProjectsDocs from "../../components/ProjectsDocs"; // C134
@@ -918,6 +919,7 @@ export default function Docs() {
           <ToolsMarketDocs /> {/* v6 T */}
           <AgentAlertDocs />
           <AgentApprovalDocs />
+          <AgentApproversDocs /> {/* E153 */}
           <ApproveAndAllowDocs /> {/* B118 */}
           <AgentGuardDocs /> {/* V98 */}
           <WeeklySummaryDocs /> {/* B120 */}

@@ -41,6 +41,7 @@ const sections = [
   ["rulebook-history", "Rulebook history"], // D144
   ["agent-rulebook", "Agent rulebook"],
   ["agent-approvals", "Ask-first approvals"],
+  ["approvers", "Let teammates approve"], // E153
   ["approve-and-allow", "Allow this next time"], // B118
   ["agent-pay", "Pay another agent"],
   ["trading-agents", "Trading agents"],

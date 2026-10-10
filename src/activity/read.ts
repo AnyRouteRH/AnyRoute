@@ -1,3 +1,4 @@
+import { nameApprovalDecisions } from "../agents/approver-records.ts"; // E153
 import { activityProject, projectActivityFilter, projectJson } from "../projects/tags.ts"; // C134
 import { sql, type SQL } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -96,6 +97,7 @@ export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, elig
     order by at desc,id collate "C" desc limit ${q.limit})`);
   const raw = rowsOf<Raw>(await ctx.db.execute(sql`select ${activityProject} project, id,to_char(at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') at,kind,title,amount_pico,model,lane,"where",key_label,receipt_id,status,reference,limit_pico
     from (${sql.join(bounded,sql` union all `)}) merged order by merged.at desc,id collate "C" desc limit ${q.limit}`));
+  await nameApprovalDecisions(ctx, raw); // E153
   const last = raw.at(-1);
   return { data: raw.map(activityRow), scope: whole ? "account" : "key",
     next_cursor: raw.length === q.limit && last ? Buffer.from(JSON.stringify({ at: last.at, id: last.id, filter: fingerprint })).toString("base64url") : null };

@@ -1,4 +1,5 @@
 'use client';
+import AgentApprovers from '../../components/AgentApprovers'; // E153
 import AccountShell from '../../components/account/AccountShell';
 import { useMemo } from 'react'; // C132
 import { withSpendGlance, useSpendGlance } from '../../components/AgentSpendGlance'; // C132
@@ -165,15 +166,16 @@ export default function Agents() {
   return <AccountShell publicContent current="Agents" apiKey={key} onConnect={value => { setKey(value); setAgents([]); setSelected(''); setOff(false); setError(''); }} onDisconnect={() => { setKey(''); setAgents([]); setSelected(''); setLoaded(false); setOff(false); setError(''); }}><div className={s.body}>
     {!(key && !off && agent) && <StarterSetups id="setup-preview" view="agents" guard={guard}/>} {/* U103: a preview until an agent is selected; then Start from a setup sits in its Spending limits. */}
     {!(key && !off && agent) && <p id="replay-rules" className="note">Select an agent after connecting to replay its spending limits on the last 7 days before you save them. Nothing is saved.</p>} {/* Replay your rules: beside Save once an agent is selected */}
-    <div id="request-check">{key && !off && agent ? <RequestCheck key={key+selected} agent={agent} refreshVersion={revision}/> : <p className="note">Select an agent after connecting to check a request against its rules without spending.</p>}</div> {/* V85 */}
+    <div id="request-check">{key && !off && agent && !agent.approval_only ? <RequestCheck key={key+selected} agent={agent} refreshVersion={revision}/> : <p className="note">Select an agent after connecting to check a request against its rules without spending.</p>}</div> {/* V85 */}
     <PayAgent agent={key && !off ? agent : null}/>
+    {key && agent && !agent.approval_only && <AgentApprovers key={key+agent.key_hash} request={request} keyHash={agent.key_hash}/>} {/* E153 */}
     {error && <p className="note" role="alert">{error}</p>}
     {off ? <section className="empty" role="status"><h2>{FEATURE_OFF}</h2><p>This router is not serving agent rulebooks.</p></section> : <>
       {key && <section aria-label="Agent keys"><div className={s.heading}><h2>Agent keys</h2><button className="text-button" disabled={busy} onClick={() => setRevision(r => r+1)}>Refresh</button></div>{busy && <p role="status">Reading agent keys…</p>}{loaded && !agents.length && <div className="empty"><p>No agent keys returned for this account.</p><a className="inline-link" href="/dashboard/#api-keys">Manage API keys</a></div>}<div className={s.list}>{agents.map(a => <div key={a.key_hash}><button className={s.agent} aria-pressed={selected === a.key_hash} onClick={() => { setSelected(a.key_hash); setError(''); }}><div className={s.heading}><strong>{a.name || 'Unnamed agent'}</strong><span className={s.badges}><span className="badge">Rulebook {a.has_policy ? 'on' : 'off'}</span>{a.playbook && <span className="badge">Playbook {a.playbook.name}</span>}{a.killed && <span className="badge dark">{stoppedLabel(a.stopped_until)}</span>}</span></div><span className={s.hash}>Policy SHA {a.policy_sha256 ? a.policy_sha256.slice(0,12) : 'None'}</span><Spend agent={a}/></button><SealedBadge sealed={a.sealed}/><QuietAgentAlert key={key+a.key_hash} agent={a} request={request}/>{/* D141 */}</div>)}</div></section>}
       {key && <TelegramLink key={key} principalKey={key}/>}
       {key && <section id="approvals"><Approvals key={key} request={request} agents={agents} onError={onError}/></section>}
-      {key && agent && <Autonomy agent={agent}/> }
-      {key && agent && <AgentWorkspace key={key+agent.key_hash} agent={agent} request={request} refreshVersion={revision}><AgentDetail agent={agent} request={request} onError={onError} guard={guard} refreshVersion={revision} refreshList={() => setRevision(r => r+1)}/></AgentWorkspace>}
+      {key && agent && !agent.approval_only && <Autonomy agent={agent}/> }
+      {key && agent && !agent.approval_only && <AgentWorkspace key={key+agent.key_hash} agent={agent} request={request} refreshVersion={revision}><AgentDetail agent={agent} request={request} onError={onError} guard={guard} refreshVersion={revision} refreshList={() => setRevision(r => r+1)}/></AgentWorkspace>}
       {key && agent && <Alerts key={"alerts"+key+agent.key_hash} /* U102: a key distinct from AgentWorkspace’s, so switching agents leaves no stale panel. */ keyHash={agent.key_hash} request={request} refreshVersion={revision} onError={onError}/>}
       {!key && <p className="note">Connect your key to read and manage agent rulebooks.</p>}
     </>}

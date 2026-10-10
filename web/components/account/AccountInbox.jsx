@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import DelegatedInboxNote from '../DelegatedInboxNote'; // E153
 import ApproveAndAllow from '../ApproveAndAllow'; // B118
 import { InboxRulebooks, InboxApprovalRulebook } from '../limits/InboxRulebooks'; // B124
 import { Button } from '../UI';
@@ -23,6 +24,7 @@ export default function AccountInbox({ apiKey, panel = false }) {
   return <section className={s.inbox} aria-label="Inbox">
     {!panel && <h2>Inbox</h2>}
     <p>Review requests waiting for you and new account events.</p>
+    <DelegatedInboxNote page={page}/> {/* E153 */}
     <div className={s.actions}><button className="text-button" disabled={busy || !!action} onClick={refresh}>Refresh</button><button className="text-button" disabled={!page || busy || !!action} onClick={() => run('seen', () => markInboxSeen(request, window.localStorage, page))}>Mark seen</button>{panel && <a className="inline-link" href="/dashboard/#inbox">Open inbox</a>}</div>
     <p className="help-text">Seen time stays in this browser. Pending approvals stay counted until decided or expired. Alerts cover retained records. Host updates show the current status and record update time; earlier status changes are not retained here.</p>
     {page?.scope === 'key' && <p className="help-text">This key’s events only. A management or owner/admin key is needed to decide approvals.</p>}

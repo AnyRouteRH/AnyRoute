@@ -1,0 +1,11 @@
+// E153
+import type { ExternalDoc, TableDoc } from "./types.ts";
+export function describeAgentApprovers(docs: Record<string, TableDoc>) {
+  docs.kv.notes?.push("agent-approvers:<agent key hash>: strict owners, owners_and_admins or specific_members mode and up to 100 unique team principal IDs or member key hashes. Stored only by an authenticated account management or team owner/admin key when AGENT_TEAM_APPROVERS_ENABLED is enabled; overwritten on each save and retained until removed by the operator or account data removal. No new table, column, Redis family or log field. Team membership, principal revocation, disabled/expired keys and agent sessions are rechecked at decision time; no requester can decide their own key or the same principal's requests. Existing agent_approvals.decided_by records the deciding key hash. Activity reads its current key name. With SECURITY_ALERTS_ENABLED, settings and decisions add existing security-alerts:event records with account/team, status, times and sanitized key names; the deciding name is captured then. Existing Telegram link families also accept eligible approvers when enabled; only delegated approval delivery uses their access, while other notifications and Stop retain owner/admin guards. Telegram receives readable approval metadata and current rulebook amount caps and thresholds, never inference text or tool arguments. Existing link-code expiry, single-use and delivery markers remain unchanged. Off preserves prior permissions and responses.");
+}
+export const agentApproversReader: ExternalDoc["bodyReaders"][number] = {
+  file: "src/api/agent-approvers.ts", carries: "settings", reads: "Strict per-agent approval mode and bounded unique IDs selected from the agent's active team members.",
+  then: "Requires management or owner/admin account/team access outside agent sessions, then rechecks access and member choices in a transaction serialized with approval decisions.",
+  kept: "Mode and selected principal IDs or key hashes in existing kv, plus existing security notice metadata when enabled. No prompt, answer, secret or caller address is read or retained.",
+  evidence: [{ file: "src/api/agent-approvers.ts", contains: "approversSchema.parse(await readJson(c))" }],
+};

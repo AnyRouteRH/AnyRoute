@@ -1,12 +1,14 @@
 import { deferTelegram } from "../notifications/telegram.ts"; // E146
 import { channelEnabled, type NoticeType } from "../notifications/prefs.ts"; // E146
+import { approvableKeys } from "../agents/approvers.ts"; // E153
+import { telegramCanApprove } from "./approvers.ts"; // E153
 import type { KeyRow } from "../api/auth.ts"; // D136
 import { plainApprovalText } from "../agents/rulebook-approval-text.ts"; // B124
 import { handleGuardResume } from "./guard-resume.ts"; // V98
 import { guardApprovalText } from "./guard-text.ts";
 import { picoToUsdString } from "../lib/money.ts";
 import { policiesFor } from "../agents/store.ts";
-import { and, eq, gt, isNull, like, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, like, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import type { Db } from "../db/client.ts";
 import { keys, kv } from "../db/schema.ts";
@@ -30,7 +32,7 @@ export function approvalText(row: ApprovalRow, name?: string, policySha256?: str
 async function noticeText(ctx: Ctx, row: ApprovalRow) {
   const [key] = await ctx.db.select({ name: keys.name }).from(keys).where(eq(keys.keyHash, row.keyHash));
   const policies = await policiesFor(ctx.db, row.keyHash);
-  if (ctx.cfg.agentRulebookWordsEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
+  if (ctx.cfg.agentRulebookWordsEnabled || ctx.cfg.agentTeamApproversEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
   return approvalText(row, key?.name ?? undefined, policies[0]?.sha256, ctx.cfg.agentGuardEnabled);
 }
 async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Notice, row: ApprovalRow) {
@@ -80,16 +82,19 @@ export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi) {
     if (!link) return;
     const scoped = { ...ctx, db: tx as unknown as Db };
     let caller;
-    try { caller = await validPrincipal(scoped, link); } catch { return; }
+    try { caller = await validPrincipal(scoped, link, true); } catch { return; }
     const notices = await tx.select().from(kv).where(and(like(kv.key, "telegram-approval:%"), sql`${kv.value}->>'uid' = ${String(link.uid)}`, sql`${kv.value}->>'generation' = ${link.generation}`, sql`${kv.value}->>'status' = 'pending'`)).limit(100);
     for (const stored of notices) {
       const notice = stored.value as Notice;
       const [row] = await tx.select().from(agentApprovals).where(eq(agentApprovals.id, notice.approval));
       if (row) await updateNotice(scoped, api, stored.key, notice, row).catch(() => undefined);
     }
-    const pending = await tx.select({ row: agentApprovals }).from(agentApprovals).innerJoin(keys, eq(keys.keyHash, agentApprovals.keyHash)).leftJoin(kv, sql`${kv.key} = 'telegram-approval:' || ${agentApprovals.id} || ':' || ${String(link.uid)} || ':' || ${link.generation}`).where(and(eq(keys.accountId, link.account), caller.management ? undefined : eq(keys.teamId, caller.teamId!), eq(agentApprovals.status, "pending"), gt(agentApprovals.expiresAt, new Date()), isNull(kv.key))).orderBy(agentApprovals.requestedAt).limit(10);
+    const eligible = ctx.cfg.agentTeamApproversEnabled ? (await approvableKeys(scoped, caller)).map(k => k.keyHash) : undefined; // E153
+    if (eligible && !eligible.length) return; // E153
+    const pending = await tx.select({ row: agentApprovals }).from(agentApprovals).innerJoin(keys, eq(keys.keyHash, agentApprovals.keyHash)).leftJoin(kv, sql`${kv.key} = 'telegram-approval:' || ${agentApprovals.id} || ':' || ${String(link.uid)} || ':' || ${link.generation}`).where(and(eq(keys.accountId, link.account), caller.management ? undefined : eq(keys.teamId, caller.teamId!), eligible ? inArray(agentApprovals.keyHash, eligible) : undefined, eq(agentApprovals.status, "pending"), gt(agentApprovals.expiresAt, new Date()), isNull(kv.key))).orderBy(agentApprovals.requestedAt).limit(10);
     for (const { row } of pending) {
       if (await deferTelegram(scoped, link, row.keyHash, "", "approvals", caller)) continue; // E146: approvals are never queued
+      if (!await telegramCanApprove(scoped, caller, row.keyHash)) continue; // E153
       const key = notificationKey(row.id, link);
       const notice: Notice = { uid: link.uid, approval: row.id, generation: link.generation, expires: row.expiresAt.getTime(), status: "pending" };
       await tx.insert(kv).values({ key, value: notice });
@@ -116,7 +121,7 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
         const link = await readLink(tx, callback.from.id);
         if (!link || link.generation !== match[3]) throw new Error("unlinked");
         const scoped = { ...ctx, db: tx as unknown as Db };
-        const caller = await validPrincipal(scoped, link);
+        const caller = await validPrincipal(scoped, link, true);
         const [row] = await tx.select().from(agentApprovals).where(eq(agentApprovals.id, match[2]));
         if (!row) throw new Error("unavailable");
         await ownedKey(scoped, caller, row.keyHash);

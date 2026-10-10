@@ -1,3 +1,4 @@
+import { agentListCaller, delegatedAgentRows } from "./agent-approvers.ts"; // E153
 import { actionsRemaining, combinedActionsRemaining } from "../agents/guard-state.ts"; // V98
 import { killBody, stopFields, combinedStopFields, visibleStop } from "../agents/stop-until.ts"; // B117
 import { autonomyDescription, autonomyMultiplier, spendingCapPico } from "../agents/autonomy.ts";
@@ -66,16 +67,17 @@ export function agentsRoutes(app: Hono, ctx: Ctx) {
   app.use("/api/v1/agents/*", async (_c, next) => { if (!ctx.cfg.agentPolicyEnabled) fail(404, "Not found.", "not_found"); await next(); });
   app.use("/api/v1/agents", async (_c, next) => { if (!ctx.cfg.agentPolicyEnabled) fail(404, "Not found.", "not_found"); await next(); });
   app.get("/api/v1/agents", async c => {
-    const caller = await principal(ctx, c);
+    const caller = await agentListCaller(ctx, c);
     const rows = await ctx.db.select().from(keys).where(eq(keys.accountId, caller.accountId));
-    const visible = caller.management ? rows : rows.filter(k => k.teamId === caller.teamId);
+    const audience = await delegatedAgentRows(ctx, caller, caller.management ? rows : rows.filter(k => k.teamId === caller.teamId)); // E153
+    const visible = audience.rows;
     const books = await playbookNames(ctx, caller.accountId); // U115
     const data = await Promise.all(visible.map(async key => {
       const policies = await policiesFor(ctx.db, key.keyHash);
       const descriptions = await describe(ctx, key, policies, new Date());
       const own = descriptions.find(p => !p.inherited) ?? descriptions[0];
       const uncapped = own ? null : await policyState(ctx.db, { keyHash: key.keyHash, killed: false }, new Date());
-      return { key_hash: key.keyHash, name: key.name, has_policy: !!own, killed: descriptions.some(p => p.killed), ...combinedStopFields(descriptions), policy_sha256: own?.sha256 ?? null, ...followed(books, own), spent: own?.spent ?? Object.fromEntries(Object.entries(uncapped!.spent_pico).map(([w, v]) => [w, picoToUsd(v)])), caps: own?.effective_caps ?? own?.policy.caps ?? {}, policies: descriptions }; // B117
+      return { ...(audience.delegated ? { approval_only: true } : {}), key_hash: key.keyHash, name: key.name, has_policy: !!own, killed: descriptions.some(p => p.killed), ...combinedStopFields(descriptions), policy_sha256: own?.sha256 ?? null, ...followed(books, own), spent: own?.spent ?? Object.fromEntries(Object.entries(uncapped!.spent_pico).map(([w, v]) => [w, picoToUsd(v)])), caps: own?.effective_caps ?? own?.policy.caps ?? {}, policies: descriptions }; // B117
     }));
     return c.json({ data });
   });

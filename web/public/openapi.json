@@ -20948,6 +20948,239 @@
         },
         "operationId": "saveAccountNotifications"
       }
+    },
+    "/api/v1/agents/{key_hash}/approvers": {
+      "get": {
+        "tags": [
+          "Agent rulebook"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_hash",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approver settings and eligible teammates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "owners",
+                            "owners_and_admins",
+                            "specific_members"
+                          ]
+                        },
+                        "member_ids": {
+                          "type": "array",
+                          "maxItems": 100,
+                          "uniqueItems": true,
+                          "default": [],
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          }
+                        },
+                        "configured": {
+                          "type": "boolean"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "role": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "member_ids",
+                        "configured",
+                        "members"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "E153. Requires account management or team owner/admin key outside sessions. AGENT_TEAM_APPROVERS_ENABLED defaults false; off or AGENT_POLICY_ENABLED off returns 404. With the flag on, unset settings mean owners only. Owners always approve. Selected principal IDs survive member sign-in rotation; legacy members use key hashes. Member requests cannot be approved by their own key or another key for the same principal. Approve and allow retains owner/admin permission and must also pass approval authority.",
+        "operationId": "getAgentApprovers"
+      },
+      "put": {
+        "tags": [
+          "Agent rulebook"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_hash",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approver settings and eligible teammates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "owners",
+                            "owners_and_admins",
+                            "specific_members"
+                          ]
+                        },
+                        "member_ids": {
+                          "type": "array",
+                          "maxItems": 100,
+                          "uniqueItems": true,
+                          "default": [],
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          }
+                        },
+                        "configured": {
+                          "type": "boolean"
+                        },
+                        "members": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "role": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "member_ids",
+                        "configured",
+                        "members"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "E153. Requires account management or team owner/admin key outside sessions. AGENT_TEAM_APPROVERS_ENABLED defaults false; off or AGENT_POLICY_ENABLED off returns 404. With the flag on, unset settings mean owners only. Owners always approve. Selected principal IDs survive member sign-in rotation; legacy members use key hashes. Member requests cannot be approved by their own key or another key for the same principal. Approve and allow retains owner/admin permission and must also pass approval authority.",
+        "operationId": "putAgentApprovers",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "mode"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "owners",
+                      "owners_and_admins",
+                      "specific_members"
+                    ]
+                  },
+                  "member_ids": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "uniqueItems": true,
+                    "default": [],
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -22439,6 +22672,10 @@
       "AgentApproval": {
         "type": "object",
         "properties": {
+          "can_allow": {
+            "type": "boolean",
+            "description": "E153: present on approval lists only when AGENT_TEAM_APPROVERS_ENABLED; true for owners/admins with rulebook access."
+          },
           "id": {
             "type": "string"
           },
@@ -35113,5 +35350,18 @@
   },
   "x-project-budget-refusal": {
     "$ref": "#/components/schemas/ProjectBudgetExceeded"
+  },
+  "x-anyroute-agent-approvers": {
+    "card": "E153",
+    "flag": "AGENT_TEAM_APPROVERS_ENABLED",
+    "default": false,
+    "documentation": "/docs/#approvers",
+    "existing_routes": {
+      "GET /api/v1/agents": "Allowed member/dev keys see only approvable agents; those rows add approval_only=true and remain read-only for rulebook management.",
+      "GET /api/v1/agents/approvals": "Lists allowed agents. Adds can_allow boolean to approval rows when enabled.",
+      "POST /api/v1/agents/approvals/{id}/approve and /deny": "Allowed approvers, account/team scoped. Permission rechecked in existing locked single-use transaction. decided_by stores deciding key hash.",
+      "GET /api/v1/inbox": "Adds delegated pending approvals with can_decide=true. Non-management approvers with actionable requests use scope=team_approvals; other sources remain key-scoped.",
+      "GET/POST/DELETE /api/v1/telegram/link": "Allowed approvers may link their own Telegram; callback authorization matches API decisions. Other notifications and Stop remain owner/admin guarded."
+    }
   }
 }
