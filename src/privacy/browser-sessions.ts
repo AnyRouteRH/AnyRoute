@@ -1,0 +1,10 @@
+import type { ExternalDoc, TableDoc } from "./types.ts";
+const retention = "browser-session:<key hash> in kv keeps only a fixed browser-family and operating-system label derived from User-Agent at wallet sign-in. No full header, version, device model or network address is retained by this feature. Rows remain after sign-out because existing keys are disabled, not deleted; retained until operator deletion. Existing keys.created_at records sign-in, and keys.last_used records the last charged call, not browsing or every API request. Older wallet-issued root management keys have no browser label. Sub-keys, team keys and agent sessions are excluded from the browser list.";
+export function describeBrowserSessions(docs: Record<string, TableDoc>) { docs.kv.notes!.push(retention); }
+export const browserSessionStores: ExternalDoc["otherStores"] = [{
+  id: "signed-in-browsers", name: "Signed-in browser labels",
+  purpose: "Account management keys can list their own active wallet-issued browser keys in Settings. A single sign-out uses the existing key-disable path; signing out all others sends one disable request per listed other browser after one confirmation. The caller's key is excluded from that selection. There is no new worker, flag, table, column, Redis family or log field.",
+  holds: retention + " User-Agent is read in memory during the existing wallet sign-in route. The browser holds session metadata and pending confirmation in component memory; no new browser storage. Existing sign-in and key-disable security alerts still apply.",
+  ttl: "Labels remain until operator deletion. Disabled and expired keys disappear from the list. Signing out this browser clears its saved key after server confirmation. Bulk sign-out can partly succeed; failed rows remain visible for retry. Already-running requests may finish, and an owner can re-enable a disabled key using existing key management.",
+  requestText: "none", evidence: [{ file: "src/api/keys.ts", contains: "await recordBrowserSession(tx, key.keyHash, c.req.header(\"user-agent\"))" }, { file: "src/browser-sessions/labels.ts", contains: "export function browserLabel" }],
+}];

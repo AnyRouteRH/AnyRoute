@@ -1,3 +1,4 @@
+import { describeBrowserSessions } from "./browser-sessions.ts"; // E147
 import { describeQuietAlerts } from "./quiet-agent-alerts.ts"; // D141
 import { describeSecurityAlerts } from "./security-alerts.ts"; // D138
 import { describeScheduledPrompts } from "./scheduled-prompts.ts"; // D136
@@ -62,6 +63,7 @@ describeSealed(TABLE_DOCS);
 describeWeeklySummary(TABLE_DOCS); // B120
 describeModelArrivals(TABLE_DOCS); // C131
 describeQuietAlerts(TABLE_DOCS); // D141
+describeBrowserSessions(TABLE_DOCS); // E147
 export { EXTERNAL };
 
 // ---- consistency -----------------------------------------------------------------------------------------------------

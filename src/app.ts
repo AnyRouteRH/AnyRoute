@@ -1,3 +1,4 @@
+import { browserSessionRoutes } from "./browser-sessions/routes.ts"; // E147
 import { securityAlertsRoutes, securityAlertsMiddleware } from "./security-alerts/routes.ts"; // D138
 import { newModelsFeedRoutes } from "./api/models-new-feed.ts"; // C131
 import { projectCors } from "./projects/cors.ts"; // C134
@@ -238,6 +239,7 @@ export async function createApp(opts: AppOptions = {}) {
   projectBudgetRoutes(app, ctx); // D139
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
   keysRoutes(app, ctx);
+  browserSessionRoutes(app, ctx); // E147
   teamsRoutes(app, ctx);
   escrowRoutes(app, ctx);
   depositRoutes(app, ctx); // V97B: account-owned deposit progress, both lanes.

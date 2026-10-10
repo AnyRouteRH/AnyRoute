@@ -1,0 +1,5 @@
+.list { list-style: none; margin: 0 0 1rem; padding: 0; }
+.row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--line); }
+.row > div { min-width: 0; flex: 1 1 12rem; overflow-wrap: anywhere; }
+.row p { color: var(--muted); margin: .5rem 0 0; }
+.row strong { color: var(--ink); }

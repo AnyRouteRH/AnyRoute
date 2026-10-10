@@ -1,4 +1,5 @@
 const sections = [
+  ["signed-in-browsers", "Signed-in browsers"], // E147
   ["saved-answers", "Save answers in Chat"], // D140
   ["chat-folders", "Organize Chat into folders"], // D143
   ["share-to-anyroute", "Share to Anyroute from your phone"], // D137

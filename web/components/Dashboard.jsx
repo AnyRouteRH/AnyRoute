@@ -1,4 +1,5 @@
 "use client";
+import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
 import SecurityAlertsSettings from "./security-alerts/SecurityAlertsSettings"; // D138
 import { KeyExpiryContext, useKeyExpiry, useExpiryClock } from "./account/useKeyExpiry"; // C127
 import { KeyExpiryStatus, KeyExpiryRestore } from "./account/KeyExpiry.js"; // C127
@@ -1814,6 +1815,7 @@ export default function Dashboard() {
               </div>
               {live && apiKey && <TelegramLink key={apiKey} principalKey={apiKey}/>}
               {live && apiKey && <SecurityAlertsSettings key={apiKey} apiKey={apiKey}/>} {/* D138 */}
+              {live && apiKey && <SignedInBrowsers key={apiKey} apiKey={apiKey} onChanged={refresh} onSignedOut={() => { setApiKey(""); setWs(null); setSecrets({}); setResult(null); setModal(null); abort.current?.abort(); }}/>} {/* E147 */}
               <div className="settings-grid">
                 <div className="settings-panel">
                   <h3>{live ? "This browser" : "Browser-local data"}</h3>

@@ -234,3 +234,5 @@ TASKS.push({ ...task('quiet-agent-alerts', 'agents', 'Hear when an agent goes qu
 TASKS.push({ ...task("security-alerts", "build", "Keep track of security changes", "Read about account security alerts and their Settings switch.", "/docs/#security-alerts", "security, alerts, sign-in, keys, telegram, roles"), menu: false }); // D138
 TASKS.push({ ...task('project-budgets', 'build', 'Set a project spending limit', 'Share a monthly budget across calls tagged with a project.', '/docs/#project-budgets', 'project, budget, monthly, spending, limit, inbox'), menu: false }); // D139
 TASKS.push({ ...task('rulebook-history', 'agents', 'Review rulebook history', 'See saved rules and restore a previous version after confirming.', '/docs/#rulebook-history', 'rulebook, history, restore, versions, changes'), menu: false }); // D144
+
+TASKS.push({ ...task("signed-in-browsers", "build", "Review signed-in browsers", "Open Settings to sign out a wallet sign-in or all other browsers.", "/dashboard/#settings", "browsers, sessions, sign out, wallet sign-in, security"), menu: false }); // E147

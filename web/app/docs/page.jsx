@@ -1,3 +1,4 @@
+import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
@@ -915,6 +916,7 @@ export default function Docs() {
           <WeeklySummaryDocs /> {/* B120 */}
           <TelegramPhotosDocs /> {/* D142 */}
           <SecurityAlertsDocs /> {/* D138 */}
+          <SignedInBrowsersDocs /> {/* E147 */}
           <ScheduledPromptsDocs /> {/* D136 */}
           <PriceNoticesDocs /> {/* C133 */}
           <AgentPayDocs /> {/* Pay another agent */}

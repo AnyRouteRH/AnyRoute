@@ -1,3 +1,4 @@
+import { browserSessionStores } from "./browser-sessions.ts"; // E147
 import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { chatFoldersBrowser } from "./chat-folders"; // D143
 import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
@@ -783,6 +784,7 @@ export const EXTERNAL: ExternalDoc = {
     evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify(redactRpcFields({ t: new Date().toISOString(), level, msg, ...fields })")],
   },
   otherStores: [
+    ...browserSessionStores, // E147
     ...quietAlertStores, // D141
     ...securityAlertStores, // D138
     idempotencyMemory, // D145

@@ -205,6 +205,103 @@
     }
   ],
   "paths": {
+    "/api/v1/account/browser-sessions": {
+      "get": {
+        "summary": "List signed-in browsers",
+        "description": "E147: active account management Bearer key only; inference and agent session keys refused. Lists this account's active, unexpired wallet-issued root management keys. Older sign-ins have no browser details. last_used is the last charged call, not browsing. Sign out through existing DELETE /api/v1/keys/{hash}, or PATCH disabled=true for the current key. All others in Settings disables each other listed browser key after one confirmation and reports partial failures. No new flag or migration. Response Cache-Control is no-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 100,
+              "maximum": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Own active browser keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "has_more"
+                  ],
+                  "properties": {
+                    "has_more": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "hash",
+                          "browser_label",
+                          "created_at",
+                          "last_used",
+                          "current"
+                        ],
+                        "properties": {
+                          "hash": {
+                            "type": "string"
+                          },
+                          "browser_label": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "last_used": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          },
+                          "current": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
     "/harness/": {
       "get": {
         "x-card": "D137",
