@@ -5,6 +5,7 @@ const sections = [
   ["reliability-report", "Your reliability report"], // E155
   ["read-only-keys", "Read-only keys for accountants and dashboards"], // E149
   ["key-ip-allowlist", "Allowed IP addresses for keys"], // E148
+  ["linked-wallets", "Link another wallet"], // E154
   ["saved-answers", "Save answers in Chat"], // D140
   ["chat-folders", "Organize Chat into folders"], // D143
   ["share-to-anyroute", "Share to Anyroute from your phone"], // D137

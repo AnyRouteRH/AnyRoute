@@ -5,6 +5,7 @@ import { api as apiRequest } from "../lib/api"; // E149
 import { useReadOnlyKey, ReadOnlyKeyBadge } from "./account/ReadOnlyKeys"; // E149
 import { withReadScope } from "../lib/read-only-keys"; // E149
 import KeyIpAllowlist, { KeyIpContext } from "./account/KeyIpAllowlist"; // E148
+import LinkedWalletsSettings from "./linked-wallets/LinkedWalletsSettings"; // E154
 import SecurityAlertsSettings from "./security-alerts/SecurityAlertsSettings"; // D138
 import { KeyExpiryContext, useKeyExpiry, useExpiryClock } from "./account/useKeyExpiry"; // C127
 import { KeyExpiryStatus, KeyExpiryRestore } from "./account/KeyExpiry.js"; // C127
@@ -1829,6 +1830,7 @@ export default function Dashboard() {
               {live && apiKey && <TelegramLink key={apiKey} principalKey={apiKey}/>}
               {live && apiKey && <SecurityAlertsSettings key={apiKey} apiKey={apiKey}/>} {/* D138 */}
               {live && apiKey && <SignedInBrowsers key={apiKey} apiKey={apiKey} onChanged={refresh} onSignedOut={() => { setApiKey(""); setWs(null); setSecrets({}); setResult(null); setModal(null); abort.current?.abort(); }}/>} {/* E147 */}
+              {live && apiKey && <LinkedWalletsSettings key={apiKey} apiKey={apiKey}/>} {/* E154 */}
               <div className="settings-grid">
                 <div className="settings-panel">
                   <h3>{live ? "This browser" : "Browser-local data"}</h3>

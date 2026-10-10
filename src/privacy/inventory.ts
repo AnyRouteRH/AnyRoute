@@ -12,6 +12,7 @@ import { describeLowBalance } from "./low-balance.ts"; // B119
 import { guardTables } from "./tables/agent-guard.ts"; // V98
 import { describeWeeklySummary } from "./weekly-summary.ts"; // B120
 import { agentPayTables } from "./agent-pay.ts"; // Pay another agent
+import { describeLinkedWallets } from "./linked-wallets.ts"; // E154
 import { webhookTables } from "./webhooks.ts"; // V86: retained webhook configuration and attempt metadata.
 import { facilitatorTables } from "./facilitator.ts"; // v6 F: hosted x402 facilitator.
 import { makegoodTables } from "./makegood.ts"; // V6 R: make-good refunds.
@@ -68,6 +69,7 @@ describeModelArrivals(TABLE_DOCS); // C131
 describeQuietAlerts(TABLE_DOCS); // D141
 describeBrowserSessions(TABLE_DOCS); // E147
 describeNotifications(TABLE_DOCS); // E146
+describeLinkedWallets(TABLE_DOCS); // E154
 export { EXTERNAL };
 
 // ---- consistency -----------------------------------------------------------------------------------------------------

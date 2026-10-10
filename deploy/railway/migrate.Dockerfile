@@ -19,6 +19,7 @@ COPY src/agents/policy-versions-schema.ts ./src/agents/policy-versions-schema.ts
 COPY src/agents/approval-schema.ts ./src/agents/approval-schema.ts
 COPY src/agents/guard-schema.ts ./src/agents/guard-schema.ts
 COPY src/agents/pay-schema.ts ./src/agents/pay-schema.ts
+COPY src/wallets/schema.ts ./src/wallets/schema.ts
 COPY src/agents/ledger-schema.ts ./src/agents/ledger-schema.ts
 COPY src/facilitator/schema.ts ./src/facilitator/schema.ts
 COPY src/tools/schema.ts ./src/tools/schema.ts

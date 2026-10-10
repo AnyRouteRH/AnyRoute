@@ -1,3 +1,4 @@
+import { secondaryWallets } from "../wallets/store.ts"; // E154
 import { withDepositCountdown } from "../pay/deposit-countdown.ts"; // B123
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
@@ -26,6 +27,9 @@ export function escrowRoutes(app: Hono, ctx: Ctx) {
     c.header("Cache-Control", "no-store"); // B123
     const key = await requireKey(ctx, c.req.header("authorization"));
     const wallet = key.accountId.startsWith("w_") ? `0x${key.accountId.slice(2)}` : null;
+    const linked = await secondaryWallets(ctx.db, key.accountId); // E154
+    const deposits = await escrowDepositsFor(ctx, key.accountId); // E154
+    if (!wallet && (linked.length || deposits.length)) return c.json({ data: { enabled: escrowEnabled(ctx), wallet, deposits: await withDepositCountdown(ctx, deposits) } }); // E154
     return c.json({
       data: {
         enabled: escrowEnabled(ctx),

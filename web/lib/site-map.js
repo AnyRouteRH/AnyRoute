@@ -247,3 +247,4 @@ TASKS.push({ ...task('approvers', 'agents', 'Let teammates approve', 'Choose who
 TASKS.push(task("key-ip-allowlist", "build", "Limit a key to IP addresses", "Choose the addresses and network ranges that may use a key.", "/docs/#key-ip-allowlist", "ip, allowlist, cidr, ipv4, ipv6, security")); // E148
 
 TASKS.push(task("read-only-keys", "build", "Share read-only account access", "Give accountants and dashboards a key that cannot spend or change anything.", "/docs/#read-only-keys", "read only, keys, accountant, dashboard, statements, activity")); // E149
+TASKS.push({ ...task('linked-wallets', 'build', 'Link another wallet', 'Link another wallet in account Settings for deposits and agent payments.', '/docs/#linked-wallets', 'wallet, link, unlink, deposit, settings'), menu: false }); // E154

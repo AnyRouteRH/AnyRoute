@@ -1,3 +1,4 @@
+import { depositAccount, accountDepositFilter } from "../wallets/store.ts"; // E154
 import { creditFastEscrow } from "./fast-credit-escrow.ts"; // V97
 import { fastCreditFields } from "./fast-credit-state.ts"; // V97
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
@@ -524,10 +525,10 @@ export async function creditEscrowDeposits(ctx: Ctx, fin?: EscrowFinal) {
     // Above the per-deposit limit only the limit is credited; the rest waits for the operator.
     const amount = tok.maxCredit !== null && full > tok.maxCredit ? tok.maxCredit : full;
     const over = amount < full ? { value: usd2(full), limit: usd2(amount) } : null;
-    const accountId = escrowAccountId(d.fromAddress);
     const done = await ctx.db.transaction(async (tx) => {
       const [row] = await tx.select().from(escrowDeposits).where(eq(escrowDeposits.id, d.id)).for("update");
       if (!row || row.status !== "pending" || row.blockNumber !== v.blockNumber) return false;
+      const accountId = await depositAccount(tx, d.fromAddress); // E154
       await ensureAccount(tx, accountId, "wallet", d.fromAddress);
       if (amount > 0n)
         await post(tx, {
@@ -712,7 +713,7 @@ export const escrowStage = (status: EscrowStatus, awaitingPrice: boolean): Escro
   status === "pending_finality" ? "confirming" : status === "pending" ? (awaitingPrice ? "awaiting_price" : "crediting") : status;
 
 export async function escrowDepositsFor(ctx: Ctx, accountId: string, limit = 50) {
-  const rows = await ctx.db.select().from(escrowDeposits).where(eq(escrowDeposits.fromAddress, accountId.startsWith("w_") ? `0x${accountId.slice(2)}` : "")).orderBy(desc(escrowDeposits.blockNumber), desc(escrowDeposits.logIndex)).limit(limit);
+  const rows = await ctx.db.select().from(escrowDeposits).where(await accountDepositFilter(ctx.db, accountId)).orderBy(desc(escrowDeposits.blockNumber), desc(escrowDeposits.logIndex)).limit(limit);
   // Deposits that are final but unpriced say why, from the same cached reading the public price endpoint serves.
   const reasons = new Map<string, PriceReason | null>();
   for (const token of new Set(rows.filter((d) => d.status === "pending").map((d) => d.token))) {

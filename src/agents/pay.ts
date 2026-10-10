@@ -1,3 +1,4 @@
+import { secondaryWallets } from "../wallets/store.ts"; // E154
 import { and, asc, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { Hex } from "viem";
 import { z } from "zod";
@@ -73,7 +74,8 @@ export async function resolveRecipient(ctx: Ctx, to: string): Promise<Recipient>
 export async function linkedWallets(db: Db | Tx, accountId: string): Promise<string[]> {
   const [account] = await db.select({ wallet: accounts.wallet }).from(accounts).where(eq(accounts.id, accountId));
   const owned = await db.select({ wallet: teams.ownerAddress }).from(teams).where(and(eq(teams.ownerAccount, accountId), isNotNull(teams.ownerAddress), isNotNull(teams.ownerVerifiedAt)));
-  return [...new Set([account?.wallet, ...owned.map(o => o.wallet)].filter((w): w is string => !!w && ADDRESS.test(w)).map(w => w.toLowerCase()))].sort();
+  const linked = await secondaryWallets(db, accountId); // E154
+  return [...new Set([account?.wallet, ...owned.map(o => o.wallet), ...linked.map(w => w.wallet)].filter((w): w is string => !!w && ADDRESS.test(w)).map(w => w.toLowerCase()))].sort();
 }
 
 export const NOT_LINKED = "No wallet is linked to this account. Pay from the wallet you signed in with (wallet sign-in creates the account), or from the verified owner wallet of an organisation this account owns.";

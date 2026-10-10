@@ -23,6 +23,7 @@ import { depositProgressReader } from "./deposit-progress.ts"; // V97B
 import { rushStores } from "./rush.ts"; // ON3
 import { toolsBodyReader, toolsRateFamilies, toolsStores } from "./tools.ts"; // v6 T: paid tool market.
 import { agentPayBodyReader, agentPayRateFamily } from "./agent-pay.ts"; // Pay another agent
+import { linkedWalletReader, linkedWalletRate } from "./linked-wallets.ts"; // E154
 import { feedbackLimit, identityBodyReader, identityStores } from "./identity.ts"; // v6 I
 import { provisioningBodyReader, inferenceModelReader } from "./provisioning.ts"; // ZK6
 import { structuredOutputReader } from "./structured-output.ts"; // V83
@@ -84,6 +85,7 @@ const redisFamilies: RedisFamily[] = [
   anonymousRateFamily, // HD1
   ...toolsRateFamilies, // v6 T
   agentPayRateFamily, // Pay another agent
+  linkedWalletRate, // E154
   limit({ prefix: "agent-certificate:", shape: "agent-certificate:<account id>", purpose: "Record-certificate and track-record issuance attempts: five per minute per account, shared across standalone, profile and track-record issuance, its keys and router replicas. Contains only the account id and a counter; no certificate pseudonym, claims or stats.", holds: "account", seconds: 60, evidence: [ev("src/api/agent-certificates.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/agents/profiles.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`"), ev("src/identity/track-record.ts", "await ctx.limiter.take(`agent-certificate:${key.accountId}`")] }),
   limit({ prefix: "agent-replay:", shape: "agent-replay:<caller key hash>", purpose: "Rulebook replays (POST /api/v1/agents/:key_hash/replay), ten per minute per calling key. Contains only the caller's key hash and a counter; no draft, call or result.", holds: "key-hash", seconds: 60, evidence: [ev("src/api/agents.ts", "await ctx.limiter.take(`agent-replay:${caller.keyHash}`")] }),
   feedbackLimit, // v6 I
@@ -453,6 +455,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   depositProgressReader, // V97B
   toolsBodyReader, // v6 T
   agentPayBodyReader, // Pay another agent
+  linkedWalletReader, // E154
   approveAndAllowBodyReader, // B118
   policyHistoryBodyReader, // D144
   provisioningBodyReader, inferenceModelReader, // ZK6

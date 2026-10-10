@@ -25,6 +25,7 @@ import WeeklySummaryDocs from "../../components/WeeklySummaryDocs"; // B120
 import ScheduledPromptsDocs from "../../components/ScheduledPromptsDocs"; // D136
 import PriceNoticesDocs from "../../components/PriceNoticesDocs"; // C133
 import AgentPayDocs from "../../components/AgentPayDocs"; // Pay another agent
+import LinkedWalletsDocs from "../../components/linked-wallets/LinkedWalletsDocs"; // E154
 import FastCreditDocs from '../../components/FastCreditDocs'; // V97
 import KeyProvisioningDocs from "../../components/KeyProvisioningDocs"; // ZK6
 import UnusedKeysDocs from "../../components/UnusedKeysDocs"; // B125
@@ -935,6 +936,7 @@ export default function Docs() {
           <ScheduledPromptsDocs /> {/* D136 */}
           <PriceNoticesDocs /> {/* C133 */}
           <AgentPayDocs /> {/* Pay another agent */}
+          <LinkedWalletsDocs /> {/* E154 */}
           <TradingAgentDocs /> {/* B */}
           <DecisionTagDocs /> {/* B: decision tags */}
           <ProjectsDocs /> {/* C134 */}

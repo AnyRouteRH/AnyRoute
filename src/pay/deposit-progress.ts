@@ -1,3 +1,4 @@
+import { accountDepositFilter } from "../wallets/store.ts"; // E154
 import { and, desc, eq, inArray, like, sql } from "drizzle-orm";
 import { formatUnits, type Hex } from "viem";
 import { CreditsAbi } from "../chain/abis.ts";
@@ -73,7 +74,7 @@ export async function accountDeposits(ctx: Ctx, accountId: string) {
     if (hashes.has(String(args.keyHash).toLowerCase())) usdLogs.set(`${e.txHash}:${e.logIndex}`, { ...e, txHash: e.txHash as Hex, contract: "credits", args });
   }
   const wallet = accountId.startsWith("w_") ? `0x${accountId.slice(2)}` : "";
-  const escrow = wallet ? await ctx.db.select().from(escrowDeposits).where(eq(escrowDeposits.fromAddress, wallet)).orderBy(desc(escrowDeposits.blockNumber), desc(escrowDeposits.logIndex)).limit(50) : [];
+  const escrow = await ctx.db.select().from(escrowDeposits).where(await accountDepositFilter(ctx.db, accountId)).orderBy(desc(escrowDeposits.blockNumber), desc(escrowDeposits.logIndex)).limit(50); // E154
   const explorer = ctx.cfg.chain.explorerUrl;
   const base = (lane: string, tx: string, index: number, block: bigint) => {
     const remaining = lane === "usdg" ? null : depositRemainingSeconds(block, fin, credit);

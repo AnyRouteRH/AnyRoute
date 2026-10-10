@@ -84,6 +84,7 @@ import { memoryRoutes } from "./api/memory.ts";
 import { agentCertificatesRoutes } from "./api/agent-certificates.ts";
 import { guardRoutes } from "./api/guard.ts"; // V98
 import { agentPayRoutes } from "./api/agent-pay.ts"; // Pay another agent
+import { linkedWalletRoutes } from "./api/linked-wallets.ts"; // E154
 import { agentsRoutes } from "./api/agents.ts";
 import { agentPolicyHistoryRoutes } from "./api/agent-policy-history.ts"; // D144
 import { playbooksRoutes } from "./api/playbooks.ts"; // U115
@@ -265,6 +266,7 @@ export async function createApp(opts: AppOptions = {}) {
   playbooksRoutes(app, ctx); // U115: after agentsRoutes, whose /api/v1/agents/* switch also covers the follow route.
   guardRoutes(app, ctx); // V98
   agentPayRoutes(app, ctx); // Pay another agent (AGENT_PAY_ENABLED)
+  linkedWalletRoutes(app, ctx); // E154
   agreementsRoutes(app, ctx);
   agentCertificatesRoutes(app, ctx);
   agentLedgerRoutes(app, ctx);

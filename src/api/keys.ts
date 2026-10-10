@@ -1,6 +1,7 @@
 import { recordBrowserSession } from "../browser-sessions/labels.ts"; // E147
 import { readScopeInput, readKeyFields } from "../read-only/keys.ts"; // E149
 import { allowedIpsInput } from "../key-ip/allowlist.ts"; // E148
+import { assertWalletSignIn } from "../wallets/store.ts"; // E154
 import { recordKeySecurity } from "../security-alerts/records.ts"; // D138
 import { projectInput, projectJson } from "../projects/tags.ts"; // C134
 import { compatibilityFields, keyPagination, provisionedScope } from "../provisioning/keys.ts"; // ZK6
@@ -539,6 +540,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     const row = await ctx.db.transaction(async (tx) => {
       const used = await tx.delete(kv).where(eq(kv.key, challenge.key)).returning({ key: kv.key });
       if (!used.length || value.expires < Date.now()) fail(401, "Wallet challenge is expired or already consumed.", "invalid_wallet_auth");
+      await assertWalletSignIn(tx, value.address); // E154
       await ensureAccount(tx, accountId, "wallet", value.address);
       const [key] = await tx.insert(keys).values({ keyHash: d.keyHash, chainKeyHash: d.chainKeyHash, keyAddress: d.keyAddress, accountId, label: d.label, name: v.name ?? "wallet", management: true, rpm: ctx.cfg.limits.defaultRpm || null }).returning();
       await recordKeySecurity(ctx, tx, key, key, undefined, value.address); // D138

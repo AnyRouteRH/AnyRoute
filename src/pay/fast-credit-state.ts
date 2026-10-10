@@ -1,3 +1,4 @@
+import { depositAccount } from "../wallets/store.ts"; // E154
 import { and, eq, like, sql } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import type { Db, Tx } from "../db/client.ts";
@@ -47,6 +48,7 @@ export async function applyFastDeposit(ctx: Ctx, candidate: FastDeposit, final: 
       const [old] = await tx.select({ id: ledger.id }).from(ledger).where(eq(ledger.ref, candidate.ref));
       if (old) return null;
       d = { ...candidate, provisional: "0", status: "provisional" };
+      if (d.wallet) d.accountId = await depositAccount(tx, d.wallet); // E154: resolve only the first credit
     }
     if (!final && d.provisional !== "0") return d;
     const total = BigInt(d.total);

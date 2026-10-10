@@ -6,7 +6,19 @@
     "documentation": "/docs/#telegram-photos",
     "description": "Private human Telegram photos only. Connected API key auth on existing POST /api/v1/chat/completions; existing multimodal messages, billing, spending limits, receipts and attested-lane guard. Largest available size up to 8 MB; baseline JPEG coefficients re-encoded without EXIF or application metadata in memory. No photo persistence. Caption or fixed question. Non-vision models receive up to three catalog vision suggestions and /model instructions. No new HTTP endpoint or request field. Off preserves the text-only reply."
   },
-  "x-e149-read-only-keys": {"creation": "POST /api/v1/keys with management Bearer authentication and scope: read; omit management and team", "scope_values": ["account", "inference", "read"], "fixed_at_creation": true, "visibility": "owner account reads on the explicit GET allow-list in /docs/#read-only-keys, subject to existing feature flags and ownership guards", "refusal": "403 read_only_key for all other methods and paths, including paid GET tools, wallet actions and secret endpoints", "ip_allowlist": "Existing owner PATCH allowed_ips and ingress checks apply", "flag": null},
+  "x-e149-read-only-keys": {
+    "creation": "POST /api/v1/keys with management Bearer authentication and scope: read; omit management and team",
+    "scope_values": [
+      "account",
+      "inference",
+      "read"
+    ],
+    "fixed_at_creation": true,
+    "visibility": "owner account reads on the explicit GET allow-list in /docs/#read-only-keys, subject to existing feature flags and ownership guards",
+    "refusal": "403 read_only_key for all other methods and paths, including paid GET tools, wallet actions and secret endpoints",
+    "ip_allowlist": "Existing owner PATCH allowed_ips and ingress checks apply",
+    "flag": null
+  },
   "openapi": "3.1.0",
   "x-agreements-jury": {
     "internal_flag": "AGREEMENT_JURY_INTERNAL_ENABLED",
@@ -10982,7 +10994,66 @@
         }
       }
     },
-    "/api/v1/keys/current-ip": {"get": {"tags": ["Keys"], "operationId": "getCurrentClientIp", "summary": "Return your client IP once", "description": "E148: Requires bearer owner/admin permission. Uses the existing trusted-proxy hop helper; no address is stored or logged by this feature. Onion and unlinkable ingress is refused. Response has Cache-Control: no-store.", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "Client address in memory only.", "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}}, "content": {"application/json": {"schema": {"type": "object", "properties": {"data": {"type": "object", "properties": {"ip": {"type": "string"}}, "required": ["ip"]}}, "required": ["data"]}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "503": {"description": "Client address unavailable."}}}},
+    "/api/v1/keys/current-ip": {
+      "get": {
+        "tags": [
+          "Keys"
+        ],
+        "operationId": "getCurrentClientIp",
+        "summary": "Return your client IP once",
+        "description": "E148: Requires bearer owner/admin permission. Uses the existing trusted-proxy hop helper; no address is stored or logged by this feature. Onion and unlinkable ingress is refused. Response has Cache-Control: no-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Client address in memory only.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "ip": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "ip"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "description": "Client address unavailable."
+          }
+        }
+      }
+    },
     "/api/v1/keys/{hash}": {
       "get": {
         "tags": [
@@ -21183,6 +21254,334 @@
           }
         }
       }
+    },
+    "/api/v1/account/wallets": {
+      "get": {
+        "tags": [
+          "Linked wallets"
+        ],
+        "summary": "List linked secondary wallets",
+        "description": "E154. Requires an account owner management API key. Responses are not cached.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "wallet",
+                          "linked_at"
+                        ],
+                        "properties": {
+                          "wallet": {
+                            "type": "string",
+                            "pattern": "^0x[0-9a-fA-F]{40}$"
+                          },
+                          "linked_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Wallet has its own account or is already linked; accounts cannot be merged"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Linked wallets"
+        ],
+        "summary": "Verify a one-time secondary wallet signature",
+        "description": "E154. Requires an account owner management API key. Responses are not cached.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "wallet",
+                        "linked_at"
+                      ],
+                      "properties": {
+                        "wallet": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-fA-F]{40}$"
+                        },
+                        "linked_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Wallet has its own account or is already linked; accounts cannot be merged"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "nonce",
+                  "signature"
+                ],
+                "properties": {
+                  "nonce": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{48}$"
+                  },
+                  "signature": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]+$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/wallets/challenge": {
+      "post": {
+        "tags": [
+          "Linked wallets"
+        ],
+        "summary": "Request a five-minute wallet link message",
+        "description": "E154. Requires an account owner management API key. Responses are not cached.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "nonce",
+                        "message",
+                        "chain_id",
+                        "expires_at"
+                      ],
+                      "properties": {
+                        "nonce": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{48}$"
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "Exact personal-sign message binding account, action, origin, chain ID, secondary wallet, nonce and expiry."
+                        },
+                        "chain_id": {
+                          "type": "integer"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Wallet has its own account or is already linked; accounts cannot be merged"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "address"
+                ],
+                "properties": {
+                  "address": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{40}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/wallets/{address}": {
+      "delete": {
+        "tags": [
+          "Linked wallets"
+        ],
+        "summary": "Unlink a secondary wallet after confirmation",
+        "description": "E154. Requires an account owner management API key. Responses are not cached.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "wallet": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-fA-F]{40}$"
+                        },
+                        "unlinked": {
+                          "type": "boolean",
+                          "const": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Wallet has its own account or is already linked; accounts cannot be merged"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "confirm"
+                ],
+                "properties": {
+                  "confirm": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^0x[0-9a-fA-F]{40}$"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -25262,7 +25661,15 @@
       "KeyCreateRequest": {
         "type": "object",
         "properties": {
-          "scope": {"type": "string", "enum": ["account", "inference", "read"], "description": "E149: create only; scope is fixed. Explicit scope requires a management Bearer key. read cannot use management or team and can never spend or write."},
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "inference",
+              "read"
+            ],
+            "description": "E149: create only; scope is fixed. Explicit scope requires a management Bearer key. read cannot use management or team and can never spend or write."
+          },
           "project": {
             "type": [
               "string",
@@ -25316,7 +25723,19 @@
             ],
             "minimum": 1
           },
-          "allowed_ips": {"type": ["array", "null"], "minItems": 1, "maxItems": 32, "items": {"type": "string", "maxLength": 64}, "description": "E148: PATCH only. Owner-set IPv4/IPv6 addresses or CIDRs; null removes the restriction. Key reads return null by default. A mismatch, onion or unlinkable request is refused before routing or charging with 403 ip_not_allowed. Caller IP is compared in memory and is not stored or logged by this feature."},
+          "allowed_ips": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "E148: PATCH only. Owner-set IPv4/IPv6 addresses or CIDRs; null removes the restriction. Key reads return null by default. A mismatch, onion or unlinkable request is refused before routing or charging with 403 ip_not_allowed. Caller IP is compared in memory and is not stored or logged by this feature."
+          },
           "allowed_models": {
             "type": [
               "array",
@@ -25463,7 +25882,15 @@
           "created_at"
         ],
         "properties": {
-          "scope": {"type": "string", "enum": ["account", "inference", "read"], "description": "E149: read permits owner account visibility only on the explicit GET allow-list; all other paths and methods return 403 read_only_key."},
+          "scope": {
+            "type": "string",
+            "enum": [
+              "account",
+              "inference",
+              "read"
+            ],
+            "description": "E149: read permits owner account visibility only on the explicit GET allow-list; all other paths and methods return 403 read_only_key."
+          },
           "expires_at": {
             "type": [
               "string",
@@ -25490,7 +25917,19 @@
           "usage": {
             "type": "number"
           },
-          "allowed_ips": {"type": ["array", "null"], "minItems": 1, "maxItems": 32, "items": {"type": "string", "maxLength": 64}, "description": "E148: PATCH only. Owner-set IPv4/IPv6 addresses or CIDRs; null removes the restriction. Key reads return null by default. A mismatch, onion or unlinkable request is refused before routing or charging with 403 ip_not_allowed. Caller IP is compared in memory and is not stored or logged by this feature."},
+          "allowed_ips": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "E148: PATCH only. Owner-set IPv4/IPv6 addresses or CIDRs; null removes the restriction. Key reads return null by default. A mismatch, onion or unlinkable request is refused before routing or charging with 403 ip_not_allowed. Caller IP is compared in memory and is not stored or logged by this feature."
+          },
           "allowed_models": {
             "type": [
               "array",
