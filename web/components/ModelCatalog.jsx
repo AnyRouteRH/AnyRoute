@@ -1,4 +1,6 @@
 "use client";
+import ModelPerformance from "./ModelPerformance"; // E150
+import { catalogSortFromUrl, catalogSortUrl } from "../lib/model-performance.js"; // E150
 import { NewModelBadge, NewModelsFilter } from "./NewModels"; // C131
 import { useEffect, useMemo, useState } from "react";
 import { api, toCatalogModel } from "../lib/api";
@@ -20,10 +22,20 @@ export default function ModelCatalog({ onChoose }) {
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const providers = useRouteProviders(); // U99: uptime, latency and attestation for the route cards.
+  useEffect(() => { // E150: restore links and browser Back/Forward without replacing other URL state.
+    const restore = () => setSort(catalogSortFromUrl(window.location.href));
+    restore();
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  const changeSort = value => { // E150
+    setSort(value);
+    window.history.pushState(window.history.state, "", catalogSortUrl(window.location.href, value));
+  };
   useEffect(() => {
     let active = true;
     setError("");
-    api("/api/v1/models").then(r => {
+    api("/api/v1/models?health=recent").then(r => {
       if (!active) return;
       setModels(r.data);
       setObservedAt(new Date());
@@ -38,7 +50,7 @@ export default function ModelCatalog({ onChoose }) {
   return <>
     <div className="catalog-tools">
       <label className="search-label"><span className="sr-only">Search models or providers</span><input type="search" className="search-field" placeholder="Search models or providers…" value={query} onChange={e => setQuery(e.target.value)} /></label>
-      <label className="select-label"><span className="sr-only">Sort models</span><select aria-label="Sort models" value={sort} onChange={e => setSort(e.target.value)}>{CATALOG_SORTS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+      <label className="select-label"><span className="sr-only">Sort models</span><select aria-label="Sort models" value={sort} onChange={e => changeSort(e.target.value)}>{CATALOG_SORTS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
     </div>
     <div className={s.filters} role="group" aria-label="Filter by capability">{MODEL_CAPABILITIES.map(tag => <button type="button" key={tag.key} title={tag.explanation} aria-pressed={tags.includes(tag.key)} onClick={() => toggle(tag.key)} disabled={!tags.includes(tag.key) && !counts[tag.key]}>{tag.label} <span>{counts[tag.key]}</span></button>)}</div>
     <NewModelsFilter tags={tags} onToggle={toggle} /> {/* C131 */}
@@ -54,6 +66,7 @@ export default function ModelCatalog({ onChoose }) {
         <h3>{model.name}</h3><p>{model.description}</p><CapabilityChips model={raw} />
         <div className="model-meta"><span>{model.context} context</span><span>{model.providers} provider{model.providers === 1 ? "" : "s"}</span></div>
         <div className="model-meta"><span>${perM(model.price)} / 1M input</span><span>${perM(model.output)} / 1M output</span></div>
+        <ModelPerformance model={raw} /> {/* E150 */}
         <RouteCardDetails model={raw} providers={providers} />
         <div className="button-row"><button className="text-button" onClick={() => setSelected(raw)}>Model details →</button>{modelUnavailable(raw) ? <span role="status">Temporarily unavailable</span> : onChoose ? <button className="text-button" onClick={() => onChoose(model.id)}>Try model →</button> : <a className="text-button" href={chooseHref(model.id)}>Try model →</a>}</div>
         <div className="card-ramp" aria-hidden="true" />

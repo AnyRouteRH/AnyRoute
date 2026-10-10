@@ -4472,6 +4472,7 @@
         "operationId": "listModels",
         "summary": "List public live models",
         "parameters": [
+          { "name": "health", "in": "query", "required": false, "description": "E150: recent adds measured performance for eligible funded routes; omitted by default. No key required. Alias: GET /v1/models?health=recent.", "schema": { "type": "string", "enum": ["recent"] } },
           {
             "name": "supported_parameters",
             "in": "query",
@@ -22718,6 +22719,7 @@
           "supported_parameters"
         ],
         "properties": {
+          "performance": {"type": "object", "description": "E150: present only with health=recent. Best measured route median latency and throughput over 30 minutes, with at least three successful readings per metric; latency is first-token time for streams, full-response time otherwise. Observation-weighted model success rate across eligible funded routes over 30 days, including probes, excluding client rejections and rate limits; no routing prior. Unknown metrics are null. Speed is in memory and empty after restart.", "properties": {"latency_p50_ms": {"type": "number", "nullable": true, "minimum": 0}, "throughput_p50_tps": {"type": "number", "nullable": true, "minimum": 0}, "speed_window_seconds": {"type": "integer", "enum": [1800]}, "uptime_percent": {"type": "number", "nullable": true, "minimum": 0, "maximum": 100}, "uptime_window_days": {"type": "integer", "enum": [30]}, "uptime_observations": {"type": "integer", "minimum": 0}}},
           "added_at": {
             "type": "integer",
             "format": "int64",

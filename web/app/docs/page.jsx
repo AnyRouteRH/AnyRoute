@@ -1,4 +1,5 @@
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
+import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
@@ -893,6 +894,7 @@ export default function Docs() {
           <ChatFoldersDocs /> {/* D143 */}
           <DarkModeDocs/> {/* C126 */}
           <NewModelsDocs /> {/* C131 */}
+          <ModelPerformanceDocs /> {/* E150 */}
           <DepositCountdownDocs /> {/* B123 */}
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
           <KeyProvisioningDocs /> {/* ZK6 */}

@@ -1,0 +1,8 @@
+// E150
+export default function ModelPerformanceDocs() {
+  return <section id="model-performance">
+    <h2>Sort models by speed and reliability</h2>
+    <p>Choose Fastest right now, Highest throughput or Most reliable in the <a href="/models/?sort=fastest">model catalogue</a>. Each card names its measurement window: speed uses the last 30 minutes and reliability uses the last 30 days. Models without a reading appear last and show “No recent data”. Your chosen sort stays in the link. The fastest route and highest throughput may come from different providers; the router may choose another route. Latency measures time to first token for streaming requests and full-response time for other requests; reliability is the observed success rate across measured routes, including probes.</p>
+    <p>The public <code>GET /api/v1/models?health=recent</code> and <code>GET /v1/models?health=recent</code> need no key and add <code>performance</code>. Default responses are unchanged. <code>latency_p50_ms</code> is the lowest route median, and <code>throughput_p50_tps</code> is the highest route median; each needs three successful measurements in the last 1,800 seconds. Only eligible, funded routes are included. <code>uptime_percent</code> weights each route’s observed success rate by its observation count over 30 days, without the routing prior. Unknown metrics are <code>null</code>. The response names <code>speed_window_seconds</code>, <code>uptime_window_days</code> and <code>uptime_observations</code>. Recent speed data is held in memory and can be empty after a restart. The catalogue URL accepts <code>sort=fastest</code>, <code>sort=throughput</code> or <code>sort=reliable</code>.</p>
+  </section>;
+}

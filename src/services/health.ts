@@ -1,3 +1,4 @@
+import { recentPerformance } from "../catalog/model-performance.ts"; // E150
 import { refreshUpstreamHealth } from "../rush/monitor.ts"; // ON3
 import { sql } from "drizzle-orm";
 import { refreshNetworkRouting } from "../network/routing.ts";
@@ -127,6 +128,8 @@ export class HealthTracker implements HealthView {
       throughput: { p50: low(50), p75: low(75), p90: low(90), p99: low(99) },
     };
   }
+
+  catalogPerformance(modelId: string, providerId: string) { return recentPerformance(this.recent.get(this.k(modelId, providerId)) ?? []); } // E150
 
   snapshot(modelId: string, providerId: string) {
     return {

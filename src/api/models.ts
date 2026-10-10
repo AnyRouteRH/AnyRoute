@@ -1,3 +1,4 @@
+import { modelPerformance } from "../catalog/model-performance.ts"; // E150
 import { fundedOffers, modelAvailability, registerBalanceAvailability } from "../rush/availability.ts"; // ON5
 import { cacheModelLists } from "../rush/cache.ts"; // ON3
 import { capabilityJson, catalogOffers } from "./model-capabilities.ts";
@@ -218,6 +219,7 @@ export function modelsRoutes(app: Hono, ctx: Ctx) {
       .filter((m) => !m.hidden && servable(ctx, m).length > 0)
       .filter((m) => !outputs || outputModalities(m).some((o) => outputs.has(o)))
       .map((m) => modelJson(ctx, m))
+      .map((m) => c.req.query("health") === "recent" ? { ...m, performance: modelPerformance(ctx, m.id, fundedOffers(ctx, servable(ctx, ctx.catalog.models.get(m.id)!))) } : m) // E150
       .filter((m) => need.every((p) => m.supported_parameters.includes(p)))
       .filter((m) => !lane || m.lanes.includes(lane))
       .filter((m) => !variants || variants.has(m.variant))

@@ -1,7 +1,9 @@
+import { PERFORMANCE_SORTS, comparePerformance } from "./model-performance.js"; // E150
 import { isNewModel, NEW_MODELS_FILTER } from "./new-models.js"; // C131
 import { MODEL_CAPABILITIES, modelCapabilities } from "./model-capabilities.js";
 
 export const CATALOG_SORTS = [
+  ...PERFORMANCE_SORTS, // E150
   { key: "name", label: "Name" }, { key: "priceIn", label: "Price in · lowest first" },
   { key: "priceOut", label: "Price out · lowest first" }, { key: "context", label: "Context · largest first" },
 ];
@@ -21,6 +23,7 @@ export function searchModels(models, query = "") {
 }
 export function filterModels(models, { query = "", tags = [], sort = "name" } = {}) {
   const compare = {
+    ...Object.fromEntries(PERFORMANCE_SORTS.map(({ key }) => [key, (a, b) => comparePerformance(a, b, key)])), // E150
     priceIn: (a, b) => price(a, "prompt") - price(b, "prompt"),
     priceOut: (a, b) => price(a, "completion") - price(b, "completion"),
     context: (a, b) => context(b) - context(a),

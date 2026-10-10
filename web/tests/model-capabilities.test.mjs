@@ -72,7 +72,7 @@ test("name, input price, output price and context sorts are deterministic withou
   assert.deepEqual(ids("priceOut"), ["b", "a", "c"]);
   assert.deepEqual(ids("context"), ["c", "b", "a"]);
   assert.deepEqual(models.map(model => model.id), ["b", "a", "c"]);
-  assert.equal(CATALOG_SORTS.length, 4);
+  assert.deepEqual(CATALOG_SORTS.filter(option => ["name", "priceIn", "priceOut", "context"].includes(option.key)).map(option => option.key), ["name", "priceIn", "priceOut", "context"]);
 });
 
 test("Harness and models use the same module and chip component; API uses the canonical implementation", () => {

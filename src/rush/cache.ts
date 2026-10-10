@@ -35,6 +35,7 @@ export function cacheModelLists(app: Hono, ctx: Ctx) {
   const cache = new CatalogJsonCache();
   caches.set(ctx.catalog, cache);
   const middleware = async (c: Context, next: () => Promise<void>) => {
+    if (c.req.query("health") === "recent") { await next(); return; } // E150: fresh opt-in readings never share the default cache.
     // Warm only after freshness has been checked; a sync during compute must not cache an older revision.
     const query = JSON.stringify(["supported_parameters", "lane", "variant", "output_modalities"].map(name => c.req.query(name) ?? ""));
     const body = await cache.get(query, async () => {

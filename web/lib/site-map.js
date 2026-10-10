@@ -236,3 +236,4 @@ TASKS.push({ ...task('project-budgets', 'build', 'Set a project spending limit',
 TASKS.push({ ...task('rulebook-history', 'agents', 'Review rulebook history', 'See saved rules and restore a previous version after confirming.', '/docs/#rulebook-history', 'rulebook, history, restore, versions, changes'), menu: false }); // D144
 
 TASKS.push({ ...task("signed-in-browsers", "build", "Review signed-in browsers", "Open Settings to sign out a wallet sign-in or all other browsers.", "/dashboard/#settings", "browsers, sessions, sign out, wallet sign-in, security"), menu: false }); // E147
+TASKS.push({ ...task("model-performance", "build", "Sort models by speed and reliability", "Compare recent latency, tokens per second and observed reliability in the catalogue.", "/docs/#model-performance", "models, catalogue, fastest, throughput, reliable, uptime, latency"), menu: false }); // E150

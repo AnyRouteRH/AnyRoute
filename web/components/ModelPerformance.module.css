@@ -1,0 +1,5 @@
+/* E150 */
+.readings { display: grid; gap: 8px; margin: 16px 0; color: var(--ink); }
+.readings div { min-width: 0; }
+.readings dt { font: 500 11px/1.5 var(--mono); color: var(--muted); }
+.readings dd { margin: 2px 0 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
