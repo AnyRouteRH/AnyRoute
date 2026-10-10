@@ -17,6 +17,7 @@ import { defaultFundingOption } from "../lib/funding-display.js"; import { ANYR_
 import AccountStatements from "./account/AccountStatements"; import AccountExport from "./account/AccountExport"; // V87
 import AccountProofPack from "./account/AccountProofPack"; // U100
 import AccountLaneReport from "./account/AccountLaneReport"; // Lane report
+import AccountReliability from "./account/AccountReliability"; // E155
 import AccountInsights from "./account/AccountInsights"; // V88: spend insights.
 import AccountInbox from "./account/AccountInbox"; // U78: account inbox.
 import AccountActivity from "./account/AccountActivity";
@@ -1282,6 +1283,7 @@ export default function Dashboard() {
           {tab === "Statements" && apiKey && <AccountLaneReport key={`lane-report-${apiKey}`} apiKey={apiKey}/>} {/* Lane report */}
           {tab === "Statements" && apiKey && <AccountProofPack key={`proof-pack-${apiKey}`} apiKey={apiKey}/>} {/* U100 */}
           {tab === "Insights" && signedIn && <AccountInsights key={apiKey} apiKey={apiKey}/>} {/* V88: no figures before connection. */}
+          {tab === "Insights" && signedIn && <AccountReliability key={apiKey} apiKey={apiKey}/>} {/* E155 */}
           {tab === "Schedules" && apiKey && <AccountSchedules key={apiKey} apiKey={apiKey} keys={ws?.keys || []}/>} {/* D136 */}
           {tab === "Inbox" && apiKey && <AccountInbox key={apiKey} apiKey={apiKey}/>}
           {tab === "Playbooks" && <Playbooks key={apiKey} live={live && signedIn} apiKey={apiKey}/>} {/* U115 */}

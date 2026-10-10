@@ -1,0 +1,8 @@
+import type { ExternalDoc } from "./types.ts";
+export const reliabilityStores: ExternalDoc["otherStores"] = [{
+  id: "account-reliability-reader", name: "Account reliability response in memory",
+  purpose: "GET /api/v1/account/reliability aggregates up to seven rolling days of existing generations and denied inference agent policy decisions. It uses Activity's account-or-own-key visibility including sessions, deleted-key account stamps and the agent team boundary. Agent decisions are omitted while agent policies are off.",
+  holds: "Model identifiers; counts of recorded calls, non-cancelled/non-error completions, route records marked as fallback, and denied inference decisions grouped by lane, budget or other rulebook reasons; recorded streamed first-token latency and generation total time with interpolated median and p95. It reads only route presence/reason from existing receipt JSON and model/kind and reason codes from policy JSON, never messages, request text, arbitrary error strings, hashes, wallet addresses or key secrets. Percentages cover recorded calls or recorded routes only; pre-generation failures and general lane/balance refusals are missing. Decision counts are not unique requests and reason groups can overlap. No tables, columns, logs or Redis keys are added.",
+  ttl: "Discarded after the response; cache-control is no-store. Browser state lasts until refresh, key change or leaving the view; no report persistence. Existing source retention applies.", requestText: "none",
+  evidence: [{ file: "src/reliability/read.ts", contains: "export async function readReliability" }, { file: "src/api/account-reliability.ts", contains: 'c.header("cache-control", "no-store")' }],
+}];

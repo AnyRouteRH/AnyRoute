@@ -17,6 +17,7 @@ import { paymentRecovery } from "./pay/recovery.ts";
 import { statementRoutes } from "./api/statements.ts"; // V87
 import { proofPackRoutes } from "./api/proof-pack.ts"; // U100
 import { laneReportRoutes } from "./api/lane-report.ts"; // Lane report
+import { accountReliabilityRoutes } from "./api/account-reliability.ts"; // E155
 import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
 import { webhookRoutes } from "./webhooks/routes.ts"; // V86: signed destinations.
 import { makegoodRoutes } from "./services/makegood.ts"; // V6 R: make-good refunds.
@@ -232,6 +233,7 @@ export async function createApp(opts: AppOptions = {}) {
   proofPackRoutes(app, ctx); // U100
   laneReportRoutes(app, ctx); // Lane report: read-only, with statements
   insightsRoutes(app, ctx); // V88: read-only, off by default.
+  accountReliabilityRoutes(app, ctx); // E155: opt-in account reader.
   accountRunwayRoutes(app, ctx); // B119
   scheduledPromptRoutes(app, ctx, (path, init, env) => app.request(path, init, internalEnv(env) as never)); // D136
   inboxRoutes(app, ctx); // U78: account inbox.

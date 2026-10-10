@@ -2,6 +2,7 @@ const sections = [
   ["signed-in-browsers", "Signed-in browsers"], // E147
   ["model-performance", "Sort models by speed and reliability"], // E150
   ["model-pages", "A page for every model"], // E151
+  ["reliability-report", "Your reliability report"], // E155
   ["saved-answers", "Save answers in Chat"], // D140
   ["chat-folders", "Organize Chat into folders"], // D143
   ["share-to-anyroute", "Share to Anyroute from your phone"], // D137
