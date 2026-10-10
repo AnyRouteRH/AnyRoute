@@ -5,6 +5,201 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "key-ip-allowlist",
+    "date": "2026-10-10",
+    "title": "Lock a key to your servers' IP addresses",
+    "summary": "Give a key a list of up to 32 IP addresses or ranges. Calls from anywhere else are refused before anything is charged, and \"Use my current IP\" fills in the address you're on.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#key-ip-allowlist"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/03db25560720a3c95d7edf07c36a29e9a06568a4"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "read-only-keys",
+    "date": "2026-10-10",
+    "title": "Read-only keys",
+    "summary": "Mint a key that can see activity, spend, statements, keys and agents but can't call models, spend or change anything. Hand it to an accountant or a dashboard.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#read-only-keys"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/3e379bb28b2f1ba625eef98c1aeba91d754d6820"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "linked-wallets",
+    "date": "2026-10-10",
+    "title": "Link another wallet",
+    "summary": "Sign with a second wallet to link it to your account. Deposits from it land in the same balance, and you can unlink it at any time.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#linked-wallets"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/4acc63d27c7123bd4f3252446a55980e18e54125"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "approvers",
+    "date": "2026-10-10",
+    "title": "Let teammates approve",
+    "summary": "Choose who can approve each agent's requests: owners only, owners and admins, or named teammates. They can approve from their inbox or their own Telegram, and the record shows who decided.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#approvers"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/6ee07569062e41bd72501ef2a9053f0dff7d680f"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "notifications",
+    "date": "2026-10-10",
+    "title": "Choose where each notice goes",
+    "summary": "Settings has a Notifications page with an inbox and a Telegram switch for each kind of notice. Telegram quiet hours hold messages and send them as one bundle afterwards; approvals are never held.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#notifications"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/5dbd4ab6f54c0944d5a38d51213dfb65a114149f"
+      }
+    ],
+    "tags": [
+      "build",
+      "agents"
+    ]
+  },
+  {
+    "id": "reliability-report",
+    "date": "2026-10-10",
+    "title": "Your reliability report",
+    "summary": "Insights shows the last 7 days of your own calls by model: how many succeeded, how many used a fallback provider, recorded timings, and refusals by reason.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#reliability-report"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/bb1386c85b45f8b22478c68bedb84abf9a618185"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "telegram-balance-spend",
+    "date": "2026-10-10",
+    "title": "/balance and /spend in Telegram",
+    "summary": "In a linked Telegram chat, /balance shows your balance and how long it lasts at your recent pace, and /spend shows today, this week and your top agents.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#telegram-balance-spend"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ff49919d7f30271387ddb2a17ae280aafe27c048"
+      }
+    ],
+    "tags": [
+      "chat",
+      "agents"
+    ]
+  },
+  {
+    "id": "model-pages",
+    "date": "2026-10-10",
+    "title": "A page for every model",
+    "summary": "Every model has its own page with prices, context length, abilities, the providers serving it, live health and a ready-to-copy example. Catalogue cards link to it.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#model-pages"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/7c1328c4070b88e63f32ade599b6e58b6bf0d421"
+      }
+    ],
+    "tags": [
+      "chat",
+      "build"
+    ]
+  },
+  {
+    "id": "model-performance",
+    "date": "2026-10-10",
+    "title": "Sort models by live speed and reliability",
+    "summary": "The model catalogue can sort by fastest right now, highest throughput or most reliable. Each card says the value and its window, and models without enough recent readings sort last.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#model-performance"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/3ed9fe9ed9ffd7c0de9af1aba2da855733b1a79e"
+      }
+    ],
+    "tags": [
+      "chat",
+      "build"
+    ]
+  },
+  {
+    "id": "signed-in-browsers",
+    "date": "2026-10-10",
+    "title": "See and sign out signed-in browsers",
+    "summary": "Settings lists every browser signed in to your account with a coarse label like \"Chrome on macOS\" and when it signed in. Sign out one, or every browser except this one.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#signed-in-browsers"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/23ede47c7e83d0a65377009640f8ba4208e6424f"
+      }
+    ],
+    "tags": [
+      "build",
+      "privacy"
+    ]
+  },
+  {
     "id": "rulebook-history",
     "date": "2026-10-08",
     "title": "Rulebook history and restore",
