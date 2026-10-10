@@ -237,3 +237,4 @@ TASKS.push({ ...task('rulebook-history', 'agents', 'Review rulebook history', 'S
 
 TASKS.push({ ...task("signed-in-browsers", "build", "Review signed-in browsers", "Open Settings to sign out a wallet sign-in or all other browsers.", "/dashboard/#settings", "browsers, sessions, sign out, wallet sign-in, security"), menu: false }); // E147
 TASKS.push({ ...task("model-performance", "build", "Sort models by speed and reliability", "Compare recent latency, tokens per second and observed reliability in the catalogue.", "/docs/#model-performance", "models, catalogue, fastest, throughput, reliable, uptime, latency"), menu: false }); // E150
+TASKS.push({ ...task("model-pages", "chat", "Open a model page", "See a model’s abilities, prices, providers and health, then try it in Chat.", "/models/model/", "model, details, catalogue, health, speed, providers"), menu: false }); // E151

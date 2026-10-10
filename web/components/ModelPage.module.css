@@ -1,0 +1,17 @@
+/* E151 */
+.page { display: grid; gap: 32px; min-width: 0; }
+.heading { display: grid; gap: 14px; overflow-wrap: anywhere; }
+.heading h1 { font-size: clamp(32px, 5vw, 64px); line-height: 1.05; margin: 0; }
+.id { font-family: var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; }
+.facts > div { border-top: 1px solid var(--line); padding-top: 12px; }
+.facts dt { color: var(--muted); font-size: 13px; }
+.facts dd { margin: 6px 0 0; overflow-wrap: anywhere; font-family: var(--mono); }
+.providers { display: grid; gap: 16px; padding: 0; list-style: none; }
+.provider { padding: 20px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); min-width: 0; }
+.provider h3 { overflow-wrap: anywhere; }
+.note { color: var(--muted); line-height: 1.6; }
+.example { min-width: 0; }
+.example pre { max-width: 100%; overflow-x: auto; padding: 16px; background: var(--paper-2); color: var(--ink); font: 12px/1.7 var(--mono); }
+.page a:focus-visible, .page button:focus-visible, .example pre:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 4px; }
+@media (max-width: 480px) { .facts { grid-template-columns: minmax(0, 1fr); } .provider { padding: 16px; } }

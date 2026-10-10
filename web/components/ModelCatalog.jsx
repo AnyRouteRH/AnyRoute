@@ -11,6 +11,7 @@ import { CapabilityChips, CapabilityGuide } from "./ModelCapabilities";
 import { RouteCardDetails, useRouteProviders } from "./RouteCard"; // U99
 import { Button, Modal } from "./UI";
 import s from "./ModelCatalog.module.css";
+import ModelPageLink from "./ModelPageLink"; // E151
 
 export default function ModelCatalog({ onChoose }) {
   const [query, setQuery] = useState("");
@@ -68,6 +69,7 @@ export default function ModelCatalog({ onChoose }) {
         <div className="model-meta"><span>${perM(model.price)} / 1M input</span><span>${perM(model.output)} / 1M output</span></div>
         <ModelPerformance model={raw} /> {/* E150 */}
         <RouteCardDetails model={raw} providers={providers} />
+        <ModelPageLink model={raw} /> {/* E151 */}
         <div className="button-row"><button className="text-button" onClick={() => setSelected(raw)}>Model details →</button>{modelUnavailable(raw) ? <span role="status">Temporarily unavailable</span> : onChoose ? <button className="text-button" onClick={() => onChoose(model.id)}>Try model →</button> : <a className="text-button" href={chooseHref(model.id)}>Try model →</a>}</div>
         <div className="card-ramp" aria-hidden="true" />
       </article>;

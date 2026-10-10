@@ -6,6 +6,7 @@ import { NO_DATA, routeCard } from "../lib/route-card.js";
 import mc from "./ModelCapabilities.module.css";
 import pb from "./ProofBadge.module.css";
 import s from "./RouteCard.module.css";
+import ModelPageLink from "./ModelPageLink"; // E151
 
 // One provider list per minute, shared by every card on the page. A failed load reads "No data yet" and retries next time.
 let shared = null;
@@ -50,6 +51,7 @@ export default function RouteCard({ model, providers, dark = false, place, id })
       <div><dt>Best latency, p50</dt><Value text={card.health.latency} /></div>
       {card.proof && <div><dt>Hardware proof</dt><dd className={s.links}>{card.proof.providers.length ? card.proof.providers.map((p) => <a key={p.id} className={s.link} href={p.href}>Check {p.name} →</a>) : <a className={s.link} href={card.proof.href}>How to check →</a>}</dd></div>}
     </dl>
+    <ModelPageLink model={model} /> {/* E151 */}
     <details className={`${mc.guide} ${s.flush}`} data-dark={tone}>
       <summary>What this card shows</summary>
       <ul>
