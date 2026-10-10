@@ -30,6 +30,7 @@ export const keyTables: Record<string, TableDoc> = {
       tpm: "Tokens-per-minute limit for the key.",
       team_id: "The team the key belongs to, when it has one.",
       allowed_models: "If set, the only models the key may call.",
+      allowed_ips: { purpose: "The owner-set list of up to 32 IPv4 or IPv6 addresses or CIDR ranges from which this key may be used. Null means no IP restriction. Observed request addresses are compared in memory and never copied here or logged by this feature.", review: rv(["name:network"], "config", "Network restrictions written explicitly by the owner through key-edit authentication, validated as IPs or CIDRs. This is retained configuration, not a record of callers or calls.") }, // E148
       pay_with_default: "The Stock Token symbol the key pays with by default.",
       scope: "Null keeps account access; inference permits model calls and this key’s own generation and receipt reads only.", // ZK6
       include_byok_in_limit: "Stored compatibility selection. Provider-side BYOK expenditure is not tracked; usage counts router-billed charges once.", // ZK6

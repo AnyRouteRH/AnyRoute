@@ -1,6 +1,7 @@
 "use client";
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
 import AccountNotifications from "./notifications/AccountNotifications"; // E146
+import KeyIpAllowlist, { KeyIpContext } from "./account/KeyIpAllowlist"; // E148
 import SecurityAlertsSettings from "./security-alerts/SecurityAlertsSettings"; // D138
 import { KeyExpiryContext, useKeyExpiry, useExpiryClock } from "./account/useKeyExpiry"; // C127
 import { KeyExpiryStatus, KeyExpiryRestore } from "./account/KeyExpiry.js"; // C127
@@ -261,6 +262,7 @@ function KeyDialog({ existing, onSave, onClose, live }) {
           <input id="key-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required placeholder="e.g. Research agent" autoFocus />
         </Field>
         {expiry.fields} {/* C127 */}
+        {live && existing && <KeyIpAllowlist keyHash={existing.id} current={existing.current}/>} {/* E148 */}
         {withBudget && (
           <Field label={live ? KEY_BUDGET_WORDS.label : "Total sample budget / USDG"} id="key-budget">
             <input id="key-budget" type="number" min="0.000001" max="100000" step="any" value={budget} onChange={(e) => setBudget(e.target.value)} required={!live} placeholder={live ? "No total budget" : undefined} />
@@ -1871,9 +1873,11 @@ export default function Dashboard() {
       </section>
       </AccountShell>
       {modal?.type === "receipt" && <ReceiptDetails receipt={modal.data} apiKey={apiKey} status={status} onClose={() => setModal(null)} />}
+      <KeyIpContext.Provider value={apiKey}> {/* E148 */}
       <KeyExpiryContext.Provider value={ws?.me}> {/* C127 */}
       {modal?.type === "key" && <KeyDialog live={live} existing={modal.data} onClose={() => setModal(null)} onSave={saveKeyValues} />}
       </KeyExpiryContext.Provider> {/* C127 */}
+      </KeyIpContext.Provider> {/* E148 */}
       {modal?.type === "limits" && <KeyLimits apiKey={apiKey} keyHash={modal.data.id} name={modal.data.name} current={modal.data.current} topup={modal.data.topup} budget={modal.data.budget} reset={modal.data.reset} spent={modal.data.spent} onSaved={() => refresh().catch(() => {})} onClose={() => setModal(null)} />}
       {modal?.type === "session" && <SessionDialog live={live} tokens={ws?.tokens || []} paywith={ws?.paywith || {}} existing={modal.data} onClose={() => setModal(null)} onSave={saveSession} />}
       {modal?.type === "provider" && (

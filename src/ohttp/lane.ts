@@ -1,3 +1,4 @@
+import { assertKeyIpLane } from "../key-ip/allowlist.ts"; // E148
 import type { Context } from "hono";
 import type { Ctx } from "../context.ts";
 import { ApiError } from "../lib/errors.ts";
@@ -42,12 +43,14 @@ export function defaultLane(ctx: Ctx, c: Context, o: LaneAuth): Lane {
  *   - lane "unlinkable" otherwise must meet requireUnlinkable.
  */
 export function requestLane(ctx: Ctx, c: Context, provider: Record<string, unknown> | undefined, o: LaneAuth): DisclosureRequest {
+  assertKeyIpLane(c, String(provider?.lane)); // E148: refuse even when unlinkable is not served
   const disc = resolveDisclosureRequest(
     provider,
     { disclosureMax: c.req.header("x-anyroute-disclosure-max"), lane: c.req.header("x-anyroute-lane") },
     { unlinkable: unlinkableServed(ctx.cfg), defaultLane: defaultLane(ctx, c, o) },
   );
   const downgrade = parseLaneDowngrade(provider?.lane_downgrade, c.req.header("x-anyroute-lane-downgrade"));
+  assertKeyIpLane(c, disc.lane); // E148: even with a requested downgrade
   if (disc.lane !== "unlinkable") return disc;
   if (identityBearing(o) && downgrade === "attested") return { ...disc, lane: "attested", downgradedFrom: "unlinkable" };
   requireUnlinkable(ctx, c, o);

@@ -1,0 +1,5 @@
+/* E148 */
+.settings{border:1px solid var(--line);padding:16px;min-width:0;margin:16px 0;}
+.settings legend{font-weight:600;}
+.settings label{display:block;}
+.settings textarea{width:100%;max-width:100%;background:var(--paper);border:1px solid var(--line-strong);padding:10px;resize:vertical;}

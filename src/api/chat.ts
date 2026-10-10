@@ -1,3 +1,4 @@
+import { assertKeyIp } from "../key-ip/allowlist.ts"; // E148
 import { scheduleCallOf, scheduleKey, enforceScheduleCost } from "../schedules/caller.ts"; // D136
 import { captureProject, projectFields, assertProjectLane } from "../projects/tags.ts"; // C134
 import { addSuggestions, availabilityFailure, selectWithSuggestions } from "../model-alternatives/suggest.ts"; // B121
@@ -261,6 +262,7 @@ async function handle(ctx: Ctx, c: Context, kind: Kind, characterId?: string): P
   if (batchLine || scheduled || secret) {
     key = batchLine ? await batchKey(ctx, batchLine.keyHash) : scheduled ? await scheduleKey(ctx, scheduled) : await resolveKey(ctx, secret!);
     if (!key) fail(401, "Unknown API key. Create one (POST /api/v1/keys) or deposit USDG to its key hash first.", "invalid_key");
+    assertKeyIp(ctx, c, key, !!batchLine || !!scheduled); // E148: includes in-process batch and schedule calls
     await requireRole(ctx, key, ["owner", "admin", "member"]);
     tier = await holderTier(ctx, walletOfAccount(key.accountId));
     await limitOrThrow(ctx, `k:${key.keyHash}`, 1, scaleLimit(key.rpm ?? ctx.cfg.limits.defaultRpm, tier), "requests");

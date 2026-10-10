@@ -1,3 +1,4 @@
+import { assertKeyIp } from "../key-ip/allowlist.ts"; // E148
 import { captureProject, projectFields, assertProjectLane } from "../projects/tags.ts"; // C134
 import { refuseCreditExhaustion, refuseCreditOutage } from "../rush/errors.ts"; // ON3
 import { rememberRoutePlan, rememberRouteResult, routeReceiptFields, routeResponseHeaders } from "../router/explain.ts"; // V84
@@ -45,6 +46,7 @@ export function embeddingsRoutes(app: Hono, ctx: Ctx) {
     // A line of a batch (POST /api/v1/batches), dispatched in process by the batch runner as the key that submitted it.
     const batchLine = batchLineOf(c);
     const key = batchLine ? await batchKey(ctx, batchLine.keyHash) : bearer(c.req.header("authorization")) ? await requireKey(ctx, c.req.header("authorization")) : null;
+    if (key) assertKeyIp(ctx, c, key, !!batchLine); // E148: includes in-process batch calls
     if (key) await requireRole(ctx, key, ["owner", "admin", "member"]);
     captureProject(c, key); // C134
     let tier = key ? await holderTier(ctx, walletOfAccount(key.accountId)) : null; // $ANYR holders get a higher rpm

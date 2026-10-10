@@ -400,6 +400,7 @@
       "when": 1791600058000,
       "tag": "0058_policy_versions",
       "breakpoints": true
-    }
+    },
+    {"idx": 59, "version": "7", "when": 1791600059000, "tag": "0059_key_allowed_ips", "breakpoints": true}
   ]
 }

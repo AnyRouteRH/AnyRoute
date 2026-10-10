@@ -1,5 +1,6 @@
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
 import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
+import KeyIpAllowlistDocs from "../../components/KeyIpAllowlistDocs"; // E148
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
@@ -906,6 +907,7 @@ export default function Docs() {
           <KeyProvisioningDocs /> {/* ZK6 */}
           <UnusedKeysDocs /> {/* B125 */}
           <KeyExpiryDocs /> {/* C127 */}
+          <KeyIpAllowlistDocs /> {/* E148 */}
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
           <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs /><ReplayRulesDocs /><PlaybooksDocs /><StopUntilDocs /><RulebookWordsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs /> {/* B117 B124 */}

@@ -10981,6 +10981,7 @@
         }
       }
     },
+    "/api/v1/keys/current-ip": {"get": {"tags": ["Keys"], "operationId": "getCurrentClientIp", "summary": "Return your client IP once", "description": "E148: Requires bearer owner/admin permission. Uses the existing trusted-proxy hop helper; no address is stored or logged by this feature. Onion and unlinkable ingress is refused. Response has Cache-Control: no-store.", "security": [{"BearerAuth": []}], "responses": {"200": {"description": "Client address in memory only.", "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}}, "content": {"application/json": {"schema": {"type": "object", "properties": {"data": {"type": "object", "properties": {"ip": {"type": "string"}}, "required": ["ip"]}}, "required": ["data"]}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "503": {"description": "Client address unavailable."}}}},
     "/api/v1/keys/{hash}": {
       "get": {
         "tags": [
@@ -25313,6 +25314,7 @@
             ],
             "minimum": 1
           },
+          "allowed_ips": {"type": ["array", "null"], "minItems": 1, "maxItems": 32, "items": {"type": "string", "maxLength": 64}, "description": "E148: PATCH only. Owner-set IPv4/IPv6 addresses or CIDRs; null removes the restriction. Key reads return null by default. A mismatch, onion or unlinkable request is refused before routing or charging with 403 ip_not_allowed. Caller IP is compared in memory and is not stored or logged by this feature."},
           "allowed_models": {
             "type": [
               "array",
@@ -25485,6 +25487,7 @@
           "usage": {
             "type": "number"
           },
+          "allowed_ips": {"type": ["array", "null"], "minItems": 1, "maxItems": 32, "items": {"type": "string", "maxLength": 64}, "description": "E148: PATCH only. Owner-set IPv4/IPv6 addresses or CIDRs; null removes the restriction. Key reads return null by default. A mismatch, onion or unlinkable request is refused before routing or charging with 403 ip_not_allowed. Caller IP is compared in memory and is not stored or logged by this feature."},
           "allowed_models": {
             "type": [
               "array",

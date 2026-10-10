@@ -125,6 +125,7 @@ export const keys = pgTable(
     tpm: integer("tpm"),
     teamId: text("team_id"),
     allowedModels: text("allowed_models").array(),
+    allowedIps: text("allowed_ips").array(), // E148: owner-set allowlist
     payWithDefault: text("pay_with_default"),
     scope: text("scope"), // ZK6: null keeps existing account access; inference restricts routes
     includeByokInLimit: boolean("include_byok_in_limit").notNull().default(false), // ZK6: compatibility selection

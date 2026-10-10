@@ -1,5 +1,6 @@
 import { browserSessionStores } from "./browser-sessions.ts"; // E147
 import { agentApproversReader } from "./agent-approvers.ts"; // E153
+import { keyIpReader } from "./key-ip.ts"; // E148
 import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { chatFoldersBrowser } from "./chat-folders"; // D143
 import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
@@ -315,6 +316,7 @@ const redisFamilies: RedisFamily[] = [
 ];
 
 const addressReaders: Touchpoint[] = [
+  keyIpReader, // E148
   ...hardeningAddresses, // HD1
   facilitatorAddressReader, // v6 F
   { file: "src/api/network-hosts.ts", reads: "The caller address bucket on host signup and credential writes.", then: "Counts attempts through the existing per-address limiter; trusted proxy and onion rules apply.", kept: "Raw address in the limiter key for 61 seconds in Redis, or until the memory limiter sweeps; never in the host row or application log.", evidence: [ev("src/api/network-hosts.ts", "const from = addressBucket(c, ctx.cfg);")] },
@@ -587,6 +589,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
     file: "src/api/keys.ts",
     carries: "settings",
     reads: "Key settings (name, budget, limits, allowed models, tracing destination, scope, include_byok_in_limit and the auto top-up amounts), amounts, BYOK provider keys, team roles and wallet sign-in challenges.",
+    // E148: the same reader validates owner-set allowed_ips (1–32 IPs or CIDRs, or null) for PATCH and persists only that setting.
     then: "Validated and written to the keys, byok_keys, teams and kv tables as described above.",
     kept: "The settings and, for a BYOK key or a tracing destination, the key or the destination URL and credentials encrypted under APP_SECRET.",
     evidence: [ev("src/api/keys.ts", "const spec = keySpec.parse(await readJson(c));")],

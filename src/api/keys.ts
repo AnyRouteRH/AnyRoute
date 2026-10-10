@@ -1,4 +1,5 @@
 import { recordBrowserSession } from "../browser-sessions/labels.ts"; // E147
+import { allowedIpsInput } from "../key-ip/allowlist.ts"; // E148
 import { recordKeySecurity } from "../security-alerts/records.ts"; // D138
 import { projectInput, projectJson } from "../projects/tags.ts"; // C134
 import { compatibilityFields, keyPagination, provisionedScope } from "../provisioning/keys.ts"; // ZK6
@@ -27,6 +28,7 @@ import { assertFitsOrgBudget } from "../teams/org.ts";
 import { topupInput, topupJson, topupsThisWeek } from "../ledger/topup.ts";
 
 const keySpec = z.object({
+  allowed_ips: allowedIpsInput.optional(), // E148: PATCH only
   project: projectInput.nullable().optional(), // C134: PATCH only
   include_byok_in_limit: z.boolean().optional(), // ZK6
   scope: z.enum(["inference", "account"]).optional(), // ZK6: create only
@@ -70,6 +72,7 @@ export function keyJson(k: KeyRow) {
     rpm: k.rpm,
     tpm: k.tpm,
     allowed_models: k.allowedModels,
+    allowed_ips: k.allowedIps, // E148
     team: k.teamId,
     pay_with_default: k.payWithDefault,
     management: k.management,
@@ -136,6 +139,7 @@ function applySpec(v: z.infer<typeof keySpec>) {
     ...(v.rpm !== undefined ? { rpm: v.rpm } : {}),
     ...(v.tpm !== undefined ? { tpm: v.tpm } : {}),
     ...(v.allowed_models !== undefined ? { allowedModels: v.allowed_models } : {}),
+    ...(v.allowed_ips !== undefined ? { allowedIps: v.allowed_ips } : {}), // E148
     ...(v.pay_with_default !== undefined ? { payWithDefault: v.pay_with_default } : {}),
     ...(v.disabled !== undefined ? { disabled: v.disabled } : {}),
     ...(v.expires_at !== undefined ? { expiresAt: v.expires_at ? new Date(v.expires_at) : null } : {}),
@@ -159,6 +163,7 @@ function keyChange(spec: z.infer<typeof keySpec>, patch: ReturnType<typeof apply
 /** Create a virtual sub-key under `caller` (same account and balance, parent = caller). The secret is
  *  returned once; only its hash is stored. Shared by POST /api/v1/keys and Agent Sessions. */
 export async function createSubKey(ctx: Ctx, caller: KeyRow, spec: z.infer<typeof keySpec>, db: Db | Tx = ctx.db) {
+  if (spec.allowed_ips !== undefined) fail(400, "Set allowed IP addresses with PATCH /api/v1/keys/:hash.", "invalid_request"); // E148
   if (spec.project !== undefined) fail(400, "Set a default project with PATCH /api/v1/keys/:hash.", "invalid_request"); // C134
   const scope = await provisionedScope(ctx, caller, spec, db); // ZK6
   if (spec.management && !caller.management) fail(403, "Only a management key can create management keys.", "forbidden");
@@ -219,6 +224,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
   // With a management/admin key: a virtual sub-key sharing that account's balance.
   app.post("/api/v1/keys", async (c) => {
     const spec = keySpec.parse(await readJson(c));
+    if (spec.allowed_ips !== undefined) fail(400, "Set allowed IP addresses with PATCH /api/v1/keys/:hash.", "invalid_request"); // E148
     if (spec.project !== undefined) fail(400, "Set a default project with PATCH /api/v1/keys/:hash.", "invalid_request"); // C134
     if (spec.topup !== undefined) fail(400, "Set auto top-up with PATCH /api/v1/keys/:hash once the key has a limit.", "invalid_request");
     const auth = c.req.header("authorization");

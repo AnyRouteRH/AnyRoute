@@ -1,5 +1,6 @@
 import { browserSessionRoutes } from "./browser-sessions/routes.ts"; // E147
 import { notificationRoutes } from "./notifications/routes.ts"; // E146
+import { keyIpMiddleware, keyIpRoutes } from "./key-ip/allowlist.ts"; // E148
 import { securityAlertsRoutes, securityAlertsMiddleware } from "./security-alerts/routes.ts"; // D138
 import { newModelsFeedRoutes } from "./api/models-new-feed.ts"; // C131
 import { projectCors } from "./projects/cors.ts"; // C134
@@ -214,6 +215,7 @@ export async function createApp(opts: AppOptions = {}) {
 
   app.use("*", hardeningMiddleware(ctx)); // HD1: after CORS/security headers, before every body reader.
   app.use("*", onionIngress(cfg)); // onion requests: drop every client address header before any route reads one
+  app.use("*", keyIpMiddleware(ctx)); // E148: before auth side effects and routing
   app.use("*", statusMiddleware(ctx)); // public-lane outcomes per API surface for /api/v1/status/slo; private lanes are not counted here
   app.use("*", inferenceScopeMiddleware(ctx)); // ZK6: deny by default before account middleware.
   idempotencyMiddleware(app, ctx); // D145: authenticated replays precede approval consumption and billing.
@@ -243,6 +245,7 @@ export async function createApp(opts: AppOptions = {}) {
   notificationRoutes(app, ctx); // E146
   projectBudgetRoutes(app, ctx); // D139
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
+  keyIpRoutes(app, ctx); // E148: fixed route before /keys/:hash
   keysRoutes(app, ctx);
   browserSessionRoutes(app, ctx); // E147
   teamsRoutes(app, ctx);
