@@ -13,16 +13,16 @@ afterAll(() => rmSync(root, { recursive: true }));
 const directives = (csp: string) => new Map(csp.split(";").map((d) => d.trim().split(/\s+/)).map(([name, ...values]) => [name, values]));
 const hash = (s: string) => `'sha256-${createHash("sha256").update(s).digest("base64")}'`;
 
-test("site CSP allows only same-origin fetches, images and fonts", () => {
+test("site CSP allows only same-origin fetches and fonts, and same-origin or inline images", () => {
   const d = directives(siteCsp(root));
   expect(d.get("default-src")).toEqual(["'self'"]);
   expect(d.get("connect-src")).toEqual(["'self'"]);
-  expect(d.get("img-src")).toEqual(["'self'"]);
+  expect(d.get("img-src")).toEqual(["'self'", "data:", "blob:"]); // generated chat images are data: URLs
   expect(d.get("font-src")).toEqual(["'self'"]);
   expect(d.get("object-src")).toEqual(["'none'"]);
   expect(d.get("base-uri")).toEqual(["'none'"]);
   expect(d.get("frame-ancestors")).toEqual(["'none'"]);
-  for (const values of d.values()) for (const v of values) expect(["https:", "http:", "wss:", "ws:", "data:", "blob:", "*"]).not.toContain(v);
+  for (const [name, values] of d) for (const v of values) expect(name === "img-src" ? ["https:", "http:", "wss:", "ws:", "*"] : ["https:", "http:", "wss:", "ws:", "data:", "blob:", "*"]).not.toContain(v);
 });
 
 test("site CSP hashes each inline script of the export and nothing else", () => {

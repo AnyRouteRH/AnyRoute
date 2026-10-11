@@ -40,7 +40,7 @@ test("the real config loader accepts enabled hosting under production guards", (
 });
 
 test("pure CSP selection changes only exact page and worker paths when configured", () => {
-  const page = base.replace("connect-src 'self'", "connect-src 'self' " + origins.join(" ")) + "; worker-src 'self'";
+  const page = base.replace("img-src 'self' data: blob:", "img-src 'self'").replace("connect-src 'self'", "connect-src 'self' " + origins.join(" ")) + "; worker-src 'self'"; // the payment page keeps same-origin images
   for (const path of pagePaths) expect(zkapiCsp(path, base, origins)).toBe(page);
   expect(zkapiCsp("/zkapi/prover-worker.js", base, origins)).toBe(workerPolicy);
   for (const path of ["/", "/other.html", "/zkapi/other.html", "/zkapi/zkapi_browser.js", "/zkapi/prover-worker.js/", "/zkapi/index.html/", "/zkapi/other/index.html"]) expect(zkapiCsp(path, base, origins)).toBeUndefined();

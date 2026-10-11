@@ -48,9 +48,23 @@ test('download and attach use actual raster type, omit credentials, and reject o
   assert.equal(file.type, 'image/webp');
   assert.deepEqual(options, { credentials: 'omit', referrerPolicy: 'no-referrer' });
   assert.deepEqual(toWire({ role: 'user', text: 'Edit it', attachments: [{ kind: 'image', url: png }] }, model).content[1], { type: 'image_url', image_url: { url: png } });
-  await assert.rejects(imageFile(png, 0, async () => new Response('', { status: 410 })), /expired/);
-  await assert.rejects(imageFile(png, 0, async () => new Response(new Blob(['<svg/>'], { type: 'image/svg+xml' }))), /not supported/);
-  await assert.rejects(imageFile(png, 0, async () => ({ ok: true, blob: async () => ({ type: 'image/png', size: 8 * 1024 * 1024 + 1 }) })), /larger than 8 MB/);
+  const remote = 'https://example.com/image';
+  await assert.rejects(imageFile(remote, 0, async () => new Response('', { status: 410 })), /expired/);
+  await assert.rejects(imageFile(remote, 0, async () => new Response(new Blob(['<svg/>'], { type: 'image/svg+xml' }))), /not supported/);
+  await assert.rejects(imageFile(remote, 0, async () => ({ ok: true, blob: async () => ({ type: 'image/png', size: 8 * 1024 * 1024 + 1 }) })), /larger than 8 MB/);
+  assert.equal((await imageFile(remote, 0, async () => ({ ok: true, blob: async () => new Blob([new Uint8Array(8 * 1024 * 1024 + 1)], { type: 'image/png' }) }), { limit: 0 })).size, 8 * 1024 * 1024 + 1);
+});
+
+test('inline generated images are decoded in the page, never fetched (connect-src is self)', async () => {
+  const bytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const inline = `data:image/png;base64,${Buffer.from(bytes).toString('base64')}`;
+  const file = await imageFile(inline, 2, async () => { throw new Error('fetched'); });
+  assert.equal(file.name, 'anyroute-image-3.png');
+  assert.equal(file.type, 'image/png');
+  assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
+  const big = `data:image/png;base64,${Buffer.alloc(8 * 1024 * 1024 + 3).toString('base64')}`;
+  await assert.rejects(imageFile(big, 0), /larger than 8 MB/);
+  assert.equal((await imageFile(big, 0, fetch, { limit: 0 })).size, 8 * 1024 * 1024 + 3);
 });
 
 test('image-only stream replies survive browser history while input attachments and failed outputs do not', async () => {

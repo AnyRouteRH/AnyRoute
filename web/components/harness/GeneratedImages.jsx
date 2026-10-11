@@ -10,7 +10,7 @@ export default function GeneratedImages({ images, busy, onUse }) {
     setPending(true);
     setError("");
     try {
-      const file = await imageFile(url, index);
+      const file = await imageFile(url, index, fetch, { limit: use ? undefined : 0 }); // downloads keep full size
       if (use) await onUse([file]);
       else {
         const objectUrl = URL.createObjectURL(file);

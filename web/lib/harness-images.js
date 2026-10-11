@@ -121,15 +121,27 @@ export function imageFilename(type, index) {
   return ext ? `anyroute-image-${index + 1}.${ext}` : null;
 }
 
-/** No API key, cookies or referrer are sent to an image host. */
-export async function imageFile(url, index, request = fetch) {
+// Inline images are decoded in the page: the site's connect-src is 'self', so fetch() cannot read a data: URL.
+function inlineImage(url) {
+  const [, type, data] = url.match(/^data:(image\/[a-z]+);base64,(.*)$/);
+  const text = atob(data), bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+
+/** No API key, cookies or referrer are sent to an image host. `limit` (bytes, 0 for none) applies to inputs. */
+export async function imageFile(url, index, request = fetch, { limit = MAX_SOURCE_BYTES } = {}) {
   const safe = safeImageUrl(url);
   if (!safe) throw new Error("This image format is not supported.");
-  const res = await request(safe, { credentials: "omit", referrerPolicy: "no-referrer" });
-  if (!res.ok) throw new Error("The image could not be downloaded. Its link may have expired.");
-  const blob = await res.blob();
+  let blob;
+  if (safe.startsWith("data:")) blob = inlineImage(safe);
+  else {
+    const res = await request(safe, { credentials: "omit", referrerPolicy: "no-referrer" });
+    if (!res.ok) throw new Error("The image could not be downloaded. Its link may have expired.");
+    blob = await res.blob();
+  }
   const name = imageFilename(blob.type, index);
   if (!name) throw new Error("This image format is not supported.");
-  if (blob.size > MAX_SOURCE_BYTES) throw new Error("This image is larger than 8 MB.");
+  if (limit && blob.size > limit) throw new Error("This image is larger than 8 MB.");
   return new File([blob], name, { type: blob.type });
 }
