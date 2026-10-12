@@ -14,6 +14,7 @@ const sections = [
   ["saved-answers", "Save answers in Chat"], // D140
   ["folder-instructions", "Apply instructions to a Chat folder"], // G157
   ["chat-folders", "Organize Chat into folders"], // D143
+  ["edit-and-branch", "Edit a message and branch the chat"], // G156
   ["share-to-anyroute", "Share to Anyroute from your phone"], // D137
   ["telegram-photos", "Send photos in Telegram"], // D142
   ["telegram-balance-spend", "Check balance and spend in Telegram"], // E152

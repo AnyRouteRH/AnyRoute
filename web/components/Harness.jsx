@@ -40,6 +40,8 @@ import { FolderInstructionsProvider, FolderInstructionsChip } from "./harness/Fo
 import { activeFolder, folderSystems, systemText } from "../lib/folder-instructions.js"; // G157
 import s from "./Harness.module.css";
 import CopyAsCode from "./harness/CopyAsCode"; // C130
+import { BranchLane, BranchProvider, BranchVersions } from "./harness/Branches"; // G156
+import { resendEdit, resendReply } from "../lib/harness-branch-actions.js"; // G156
 import { modelUnavailable, selectableModels } from "../lib/model-availability.js"; // ON5
 import { useCatalogRefresh } from "./harness/useCatalogRefresh"; // ON5
 import catalogStyles from "./ModelPickerCapabilities.module.css";
@@ -525,6 +527,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
       )}
       {!streaming && <SaveAnswer msg={msg} />} {/* D140 */}
       <ReplyPrivacy msg={msg} open={last} />
+      <BranchVersions messageId={msg.id} /> {/* G156 */}
     </article>
   );
 }
@@ -581,6 +584,7 @@ function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy, onSavePrompt })
           )}
         </>
       )}
+      <BranchVersions messageId={msg.id} /> {/* G156 */}
     </article>
   );
 }
@@ -790,6 +794,7 @@ export default function Harness() {
   const priv = usePrivateMode(); // private mode: the attested lane only, see harness/PrivateMode.jsx
   const controllers = useRef(new Map());
   const limits = useHarnessLimits(); // U77: tab-scoped child key and approval state.
+  const branchLaneRef = useRef(null); // G156
   const lanesRef = useRef(lanes);
   lanesRef.current = lanes;
   const settingsRef = useRef(settings);
@@ -913,6 +918,7 @@ export default function Harness() {
     setSheet(null);
     if (add) {
       setLanes((ls) => (ls.length >= MAX_LANES ? ls : [...ls, { id: "l" + uid(), modelId: id, messages: structuredClone(ls[focus]?.messages || []) }]));
+      setLanes(ls => ls.map((lane, index) => index === ls.length - 1 && index !== focus && ls[focus]?.branches ? { ...lane, branches: structuredClone(ls[focus].branches) } : lane)); // G156
       setFocus(Math.min(MAX_LANES - 1, lanesRef.current.length));
       return;
     }
@@ -1021,6 +1027,7 @@ export default function Harness() {
   function send(text, attachments = files, truncate = null) {
     const body = text.trim();
     if ((!body && !attachments.length) || busy || isPreparing()) return;
+    if (truncate !== null) return resendEdit({ lanes: lanesRef.current, laneId: branchLaneRef.current, messageId: editing, text: body, attachments, uid, setLanes, runLane, find, system: systemRef.current, needKey, onError: setFileNote, onSaved: () => { stick.current = true; setDraft(""); setFiles([]); setFileNote(""); setEditing(null); } }); // G156
     const contextError = contextSendBlock(lanesRef.current, find, systemRef.current, body, attachments, truncate); if (contextError) return setFileNote(contextError); // C129
     const imageError = imageSendBlock(lanesRef.current, find, attachments, truncate); if (imageError) return setFileNote(imageError);
     if (needKey("send")) return;
@@ -1058,6 +1065,7 @@ export default function Harness() {
     const cut = Math.max(lastUser, lastTool) + 1;
     const history = lane.messages.slice(0, cut);
     if (lane.messages.findLast(m => m.role === "assistant")?.errorKind === "funds") setDraft(d => d === recoverFundingDraft("", history) ? "" : d); // ON1
+    return resendReply({ lane, modelId: retryModel, uid, setLanes, runLane }); // G156
     const reply = { id: uid(), role: "assistant", model: retryModel, status: "waiting", text: "" }; // B121
     setLanes((ls) => ls.map((l) => (l.id === laneId ? { ...l, modelId: retryModel, messages: [...history, reply] } : l))); // B121
     runLane(laneId, retryModel, history, reply.id, lane.messages.findLast((m) => m.role === "assistant")?.imageMode ?? null);
@@ -1076,6 +1084,7 @@ export default function Harness() {
   const stop = () => controllers.current.forEach((c) => c.abort());
   const newChat = () => {
     setLanes(ls => ls.map(({ chatCostRemainder, ...lane }) => lane)); // C128: clear saved accounting on a new chat.
+    setLanes(ls => ls.map(({ branches, ...lane }) => lane)); // G156
     voice.stop();
     stop();
     setLanes((ls) => ls.map((l) => ({ ...l, messages: [] })));
@@ -1138,6 +1147,7 @@ export default function Harness() {
   return (
     <SavedAnswersProvider history={promptHistory} lanes={lanes} busy={busy}> {/* D140 */}
     <FolderInstructionsProvider scope={folderScope} onScope={setFolderScope}> {/* G157 */}
+    <BranchProvider lanes={lanes} setLanes={setLanes} busy={busy} beforeSwitch={() => { voice.stop(); setEditing(null); setFileNote(""); }}> {/* G156 */}
     <div className={s.harness} data-harness-app data-compare={compare || undefined}>
       <Rail
         models={models}
@@ -1285,6 +1295,7 @@ export default function Harness() {
               {lanes.map((l, li) => {
                 const lastId = l.messages[l.messages.length - 1]?.id;
                 return (
+                  <BranchLane key={l.id} laneId={l.id} onInteract={() => { branchLaneRef.current = l.id; }}> {/* G156 */}
                   <div key={l.id} className={s.lane} onClick={() => compare && setFocus(li)}>
                     {l.messages.map((m) =>
                       m.role === "user" ? (
@@ -1299,6 +1310,7 @@ export default function Harness() {
                       ),
                     )}
                   </div>
+                  </BranchLane> /* G156 */
                 );
               })}
             </div>
@@ -1410,6 +1422,7 @@ export default function Harness() {
       </p>
     </div>
     </FolderInstructionsProvider> {/* G157 */}
+    </BranchProvider> {/* G156 */}
     </SavedAnswersProvider> /* D140 */
   );
 }

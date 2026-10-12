@@ -8,6 +8,7 @@ import { savedAnswersBrowser } from "./saved-answers"; // D140
 import { folderInstructionsBrowser } from "./folder-instructions"; // G157
 import { chatFoldersBrowser } from "./chat-folders"; // D143
 import { modelCompareBrowser } from "./model-compare"; // G165
+import { chatBranchesBrowser } from "./chat-branches"; // G156
 import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
 import { notificationReader, notificationStores } from "./notifications.ts"; // E146
 import { securityAlertReader, securityAlertStores } from "./security-alerts.ts"; // D138
@@ -923,6 +924,7 @@ export const EXTERNAL: ExternalDoc = {
       chatFoldersBrowser, // D143
       modelCompareBrowser, // G165
       folderInstructionsBrowser, // G157
+      chatBranchesBrowser, // G156
       { store: "IndexedDB", holds: "Chat history is opt-in and encrypted with the browser history passphrase in the existing anyroute-private-history vault (memory only when storage is unavailable). Alongside saved conversations, costSummary keeps microUsd as an integer decimal string and replies as a count, summed across comparison lanes from the displayed reply costs. Totals include replies omitted from saved content; failed replies add zero dollars. Totals and counts are encrypted with the conversation, not stored separately or sent to the router. Locking drops the decrypted history from memory; Forget deletes the vault. Older chats without this summary use the costs in their retained replies.", evidence: [ev("web/lib/private-history.js", "const ct = new Uint8Array(await subtle().encrypt"), ev("web/components/harness/PrivateMode.jsx", "const costSummary = chatCost(lanes);"), ev("web/lib/harness-history-vault.js", "...costSummaryFields(chat)")] }, // C128
       savedAnswersBrowser, // D140
       gettingStartedBrowser, // C135

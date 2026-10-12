@@ -9,6 +9,7 @@ import KeyIpAllowlistDocs from "../../components/KeyIpAllowlistDocs"; // E148
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import FolderInstructionsDocs from "../../components/FolderInstructionsDocs"; // G157
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
+import EditAndBranchDocs from "../../components/EditAndBranchDocs"; // G156
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
 import TelegramBalanceSpendDocs from "../../components/TelegramBalanceSpendDocs"; // E152
 import NotificationSettingsDocs from "../../components/notifications/NotificationSettingsDocs"; // E146
@@ -908,6 +909,7 @@ export default function Docs() {
           <SavedAnswersDocs /> {/* D140 */}
           <ChatFoldersDocs /> {/* D143 */}
           <FolderInstructionsDocs /> {/* G157 */}
+          <EditAndBranchDocs /> {/* G156 */}
           <DarkModeDocs/> {/* C126 */}
           <NewModelsDocs /> {/* C131 */}
           <ModelPerformanceDocs /> {/* E150 */}

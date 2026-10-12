@@ -1,7 +1,9 @@
 import { historyMetadata } from "./history-metadata.js";
 import { validateSavedAnswers } from "./saved-answers.js"; // D140
 import { folderDocument, folderFields } from "./chat-folders.js"; // D143
-import { MAX_BYTES, MAX_CHATS, snapshotLanes, titleOf } from "./private-history.js";
+import { MAX_BYTES, MAX_CHATS, titleOf } from "./private-history.js";
+import { snapshotLanes } from "./harness-image-history.js"; // G156
+import { branchFingerprint, validateBranches } from "./harness-branch-history.js"; // G156
 import { chatCost, costSummaryFields } from "./chat-cost.js"; // C128
 
 export const EXPORT_FORMAT = "anyroute-harness-history";
@@ -55,13 +57,14 @@ function validateChat(c) {
     });
     return { modelId, messages };
   });
+  lanes.forEach((lane, index) => Object.assign(lane, validateBranches(c.lanes[index].branches, message => validateChat({ id: "branch", title: "Branch", at: 0, lanes: [{ modelId: lane.modelId, messages: [message] }] }).lanes[0].messages[0]))); // G156
   return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...folderFields(c), ...costSummaryFields(c) }; // C128
 }
 
 // Dedupe ids, plus identical conversation content with different ids. Do not overwrite anything already kept.
 export function mergeImport(existing, incoming) {
   const ids = new Set(existing.map((c) => c.id));
-  const content = (c) => JSON.stringify(c.lanes.map((l) => [l.modelId, l.messages.map((m) => [m.role, m.text, m.files || []])]));
+  const content = (c) => JSON.stringify(c.lanes.map((l) => [l.modelId, l.messages.map((m) => [m.role, m.text, m.files || []]), branchFingerprint(l)])); // G156
   const seen = new Set(existing.map(content));
   const additions = [];
   for (const c of incoming) {

@@ -1,8 +1,9 @@
 import { snapshotLanes as snapshotText, restoreLanes as restoreText } from "./private-history.js";
 import { imageHistoryFields, storedImages } from "./harness-images.js";
+import { restoreBranches, snapshotBranches } from "./harness-branch-history.js"; // G156
 
 // Inputs and generated outputs extend the same encrypted browser vault, with no new storage key.
-export function snapshotLanes(lanes) {
+function snapshotImageLanes(lanes) {
   const imageIds = new Map();
   return (lanes || []).map((lane) => {
     const messages = (lane.messages || []).flatMap((message) => {
@@ -25,7 +26,7 @@ export function snapshotLanes(lanes) {
   });
 }
 
-export function restoreLanes(saved, uid) {
+function restoreImageLanes(saved, uid) {
   const images = new Map((saved || []).flatMap((lane) => (lane.messages || []).flatMap((message) => storedImages(message.attachments))).map((image) => [image.id, image]));
   return restoreText(saved, uid).map((lane, index) => ({
     ...lane,
@@ -36,4 +37,13 @@ export function restoreLanes(saved, uid) {
       return { ...message, ...fields, imageMode: typeof source?.imageMode === "boolean" ? source.imageMode : !!fields.images?.length };
     }),
   }));
+}
+
+// G156: all versions use the same image-aware snapshot policy and encrypted vault.
+export function snapshotLanes(lanes) {
+  return snapshotImageLanes(lanes).map((lane, index) => ({ ...lane, ...snapshotBranches(lanes[index], message => snapshotImageLanes([{ messages: [message] }])[0].messages[0]) }));
+}
+
+export function restoreLanes(saved, uid) {
+  return restoreImageLanes(saved, uid).map((lane, index) => ({ ...lane, ...restoreBranches(saved?.[index] || {}, message => restoreImageLanes([{ messages: [message] }])[0].messages[0]) }));
 }

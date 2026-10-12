@@ -1,0 +1,7 @@
+/* G156 */
+.versions{display:flex;align-items:center;gap:6px;max-width:100%;margin-top:8px;color:var(--muted);font-size:13px}
+.versions button{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;border:1px solid var(--line);border-radius:0;background:var(--paper);color:var(--ink);font:inherit;font-size:22px;cursor:pointer}
+.versions button:disabled{opacity:.5;cursor:default}
+.versions button:focus-visible{outline:2px solid var(--signal-deep);outline-offset:3px}
+
+.lane{display:contents}
