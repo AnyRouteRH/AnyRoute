@@ -1,4 +1,5 @@
 "use client";
+import { ModelWatchMenu } from "./model-watch/ModelWatchButton"; // G159
 import ModelPerformance from "./ModelPerformance"; // E150
 import { catalogSortFromUrl, catalogSortUrl } from "../lib/model-performance.js"; // E150
 import { NewModelBadge, NewModelsFilter } from "./NewModels"; // C131
@@ -72,6 +73,7 @@ export default function ModelCatalog({ onChoose }) {
         <RouteCardDetails model={raw} providers={providers} />
         <ModelPageLink model={raw} /> {/* E151 */}
         <ModelCompareButton model={raw} /> {/* G165 */}
+        <ModelWatchMenu model={raw} /> {/* G159 */}
         <div className="button-row"><button className="text-button" onClick={() => setSelected(raw)}>Model details →</button>{modelUnavailable(raw) ? <span role="status">Temporarily unavailable</span> : onChoose ? <button className="text-button" onClick={() => onChoose(model.id)}>Try model →</button> : <a className="text-button" href={chooseHref(model.id)}>Try model →</a>}</div>
         <div className="card-ramp" aria-hidden="true" />
       </article>;

@@ -1,4 +1,5 @@
 import { keyRotationRoutes } from "./key-rotation/routes.ts"; // G158
+import { modelWatchRoutes } from "./model-watch/routes.ts"; // G159
 import { browserSessionRoutes } from "./browser-sessions/routes.ts"; // E147
 import { notificationRoutes } from "./notifications/routes.ts"; // E146
 import { keyIpMiddleware, keyIpRoutes } from "./key-ip/allowlist.ts"; // E148
@@ -247,6 +248,7 @@ export async function createApp(opts: AppOptions = {}) {
   inboxRoutes(app, ctx); // U78: account inbox.
   securityAlertsRoutes(app, ctx); // D138
   notificationRoutes(app, ctx); // E146
+  modelWatchRoutes(app, ctx); // G159
   projectBudgetRoutes(app, ctx); // D139
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
   keyIpRoutes(app, ctx); // E148: fixed route before /keys/:hash

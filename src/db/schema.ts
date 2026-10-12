@@ -1,3 +1,4 @@
+export { modelWatches } from "../model-watch/schema.ts"; // G159
 export * from "../schedules/schema.ts"; // D136
 export { accountLinkedWallets } from "../wallets/schema.ts"; // E154
 export * from "./low-balance.ts"; // B119

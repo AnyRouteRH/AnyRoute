@@ -1,5 +1,6 @@
 "use client";
 import KeyRotation from "./account/KeyRotation"; // G158
+import ModelWatchSettings from "./model-watch/ModelWatchSettings"; // G159
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
 import AccountNotifications from "./notifications/AccountNotifications"; // E146
 import { api as apiRequest } from "../lib/api"; // E149
@@ -1834,6 +1835,7 @@ export default function Dashboard() {
               {live && apiKey && <TelegramLink key={apiKey} principalKey={apiKey}/>}
               {live && apiKey && <SecurityAlertsSettings key={apiKey} apiKey={apiKey}/>} {/* D138 */}
               {live && apiKey && <SignedInBrowsers key={apiKey} apiKey={apiKey} onChanged={refresh} onSignedOut={() => { setApiKey(""); setWs(null); setSecrets({}); setResult(null); setModal(null); abort.current?.abort(); }}/>} {/* E147 */}
+              {live && apiKey && <ModelWatchSettings key={apiKey} apiKey={apiKey}/>} {/* G159 */}
               {live && apiKey && <LinkedWalletsSettings key={apiKey} apiKey={apiKey}/>} {/* E154 */}
               <div className="settings-grid">
                 <div className="settings-panel">

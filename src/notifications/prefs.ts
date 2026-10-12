@@ -6,6 +6,7 @@ import { kv } from "../db/schema.ts";
 import { accountLinks, linkKey } from "../telegram/linking.ts";
 import { preferenceKey as securityKey } from "../security-alerts/records.ts";
 export const NOTICE_TYPES = ["approvals", "agent_alerts", "deposits", "low_balance", "weekly_summary", "security_alerts", "quiet_agents", "price_notices", "project_budgets", "scheduled_results", "approval_reminders"] as const;
+export const NOTICE_TYPES = ["approvals", "agent_alerts", "deposits", "low_balance", "weekly_summary", "security_alerts", "quiet_agents", "price_notices", "project_budgets", "scheduled_results", "model_watch"] as const;
 export type NoticeType = typeof NOTICE_TYPES[number];
 export type Channels = { inbox: boolean; telegram: boolean };
 const channels = z.strictObject({ inbox: z.boolean(), telegram: z.boolean() });

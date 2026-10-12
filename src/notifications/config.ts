@@ -16,5 +16,6 @@ export function noticeFeatureEnabled(ctx: Ctx, type: NoticeType) {
     case "price_notices": return ctx.cfg.priceNoticesEnabled;
     case "project_budgets": return ctx.cfg.projectBudgetTelegramEnabled;
     case "scheduled_results": return ctx.cfg.scheduledPromptsEnabled;
+    case "model_watch": return ctx.cfg.modelWatchEnabled; // G159
   }
 }

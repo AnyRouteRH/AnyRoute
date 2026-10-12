@@ -6,6 +6,7 @@ RUN bun install --frozen-lockfile --production --ignore-scripts
 
 COPY scripts/migrate.ts ./scripts/migrate.ts
 COPY src/schedules/schema.ts ./src/schedules/schema.ts
+COPY src/model-watch/schema.ts ./src/model-watch/schema.ts
 COPY src/db ./src/db
 COPY src/webhooks/schema.ts ./src/webhooks/schema.ts
 COPY src/services/makegood-schema.ts ./src/services/makegood-schema.ts

@@ -1,5 +1,6 @@
 import { rotationReader, rotationStores } from "./key-rotation.ts"; // G158
 import { approvalNudgeStores } from "./approval-nudges.ts"; // G164
+import { modelWatchReader } from "./model-watch.ts"; // G159
 import { browserSessionStores } from "./browser-sessions.ts"; // E147
 import { agentApproversReader } from "./agent-approvers.ts"; // E153
 import { keyIpReader } from "./key-ip.ts"; // E148
@@ -444,6 +445,7 @@ const addressReaders: Touchpoint[] = [
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
   rotationReader, // G158
+  modelWatchReader, // G159
   agentApproversReader, // E153
   telegramPhotoReader, // D142
   quietAlertBodyReader, // D141

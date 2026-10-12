@@ -1,6 +1,7 @@
 import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
 import ApprovalNudgesDocs from "../../components/ApprovalNudgesDocs"; // G164
+import ModelWatchDocs from "../../components/model-watch/ModelWatchDocs"; // G159
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
 import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
 import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
@@ -910,6 +911,7 @@ export default function Docs() {
           <ModelPerformanceDocs /> {/* E150 */}
           <ModelPageDocs /> {/* E151 */}
           <ModelCompareDocs /> {/* G165 */}
+          <ModelWatchDocs /> {/* G159 */}
           <DepositCountdownDocs /> {/* B123 */}
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
           <KeyProvisioningDocs /> {/* ZK6 */}

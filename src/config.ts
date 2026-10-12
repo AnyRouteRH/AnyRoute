@@ -1,3 +1,4 @@
+import { modelWatchEnv } from "./model-watch/config.ts"; // G159
 import { notificationsEnv } from "./notifications/config.ts"; // E146
 import { securityAlertsEnv } from "./security-alerts/config.ts"; // D138
 import { modelArrivalsEnv } from "./catalog/model-arrivals-config.ts"; // C131
@@ -385,6 +386,7 @@ const schema = z.object({
   ...securityAlertsEnv, // D138
   ...notificationsEnv, // E146
   APPROVAL_NUDGES_ENABLED: bool.default(false), // G164
+  ...modelWatchEnv, // G159
   PROJECT_BUDGET_TELEGRAM_ENABLED: bool.default(false), // D139
   TELEGRAM_LINKING_ENABLED: bool.default(false),
   WEEKLY_SUMMARY_ENABLED: bool.default(false), // B120
@@ -556,6 +558,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("weekly-summary"); // B120
       allowed.push("notification-quiet"); // E146
       allowed.push("approval-nudges"); // G164
+      allowed.push("model-watch"); // G159
       allowed.push("deposit-pings"); // B123
       allowed.push("low-balance-alerts"); // B119
       allowed.push("price-notices"); // C133
@@ -708,6 +711,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     securityAlertsEnabled: e.SECURITY_ALERTS_ENABLED, // D138
     notificationQuietHoursEnabled: e.NOTIFICATION_QUIET_HOURS_ENABLED, // E146
     approvalNudgesEnabled: e.APPROVAL_NUDGES_ENABLED, // G164
+    modelWatchEnabled: e.MODEL_WATCH_ENABLED, // G159
     projectBudgetTelegramEnabled: e.PROJECT_BUDGET_TELEGRAM_ENABLED, // D139
     siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),
     webauthn: {

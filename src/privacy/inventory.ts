@@ -1,6 +1,7 @@
 import { describeKeyRotation } from "./key-rotation.ts"; // G158
 import { describeWorkHours } from "./work-hours.ts"; // G161
 import { describeApprovalNudges } from "./approval-nudges.ts"; // G164
+import { describeModelWatch } from "./model-watch.ts"; // G159
 import { describeBrowserSessions } from "./browser-sessions.ts"; // E147
 import { describeNotifications } from "./notifications.ts"; // E146
 import { describeAgentApprovers } from "./agent-approvers.ts"; // E153
@@ -75,6 +76,7 @@ describeQuietAlerts(TABLE_DOCS); // D141
 describeBrowserSessions(TABLE_DOCS); // E147
 describeNotifications(TABLE_DOCS); // E146
 describeApprovalNudges(TABLE_DOCS); // G164
+describeModelWatch(TABLE_DOCS); // G159
 describeLinkedWallets(TABLE_DOCS); // E154
 export { EXTERNAL };
 

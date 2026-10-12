@@ -1,4 +1,5 @@
 "use client";
+import ModelWatchButton from "./model-watch/ModelWatchButton"; // G159
 // E151: one exported shell, resolved from the public catalogue in the browser.
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
@@ -24,6 +25,7 @@ export function ModelPageView({ model, providers = null, endpoints = null, obser
       <CapabilityChips model={model} />
       <div className="button-row"><Button href={modelChatHref(model.id)}>Try in Chat</Button></div>
       <ModelCompareButton model={model} /> {/* G165 */}
+      <ModelWatchButton model={model} /> {/* G159 */}
       {modelUnavailable(model) && <p role="status">Temporarily unavailable. You can open Chat and choose another model.</p>}
     </header>
     <section aria-label="Prices and context"><h2>Prices and context</h2><dl className={s.facts}>

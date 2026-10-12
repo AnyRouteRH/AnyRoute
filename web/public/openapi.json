@@ -20471,7 +20471,8 @@
                             "price_notices",
                             "project_budgets",
                             "approval_reminders",
-                            "scheduled_results"
+                            "scheduled_results",
+                            "model_watch"
                           ],
                           "properties": {
                             "approvals": {
@@ -20618,7 +20619,25 @@
                                 }
                               }
                             },
-                            "approval_reminders": {"type": "object", "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": {"inbox": {"type": "boolean", "default": true}, "telegram": {"type": "boolean", "default": true}}},
+                            "approval_reminders": {
+                              "type": "object",
+                              "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "telegram": {
+                                  "type": "boolean",
+                                  "default": true
+                                }
+                              }
+                            },
                             "scheduled_results": {
                               "type": "object",
                               "additionalProperties": false,
@@ -20632,6 +20651,24 @@
                                 },
                                 "telegram": {
                                   "type": "boolean"
+                                }
+                              }
+                            },
+                            "model_watch": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "telegram": {
+                                  "type": "boolean",
+                                  "default": true
                                 }
                               }
                             }
@@ -20735,7 +20772,8 @@
                             "price_notices",
                             "project_budgets",
                             "approval_reminders",
-                            "scheduled_results"
+                            "scheduled_results",
+                            "model_watch"
                           ],
                           "properties": {
                             "approvals": {
@@ -20882,7 +20920,25 @@
                                 }
                               }
                             },
-                            "approval_reminders": {"type": "object", "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": {"inbox": {"type": "boolean", "default": true}, "telegram": {"type": "boolean", "default": true}}},
+                            "approval_reminders": {
+                              "type": "object",
+                              "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "telegram": {
+                                  "type": "boolean",
+                                  "default": true
+                                }
+                              }
+                            },
                             "scheduled_results": {
                               "type": "object",
                               "additionalProperties": false,
@@ -20896,6 +20952,24 @@
                                 },
                                 "telegram": {
                                   "type": "boolean"
+                                }
+                              }
+                            },
+                            "model_watch": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "telegram": {
+                                  "type": "boolean",
+                                  "default": true
                                 }
                               }
                             }
@@ -20985,7 +21059,8 @@
                       "price_notices",
                       "project_budgets",
                       "approval_reminders",
-                      "scheduled_results"
+                      "scheduled_results",
+                      "model_watch"
                     ],
                     "properties": {
                       "approvals": {
@@ -21132,7 +21207,25 @@
                           }
                         }
                       },
-                      "approval_reminders": {"type": "object", "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": {"inbox": {"type": "boolean", "default": true}, "telegram": {"type": "boolean", "default": true}}},
+                      "approval_reminders": {
+                        "type": "object",
+                        "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "telegram": {
+                            "type": "boolean",
+                            "default": true
+                          }
+                        }
+                      },
                       "scheduled_results": {
                         "type": "object",
                         "additionalProperties": false,
@@ -21146,6 +21239,24 @@
                           },
                           "telegram": {
                             "type": "boolean"
+                          }
+                        }
+                      },
+                      "model_watch": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "telegram": {
+                            "type": "boolean",
+                            "default": true
                           }
                         }
                       }
@@ -21962,6 +22073,277 @@
             "$ref": "#/components/responses/NotFound"
           }
         }
+      }
+    },
+    "/api/v1/account/model-watch": {
+      "get": {
+        "summary": "List watched models",
+        "description": "G159. Active account management owner key required; session, team and read-only keys refused. MODEL_WATCH_ENABLED defaults false. Cache-Control: no-store. Watches are capped at 20. PUT and DELETE are idempotent. DELETE clears saved notices and retains any unexpired one-hour cooldown.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "200": {
+            "description": "Current account watches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "limit"
+                  ],
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "enum": [
+                        20
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "maxItems": 20,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "model",
+                          "name",
+                          "watched_at"
+                        ],
+                        "properties": {
+                          "model": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "watched_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "listModelWatches"
+      },
+      "put": {
+        "summary": "Watch a model",
+        "description": "G159. Active account management owner key required; session, team and read-only keys refused. MODEL_WATCH_ENABLED defaults false. Cache-Control: no-store. Watches are capped at 20. PUT and DELETE are idempotent. DELETE clears saved notices and retains any unexpired one-hour cooldown.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "description": "Watch limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Current account watches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "limit"
+                  ],
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "enum": [
+                        20
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "maxItems": 20,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "model",
+                          "name",
+                          "watched_at"
+                        ],
+                        "properties": {
+                          "model": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "watched_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "model"
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "addModelWatch"
+      },
+      "delete": {
+        "summary": "Unwatch a model",
+        "description": "G159. Active account management owner key required; session, team and read-only keys refused. MODEL_WATCH_ENABLED defaults false. Cache-Control: no-store. Watches are capped at 20. PUT and DELETE are idempotent. DELETE clears saved notices and retains any unexpired one-hour cooldown.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "description": "Watch limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Current account watches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "limit"
+                  ],
+                  "properties": {
+                    "limit": {
+                      "type": "integer",
+                      "enum": [
+                        20
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "maxItems": 20,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "model",
+                          "name",
+                          "watched_at"
+                        ],
+                        "properties": {
+                          "model": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "watched_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "model"
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "removeModelWatch"
       }
     }
   },
@@ -23558,7 +23940,53 @@
       "AgentPolicy": {
         "type": "object",
         "properties": {
-          "work_hours": {"description":"G161: Optional wall-clock work hours. Start included, end excluded; overnight windows belong to their starting day. Repeated DST minutes both count and skipped minutes do not exist. Other refusals and existing UTC windows take precedence. Refusal reasons include the next opening; ask_first uses the existing single-use approval path.","type":"object","additionalProperties":false,"required":["days","start","end","time_zone","outside"],"properties":{"days":{"type":"array","minItems":1,"maxItems":7,"uniqueItems":true,"items":{"type":"integer","minimum":0,"maximum":6}},"start":{"type":"string","pattern":"^(?:[01]\\d|2[0-3]):[0-5]\\d$","description":"Must differ from end."},"end":{"type":"string","pattern":"^(?:[01]\\d|2[0-3]):[0-5]\\d$"},"time_zone":{"type":"string","minLength":1,"maxLength":100,"description":"IANA time zone validated using Intl, for example America/New_York."},"outside":{"type":"string","enum":["refuse","ask_first"]}}},
+          "work_hours": {
+            "description": "G161: Optional wall-clock work hours. Start included, end excluded; overnight windows belong to their starting day. Repeated DST minutes both count and skipped minutes do not exist. Other refusals and existing UTC windows take precedence. Refusal reasons include the next opening; ask_first uses the existing single-use approval path.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "days",
+              "start",
+              "end",
+              "time_zone",
+              "outside"
+            ],
+            "properties": {
+              "days": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 7,
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6
+                }
+              },
+              "start": {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+                "description": "Must differ from end."
+              },
+              "end": {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "time_zone": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "IANA time zone validated using Intl, for example America/New_York."
+              },
+              "outside": {
+                "type": "string",
+                "enum": [
+                  "refuse",
+                  "ask_first"
+                ]
+              }
+            }
+          },
           "alerts": {
             "type": "object",
             "additionalProperties": false,

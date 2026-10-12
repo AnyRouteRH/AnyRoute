@@ -1,3 +1,4 @@
+import { routeOutage } from "../model-watch/outage.ts"; // G159
 import { recentPerformance } from "../catalog/model-performance.ts"; // E150
 import { refreshUpstreamHealth } from "../rush/monitor.ts"; // ON3
 import { sql } from "drizzle-orm";
@@ -61,27 +62,7 @@ export class HealthTracker implements HealthView {
   /** Outage: in the last 30s, >= 2 hard failures and at least as many failures as successes,
    *  or the most recent probe failed with no success since. */
   outage(modelId: string, providerId: string) {
-    const list = this.recent.get(this.k(modelId, providerId));
-    if (!list?.length) return false;
-    const since = Date.now() - this.outageWindowMs;
-    let fails = 0;
-    let oks = 0;
-    let empties = 0;
-    const emptyCallers = new Set<string>();
-    for (let i = list.length - 1; i >= 0 && list[i].at! >= since; i--) {
-      const e = list[i];
-      if (!counts(e)) continue;
-      if (e.ok) oks++;
-      else if (e.errorKind === "empty200") {
-        // A single caller can provoke empty answers; only count them once two callers (or a probe) see them.
-        empties++;
-        emptyCallers.add(e.caller ?? `src:${e.source}`);
-      } else fails++;
-    }
-    if (emptyCallers.size >= 2) fails += empties;
-    if (fails >= 2 && fails >= oks) return true;
-    const last = [...list].reverse().find(counts);
-    return !!last && last.at! >= since && hardFailure(last) && last.source === "probe";
+    return routeOutage(this.recent.get(this.k(modelId, providerId)), Date.now(), this.outageWindowMs);
   }
 
   lastFailureKind(modelId: string, providerId: string) { // B121: distinguish availability from rate/policy outages without retaining new data.

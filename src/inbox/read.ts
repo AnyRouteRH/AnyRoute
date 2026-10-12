@@ -1,4 +1,5 @@
 import { highlightApprovalNudges } from "./approval-nudges.ts"; // G164
+import { modelWatchInbox } from "../model-watch/worker.ts"; // G159
 import { filterNotificationInbox, weeklyInbox } from "../notifications/inbox.ts"; // E146
 import { delegatedInbox, refreshInboxAuthority } from "./approvers.ts"; // E153
 import { securityInbox } from "../security-alerts/worker.ts"; // D138
@@ -46,6 +47,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
   type Item = { id: string; at: string; kind: string; title: string; status: string | null; href: string; amount?: string; key_label?: string | null; model?: string | null; approval_id?: string; approval_limit?: string; expires_at?: string; can_decide?: boolean; intent?: ReturnType<typeof inboxIntent>; unread: boolean };
   const items: Item[] = [];
   let capped = false;
+  if (scope.whole && key.management) { const notices = await modelWatchInbox(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // G159
   { const notices = await securityInbox(ctx, key, scope.whole, since, asOf); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D138
   if (scope.whole && key.management) { const notices = await projectBudgetInbox(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D139
   if (scope.whole && key.management) { const notices = await priceNoticeItems(ctx, key.accountId, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // C133
