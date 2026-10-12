@@ -131,6 +131,7 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
       {note && <p className={s.note} role="status">{note}</p>}
       <div className={s.folderLayout}> {/* D143 */}
         <ChatFolders chats={all} folders={folders} selected={scope} onSelect={setSelected} disabled={pending || busy}
+          onInstructions={async (id, text) => { await history.setFolderInstructions(id, text); if (live.current && history.unlocked) onChange(); }} // G157
           onCreate={name => run(async () => { await history.createFolder(name); if (live.current && history.unlocked) onChange(); })}
           onRename={(id, name) => run(async () => { await history.renameFolder(id, name); if (live.current && history.unlocked) onChange(); })}
           onDelete={id => run(async () => { await history.deleteFolder(id); if (live.current && history.unlocked) { setSelected(null); onChange(); setNote("Folder deleted. Every chat is kept in All chats."); } })}

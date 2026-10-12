@@ -1,3 +1,4 @@
+import { folderSystems } from "./folder-instructions.js"; // G157
 import { buildRequest } from "./harness.js";
 
 // C130: generate text in memory only. No storage, requests or browser credential reads.
@@ -53,7 +54,7 @@ export function codeSamples({ body, headers = {}, baseUrl = "https://anyroute.te
 }
 
 /** Use Chat's existing capability gating, message conversion and tool handling. */
-export function copyAsCode({ model, settings, system, messages = [], ...options }) {
+export function copyAsCode({ model, settings, system, folderInstructions = "", messages = [], ...options }) {
   let images = 0, files = 0;
   const textMessages = messages.map((message) => {
     images += (message.images || []).length;
@@ -64,7 +65,7 @@ export function copyAsCode({ model, settings, system, messages = [], ...options 
     });
     return { ...message, attachments };
   });
-  const { body, notes, error } = buildRequest({ model, settings, system, messages: textMessages });
+  const { body, notes, error } = buildRequest({ model, settings, system: folderInstructions ? folderSystems(system, folderInstructions) : system, messages: textMessages });
   if (error) return { error };
   const samples = codeSamples({ ...options, body, images, files });
   return { ...samples, notes: [...notes, ...samples.notes], error: "" };

@@ -7,6 +7,7 @@ import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E15
 import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
 import KeyIpAllowlistDocs from "../../components/KeyIpAllowlistDocs"; // E148
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
+import FolderInstructionsDocs from "../../components/FolderInstructionsDocs"; // G157
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
 import TelegramBalanceSpendDocs from "../../components/TelegramBalanceSpendDocs"; // E152
@@ -906,6 +907,7 @@ export default function Docs() {
           <ChatCostDocs /> {/* C128 */}
           <SavedAnswersDocs /> {/* D140 */}
           <ChatFoldersDocs /> {/* D143 */}
+          <FolderInstructionsDocs /> {/* G157 */}
           <DarkModeDocs/> {/* C126 */}
           <NewModelsDocs /> {/* C131 */}
           <ModelPerformanceDocs /> {/* E150 */}

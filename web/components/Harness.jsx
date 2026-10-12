@@ -36,6 +36,8 @@ import PromptLibrary, { PromptSlash, usePromptLibrary } from "./harness/PromptLi
 import AppShell from "./harness/AppShell";
 import Limits, { ReplyApproval, useHarnessLimits } from "./harness/Limits"; // U77: router-enforced chat controls.
 import { Button, CopyButton, Modal } from "./UI";
+import { FolderInstructionsProvider, FolderInstructionsChip } from "./harness/FolderInstructions"; // G157
+import { activeFolder, folderSystems, systemText } from "../lib/folder-instructions.js"; // G157
 import s from "./Harness.module.css";
 import CopyAsCode from "./harness/CopyAsCode"; // C130
 import { modelUnavailable, selectableModels } from "../lib/model-availability.js"; // ON5
@@ -783,6 +785,8 @@ export default function Harness() {
   const [drag, setDrag] = useState(false);
   const [announce, setAnnounce] = useState("");
   const [promptHistory, setPromptHistory] = useState(null); // V81: unlocked history vault only.
+  const [folderScope, setFolderScope] = useState(null); // G157
+  const folderInstructions = activeFolder(folderScope)?.instructions || ""; // G157
   const priv = usePrivateMode(); // private mode: the attested lane only, see harness/PrivateMode.jsx
   const controllers = useRef(new Map());
   const limits = useHarnessLimits(); // U77: tab-scoped child key and approval state.
@@ -792,6 +796,7 @@ export default function Harness() {
   settingsRef.current = settings;
   const systemRef = useRef(system);
   systemRef.current = system;
+  systemRef.current = folderSystems(system, folderInstructions); // G157
   const authRef = useRef(auth);
   authRef.current = auth;
   const input = useRef(null);
@@ -889,7 +894,9 @@ export default function Harness() {
   // Voice mode: browser-only adapter; existing send and history paths remain the source of truth.
   const voice = useHarnessVoice({ draft, setDraft, onSend: send, busy, canSend: !!auth.key && lanes.every((l) => !!find(l.modelId)), canConverse: !!auth.key && !!focusModel && !compare, reply: lanes[0]?.messages.filter((m) => m.role === "assistant").at(-1), scope: lanes.map((l) => `${l.id}:${l.modelId}`).join("|") + `:${priv.on}`, blocked: !!(signin || editing || palette || sheet) });
   const prompts = usePromptLibrary({ privateMode: priv.on, history: promptHistory, draft, system, model: focusModel?.id, focus, busy, models: all, setDraft, setSystem, setLanes, setFocus, input, setFiles, setEditing, stopVoice: voice.stop }); // V81
+  let folderContext; { const system = systemRef.current; // G157: include both system messages; preserve shared call.
   const context = useContextMeter({ lanes, find, system, draft, files, busy, auth, priv, limits, controllers, setInflight, refreshBalance, setLanes, setFocus, setEditing, voice, needKey: reason => needKey(reason), input }); // C129
+  folderContext = context; } const context = folderContext; // G157
   const empty = lanes.every((l) => !l.messages.length);
   const acceptsImages = lanes.every((l) => readsImages(find(l.modelId)));
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
@@ -1121,13 +1128,16 @@ export default function Harness() {
     }
     return -1;
   };
+  let folderPromptCost; { const system = systemText(systemRef.current); // G157
   const promptCost = focusModel ? (estimateTokens(system + draft + lanes[0].messages.map((m) => m.text || "").join(" ")) * focusModel.inPrice) / 1e6 : 0;
+  folderPromptCost = promptCost; } const promptCost = folderPromptCost; // G157
   // The page is pre-rendered without a browser: pick the key label after mount so hydration matches.
   const [mod, setMod] = useState("Ctrl");
   useEffect(() => setMod(isMac() ? "⌘" : "Ctrl"), []);
 
   return (
     <SavedAnswersProvider history={promptHistory} lanes={lanes} busy={busy}> {/* D140 */}
+    <FolderInstructionsProvider scope={folderScope} onScope={setFolderScope}> {/* G157 */}
     <div className={s.harness} data-harness-app data-compare={compare || undefined}>
       <Rail
         models={models}
@@ -1303,6 +1313,7 @@ export default function Harness() {
             if (!prompts.chooseSlash()) busy ? stop() : send(draft); // V81: slash selection never sends.
           }}
         >
+          <FolderInstructionsChip busy={busy} /> {/* G157 */}
           <ContextMeter context={context} busy={busy} /> {/* C129 */}
           <PromptSlash library={prompts} /> {/* V81 */}
           <SharedDraft share={sharedDraft} signedIn={!!auth.key} onSignIn={() => setSignin("send")} onChooseModel={switchVision} /> {/* D137 */}
@@ -1398,6 +1409,7 @@ export default function Harness() {
         {announce}
       </p>
     </div>
+    </FolderInstructionsProvider> {/* G157 */}
     </SavedAnswersProvider> /* D140 */
   );
 }

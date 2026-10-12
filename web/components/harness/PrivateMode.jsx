@@ -16,6 +16,7 @@ import { Button, Modal } from "../UI";
 import HistoryTools, { ExportCurrent, HistoryAccess, useHistoryKeys } from "./HistoryTools";
 import { currentChat } from "../../lib/harness-history";
 import { chatCost, restoreChatCost } from "../../lib/chat-cost.js"; // C128
+import { FolderInstructionsBridge } from "./FolderInstructions"; // G157
 import s from "./PrivateMode.module.css";
 
 // ---------------------------------------------------------------- the switch, shared by the whole page
@@ -372,6 +373,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
 
   return (
     <section className={s.strip} data-on={on || undefined} aria-label="Private mode">
+      <FolderInstructionsBridge history={vault === "open" ? historyRef.current : null} chatId={chatId.current} revision={chats} onChange={() => setChats(history().list())} /> {/* G157 */}
       <SavedHistoryBridge currentId={() => chatId.current} onOpen={openChat} onAccess={savedAccess} /> {/* D140 */}
       <div className={s.row}>
         <button type="button" role="switch" aria-checked={on} className={s.toggle} onClick={flip} disabled={busy} title={busy ? "Wait for the reply to finish" : undefined}>

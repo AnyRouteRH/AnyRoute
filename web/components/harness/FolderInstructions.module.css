@@ -1,0 +1,10 @@
+/* G157 */
+.root { min-width: 0; font-size: 12px; }
+.chip { background: var(--signal-tint); color: var(--signal-deep); border: 1px solid var(--line); border-radius: 20px; padding: 6px 10px; font: inherit; cursor: pointer; }
+.editor { display: grid; gap: 10px; padding: 12px 0; min-width: 0; overflow-wrap: anywhere; }
+.editor p { margin: 0; color: var(--muted); }
+.editor textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; background: var(--paper-2); color: var(--ink); border: 1px solid var(--line); padding: 10px; font: inherit; }
+.editor small { color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.root :is(button, textarea):focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 2px; }
+@media (max-width: 540px) { .root button { min-height: 36px; } }

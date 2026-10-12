@@ -5,9 +5,13 @@ import { COPY_CODE_LANGUAGES, copyAsCode } from "../../lib/copy-as-code.js";
 import { CopyButton, Modal } from "../UI";
 import s from "./CopyAsCode.module.css";
 
+import { useCurrentFolderInstructions } from "./FolderInstructions"; // G157
+import { folderSystems } from "../../lib/folder-instructions.js"; // G157
+
 const labels = { curl: "curl", typescript: "TypeScript", python: "Python" };
 
 export default function CopyAsCode({ model, settings, system, messages, headers, apiKey, busy }) {
+  const folderInstructions = useCurrentFolderInstructions(); // G157
   const [samples, setSamples] = useState(null);
   const [language, setLanguage] = useState("curl");
   const menu = useRef(null), trigger = useRef(null), tabs = useRef([]);
@@ -16,7 +20,7 @@ export default function CopyAsCode({ model, settings, system, messages, headers,
   const open = () => {
     menu.current.open = false;
     setLanguage("curl");
-    try { setSamples(copyAsCode({ model, settings, system, messages, headers, apiKey, baseUrl: API_BASE || "https://anyroute.tech" })); }
+    try { setSamples(copyAsCode({ model, settings, system: folderSystems(system, folderInstructions), messages, headers, apiKey, baseUrl: API_BASE || "https://anyroute.tech" })); }
     catch { setSamples({ error: "The request could not be prepared. Check your settings and try again." }); }
   };
   return <>

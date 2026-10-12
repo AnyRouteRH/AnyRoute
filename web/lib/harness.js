@@ -366,16 +366,19 @@ export function toWire(msg, m, dropped = { images: 0, files: 0 }) {
 /** Messages worth sending: finished or partial replies, never an empty failed one. */
 const sendable = (msg) => msg.role !== "assistant" || msg.text || (msg.toolCalls || []).length;
 
+// G157
+import { folderSystems, systemMessages } from "./folder-instructions.js";
+
 /**
  * The chat completion body for one model. Every optional field is gated on the model's declared
  * parameters, so a setting the model does not support is never sent. Returns { body, notes, error }.
  */
-export function buildRequest({ model, settings = defaultSettings(), system = "", messages = [] }) {
+export function buildRequest({ model, settings = defaultSettings(), system = "", folderInstructions = "", messages = [] }) {
   const s = supportFor(model);
   const p = model.params;
   const dropped = { images: 0, files: 0 };
   const wire = [];
-  if (system.trim()) wire.push({ role: "system", content: system.trim() });
+  wire.push(...systemMessages(folderInstructions ? folderSystems(system, folderInstructions) : system)); // G157: folder first, chat prompt second.
   for (const msg of messages) if (sendable(msg)) wire.push(toWire(msg, model, dropped));
   const body = { model: model.id, messages: wire };
   const notes = [];

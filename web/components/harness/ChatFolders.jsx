@@ -2,6 +2,7 @@
 // D143: controls shared by the existing history list and its chat actions.
 import { useId, useState } from 'react';
 import { folderCounts } from '../../lib/chat-folders.js';
+import { FolderInstructionsEditor } from "./FolderInstructions"; // G157
 import s from './ChatFolders.module.css';
 
 export const FOLDER_DRAG_TYPE = 'application/x-anyroute-chat-id';
@@ -16,7 +17,7 @@ export function ChatFolderMove({ chat, folders, disabled, onMove }) {
   </details>;
 }
 
-export default function ChatFolders({ chats, folders, selected, onSelect, disabled, onCreate, onRename, onDelete, onMove }) {
+export default function ChatFolders({ chats, folders, selected, onSelect, disabled, onCreate, onRename, onDelete, onMove, onInstructions }) {
   const id = useId();
   const [editing, setEditing] = useState(null), [name, setName] = useState('');
   const counts = folderCounts(chats, folders);
@@ -44,6 +45,7 @@ export default function ChatFolders({ chats, folders, selected, onSelect, disabl
     <div className={s.controls}>
       <button type="button" className="text-button" disabled={disabled} onClick={() => begin('create')}>New folder</button>
       {active && <>
+        <FolderInstructionsEditor key={active.id} folder={active} disabled={disabled} onSave={text => onInstructions(active.id, text)} /> {/* G157 */}
         <button type="button" className="text-button" disabled={disabled} onClick={() => begin('rename')}>Rename folder</button>
         <button type="button" className="text-button" disabled={disabled} onClick={() => begin('delete')}>Delete folder</button>
       </>}
