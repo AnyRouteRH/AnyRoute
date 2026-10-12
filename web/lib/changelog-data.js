@@ -5,6 +5,197 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "edit-and-branch",
+    "date": "2026-10-12",
+    "title": "Edit a message and switch versions",
+    "summary": "Edit an earlier message or regenerate a reply and the original stays as another version. Arrows under the message switch between them; only the version shown is sent.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#edit-and-branch"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/f9356e76fa35e1277d4d016d7a28667d3d20f5ee"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "folder-instructions",
+    "date": "2026-10-12",
+    "title": "Instructions for a whole chat folder",
+    "summary": "Give a chat folder instructions and every chat in it uses them, before its own system prompt.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#folder-instructions"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/d52bd389f067783559ac3b12e16ad89b97d9b117"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "rotate-key",
+    "date": "2026-10-12",
+    "title": "Rotate a key without downtime",
+    "summary": "Make a new secret for a key with all its settings; the old secret keeps working for 1 hour, 24 hours or 7 days, then stops.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#rotate-key"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/cfa73caac7bdbf77e722635f7db2d6b7f8a6bddf"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "model-watch",
+    "date": "2026-10-12",
+    "title": "Model watch",
+    "summary": "Watch a model and get a notice in your inbox or Telegram when it becomes unavailable and when it is back.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#model-watch"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/40325599589ccdc2fe0c6093ba7b8a06a474d38e"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "savings-finder",
+    "date": "2026-10-12",
+    "title": "Ways to save",
+    "summary": "Insights shows, for models you used in the last 30 days, a similar cheaper model and an estimate of what the same tokens would have cost on it at today's prices.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#savings-finder"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/490572fb736d21545aa7a6225f41a09a9f7f3645"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "work-hours",
+    "date": "2026-10-12",
+    "title": "Agent work hours",
+    "summary": "Set the days and hours an agent may work, in your time zone. Outside them its requests are refused or need approval.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#work-hours"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/f2ced3e24e65ae3c1013b0dc20584228e5b93c2b"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "chat-cap",
+    "date": "2026-10-12",
+    "title": "A spending cap for each chat",
+    "summary": "Set a cap on what a chat may spend. A send that would pass it is held until you raise the cap or send anyway.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#chat-cap"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/aa3e4c751cb964559b841e6191d2f00ed6d56066"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "telegram-stop",
+    "date": "2026-10-12",
+    "title": "Stop and start agents from Telegram",
+    "summary": "In a linked Telegram chat, /agents lists your agents, /stop stops one for an hour, until tomorrow or until resumed, and /start resumes it.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#telegram-stop"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/27fb48cb528d3dc255c944d98c41506fb0ff68f7"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "approval-nudges",
+    "date": "2026-10-12",
+    "title": "Approval reminders",
+    "summary": "When an agent's request for approval is about to expire, whoever can decide it gets one reminder with the same Approve and Deny buttons.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#approval-nudges"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/be8519dc2e4ed85efc0fc4b6e9bca6bfc861203f"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "compare-models",
+    "date": "2026-10-12",
+    "title": "Compare models side by side",
+    "summary": "Put two or three models in one table: abilities, prices, context length, providers and uptime, with the differences in plain words.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#compare-models"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/6e051cf194a3e45851d2bcf33a1ed700d19d3e7e"
+      }
+    ],
+    "tags": [
+      "chat",
+      "build"
+    ]
+  },
+  {
     "id": "key-ip-allowlist",
     "date": "2026-10-10",
     "title": "Lock a key to your servers' IP addresses",
