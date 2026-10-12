@@ -2,6 +2,7 @@ import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
 import ApprovalNudgesDocs from "../../components/ApprovalNudgesDocs"; // G164
 import ModelWatchDocs from "../../components/model-watch/ModelWatchDocs"; // G159
+import TelegramStopDocs from "../../components/TelegramStopDocs"; // G163
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
 import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
 import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
@@ -947,6 +948,7 @@ export default function Docs() {
           <WeeklySummaryDocs /> {/* B120 */}
           <TelegramPhotosDocs /> {/* D142 */}
           <TelegramBalanceSpendDocs /> {/* E152 */}
+          <TelegramStopDocs /> {/* G163 */}
           <SecurityAlertsDocs /> {/* D138 */}
           <SignedInBrowsersDocs /> {/* E147 */}
           <NotificationSettingsDocs /> {/* E146 */}

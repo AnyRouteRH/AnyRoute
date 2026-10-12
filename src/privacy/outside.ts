@@ -2,6 +2,7 @@ import { rotationReader, rotationStores } from "./key-rotation.ts"; // G158
 import { approvalNudgeStores } from "./approval-nudges.ts"; // G164
 import { modelWatchReader } from "./model-watch.ts"; // G159
 import { chatCapBrowser } from "./chat-cap.ts"; // G162
+import { telegramAgentStopReader } from "./telegram-agent-stop.ts"; // G163
 import { browserSessionStores } from "./browser-sessions.ts"; // E147
 import { agentApproversReader } from "./agent-approvers.ts"; // E153
 import { keyIpReader } from "./key-ip.ts"; // E148
@@ -478,6 +479,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   ...sealedBodyReaders,
   telegramLinkReader,
   telegramBalanceSpendReader, // E152
+  telegramAgentStopReader, // G163
   ...juryBodyReaders,
   { file: "src/agreements/routes.ts", carries: "prompt-or-answer", reads: "Bounded party evidence text or JSON, or a strict create-agreement preparation with payee wallet, milestone USDG amounts, terms hash and future deadline.", then: "Requires an authenticated wallet-linked account matching the indexed payer/payee. Caps streams without trusting Content-Length. Preparation checks inherited rulebooks and returns unsigned calldata; jury calls use the attested chat path with a configured API key, or the optional internal provider transport.", kept: "Evidence hash and APP_SECRET-encrypted content in agreement_evidence, up to 32 items per party. Jury statement stores per-model answer reasons, receipt references and a signed ruling; reasons can quote evidence. Router reads evidence in memory. Parties can read both parties evidence through the API. Resolution plus 30 days by default permits deletion; a fresh-index retention job removes evidence and jury rows. No new Redis family, log field or caller-address reader.", evidence: [ev("src/agreements/routes.ts", "const reader = c.req.raw.body?.getReader();")] },
   { file: "src/api/agent-certificates.ts", carries: "settings", reads: "Bounded record claim identifiers for issuance; a signed certificate supplied by body or query for public verification.", then: "Checks retained generation counts and rulebook events, signs true claims with a fresh random pseudonym, or checks certificate signature and expiry. The router knows the authenticated issuing key.", kept: "No certificate, pseudonym, claims, query or body is persisted. Only an account issuance limiter counter and the reused public receipt signing key log entry are kept; no prompt fields are accepted.", evidence: [ev("src/api/agent-certificates.ts", "bodySchema.parse(await readJson(c))")] },

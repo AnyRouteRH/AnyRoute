@@ -1,3 +1,4 @@
+import { AGENT_STOP_HELP, handleAgentStop, registerAgentStopCommands } from "../telegram/agent-stop.ts"; // G163
 import { hasPhoto, photoCaption, photoCapability, PHOTO_HELP, prepareTelegramPhoto, visionReply, type PhotoMessage, type TgPhoto } from "../telegram/photos.ts"; // D142
 import { deliverTelegramApprovals, handleLinkedUpdate } from "../telegram/delivery.ts";
 import { BALANCE_SPEND_COMMANDS, BALANCE_SPEND_HELP, handleBalanceSpend } from "../telegram/balance-spend.ts"; // E152
@@ -133,6 +134,7 @@ export class TelegramBot {
     try {
       if (!this.registered) {
         this.registered = true;
+        if (this.ctx.cfg.telegram.linkingEnabled && this.ctx.cfg.agentPolicyEnabled) await registerAgentStopCommands(this.api, COMMANDS); else // G163
         await this.api.call("setMyCommands", { commands: this.ctx.cfg.telegram.linkingEnabled ? [...COMMANDS, ...BALANCE_SPEND_COMMANDS, { command: "link", description: "Link agent approvals and alerts" }, { command: "unlink", description: "Remove the account link" }] : COMMANDS }).catch(() => undefined); // E152
       }
       if (this.ctx.cfg.telegram.linkingEnabled) await deliverTelegramApprovals(this.ctx, this.api);
@@ -180,6 +182,7 @@ export class TelegramBot {
   // ---- One update ------------------------------------------------------------------------------
 
   async handleUpdate(u: TgUpdate) {
+    if (await handleAgentStop(this.ctx, this.api, u)) return; // G163
     if (await handleLinkedUpdate(this.ctx, this.api, u)) return;
     if (await handleBalanceSpend(this.ctx, this.api, u)) return; // E152
     const m = u.message;
@@ -233,6 +236,7 @@ export class TelegramBot {
       "/help  show this",
       ...(this.ctx.cfg.telegram.linkingEnabled ? ["/link <code>  link agent approvals and alerts from /agents", "/unlink  remove the account link"] : []),
       ...(this.ctx.cfg.telegram.linkingEnabled ? BALANCE_SPEND_HELP : []), // E152
+      ...(this.ctx.cfg.telegram.linkingEnabled && this.ctx.cfg.agentPolicyEnabled ? AGENT_STOP_HELP : []), // G163
       "",
       `Each message is answered on its own (no chat history), by ${DEFAULT_MODEL} unless you pick another model.`,
     ].join("\n");

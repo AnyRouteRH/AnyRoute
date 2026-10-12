@@ -2,6 +2,7 @@ const sections = [
   ["rotate-key", "Rotate a key without downtime"], // G158
   ["approval-nudges", "Approval reminders"], // G164
   ["model-watch", "Model watch"], // G159
+  ["telegram-stop", "Stop an agent from Telegram"], // G163
   ["signed-in-browsers", "Signed-in browsers"], // E147
   ["model-performance", "Sort models by speed and reliability"], // E150
   ["model-pages", "A page for every model"], // E151
