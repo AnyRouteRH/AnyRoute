@@ -1,0 +1,8 @@
+import type { ExternalDoc } from "./types.ts";
+export const savingsStores: ExternalDoc["otherStores"] = [{
+  id: "account-savings-reader", name: "Savings finder response in memory",
+  purpose: "GET /api/v1/account/savings aggregates only the caller's visible charged generation records over 1 to 30 rolling days. Uses Activity's account-or-own-key access, including sessions, team roles and deleted-key account stamps. No new durable storage.",
+  holds: "Model identifiers, call and input/output token totals, largest recorded context/output counts, actual charged pico amounts, safe billing-mode/cache/reasoning flags, and existing receipt lane/disclosure codes only. Reads current catalogue modalities, endpoint supported parameters, context/output limits, eligibility, health, lanes, disclosure and token/request rates. Historical used abilities are not retained: all declared source abilities, parameters and full context are preserved conservatively; missing metadata and unsafe billing records omit a model. Candidate must be cheaper than both current source rates and actual charges. Estimates exclude refunds, royalties, account fees and extra charges; no equal quality claim. No messages, bodies, addresses, key secrets, new tables, columns, logs or Redis keys are read or written. Ordinary inference still reads request text in router memory.",
+  ttl: "Response discarded after completion, cache-control no-store. Browser state cleared on key change or leaving Insights; no browser persistence. Source retention unchanged.", requestText: "none",
+  evidence: [{ file: "src/savings/read.ts", contains: "export async function readSavings" }, { file: "src/api/account-savings.ts", contains: 'c.header("cache-control", "no-store")' }],
+}];

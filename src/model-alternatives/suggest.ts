@@ -19,6 +19,7 @@ export type SuggestionInput = {
 const down = (reason: string) => reason === OUTAGE_REASON || /^provider (?!live\b)/.test(reason) || /^offer (?!live\b)/.test(reason);
 const failedAvailability = new Set(["http_5xx", "timeout", "connection", "insufficient_credits", "empty200", "unreadable", "interrupted"]);
 const abs = (n: bigint) => n < 0n ? -n : n;
+export { select as selectAlternativeProviders }; // G160: reuse B121's routing eligibility for savings.
 
 /** Inspect content-part types in router memory; do not retain text, image URLs or audio. */
 export function requiredAbilities(body: Record<string, unknown>) {

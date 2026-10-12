@@ -50,6 +50,7 @@ import AgentIdentityDocs from "../../components/AgentIdentityDocs";
 import SealedAgentDocs from "../../components/SealedAgentDocs";
 import AgreementsDocs from "../../components/AgreementsDocs";
 import ReliabilityDocs from "../../components/ReliabilityDocs"; // E155
+import SavingsFinderDocs from "../../components/SavingsFinderDocs"; // G160
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import NetworkStatsDocs from "../../components/NetworkStatsDocs";
@@ -943,6 +944,7 @@ export default function Docs() {
           <DecisionTagDocs /> {/* B: decision tags */}
           <ProjectsDocs /> {/* C134 */}
           <ReliabilityDocs /> {/* E155 */}
+          <SavingsFinderDocs /> {/* G160 */}
           <IdempotencyDocs /> {/* D145 */}
           <ProjectBudgetsDocs /> {/* D139 */}
           <AgentCertificateDocs /><AgentProfileDocs /><AgentIdentityDocs /><SealedAgentDocs />

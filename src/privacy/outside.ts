@@ -32,6 +32,7 @@ import { statementStores } from "./statements.ts"; // V87
 import { proofPackLimit, proofPackStores } from "./proof-pack.ts"; // U100
 import { laneReportLimit, laneReportStores } from "./lane-report.ts"; // Lane report
 import { reliabilityStores } from "./reliability.ts"; // E155
+import { savingsStores } from "./savings.ts"; // G160
 import { insightsStores } from "./insights.ts"; // V88: read-only aggregates.
 import { dataToolStores } from "./data-tools.ts"; // B: market-data tools and decision tags.
 import { webhookBodyReader, webhookStores } from "./webhooks.ts"; // V86: event delivery.
@@ -815,6 +816,7 @@ export const EXTERNAL: ExternalDoc = {
     ...proofPackStores, // U100
     ...laneReportStores, // Lane report
     ...insightsStores, // V88: spend insights.
+    ...savingsStores, // G160
     ...reliabilityStores, // E155
     ...dataToolStores, // B
     ...inboxStores,

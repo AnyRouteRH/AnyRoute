@@ -4,6 +4,7 @@ const sections = [
   ["model-pages", "A page for every model"], // E151
   ["compare-models", "Compare models side by side"], // G165
   ["reliability-report", "Your reliability report"], // E155
+  ["savings-finder", "Ways to save"], // G160
   ["read-only-keys", "Read-only keys for accountants and dashboards"], // E149
   ["key-ip-allowlist", "Allowed IP addresses for keys"], // E148
   ["linked-wallets", "Link another wallet"], // E154

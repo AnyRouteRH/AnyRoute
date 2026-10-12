@@ -218,6 +218,162 @@
     }
   ],
   "paths": {
+    "/api/v1/account/savings": {
+      "get": {
+        "operationId": "accountSavings",
+        "summary": "Find ways to save",
+        "description": "G160: estimate the same charged input/output tokens at current catalogue token and request rates over 1 to 30 rolling days. Same Bearer key and account/key/session visibility as Activity; read-only keys are refused by the unchanged scope allow-list. Preserves all currently declared source modalities, parameters, full context and recorded lane/disclosure on one eligible endpoint. Uses closest cheaper token-weighted price; must be cheaper than both the current source rates and actual charges. Unknown metadata or unsafe billing omit the model. No equal quality claim. Excludes refunds, cache discounts, royalties, account fees and extra charges; historical ability changes cannot be reconstructed. No flag, worker, new storage or migration. See /docs/#savings-finder.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30,
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estimated comparisons at current catalogue prices; models empty when no safe cheaper match. Cache-Control: no-store.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "scope",
+                    "days",
+                    "from",
+                    "to",
+                    "priced_at",
+                    "estimate",
+                    "models"
+                  ],
+                  "properties": {
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "account",
+                        "key"
+                      ]
+                    },
+                    "days": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 30
+                    },
+                    "from": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "to": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "priced_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Current catalogue snapshot time."
+                    },
+                    "estimate": {
+                      "type": "string"
+                    },
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "model",
+                          "name",
+                          "calls",
+                          "tokens_in",
+                          "tokens_out",
+                          "charged_usd",
+                          "alternative"
+                        ],
+                        "properties": {
+                          "model": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "calls": {
+                            "type": "string",
+                            "pattern": "^\\d+(?:\\.\\d+)?$"
+                          },
+                          "tokens_in": {
+                            "type": "string",
+                            "pattern": "^\\d+(?:\\.\\d+)?$"
+                          },
+                          "tokens_out": {
+                            "type": "string",
+                            "pattern": "^\\d+(?:\\.\\d+)?$"
+                          },
+                          "charged_usd": {
+                            "type": "string",
+                            "pattern": "^\\d+(?:\\.\\d+)?$"
+                          },
+                          "alternative": {
+                            "type": "object",
+                            "required": [
+                              "model",
+                              "name",
+                              "estimated_cost_usd",
+                              "estimated_saving_usd"
+                            ],
+                            "properties": {
+                              "model": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "estimated_cost_usd": {
+                                "type": "string",
+                                "pattern": "^\\d+(?:\\.\\d+)?$"
+                              },
+                              "estimated_saving_usd": {
+                                "type": "string",
+                                "pattern": "^\\d+(?:\\.\\d+)?$"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
     "/api/v1/account/browser-sessions": {
       "get": {
         "summary": "List signed-in browsers",
