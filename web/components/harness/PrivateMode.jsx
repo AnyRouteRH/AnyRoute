@@ -15,6 +15,7 @@ import { restoreLanes, snapshotLanes } from "../../lib/harness-image-history";
 import { Button, Modal } from "../UI";
 import HistoryTools, { ExportCurrent, HistoryAccess, useHistoryKeys } from "./HistoryTools";
 import { currentChat } from "../../lib/harness-history";
+import { capFields, restoreChatCap } from "../../lib/chat-cap.js"; // G162
 import { chatCost, restoreChatCost } from "../../lib/chat-cost.js"; // C128
 import { FolderInstructionsBridge } from "./FolderInstructions"; // G157
 import s from "./PrivateMode.module.css";
@@ -310,12 +311,12 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
     const snap = snapshotLanes(lanes);
     if (!snap.some((l) => l.messages.length)) return;
     const costSummary = chatCost(lanes); // C128: account before the content snapshot drops replies.
-    const sig = JSON.stringify([snap, costSummary]);
+    const sig = JSON.stringify([snap, costSummary, capFields(lanes[0])]);
     if (sig === lastSaved.current) return;
     chatId.current ??= "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     lastSaved.current = sig;
     const h = history();
-    h.put({ id: chatId.current, title: titleOf(lanes), lanes: snap, costSummary }) // C128
+    h.put({ id: chatId.current, title: titleOf(lanes), lanes: snap, costSummary, ...capFields(lanes[0]) }) // C128
       .then(() => { if (h.unlocked) setChats(h.list()); })
       .catch((e) => {
         lastSaved.current = "";
@@ -336,10 +337,10 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
     if (!on) priv.setOn(true); // D140: reopen kept chats with their existing Private mode flow.
     const fallback = priv.models?.[0]?.id || null;
     const restored = restoreLanes(chat.lanes).map((l) => ({ ...l, modelId: find(l.modelId) ? l.modelId : fallback }));
-    setLanes(restoreChatCost(chat, restored)); // C128
+    setLanes(restoreChatCap(chat, restoreChatCost(chat, restored))); // C128
     setFocus(0);
     chatId.current = chat.id;
-    lastSaved.current = JSON.stringify([snapshotLanes(restored), chatCost(restoreChatCost(chat, restored))]); // C128
+    lastSaved.current = JSON.stringify([snapshotLanes(restored), chatCost(restoreChatCost(chat, restored)), capFields(chat)]); // C128
     setDialog(null);
   };
 

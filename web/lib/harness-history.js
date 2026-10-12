@@ -1,3 +1,4 @@
+import { capDollars, capFields } from './chat-cap.js'; // G162
 import { historyMetadata } from "./history-metadata.js";
 import { validateSavedAnswers } from "./saved-answers.js"; // D140
 import { folderDocument, folderFields } from "./chat-folders.js"; // D143
@@ -59,6 +60,7 @@ function validateChat(c) {
   });
   lanes.forEach((lane, index) => Object.assign(lane, validateBranches(c.lanes[index].branches, message => validateChat({ id: "branch", title: "Branch", at: 0, lanes: [{ modelId: lane.modelId, messages: [message] }] }).lanes[0].messages[0]))); // G156
   return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...folderFields(c), ...costSummaryFields(c) }; // C128
+  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...folderFields(c), ...costSummaryFields(c), ...capFields(c) }; // C128
 }
 
 // Dedupe ids, plus identical conversation content with different ids. Do not overwrite anything already kept.
@@ -93,7 +95,7 @@ export function parseImport(source) {
 export function currentChat(lanes, saved, now = Date.now()) {
   const snapshot = snapshotLanes(lanes);
   if (!snapshot.some((l) => l.messages.length)) return null;
-  return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, ...folderFields(saved || {}), lanes: snapshot, costSummary: chatCost(lanes) }; // C128
+  return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, ...folderFields(saved || {}), lanes: snapshot, costSummary: chatCost(lanes), ...capFields(lanes[0]) }; // C128
 }
 
 export function exportJson(chats, metadata = [], folders = []) {
@@ -105,6 +107,7 @@ const literal = (value) => String(value).replace(/[\\`*_{}[\]()#+.!|>~-]/g, "\\$
 export function exportMarkdown(chats) {
   return chats.map((c) => {
     const lines = [`# ${literal(c.title)}`, "", `Saved: ${new Date(c.at).toISOString()}`, ""];
+    if (c.spendingCap) lines.push(`Chat cap: $${capDollars(c.spendingCap)}`, "");
     c.lanes.forEach((l, i) => {
       lines.push(`## ${chats.length > 0 && c.lanes.length > 1 ? `Conversation ${i + 1} · ` : ""}${literal(l.modelId || "Model not recorded")}`, "");
       for (const m of l.messages) {

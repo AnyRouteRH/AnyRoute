@@ -23,6 +23,7 @@ const sections = [
   ["notifications", "Notifications"], // E146
   ["idempotency", "Retry without paying twice"], // D145
   ["scheduled-prompts", "Scheduled prompts"], // D136
+  ["chat-cap", "A spending cap for each chat"], // G162
   ["chat-cost", "This chat’s cost"], // C128
   ["copy-as-code", "Copy a Chat conversation as code"], // C130
   ["key-expiry", "Keys that expire"], // C127

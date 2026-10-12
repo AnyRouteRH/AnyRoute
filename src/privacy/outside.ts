@@ -1,6 +1,7 @@
 import { rotationReader, rotationStores } from "./key-rotation.ts"; // G158
 import { approvalNudgeStores } from "./approval-nudges.ts"; // G164
 import { modelWatchReader } from "./model-watch.ts"; // G159
+import { chatCapBrowser } from "./chat-cap.ts"; // G162
 import { browserSessionStores } from "./browser-sessions.ts"; // E147
 import { agentApproversReader } from "./agent-approvers.ts"; // E153
 import { keyIpReader } from "./key-ip.ts"; // E148
@@ -925,6 +926,7 @@ export const EXTERNAL: ExternalDoc = {
       modelCompareBrowser, // G165
       folderInstructionsBrowser, // G157
       chatBranchesBrowser, // G156
+      chatCapBrowser, // G162
       { store: "IndexedDB", holds: "Chat history is opt-in and encrypted with the browser history passphrase in the existing anyroute-private-history vault (memory only when storage is unavailable). Alongside saved conversations, costSummary keeps microUsd as an integer decimal string and replies as a count, summed across comparison lanes from the displayed reply costs. Totals include replies omitted from saved content; failed replies add zero dollars. Totals and counts are encrypted with the conversation, not stored separately or sent to the router. Locking drops the decrypted history from memory; Forget deletes the vault. Older chats without this summary use the costs in their retained replies.", evidence: [ev("web/lib/private-history.js", "const ct = new Uint8Array(await subtle().encrypt"), ev("web/components/harness/PrivateMode.jsx", "const costSummary = chatCost(lanes);"), ev("web/lib/harness-history-vault.js", "...costSummaryFields(chat)")] }, // C128
       savedAnswersBrowser, // D140
       gettingStartedBrowser, // C135

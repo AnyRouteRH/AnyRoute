@@ -1,0 +1,17 @@
+.cost { flex-basis: 100%; order: 1; min-width: 0; }
+.cost > .chip { max-width: 100%; }
+.chip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; background: var(--paper-2); color: var(--ink); text-align: left; cursor: pointer; font: 400 11px/1.5 var(--mono); }
+.chip:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+.chip:disabled { cursor: default; }
+:global([data-harness-app]) div:has(> .cost) { flex-wrap: wrap; }
+.notice { padding: 12px; border: 1px solid var(--warn-text); border-radius: 6px; color: var(--warn-text); background: var(--warn-surface); font-size: 13px; }
+.notice p { margin: 0 0 10px; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.settings { padding: 16px 0; border-bottom: 1px solid var(--line); color: var(--ink); font-size: 13px; }
+.settings h3 { font: 500 12px var(--mono); }
+.settings p { color: var(--muted); line-height: 1.6; }
+.editor { padding: 20px; color: var(--ink); }
+.editor p { font-size: 14px; line-height: 1.6; }
+.editor form { margin-top: 20px; }
+.editor label { display: block; font-size: 14px; margin-bottom: 8px; }
+.editor input { width: 100%; min-width: 0; padding: 10px; color: var(--ink); background: var(--paper); border: 1px solid var(--line-strong); border-radius: 4px; }

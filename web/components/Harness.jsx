@@ -5,6 +5,8 @@ import SharedDraft, { useSharedDraft } from "./harness/SharedDraft"; // D137
 import { contextMeter, contextSendBlock } from "../lib/context-meter.js"; // C129
 import { NewModelsRow } from "./NewModels"; // C131
 import ModelAlternatives from "./harness/ModelAlternatives"; import { suggestedModels, alternativeRetry } from "../lib/model-alternatives.js"; // B121
+import { ChatCapCost, ChatCapDialogs, ChatCapNotice, ChatCapProvider, ChatCapSettings, useChatCap } from "./harness/ChatCap"; // G162
+import { capRequest, capSendRequests, capSummaryRequests } from "../lib/chat-cap.js"; // G162
 import ChatCost from "./harness/ChatCost"; // C128
 import AddFunds from "./account/AddFunds"; import { fundingError, recoverFundingDraft } from "../lib/add-funds.js"; // ON1
 import RouteExplanation from "./harness/RouteExplanation"; // V84
@@ -629,6 +631,7 @@ function ToolsPanel({ model, settings, set, open, onClose, compare, system, setS
         </button>
       </div>
       <div className={s.toolsBody}>
+        <ChatCapSettings /> {/* G162 */}
         {limitsControl /* U77: dedicated child session; enforcement stays in the router. */}
         <section className={s.sect}>
           <h3>
@@ -896,12 +899,14 @@ export default function Harness() {
   const focusLane = lanes[Math.min(focus, lanes.length - 1)];
   const focusModel = find(focusLane?.modelId);
   const busy = inflight > 0;
+  const chatCap = useChatCap({ lanes, setLanes, draft, files, settings, system, key: auth.key, privateMode: priv.on }); // G162
   // Voice mode: browser-only adapter; existing send and history paths remain the source of truth.
   const voice = useHarnessVoice({ draft, setDraft, onSend: send, busy, canSend: !!auth.key && lanes.every((l) => !!find(l.modelId)), canConverse: !!auth.key && !!focusModel && !compare, reply: lanes[0]?.messages.filter((m) => m.role === "assistant").at(-1), scope: lanes.map((l) => `${l.id}:${l.modelId}`).join("|") + `:${priv.on}`, blocked: !!(signin || editing || palette || sheet) });
   const prompts = usePromptLibrary({ privateMode: priv.on, history: promptHistory, draft, system, model: focusModel?.id, focus, busy, models: all, setDraft, setSystem, setLanes, setFocus, input, setFiles, setEditing, stopVoice: voice.stop }); // V81
   let folderContext; { const system = systemRef.current; // G157: include both system messages; preserve shared call.
   const context = useContextMeter({ lanes, find, system, draft, files, busy, auth, priv, limits, controllers, setInflight, refreshBalance, setLanes, setFocus, setEditing, voice, needKey: reason => needKey(reason), input }); // C129
   folderContext = context; } const context = folderContext; // G157
+  const summarizeWithCap = context.summarize; context.summarize = lane => { if (chatCap.check(capSummaryRequests(find(lane.modelId), lane.messages, system), () => context.summarize(lane))) return summarizeWithCap(lane); }; // G162
   const empty = lanes.every((l) => !l.messages.length);
   const acceptsImages = lanes.every((l) => readsImages(find(l.modelId)));
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
@@ -1032,6 +1037,7 @@ export default function Harness() {
     const imageError = imageSendBlock(lanesRef.current, find, attachments, truncate); if (imageError) return setFileNote(imageError);
     if (needKey("send")) return;
     if (lanes.some((l) => !find(l.modelId))) return;
+    if (!chatCap.check(capSendRequests(lanesRef.current, find, systemRef.current, settingsRef.current, body, attachments, truncate), () => send(text, attachments, truncate))) return; // G162
     stick.current = true;
     const jobs = [];
     const next = lanesRef.current.map((l) => {
@@ -1064,6 +1070,7 @@ export default function Harness() {
     const lastTool = lane.messages.map((m) => m.role).lastIndexOf("tool");
     const cut = Math.max(lastUser, lastTool) + 1;
     const history = lane.messages.slice(0, cut);
+    if (!chatCap.check([capRequest(find(retryModel), history, systemRef.current, settingsRef.current, lane.messages.findLast(m => m.role === "assistant")?.imageMode ?? null)], () => regenerate(laneId, alternativeId))) return; // G162
     if (lane.messages.findLast(m => m.role === "assistant")?.errorKind === "funds") setDraft(d => d === recoverFundingDraft("", history) ? "" : d); // ON1
     return resendReply({ lane, modelId: retryModel, uid, setLanes, runLane }); // G156
     const reply = { id: uid(), role: "assistant", model: retryModel, status: "waiting", text: "" }; // B121
@@ -1076,6 +1083,7 @@ export default function Harness() {
     const lane = lanesRef.current.find((l) => l.id === laneId);
     const toolMsgs = results.map(({ call, text }) => ({ id: uid(), role: "tool", toolCallId: call.id, name: call.name, text: text.trim() }));
     const history = [...lane.messages, ...toolMsgs];
+    if (!chatCap.check([capRequest(find(lane.modelId), history, systemRef.current, settingsRef.current)], () => toolResults(laneId, results))) return; // G162
     const reply = { id: uid(), role: "assistant", model: lane.modelId, status: "waiting", text: "" };
     setLanes((ls) => ls.map((l) => (l.id === laneId ? { ...l, messages: [...history, reply] } : l)));
     runLane(laneId, lane.modelId, history, reply.id);
@@ -1085,6 +1093,7 @@ export default function Harness() {
   const newChat = () => {
     setLanes(ls => ls.map(({ chatCostRemainder, ...lane }) => lane)); // C128: clear saved accounting on a new chat.
     setLanes(ls => ls.map(({ branches, ...lane }) => lane)); // G156
+    chatCap.reset(); // G162
     voice.stop();
     stop();
     setLanes((ls) => ls.map((l) => ({ ...l, messages: [] })));
@@ -1145,6 +1154,7 @@ export default function Harness() {
   useEffect(() => setMod(isMac() ? "⌘" : "Ctrl"), []);
 
   return (
+    <ChatCapProvider value={chatCap}> {/* G162 */}
     <SavedAnswersProvider history={promptHistory} lanes={lanes} busy={busy}> {/* D140 */}
     <FolderInstructionsProvider scope={folderScope} onScope={setFolderScope}> {/* G157 */}
     <BranchProvider lanes={lanes} setLanes={setLanes} busy={busy} beforeSwitch={() => { voice.stop(); setEditing(null); setFileNote(""); }}> {/* G156 */}
@@ -1181,7 +1191,9 @@ export default function Harness() {
         }}
       >
         <div className={s.bar}>
+          <ChatCapCost control={chatCap} busy={busy}> {/* G162 */}
           <ChatCost lanes={lanes} /> {/* C128 */}
+          </ChatCapCost> {/* G162 */}
           {!compare && (
             <button type="button" className={s.modelBtn} onClick={() => setPalette({ lane: 0, add: false })} aria-label={`Model: ${focusModel?.name || "none"}. Change model`} aria-keyshortcuts="Meta+Shift+K Control+Shift+K">
               <b>{focusModel?.name || "Loading models"}</b>
@@ -1326,6 +1338,7 @@ export default function Harness() {
           }}
         >
           <FolderInstructionsChip busy={busy} /> {/* G157 */}
+          <ChatCapNotice control={chatCap} busy={busy} /> {/* G162 */}
           <ContextMeter context={context} busy={busy} /> {/* C129 */}
           <PromptSlash library={prompts} /> {/* V81 */}
           <SharedDraft share={sharedDraft} signedIn={!!auth.key} onSignIn={() => setSignin("send")} onChooseModel={switchVision} /> {/* D137 */}
@@ -1402,6 +1415,7 @@ export default function Harness() {
         )}
       </main>
 
+      <ChatCapDialogs control={chatCap} /> {/* G162 */}
       <PromptLibrary library={prompts} /> {/* V81: outside the composer form. */}
       <ToolsPanel model={focusModel} settings={settings} set={set} open={sheet === "tools"} onClose={() => setSheet(null)} compare={compare} system={system} setSystem={setSystem} limitsControl={<Limits limits={limits} signedIn={auth.state === "ok"} busy={busy} onStop={stop} />} />
       {sheet && <button type="button" className={s.scrim} aria-label="Close panel" onClick={() => setSheet(null)} />}
@@ -1424,5 +1438,6 @@ export default function Harness() {
     </FolderInstructionsProvider> {/* G157 */}
     </BranchProvider> {/* G156 */}
     </SavedAnswersProvider> /* D140 */
+    </ChatCapProvider> /* G162 */
   );
 }
