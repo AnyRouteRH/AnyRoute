@@ -899,14 +899,12 @@ export default function Harness() {
   const focusLane = lanes[Math.min(focus, lanes.length - 1)];
   const focusModel = find(focusLane?.modelId);
   const busy = inflight > 0;
-  const chatCap = useChatCap({ lanes, setLanes, draft, files, settings, system, key: auth.key, privateMode: priv.on }); // G162
+  const chatCap = useChatCap({ lanes, setLanes, draft, files, settings, system: systemRef.current, key: auth.key, privateMode: priv.on }); // G162
   // Voice mode: browser-only adapter; existing send and history paths remain the source of truth.
   const voice = useHarnessVoice({ draft, setDraft, onSend: send, busy, canSend: !!auth.key && lanes.every((l) => !!find(l.modelId)), canConverse: !!auth.key && !!focusModel && !compare, reply: lanes[0]?.messages.filter((m) => m.role === "assistant").at(-1), scope: lanes.map((l) => `${l.id}:${l.modelId}`).join("|") + `:${priv.on}`, blocked: !!(signin || editing || palette || sheet) });
   const prompts = usePromptLibrary({ privateMode: priv.on, history: promptHistory, draft, system, model: focusModel?.id, focus, busy, models: all, setDraft, setSystem, setLanes, setFocus, input, setFiles, setEditing, stopVoice: voice.stop }); // V81
-  let folderContext; { const system = systemRef.current; // G157: include both system messages; preserve shared call.
-  const context = useContextMeter({ lanes, find, system, draft, files, busy, auth, priv, limits, controllers, setInflight, refreshBalance, setLanes, setFocus, setEditing, voice, needKey: reason => needKey(reason), input }); // C129
-  folderContext = context; } const context = folderContext; // G157
-  const summarizeWithCap = context.summarize; context.summarize = lane => { if (chatCap.check(capSummaryRequests(find(lane.modelId), lane.messages, system), () => context.summarize(lane))) return summarizeWithCap(lane); }; // G162
+  const context = useContextMeter({ lanes, find, system: systemRef.current, draft, files, busy, auth, priv, limits, controllers, setInflight, refreshBalance, setLanes, setFocus, setEditing, voice, needKey: reason => needKey(reason), input }); // C129 (G157: system includes folder instructions)
+  const summarizeWithCap = context.summarize; context.summarize = lane => { if (chatCap.check(capSummaryRequests(find(lane.modelId), lane.messages, systemRef.current), () => context.summarize(lane))) return summarizeWithCap(lane); }; // G162
   const empty = lanes.every((l) => !l.messages.length);
   const acceptsImages = lanes.every((l) => readsImages(find(l.modelId)));
   const acceptsFiles = lanes.some((l) => supportFor(find(l.modelId)).files);
@@ -1032,12 +1030,12 @@ export default function Harness() {
   function send(text, attachments = files, truncate = null) {
     const body = text.trim();
     if ((!body && !attachments.length) || busy || isPreparing()) return;
-    if (truncate !== null) return resendEdit({ lanes: lanesRef.current, laneId: branchLaneRef.current, messageId: editing, text: body, attachments, uid, setLanes, runLane, find, system: systemRef.current, needKey, onError: setFileNote, onSaved: () => { stick.current = true; setDraft(""); setFiles([]); setFileNote(""); setEditing(null); } }); // G156
     const contextError = contextSendBlock(lanesRef.current, find, systemRef.current, body, attachments, truncate); if (contextError) return setFileNote(contextError); // C129
     const imageError = imageSendBlock(lanesRef.current, find, attachments, truncate); if (imageError) return setFileNote(imageError);
     if (needKey("send")) return;
     if (lanes.some((l) => !find(l.modelId))) return;
     if (!chatCap.check(capSendRequests(lanesRef.current, find, systemRef.current, settingsRef.current, body, attachments, truncate), () => send(text, attachments, truncate))) return; // G162
+    if (truncate !== null) return resendEdit({ lanes: lanesRef.current, laneId: branchLaneRef.current, messageId: editing, text: body, attachments, uid, setLanes, runLane, find, system: systemRef.current, needKey, onError: setFileNote, onSaved: () => { stick.current = true; setDraft(""); setFiles([]); setFileNote(""); setEditing(null); } }); // G156
     stick.current = true;
     const jobs = [];
     const next = lanesRef.current.map((l) => {
@@ -1146,9 +1144,7 @@ export default function Harness() {
     }
     return -1;
   };
-  let folderPromptCost; { const system = systemText(systemRef.current); // G157
-  const promptCost = focusModel ? (estimateTokens(system + draft + lanes[0].messages.map((m) => m.text || "").join(" ")) * focusModel.inPrice) / 1e6 : 0;
-  folderPromptCost = promptCost; } const promptCost = folderPromptCost; // G157
+  const promptCost = focusModel ? (estimateTokens(systemText(systemRef.current) + draft + lanes[0].messages.map((m) => m.text || "").join(" ")) * focusModel.inPrice) / 1e6 : 0;
   // The page is pre-rendered without a browser: pick the key label after mount so hydration matches.
   const [mod, setMod] = useState("Ctrl");
   useEffect(() => setMod(isMac() ? "⌘" : "Ctrl"), []);
@@ -1435,8 +1431,8 @@ export default function Harness() {
         {announce}
       </p>
     </div>
-    </FolderInstructionsProvider> {/* G157 */}
     </BranchProvider> {/* G156 */}
+    </FolderInstructionsProvider> {/* G157 */}
     </SavedAnswersProvider> /* D140 */
     </ChatCapProvider> /* G162 */
   );

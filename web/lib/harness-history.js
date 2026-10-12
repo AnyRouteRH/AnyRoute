@@ -59,8 +59,7 @@ function validateChat(c) {
     return { modelId, messages };
   });
   lanes.forEach((lane, index) => Object.assign(lane, validateBranches(c.lanes[index].branches, message => validateChat({ id: "branch", title: "Branch", at: 0, lanes: [{ modelId: lane.modelId, messages: [message] }] }).lanes[0].messages[0]))); // G156
-  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...folderFields(c), ...costSummaryFields(c) }; // C128
-  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...folderFields(c), ...costSummaryFields(c), ...capFields(c) }; // C128
+  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...folderFields(c), ...costSummaryFields(c), ...capFields(c) }; // C128, G162
 }
 
 // Dedupe ids, plus identical conversation content with different ids. Do not overwrite anything already kept.
