@@ -9,6 +9,7 @@ import { CapabilityChips } from "./ModelCapabilities";
 import ProofBadge from "./ProofBadge";
 import { Button, CopyButton } from "./UI";
 import s from "./ModelPage.module.css";
+import { ModelCompareButton, ModelCompareTray } from "./ModelComparePicks"; // G165
 
 export function ModelPageView({ model, providers = null, endpoints = null, observedAt = null, healthError = false }) {
   if (!model) return <div className="empty"><h1>Model not found</h1><p>Choose a model from the catalogue to open its page.</p><Button href="/models/">Back to models</Button></div>;
@@ -22,6 +23,7 @@ export function ModelPageView({ model, providers = null, endpoints = null, obser
       {typeof model.description === "string" && model.description.trim() && <p>{model.description}</p>}
       <CapabilityChips model={model} />
       <div className="button-row"><Button href={modelChatHref(model.id)}>Try in Chat</Button></div>
+      <ModelCompareButton model={model} /> {/* G165 */}
       {modelUnavailable(model) && <p role="status">Temporarily unavailable. You can open Chat and choose another model.</p>}
     </header>
     <section aria-label="Prices and context"><h2>Prices and context</h2><dl className={s.facts}>
@@ -42,6 +44,7 @@ export function ModelPageView({ model, providers = null, endpoints = null, obser
       </li>)}</ul> : <p>No provider records could be matched. {Array.isArray(model.provider_names) && model.provider_names.length ? "Listed providers: " + model.provider_names.join(", ") + "." : "No providers are listed."}</p>}
     </section>
     <section className={s.example} aria-label="API example"><h2>Call this model</h2><p>Set ANYROUTE_API_KEY to your API key, then run this request.</p><CopyButton text={snippet} label="Copy curl request" /><pre tabIndex={0} aria-label="curl request"><code>{snippet}</code></pre><p className={s.note}>This example sends an ordinary request. The router reads request text in memory.</p></section>
+    <ModelCompareTray models={[model]} /> {/* G165 */}
   </article>;
 }
 

@@ -12,6 +12,7 @@ import { RouteCardDetails, useRouteProviders } from "./RouteCard"; // U99
 import { Button, Modal } from "./UI";
 import s from "./ModelCatalog.module.css";
 import ModelPageLink from "./ModelPageLink"; // E151
+import { ModelCompareButton, ModelCompareTray } from "./ModelComparePicks"; // G165
 
 export default function ModelCatalog({ onChoose }) {
   const [query, setQuery] = useState("");
@@ -70,11 +71,13 @@ export default function ModelCatalog({ onChoose }) {
         <ModelPerformance model={raw} /> {/* E150 */}
         <RouteCardDetails model={raw} providers={providers} />
         <ModelPageLink model={raw} /> {/* E151 */}
+        <ModelCompareButton model={raw} /> {/* G165 */}
         <div className="button-row"><button className="text-button" onClick={() => setSelected(raw)}>Model details →</button>{modelUnavailable(raw) ? <span role="status">Temporarily unavailable</span> : onChoose ? <button className="text-button" onClick={() => onChoose(model.id)}>Try model →</button> : <a className="text-button" href={chooseHref(model.id)}>Try model →</a>}</div>
         <div className="card-ramp" aria-hidden="true" />
       </article>;
     })}</div>
     {!visible.length && models && !error && <div className="empty"><h3>No matching models</h3><p>{!models.length ? "No providers are serving models yet." : "Try a different search or clear the filters."}</p><Button secondary onClick={() => { setQuery(""); setTags([]); }}>Clear filters</Button></div>}
+    <ModelCompareTray models={models || []} /> {/* G165 */}
     {selected && <ModelDetails raw={selected} onClose={() => setSelected(null)} onChoose={onChoose} />}
   </>;
 }

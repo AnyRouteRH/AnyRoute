@@ -13,6 +13,7 @@ import ShareToAnyrouteDocs from "../../components/ShareToAnyrouteDocs"; // D137
 import DarkModeDocs from '../../components/DarkModeDocs'; // C126
 import NewModelsDocs from "../../components/NewModelsDocs"; // C131
 import ModelPageDocs from "../../components/ModelPageDocs"; // E151
+import ModelCompareDocs from "../../components/ModelCompareDocs"; // G165
 import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B123
 import ModelAlternativesDocs from "../../components/ModelAlternativesDocs"; // B121
 import RunwayDocs from "../../components/RunwayDocs"; // B119
@@ -904,6 +905,7 @@ export default function Docs() {
           <NewModelsDocs /> {/* C131 */}
           <ModelPerformanceDocs /> {/* E150 */}
           <ModelPageDocs /> {/* E151 */}
+          <ModelCompareDocs /> {/* G165 */}
           <DepositCountdownDocs /> {/* B123 */}
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
           <KeyProvisioningDocs /> {/* ZK6 */}

@@ -2,6 +2,7 @@ const sections = [
   ["signed-in-browsers", "Signed-in browsers"], // E147
   ["model-performance", "Sort models by speed and reliability"], // E150
   ["model-pages", "A page for every model"], // E151
+  ["compare-models", "Compare models side by side"], // G165
   ["reliability-report", "Your reliability report"], // E155
   ["read-only-keys", "Read-only keys for accountants and dashboards"], // E149
   ["key-ip-allowlist", "Allowed IP addresses for keys"], // E148

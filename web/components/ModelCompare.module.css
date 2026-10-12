@@ -1,0 +1,29 @@
+/* G165: the table scrolls within its region at narrow widths. */
+.page { display: grid; gap: 24px; min-width: 0; }
+.heading { display: grid; gap: 12px; overflow-wrap: anywhere; }
+.heading h1 { font-size: clamp(30px, 5vw, 56px); line-height: 1.1; margin: 0; }
+.note { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.share { display: grid; gap: 8px; min-width: 0; }
+.share input { width: 100%; min-width: 0; box-sizing: border-box; }
+.scroll { max-width: 100%; min-width: 0; overflow-x: auto; border: 1px solid var(--line); }
+.scroll:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+.table { width: 100%; min-width: 640px; border-collapse: collapse; table-layout: fixed; }
+.table caption { text-align: left; padding: 14px; color: var(--muted); }
+.table th, .table td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 16px; overflow-wrap: anywhere; }
+.table th { background: var(--paper-2); color: var(--ink); }
+.table td { background: var(--paper); color: var(--ink); }
+.table td[data-different] { background: var(--signal-tint); color: var(--signal-deep); }
+.table th p { font-weight: 400; }
+.table ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.difference { display: block; margin-top: 8px; font-size: 13px; }
+.tray { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); width: min(960px, calc(100% - 32px)); box-sizing: border-box; z-index: 5; display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); min-width: 0; max-height: 45vh; overflow-y: auto; }
+.tray p { margin: 0; }
+.picks { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.picks li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
+.picks span { overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 600px) {
+  .table th, .table td { padding: 12px; }
+  .tray { bottom: 0; padding: 12px; }
+  .picks { flex-direction: column; }
+  .tray :global(.button-row) { flex-wrap: wrap; }
+}
