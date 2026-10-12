@@ -1,4 +1,5 @@
 import { rotationReader, rotationStores } from "./key-rotation.ts"; // G158
+import { approvalNudgeStores } from "./approval-nudges.ts"; // G164
 import { browserSessionStores } from "./browser-sessions.ts"; // E147
 import { agentApproversReader } from "./agent-approvers.ts"; // E153
 import { keyIpReader } from "./key-ip.ts"; // E148
@@ -802,6 +803,7 @@ export const EXTERNAL: ExternalDoc = {
   },
   otherStores: [
     ...rotationStores, // G158
+    ...approvalNudgeStores, // G164
     ...browserSessionStores, // E147
     ...quietAlertStores, // D141
     ...securityAlertStores, // D138

@@ -20470,6 +20470,7 @@
                             "quiet_agents",
                             "price_notices",
                             "project_budgets",
+                            "approval_reminders",
                             "scheduled_results"
                           ],
                           "properties": {
@@ -20617,6 +20618,7 @@
                                 }
                               }
                             },
+                            "approval_reminders": {"type": "object", "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": {"inbox": {"type": "boolean", "default": true}, "telegram": {"type": "boolean", "default": true}}},
                             "scheduled_results": {
                               "type": "object",
                               "additionalProperties": false,
@@ -20732,6 +20734,7 @@
                             "quiet_agents",
                             "price_notices",
                             "project_budgets",
+                            "approval_reminders",
                             "scheduled_results"
                           ],
                           "properties": {
@@ -20879,6 +20882,7 @@
                                 }
                               }
                             },
+                            "approval_reminders": {"type": "object", "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": {"inbox": {"type": "boolean", "default": true}, "telegram": {"type": "boolean", "default": true}}},
                             "scheduled_results": {
                               "type": "object",
                               "additionalProperties": false,
@@ -20980,6 +20984,7 @@
                       "quiet_agents",
                       "price_notices",
                       "project_budgets",
+                      "approval_reminders",
                       "scheduled_results"
                     ],
                     "properties": {
@@ -21127,6 +21132,7 @@
                           }
                         }
                       },
+                      "approval_reminders": {"type": "object", "description": "G164: Approval reminders; both channels default on and quiet hours do not delay Telegram reminders.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": {"inbox": {"type": "boolean", "default": true}, "telegram": {"type": "boolean", "default": true}}},
                       "scheduled_results": {
                         "type": "object",
                         "additionalProperties": false,

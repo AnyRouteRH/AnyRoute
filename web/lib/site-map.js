@@ -253,3 +253,4 @@ TASKS.push({ ...task('linked-wallets', 'build', 'Link another wallet', 'Link ano
 
 TASKS.push({ ...task("rotate-key", "build", "Rotate a key without downtime", "Replace an account-backed key and give your apps time to switch.", "/docs/#rotate-key", "rotate, key, secret, grace, replacement, settings"), menu: false }); // G158
 TASKS.push({ ...task('work-hours', 'agents', 'Choose agent work hours', 'Choose work days and a time zone, then refuse or ask first outside them.', '/docs/#work-hours', 'work hours, schedule, days, time zone, overnight, daylight saving, ask first'), menu: false }); // G161
+TASKS.push(task('approval-nudges', 'agents', 'Get an approval reminder', 'See a countdown and decide before a request expires.', '/docs/#approval-nudges', 'approval, reminder, expires, telegram')); // G164

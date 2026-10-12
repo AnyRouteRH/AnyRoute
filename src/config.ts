@@ -384,6 +384,7 @@ const schema = z.object({
   PRICE_NOTICES_ENABLED: bool.default(false), // C133
   ...securityAlertsEnv, // D138
   ...notificationsEnv, // E146
+  APPROVAL_NUDGES_ENABLED: bool.default(false), // G164
   PROJECT_BUDGET_TELEGRAM_ENABLED: bool.default(false), // D139
   TELEGRAM_LINKING_ENABLED: bool.default(false),
   WEEKLY_SUMMARY_ENABLED: bool.default(false), // B120
@@ -554,6 +555,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
       allowed.push("weekly-summary"); // B120
       allowed.push("notification-quiet"); // E146
+      allowed.push("approval-nudges"); // G164
       allowed.push("deposit-pings"); // B123
       allowed.push("low-balance-alerts"); // B119
       allowed.push("price-notices"); // C133
@@ -609,6 +611,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   // The bot token is optional and secret (it is part of every Telegram API URL): never echo it.
   // The API only issues and checks link codes; every Telegram message is sent by the process that runs the bot and
   // alert jobs, so only roles that run jobs need the bot token.
+  if (e.APPROVAL_NUDGES_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("APPROVAL_NUDGES_ENABLED requires AGENT_POLICY_ENABLED."); // G164
   if (e.AGENT_TEAM_APPROVERS_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("AGENT_TEAM_APPROVERS_ENABLED requires AGENT_POLICY_ENABLED."); // E153
   if (e.AGENT_GUARD_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("AGENT_GUARD_ENABLED requires AGENT_POLICY_ENABLED."); // V98
   if (e.AGENT_PAY_ENABLED && !e.AGENT_GUARD_ENABLED) throw new Error("AGENT_PAY_ENABLED requires AGENT_GUARD_ENABLED.");
@@ -704,6 +707,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     priceNoticesEnabled: e.PRICE_NOTICES_ENABLED, // C133
     securityAlertsEnabled: e.SECURITY_ALERTS_ENABLED, // D138
     notificationQuietHoursEnabled: e.NOTIFICATION_QUIET_HOURS_ENABLED, // E146
+    approvalNudgesEnabled: e.APPROVAL_NUDGES_ENABLED, // G164
     projectBudgetTelegramEnabled: e.PROJECT_BUDGET_TELEGRAM_ENABLED, // D139
     siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),
     webauthn: {

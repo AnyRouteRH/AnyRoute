@@ -35,7 +35,7 @@ function telegram() {
 }
 const clock = (date: Date) => date.toISOString().slice(11, 16);
 function quietNow() { const now = new Date(); return { from_utc: clock(new Date(now.getTime() - 60_000)), to_utc: clock(new Date(now.getTime() + 60 * 60_000)) }; }
-const kinds = ["approval", "alert", "deposit", "low_balance", "weekly_summary", "security", "quiet-agent", "price_notice", "project_budget", "schedule"];
+const kinds = ["approval", "alert", "deposit", "low_balance", "weekly_summary", "security", "quiet-agent", "price_notice", "project_budget", "schedule", "approval_reminder"];
 test("quiet windows include start, exclude end, wrap midnight and reject equal clocks as a delay", () => {
   const quiet = { from_utc: "22:00", to_utc: "08:00" };
   for (const at of ["2026-10-10T22:00:00Z", "2026-10-11T07:59:59Z"]) expect(quietUntil(quiet, new Date(at))?.toISOString()).toBe("2026-10-11T08:00:00.000Z");
@@ -142,7 +142,7 @@ test("queue encrypts preview text, rejects revoked links, honors muting and paus
   expect(await deferTelegram(off, next, owner.hash, "Outside quiet feature", "deposits", caller, now)).toBe(false);
 });
 test("every source feature guard is rechecked at queue delivery, including API role", async () => {
-  const flags = { approvals: "agentPolicyEnabled", agent_alerts: "agentPolicyEnabled", deposits: "depositPingsEnabled", low_balance: "lowBalanceAlertsEnabled", weekly_summary: "weeklySummaryEnabled", security_alerts: "securityAlertsEnabled", quiet_agents: "quietAgentAlertsEnabled", price_notices: "priceNoticesEnabled", project_budgets: "projectBudgetTelegramEnabled", scheduled_results: "scheduledPromptsEnabled" } as const;
+  const flags = { approvals: "agentPolicyEnabled", agent_alerts: "agentPolicyEnabled", deposits: "depositPingsEnabled", low_balance: "lowBalanceAlertsEnabled", weekly_summary: "weeklySummaryEnabled", security_alerts: "securityAlertsEnabled", quiet_agents: "quietAgentAlertsEnabled", price_notices: "priceNoticesEnabled", project_budgets: "projectBudgetTelegramEnabled", scheduled_results: "scheduledPromptsEnabled", approval_reminders: "approvalNudgesEnabled" } as const;
   for (const type of NOTICE_TYPES) {
     expect(noticeFeatureEnabled({ ...h.ctx, cfg: { ...h.ctx.cfg, [flags[type]]: false } }, type)).toBe(false);
     expect(noticeFeatureEnabled({ ...h.ctx, cfg: { ...h.ctx.cfg, [flags[type]]: true } }, type)).toBe(true);

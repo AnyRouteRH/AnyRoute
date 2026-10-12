@@ -17,14 +17,17 @@ test('request helpers save only the two documented settings fields', async () =>
   assert.equal(await saveNotifications(request, value, { key: 'sample-key' }), value);
   assert.deepEqual(calls[1], [NOTIFICATION_PATH, { key: 'sample-key', method: 'PUT', body: { channels: {}, quiet_hours: null } }]);
 });
-test('all ten rows are discoverable under account Settings and documented in OpenAPI', () => {
-  assert.equal(NOTICE_ROWS.length, 10); assert.equal(new Set(NOTICE_ROWS.map(row => row[0])).size, 10);
+test('all notice rows are discoverable under account Settings and documented in OpenAPI', () => {
+  assert.ok(NOTICE_ROWS.some(([type, title]) => type === 'approval_reminders' && title === 'Approval reminders'));
+  assert.match(source('../components/ApprovalNudgesDocs.jsx'), /id="approval-nudges"/);
+  assert.ok(TASKS.some(task => task.id === 'approval-nudges' && task.href === '/docs/#approval-nudges'));
+  assert.equal(NOTICE_ROWS.length, 11); assert.equal(new Set(NOTICE_ROWS.map(row => row[0])).size, 11);
   assert.ok(ACCOUNT_GROUPS.find(group => group.id === 'settings').ids.includes('notifications'));
   assert.equal(ACCOUNT_SECTIONS.find(section => section.taskId === 'notifications').href, '/dashboard/#notifications');
   assert.ok(TASKS.some(task => task.id === 'notifications'));
   const path = JSON.parse(source('../public/openapi.json')).paths[NOTIFICATION_PATH];
   assert.ok(path.get.security.length && path.put.security.length);
-  assert.deepEqual(path.put.requestBody.content['application/json'].schema.properties.channels.required, NOTICE_ROWS.map(row => row[0]));
+  assert.deepEqual([...path.put.requestBody.content['application/json'].schema.properties.channels.required].sort(), [...NOTICE_ROWS.map(row => row[0])].sort());
   assert.match(source('../app/docs/page.jsx'), /<NotificationSettingsDocs \/>/);
   assert.match(source('../components/DocsFeatureIndex.jsx'), /\["notifications", "Notifications"\]/);
 });

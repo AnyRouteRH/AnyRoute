@@ -16,7 +16,7 @@ type Queued = { account: string; uid: number; generation: string; key_hash: stri
 export async function deferTelegram(ctx: Ctx, link: Link, keyHash: string, text: string, type: NoticeType, caller: KeyRow, now = new Date(), legacy = false) {
   const prefs = await readPreferences(ctx.db, link.account);
   if (!prefs.channels[type].telegram) return true;
-  const due = type === "approvals" || !ctx.cfg.notificationQuietHoursEnabled ? null : quietUntil(prefs.quiet_hours, now);
+  const due = (type === "approvals" || type === "approval_reminders") || !ctx.cfg.notificationQuietHoursEnabled ? null : quietUntil(prefs.quiet_hours, now);
   if (!due) return false;
   const value: Queued = { account: link.account, uid: link.uid, generation: link.generation, key_hash: keyHash, principal_hash: caller.keyHash, team: caller.teamId, management: caller.management, type, due: due.toISOString(), created: now.toISOString(), sealed: encrypt(ctx.cfg.appSecret, text), legacy };
   await ctx.db.insert(kv).values({ key: QUEUE + genId(), value });

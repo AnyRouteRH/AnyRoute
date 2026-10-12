@@ -6,6 +6,7 @@ import type { NoticeType } from "./prefs.ts";
 // Reuse every source sender's service guard when a queued notice leaves the router.
 export function noticeFeatureEnabled(ctx: Ctx, type: NoticeType) {
   switch (type) {
+    case "approval_reminders": return ctx.cfg.approvalNudgesEnabled && ctx.cfg.agentPolicyEnabled; // G164
     case "approvals": case "agent_alerts": return ctx.cfg.agentPolicyEnabled;
     case "deposits": return ctx.cfg.depositPingsEnabled;
     case "low_balance": return ctx.cfg.lowBalanceAlertsEnabled;

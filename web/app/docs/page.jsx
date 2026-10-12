@@ -1,5 +1,6 @@
 import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
+import ApprovalNudgesDocs from "../../components/ApprovalNudgesDocs"; // G164
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
 import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
 import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
@@ -932,6 +933,7 @@ export default function Docs() {
           <AgentAlertDocs />
           <AgentApprovalDocs />
           <AgentApproversDocs /> {/* E153 */}
+          <ApprovalNudgesDocs /> {/* G164 */}
           <ApproveAndAllowDocs /> {/* B118 */}
           <AgentGuardDocs /> {/* V98 */}
           <WeeklySummaryDocs /> {/* B120 */}

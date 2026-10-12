@@ -1,3 +1,4 @@
+import { approvalMessageMatches } from "./approval-nudges.ts"; // G164
 import { deferTelegram } from "../notifications/telegram.ts"; // E146
 import { channelEnabled, type NoticeType } from "../notifications/prefs.ts"; // E146
 import { approvableKeys } from "../agents/approvers.ts"; // E153
@@ -20,7 +21,7 @@ import { TelegramApi, type TgUpdate } from "../services/telegram.ts";
 import { linkLimit, lockLinks, readLink, validPrincipal, consumeCode, removeLink, pruneLinks, type Link } from "./linking.ts";
 
 export const notificationKey = (id: string, link: Link) => `telegram-approval:${id}:${link.uid}:${link.generation}`;
-type Notice = { uid: number; approval: string; generation: string; expires: number; message_id?: number; status: string };
+type Notice = { reminder_message_id?: number; uid: number; approval: string; generation: string; expires: number; message_id?: number; status: string };
 const callbackData = (action: "approve" | "deny", id: string, generation: string) => `tg:${action === "approve" ? "a" : "d"}:${id}:${generation}`;
 // These are the approval's existing metadata, never the inference messages or tool arguments.
 export function approvalText(row: ApprovalRow, name?: string, policySha256?: string, guardEnabled = false) {
@@ -128,11 +129,11 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
         const key = notificationKey(row.id, link);
         const [saved] = await tx.select().from(kv).where(eq(kv.key, key));
         const notice = saved?.value as Notice | undefined;
-        if (!notice || notice.message_id !== callback.message!.message_id) throw new Error("invalid");
+        if (!approvalMessageMatches(notice, callback.message!.message_id)) throw new Error("invalid");
         // Exact same atomic decision and event recording as the dashboard. Intent consumption is unchanged.
         const decided = await decideApproval(ctx.db, caller.accountId, row.id, caller.keyHash, match[1] === "a" ? "approve" : "deny", tx);
         outcome = `Approval ${decided.status}.`;
-        await updateNotice(scoped, api, key, notice, decided).catch(() => undefined);
+        await updateNotice(scoped, api, key, notice!, decided).catch(() => undefined);
       });
     } catch (error) { if (error instanceof ApiError && error.status === 409) outcome = "Approval is no longer pending."; }
     await api.call("answerCallbackQuery", { callback_query_id: callback.id, text: outcome }).catch(() => undefined);
@@ -156,3 +157,6 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
   await api.call("sendMessage", { chat_id: message.chat.id, text }).catch(() => undefined);
   return true;
 }
+
+// G164: reminder buttons use the same callback binding as original approvals.
+export const approvalButtons = (id: string, generation: string) => [[{ text: "Approve", callback_data: callbackData("approve", id, generation) }, { text: "Deny", callback_data: callbackData("deny", id, generation) }]];

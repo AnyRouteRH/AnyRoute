@@ -1,3 +1,4 @@
+import { registerApprovalNudges } from "../agents/approval-nudges.ts"; // G164
 import { registerNotificationQuietJob } from "../notifications/telegram.ts"; // E146
 import { registerSecurityAlertsJob } from "../security-alerts/worker.ts"; // D138
 import { runDepositPings } from "../pay/deposit-pings.ts"; // B123
@@ -52,6 +53,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   const { cfg, jobs } = ctx;
   registerSecurityAlertsJob(ctx); // D138
   registerNotificationQuietJob(ctx); // E146
+  registerApprovalNudges(ctx); // G164
   if (cfg.depositPingsEnabled && cfg.runtimeRole !== "api") jobs.register("deposit-pings", 5_000, () => runDepositPings(ctx)); // B123
   registerScheduledPrompts(ctx, dispatch); // D136
   registerLowBalanceJob(ctx); // B119
