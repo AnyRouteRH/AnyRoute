@@ -1,4 +1,5 @@
 import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
+import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
 import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
 import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
@@ -920,6 +921,7 @@ export default function Docs() {
           <FacilitatorDocs /> {/* v6 F */}
           <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs /><ReplayRulesDocs /><PlaybooksDocs /><StopUntilDocs /><RulebookWordsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs /> {/* B117 B124 */}
           <RulebookHistoryDocs /> {/* D144 */}
+          <WorkHoursDocs /> {/* G161 */}
           <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}<LaneReportDocs /> {/* Lane report */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />

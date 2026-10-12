@@ -2,6 +2,7 @@
 import type { AgentPolicy } from './policy.ts';
 
 // ==== shared formatter (begin) ====
+import { workHoursSentence } from "./work-hours-words.js"; // G161
 export const exactUsd = (amount: number): string => {
   const [mantissa, exp] = String(amount).split('e');
   if (exp === undefined) return '$' + mantissa;
@@ -26,6 +27,7 @@ export function rulebookParts(policy: AgentPolicy | null | undefined): { part: s
   // B124: only rules that restrict something are listed; the format version and defaults are left out.
   const caps = usdCaps(policy.caps, { per_request_usd: 'a request', per_hour_usd: 'in any hour', per_day_usd: 'in any 24 hours', per_week_usd: 'in any 7 days' });
   add('caps', caps.length ? `${policy.autonomy ? 'Base caps: up to' : 'Up to'} ${caps.join(' and ')}` : 'No spending caps for model or paid tool calls');
+  if (policy.work_hours) add('hours', workHoursSentence(policy.work_hours)); // G161
   if (policy.caps.max_output_tokens !== undefined) add('tokens', `Replies up to ${policy.caps.max_output_tokens} tokens`);
   names('models', policy.models, 'models', 'Never uses these models:', value => Object.hasOwn(modelNames, value) ? modelNames[value] : value);
   if (policy.lanes !== undefined) add('lanes', policy.lanes.length ? `Only these lanes: ${joined(policy.lanes.map(l => ({ public: 'standard', attested: 'proven hardware', unlinkable: 'unlinkable' })[l]))}` : 'No lanes allowed');

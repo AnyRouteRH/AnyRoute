@@ -1,4 +1,5 @@
 // B124: generated from the shared formatter in src/agents/rulebook-words.ts.
+import { workHoursSentence } from "./work-hours-words.js";
 export const exactUsd = (amount) => {
   const [mantissa, exp] = String(amount).split("e");
   if (exp === undefined)
@@ -26,6 +27,8 @@ export function rulebookParts(policy) {
   };
   const caps = usdCaps(policy.caps, { per_request_usd: "a request", per_hour_usd: "in any hour", per_day_usd: "in any 24 hours", per_week_usd: "in any 7 days" });
   add("caps", caps.length ? `${policy.autonomy ? "Base caps: up to" : "Up to"} ${caps.join(" and ")}` : "No spending caps for model or paid tool calls");
+  if (policy.work_hours)
+    add("hours", workHoursSentence(policy.work_hours));
   if (policy.caps.max_output_tokens !== undefined)
     add("tokens", `Replies up to ${policy.caps.max_output_tokens} tokens`);
   names("models", policy.models, "models", "Never uses these models:", (value) => Object.hasOwn(modelNames, value) ? modelNames[value] : value);

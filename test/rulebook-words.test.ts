@@ -15,6 +15,7 @@ const policy = agentPolicySchema.parse({
   caps: { per_request_usd: 0.005, per_hour_usd: 0.07, per_day_usd: 1, per_week_usd: 5, max_output_tokens: 256 },
   tools: { allow: ['read'], deny: ['write'], max_price_per_call: 0.003, daily_budget: 0.09, pass_to_models: false },
   windows: [{ days: [5, 3, 1, 2, 4, 1], start: '13:30', end: '20:00' }],
+  work_hours: { days: [1,2,3,4,5], start: '09:00', end: '18:00', time_zone: 'America/New_York', outside: 'ask_first' }, // G161
   approval: { above_usd: 0.001, above_calls_per_hour: 60 },
   actions: { allow: ['payment.send'], deny: ['transfer.*'], targets: { allow: ['STORE_A'], deny: ['STORE_B'] }, per_action_usd: 20, per_day_usd: 30, approval_above_usd: 5, max_per_hour: 2 },
   breakers: { max_spend_usd_per_minute: 0.008, max_requests_per_minute: 4, max_denials_per_10min: 6, max_distinct_models_per_hour: 3 },
@@ -23,6 +24,7 @@ const policy = agentPolicySchema.parse({
   autonomy: { rungs: [{ after_days: 8, clean_requests: 10, caps_multiplier: 1.5 }], demote_on: ['deny', 'kill', 'breaker'] }, on_breach: 'kill',
 });
 const coverage: Record<string, string> = {
+  'work_hours.days': 'Works Monday to Friday', 'work_hours.start': '9:00', 'work_hours.end': '18:00', 'work_hours.time_zone': 'New York time', 'work_hours.outside': 'asks first outside those hours', // G161
   version: '' /* not shown */, 'models.allow': 'Only these models: Llama 3.3 70B', 'models.deny': 'Never uses these models: blocked/*', lanes: 'Only these lanes: proven hardware', route_default: 'Requests that name no lane: Proven hardware only',
   'caps.per_request_usd': '$0.005 a request', 'caps.per_hour_usd': '$0.07 in any hour', 'caps.per_day_usd': '$1 in any 24 hours', 'caps.per_week_usd': '$5 in any 7 days', 'caps.max_output_tokens': 'Replies up to 256 tokens',
   'tools.allow': 'Only these declared or paid tools: read', 'tools.deny': 'Never uses these tools: write', 'tools.max_price_per_call': 'Paid tools up to $0.003 a call', 'tools.daily_budget': 'Paid tools up to $0.09 in any 24 hours', 'tools.pass_to_models': 'Does not pass purchased tool results to models',

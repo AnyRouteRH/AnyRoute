@@ -1,3 +1,4 @@
+import { workHoursForm, applyWorkHours } from "./work-hours.js"; // G161
 import { guardIntentSummary } from "./agent-guard.js"; // V98
 import { breakerForm, buildBreakers, breakerReasonText } from "./agent-breakers.js";
 import { autonomyForm, autonomyPolicy } from "./agent-autonomy.js";
@@ -64,7 +65,7 @@ export function eventsPage(json) {
 const entries = value => String(value || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
 export function policyForm(policy) {
   const p = policy || {};
-  return { ...(p.actions === undefined ? {} : { actions: structuredClone(p.actions) }), ...autonomyForm(p), breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
+  return { ...workHoursForm(p), /* G161 */ ...(p.actions === undefined ? {} : { actions: structuredClone(p.actions) }), ...autonomyForm(p), breakers: breakerForm(p), modelAllow: (p.models?.allow || []).join('\n'), modelDeny: (p.models?.deny || []).join('\n'),
     restrictTools: p.tools?.allow !== undefined, /* V85: preserve empty allowlists. */ toolAllow: (p.tools?.allow || []).join('\n'), toolDeny: (p.tools?.deny || []).join('\n'),
     restrictLanes: p.lanes !== undefined, lanes: p.lanes || [...LANES], routeDefault: routeDefaultForm(p), // U101
     caps: Object.fromEntries(CAP_FIELDS.map(k => [k, p.caps?.[k] == null ? '' : String(p.caps[k])])),
@@ -119,6 +120,7 @@ export function buildPolicy(form) {
       if (![w.start, w.end].every(t => /^([01]\d|2[0-3]):[0-5]\d$/.test(t))) errors.push('Window times must use HH:MM in UTC.');
     }
   }
+  applyWorkHours(policy, form.workHours, errors); // G161
   buildBreakers(form.breakers, policy, errors);
   if (form.agreements !== undefined) policy.agreements = structuredClone(form.agreements);
   if (!['deny', 'kill'].includes(form.onBreach)) errors.push('If a limit is reached, choose refuse that request or stop this key.');

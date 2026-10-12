@@ -109,6 +109,11 @@ export async function enforceAgentTool(ctx: Ctx, authorization: string | undefin
     await lockAccount(tx, key.accountId);
     const rows = await policiesFor(tx, key.keyHash), now = new Date();
     const error = await recordDecisions(tx, rows, [{ kind: "mcp_tool", name }], key.keyHash, now);
+    if (rows.some(row => row.spec.work_hours)) { // G161: existing single-use approval path for scheduled MCP tools.
+      const approval = await prepareApproval(ctx.db, tx, rows, [{ kind: "mcp_tool", name }], key.keyHash, error, now);
+      if (!approval.error) { await approval.use?.(); await recordAutonomyClean(tx, rows, now); }
+      return approval.error;
+    }
     if (!error) await recordAutonomyClean(tx, rows, now);
     return error;
   });

@@ -23552,6 +23552,7 @@
       "AgentPolicy": {
         "type": "object",
         "properties": {
+          "work_hours": {"description":"G161: Optional wall-clock work hours. Start included, end excluded; overnight windows belong to their starting day. Repeated DST minutes both count and skipped minutes do not exist. Other refusals and existing UTC windows take precedence. Refusal reasons include the next opening; ask_first uses the existing single-use approval path.","type":"object","additionalProperties":false,"required":["days","start","end","time_zone","outside"],"properties":{"days":{"type":"array","minItems":1,"maxItems":7,"uniqueItems":true,"items":{"type":"integer","minimum":0,"maximum":6}},"start":{"type":"string","pattern":"^(?:[01]\\d|2[0-3]):[0-5]\\d$","description":"Must differ from end."},"end":{"type":"string","pattern":"^(?:[01]\\d|2[0-3]):[0-5]\\d$"},"time_zone":{"type":"string","minLength":1,"maxLength":100,"description":"IANA time zone validated using Intl, for example America/New_York."},"outside":{"type":"string","enum":["refuse","ask_first"]}}},
           "alerts": {
             "type": "object",
             "additionalProperties": false,

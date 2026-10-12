@@ -1,4 +1,5 @@
 import { describeKeyRotation } from "./key-rotation.ts"; // G158
+import { describeWorkHours } from "./work-hours.ts"; // G161
 import { describeBrowserSessions } from "./browser-sessions.ts"; // E147
 import { describeNotifications } from "./notifications.ts"; // E146
 import { describeAgentApprovers } from "./agent-approvers.ts"; // E153
@@ -63,6 +64,7 @@ describeProjects(TABLE_DOCS); // C134
 describeSecurityAlerts(TABLE_DOCS); // D138
 describeProjectBudgets(TABLE_DOCS); // D139
 describePolicyHistory(TABLE_DOCS); // D144
+describeWorkHours(TABLE_DOCS); // G161
 describeLowBalance(TABLE_DOCS); // B119
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);

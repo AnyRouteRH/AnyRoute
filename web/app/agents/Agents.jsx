@@ -1,4 +1,5 @@
 'use client';
+import WorkHours from './WorkHours'; // G161
 import AgentApprovers from '../../components/AgentApprovers'; // E153
 import AccountShell from '../../components/account/AccountShell';
 import { useMemo } from 'react'; // C132
@@ -64,6 +65,7 @@ function RulebookForm({ policy, onSave, onRemove, busy: working, locked = false,
       <LimitGroup title="Time windows (UTC)" disabled={busy}><label className="check-label"><input type="checkbox" checked={form.restrictWindows} onChange={e => set('restrictWindows',e.target.checked)}/>Only allow requests within these UTC windows</label><p className="help-text">No windows while this restriction is on denies every time. The router evaluates window boundaries.</p>
         {form.restrictWindows && <>{form.windows.map((w,index) => <div className={s.window} key={index}><div className={s.checks}>{DAYS.map((day,d) => <label className="check-label" key={day}><input type="checkbox" checked={w.days.includes(d)} onChange={e => windowSet(index,{ days:e.target.checked ? [...w.days,d] : w.days.filter(v => v !== d) })}/>{day}</label>)}</div><div className="two-fields">{['start','end'].map(time => <Field key={time} id={`window-${index}-${time}`} label={`${time} (UTC)`}><input id={`window-${index}-${time}`} type="time" step="60" required value={w[time]} onChange={e => windowSet(index,{ [time]:e.target.value })}/></Field>)}</div><button type="button" className="text-button" onClick={() => set('windows',form.windows.filter((_,i) => i !== index))}>Remove window {index+1}</button></div>)}<Button type="button" secondary disabled={form.windows.length >= 64} onClick={() => set('windows',[...form.windows,{ days:[1,2,3,4,5],start:'09:00',end:'17:00' }])}>Add UTC window</Button></>}
       </LimitGroup>
+      <WorkHours value={form.workHours} onChange={value => set('workHours', value)} disabled={busy}/> {/* G161 */}
       <BreakersForm values={form.breakers} onChange={values => set('breakers', values)} busy={busy}/>
       <AlertFields value={form.alerts} onChange={value => set('alerts',value)} disabled={busy}/>
     </SpendingLimits>
