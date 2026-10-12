@@ -1,3 +1,4 @@
+import { keyRotationRoutes } from "./key-rotation/routes.ts"; // G158
 import { browserSessionRoutes } from "./browser-sessions/routes.ts"; // E147
 import { notificationRoutes } from "./notifications/routes.ts"; // E146
 import { keyIpMiddleware, keyIpRoutes } from "./key-ip/allowlist.ts"; // E148
@@ -250,6 +251,7 @@ export async function createApp(opts: AppOptions = {}) {
   keyDefaultsRoutes(app, ctx); // ZK6: before /keys/:hash.
   keyIpRoutes(app, ctx); // E148: fixed route before /keys/:hash
   keysRoutes(app, ctx);
+  keyRotationRoutes(app, ctx); // G158
   browserSessionRoutes(app, ctx); // E147
   teamsRoutes(app, ctx);
   escrowRoutes(app, ctx);

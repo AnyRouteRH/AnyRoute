@@ -250,3 +250,5 @@ TASKS.push(task("key-ip-allowlist", "build", "Limit a key to IP addresses", "Cho
 
 TASKS.push(task("read-only-keys", "build", "Share read-only account access", "Give accountants and dashboards a key that cannot spend or change anything.", "/docs/#read-only-keys", "read only, keys, accountant, dashboard, statements, activity")); // E149
 TASKS.push({ ...task('linked-wallets', 'build', 'Link another wallet', 'Link another wallet in account Settings for deposits and agent payments.', '/docs/#linked-wallets', 'wallet, link, unlink, deposit, settings'), menu: false }); // E154
+
+TASKS.push({ ...task("rotate-key", "build", "Rotate a key without downtime", "Replace an account-backed key and give your apps time to switch.", "/docs/#rotate-key", "rotate, key, secret, grace, replacement, settings"), menu: false }); // G158

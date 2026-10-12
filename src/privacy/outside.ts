@@ -1,3 +1,4 @@
+import { rotationReader, rotationStores } from "./key-rotation.ts"; // G158
 import { browserSessionStores } from "./browser-sessions.ts"; // E147
 import { agentApproversReader } from "./agent-approvers.ts"; // E153
 import { keyIpReader } from "./key-ip.ts"; // E148
@@ -441,6 +442,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  rotationReader, // G158
   agentApproversReader, // E153
   telegramPhotoReader, // D142
   quietAlertBodyReader, // D141
@@ -799,6 +801,7 @@ export const EXTERNAL: ExternalDoc = {
     evidence: [ev("src/lib/util.ts", "(level === \"error\" || level === \"warn\" ? console.error : console.log)(line);"), ev("src/lib/util.ts", "const line = JSON.stringify(redactRpcFields({ t: new Date().toISOString(), level, msg, ...fields })")],
   },
   otherStores: [
+    ...rotationStores, // G158
     ...browserSessionStores, // E147
     ...quietAlertStores, // D141
     ...securityAlertStores, // D138

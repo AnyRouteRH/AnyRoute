@@ -1,3 +1,4 @@
+import { rotatedExpiry } from "../key-rotation/store.ts"; // G158
 import { readPrincipal } from "../read-only/keys.ts"; // E149
 import { and, eq, sql } from "drizzle-orm";
 import { recoverMessageAddress, type Hex } from "viem";
@@ -70,6 +71,7 @@ export async function resolveKey(ctx: Ctx, secret: string): Promise<KeyRow | nul
   const keyHash = sha256(secret);
   const [row] = await ctx.db.select().from(keys).where(eq(keys.keyHash, keyHash));
   if (row) {
+    row.expiresAt = await rotatedExpiry(ctx.db, row.keyHash, row.expiresAt); // G158
     if (row.disabled) fail(401, "This API key is disabled.", "key_disabled");
     if (row.expiresAt && row.expiresAt.getTime() < Date.now()) fail(401, "This API key has expired.", "key_expired");
     return row;

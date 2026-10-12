@@ -1,3 +1,4 @@
+import { assertRotationExpiry } from "../key-rotation/store.ts"; // G158
 import { recordBrowserSession } from "../browser-sessions/labels.ts"; // E147
 import { readScopeInput, readKeyFields } from "../read-only/keys.ts"; // E149
 import { allowedIpsInput } from "../key-ip/allowlist.ts"; // E148
@@ -278,6 +279,7 @@ export function keysRoutes(app: Hono, ctx: Ctx) {
     if (spec.management !== undefined && !caller.management) fail(403, "Only a management key can change management rights.", "forbidden");
     if (spec.role !== undefined) fail(400, "Change a key's role with PUT /api/v1/teams/:id/members/:hash.", "invalid_request");
     const patch = { ...applySpec(spec), ...(spec.management !== undefined ? { management: spec.management } : {}), ...tracingPatch(ctx, spec, k.tracing), ...(spec.topup !== undefined ? { topup: spec.topup } : {}) };
+    await assertRotationExpiry(ctx.db, k.keyHash, patch.expiresAt); // G158
     assertTopupFits(patch.topup !== undefined ? patch.topup : k.topup, patch.budget !== undefined ? patch.budget : k.budget, patch.budgetReset !== undefined ? patch.budgetReset : k.budgetReset);
     // In a team with an org budget, a new limit (or a key coming back) must still fit.
     if (k.teamId && (patch.budget !== undefined || patch.disabled === false || patch.expiresAt !== undefined))

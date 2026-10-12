@@ -1,4 +1,5 @@
 "use client";
+import KeyRotation from "./account/KeyRotation"; // G158
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
 import AccountNotifications from "./notifications/AccountNotifications"; // E146
 import { api as apiRequest } from "../lib/api"; // E149
@@ -1829,6 +1830,7 @@ export default function Dashboard() {
               <div className="panel-heading">
                 <h2>{live ? "Your workspace." : "Your sample workspace."}</h2>
               </div>
+              {live && apiKey && <KeyRotation apiKey={apiKey} keys={ws?.keys || []} caller={ws?.me} onChanged={refresh} onSecret={secret => setReveal({ secret, title: "Your replacement API key" })}/>} {/* G158 */}
               {live && apiKey && <TelegramLink key={apiKey} principalKey={apiKey}/>}
               {live && apiKey && <SecurityAlertsSettings key={apiKey} apiKey={apiKey}/>} {/* D138 */}
               {live && apiKey && <SignedInBrowsers key={apiKey} apiKey={apiKey} onChanged={refresh} onSignedOut={() => { setApiKey(""); setWs(null); setSecrets({}); setResult(null); setModal(null); abort.current?.abort(); }}/>} {/* E147 */}

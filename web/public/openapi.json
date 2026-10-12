@@ -21738,6 +21738,225 @@
           }
         ]
       }
+    },
+    "/api/v1/keys/{hash}/rotate": {
+      "post": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Rotate an account-backed key without downtime",
+        "description": "G158. Same key-edit owner/admin authentication as PATCH; management keys can rotate other keys in their account, team owner/admin keys only themselves. Restricted callers, sessions, inactive keys, already replaced keys and chain-funded or deposit-first keys are refused. Copies all settings, policy revisions, approvers and alert rules; usage stays with the old key. Both keys share the account balance. Old expiry is capped by grace and cannot be extended past it. Existing security_alerts preferences and delivery apply. No new config flag. Secret returned once; Cache-Control: no-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "grace"
+                ],
+                "properties": {
+                  "grace": {
+                    "type": "string",
+                    "enum": [
+                      "1h",
+                      "24h",
+                      "7d"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Replacement key and one-time secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "writeOnly": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "Existing key representation, with copied expiry and settings and zero usage."
+                    },
+                    "rotation": {
+                      "type": "object",
+                      "required": [
+                        "from",
+                        "to",
+                        "at",
+                        "grace_ends_at",
+                        "history_key_hash"
+                      ],
+                      "properties": {
+                        "from": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "grace_ends_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "history_key_hash": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "description": "Chain funding could not be checked; key remains unchanged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/keys/{hash}/rotation": {
+      "get": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Read key rotation links and dates",
+        "description": "G158. Existing owner/admin/viewer key-read auth and account/team ownership. Read-only and inference-only callers refused. Returns data null until rotated. Cache-Control: no-store. history_key_hash links to the original rulebook history.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rotation metadata or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "from",
+                            "to",
+                            "at",
+                            "grace_ends_at",
+                            "history_key_hash"
+                          ],
+                          "properties": {
+                            "from": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "to": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "at": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "grace_ends_at": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "history_key_hash": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {

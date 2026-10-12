@@ -1,3 +1,4 @@
+import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
 import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
 import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
@@ -913,6 +914,7 @@ export default function Docs() {
           <ReadOnlyKeysDocs /> {/* E149 */}
           <UnusedKeysDocs /> {/* B125 */}
           <KeyExpiryDocs /> {/* C127 */}
+          <KeyRotationDocs /> {/* G158 */}
           <KeyIpAllowlistDocs /> {/* E148 */}
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
