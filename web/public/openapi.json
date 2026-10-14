@@ -2311,6 +2311,7 @@
     },
     "/api/v1/inbox": {
       "get": {
+        "x-h173-inbox-filters": "Optional kinds filters by comma-separated groups (approvals, agents, money, security, models, other) or individual item kinds. Unknown kinds map to Other. Filtered responses add kind_counts with integer counts for all six groups before filtering; data and unread count cover the selection. Omitted kinds leaves the response unchanged. Existing since, visibility, notification preferences and capped source limits apply. Browser mark-all uses the full as_of snapshot with POST /api/v1/inbox/seen, stores only the returned time under seen_scope, and can restore the prior bookmark for 10 seconds unless replaced by a newer time. Pending approvals remain actionable even when read in the browser. No server persistence or cross-browser sync. H173.",
         "operationId": "listInbox",
         "x-h169-incident-alerts": "When STATUS_INCIDENT_NOTICES_ENABLED (default false) is on, opted-in management inboxes include status_incidents items with id, at (public update time), kind, title (status and public incident title), status null, href /status/ and unread true. Both channels default off in account notification settings. Ordinary and session keys receive none. Unique kv claims record each change once across workers; notices last up to 90 days. Telegram uses linked management principals and quiet hours. No inference text is included.",
         "x-d141-quiet-agent-alerts": "With QUIET_AGENT_ALERTS_ENABLED (default false) and AGENT_POLICY_ENABLED, account-management and current owning-team owner/admin inboxes include quiet-agent items; ordinary and session keys receive none. Fields: id (random quiet notice id), at (notice timestamp), kind (quiet-agent), title (readable agent name, window and last charged call or Guard decision time), status (quiet), href (/agents/), key_label (current name), unread (true). since and as_of filtering apply, with at most 100 items returned and capped when more exist. History is bounded to 100 per agent and 90 days. Off contributes no items. D141.",
@@ -2323,6 +2324,7 @@
           }
         ],
         "parameters": [
+          { "name": "kinds", "in": "query", "required": false, "description": "H173. Comma-separated group names or item kinds, e.g. approvals,money or approval,deposit. Empty or malformed values return 400. Counts describe the bounded authorized snapshot before filtering.", "schema": { "type": "string", "maxLength": 512, "pattern": "^[a-z][a-z_-]*(?:,[a-z][a-z_-]*)*$" } },
           {
             "name": "since",
             "in": "query",
@@ -2335,6 +2337,7 @@
         ],
         "responses": {
           "200": {
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "kind_counts": { "type": "object", "description": "H173: present only when kinds is supplied; counts of returned authorized items before kind filtering, after since and source limits.", "required": ["approvals", "agents", "money", "security", "models", "other"], "properties": { "approvals": { "type": "integer", "minimum": 0 }, "agents": { "type": "integer", "minimum": 0 }, "money": { "type": "integer", "minimum": 0 }, "security": { "type": "integer", "minimum": 0 }, "models": { "type": "integer", "minimum": 0 }, "other": { "type": "integer", "minimum": 0 } }, "additionalProperties": false } } } } },
             "description": "OK"
           },
           "400": {

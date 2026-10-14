@@ -1,3 +1,4 @@
+import { applyInboxReadTime } from './inbox-read-state.js'; // H173
 export const INBOX_EVENT = 'anyroute-inbox-changed';
 const prefix = 'anyroute-inbox-seen-v1:';
 export const inboxBadge = count => count > 99 ? '99+' : String(Math.max(0, count));
@@ -11,7 +12,8 @@ export function readSeen(storage, scope) {
 export async function readInbox(request, storage, options = {}) {
   const first = inboxPage(await request('/api/v1/inbox', options));
   const since = readSeen(storage, first.seen_scope);
-  return since ? inboxPage(await request('/api/v1/inbox?since=' + encodeURIComponent(since), options)) : first;
+  const page = since ? inboxPage(await request('/api/v1/inbox?since=' + encodeURIComponent(since), options)) : first;
+  return applyInboxReadTime(page, since); // H173
 }
 export async function markInboxSeen(request, storage, page) {
   const result = await request('/api/v1/inbox/seen?through=' + encodeURIComponent(page.as_of), { method: 'POST' });

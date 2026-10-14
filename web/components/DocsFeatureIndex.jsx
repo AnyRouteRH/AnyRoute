@@ -82,6 +82,8 @@ sections.push(["duplicate-agent", "Duplicate an agent"]); // H171
 
 sections.push(["incident-alerts", "Service incident alerts"]); // H169
 
+sections.push(["inbox-filters", "Inbox filters and mark all read"]); // H173
+
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);
 }

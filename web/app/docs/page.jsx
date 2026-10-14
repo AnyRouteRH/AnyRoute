@@ -1,3 +1,4 @@
+import InboxFiltersDocs from '../../components/InboxFiltersDocs'; // H173
 import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import DuplicateAgentDocs from "../../components/DuplicateAgentDocs"; // H171
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
@@ -924,6 +925,7 @@ export default function Docs() {
           <ModelWatchDocs /> {/* G159 */}
           <IncidentAlertsDocs /> {/* H169 */}
           <DepositCountdownDocs /> {/* B123 */}
+          <InboxFiltersDocs /> {/* H173 */}
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
           <KeyProvisioningDocs /> {/* ZK6 */}
           <ReadOnlyKeysDocs /> {/* E149 */}

@@ -1,0 +1,10 @@
+.controls { margin: 16px 0; min-width: 0; }
+.chips, .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.chips button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 24px; color: var(--ink); background: var(--paper); cursor: pointer; font: inherit; }
+.chips button[aria-pressed="true"] { color: var(--night); background: var(--signal); border-color: var(--signal); }
+.chips button:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+.chips span { font: 12px var(--mono); }
+.readState { color: var(--muted); font-size: 12px; }
+.readState[data-inbox-decision] { color: var(--signal-deep); }
+.controls ~ :global(ul) { min-width: 0; }
+:global(li):has(> .readState[data-inbox-decision]) { border-inline-start: 3px solid var(--signal); padding-inline-start: 12px; background: var(--signal-tint); }

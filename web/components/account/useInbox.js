@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import useInboxFilters from './useInboxFilters'; // H173
 import { api } from '../../lib/api.js';
 import { INBOX_EVENT, readInbox } from '../../lib/inbox.js';
 export default function useInbox(apiKey) {
@@ -20,5 +21,7 @@ export default function useInbox(apiKey) {
     window.addEventListener(INBOX_EVENT, refresh); window.addEventListener('focus', refresh); window.addEventListener('storage', refresh);
     return () => { clearInterval(timer); window.removeEventListener(INBOX_EVENT, refresh); window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh); };
   }, [apiKey, refresh]);
+  const unfiltered = (() => { // H173: retain the existing loading and key boundaries.
   return { ...(apiKey && state.key === apiKey ? state : { page: null, error: '', busy: !!apiKey }), refresh };
+  })(); return useInboxFilters(unfiltered); // H173
 }

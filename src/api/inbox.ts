@@ -1,3 +1,4 @@
+import { filterInboxPage, inboxKinds } from "../inbox/filters.ts"; // H173
 import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
 import { z } from "zod";
@@ -11,6 +12,7 @@ export function inboxRoutes(app: Hono, ctx: Ctx) {
     const key = await requireKey(ctx, c.req.header("authorization"));
     const since = c.req.query("since") === undefined ? undefined : instant.parse(c.req.query("since"));
     if (since && Date.parse(since) > Date.now()) fail(400, "Seen time must not be in the future.", "invalid_request");
+    if (c.req.query("kinds") !== undefined) { const kinds = inboxKinds(c.req.query("kinds")!); return c.json(filterInboxPage(await readInbox(ctx, key, since), kinds)); } // H173
     return c.json(await readInbox(ctx, key, since));
   });
   // The browser persists only the returned timestamp. Mark the displayed snapshot, never later arrivals.

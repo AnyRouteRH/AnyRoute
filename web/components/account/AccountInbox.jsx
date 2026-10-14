@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import InboxFilters, { InboxItemReadState } from './InboxFilters'; // H173
 import DelegatedInboxNote from '../DelegatedInboxNote'; // E153
 import ApproveAndAllow from '../ApproveAndAllow'; // B118
 import { InboxRulebooks, InboxApprovalRulebook } from '../limits/InboxRulebooks'; // B124
@@ -25,8 +26,11 @@ export default function AccountInbox({ apiKey, panel = false }) {
     {!panel && <h2>Inbox</h2>}
     <p>Review requests waiting for you and new account events.</p>
     <DelegatedInboxNote page={page}/> {/* E153 */}
+    <InboxFilters apiKey={apiKey} page={page} request={request} busy={busy || !!action} refresh={refresh} panel={panel}/> {/* H173 */}
+    <div hidden> {/* H173: controls above replace the earlier seen-only action. */}
     <div className={s.actions}><button className="text-button" disabled={busy || !!action} onClick={refresh}>Refresh</button><button className="text-button" disabled={!page || busy || !!action} onClick={() => run('seen', () => markInboxSeen(request, window.localStorage, page))}>Mark seen</button>{panel && <a className="inline-link" href="/dashboard/#inbox">Open inbox</a>}</div>
     <p className="help-text">Seen time stays in this browser. Pending approvals stay counted until decided or expired. Alerts cover retained records. Host updates show the current status and record update time; earlier status changes are not retained here.</p>
+    </div> {/* H173 */}
     {page?.scope === 'key' && <p className="help-text">This key’s events only. A management or owner/admin key is needed to decide approvals.</p>}
     {(error || actionError) && <p role="alert" className="error">{error || actionError}</p>}
     {busy && <p role="status">Reading inbox…</p>}
@@ -35,6 +39,7 @@ export default function AccountInbox({ apiKey, panel = false }) {
     <InboxRulebooks apiKey={apiKey} page={page}><ul className={s.list}>{page?.data.map(item => <li key={item.id}>
       <div className={s.row}><a className="inline-link" href={item.href}>{item.title}</a><time dateTime={item.at}>{new Date(item.at).toLocaleString()}</time></div>
       <p className="help-text">{[item.key_label, item.model, item.status, item.amount && item.amount !== '0' ? `${item.amount} USDG` : ''].filter(Boolean).join(' · ')}</p>
+      <InboxItemReadState item={item}/> {/* H173 */}
       {item.kind === 'approval' && <><InboxApprovalRulebook approvalId={item.approval_id} intent={item.intent}/><p>{intentSummary(item.intent)}</p>{item.intent?.intents?.filter(intent => intent.max_output_tokens !== undefined).map((intent, index) => <p className="help-text" key={index}>{intent.model} · Output limit: {intent.max_output_tokens} tokens</p>)}<p>Limit {item.approval_limit} USDG · Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p>{item.can_decide && <div className={s.actions}>{['approve', 'deny'].map(choice => <Button secondary key={choice} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onClick={() => run(item.id, () => decideInboxApproval(request, item.approval_id, choice))}>{choice === 'approve' ? 'Approve' : 'Deny'}</Button>)}</div>}{item.can_decide && <ApproveAndAllow request={request} id={item.approval_id} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onApproved={refresh}/>}</>}
     </li>)}</ul></InboxRulebooks> {/* B124 */}
   </section>;
