@@ -88,6 +88,7 @@ import StopUntilDocs from "../../components/StopUntilDocs"; // B117
 import DefaultRouteDocs from "../../components/DefaultRouteDocs";
 import RulebookWordsDocs from "../../components/RulebookWordsDocs"; // B124
 import RulebookHistoryDocs from "../../components/RulebookHistoryDocs"; // D144
+import YourImagesDocs from "../../components/YourImagesDocs"; // H167
 import StarterSetupsDocs from "../../components/StarterSetupsDocs"; // U103
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
 import AgentCertificateDocs from "../../components/AgentCertificateDocs";
@@ -920,6 +921,7 @@ export default function Docs() {
           <FolderInstructionsDocs /> {/* G157 */}
           <EditAndBranchDocs /> {/* G156 */}
           <AskAboutThisDocs /> {/* H175 */}
+          <YourImagesDocs /> {/* H167 */}
           <DarkModeDocs/> {/* C126 */}
           <NewModelsDocs /> {/* C131 */}
           <ModelPerformanceDocs /> {/* E150 */}

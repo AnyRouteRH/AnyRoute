@@ -87,6 +87,7 @@ sections.push(["inbox-filters", "Inbox filters and mark all read"]); // H173
 sections.push(["agent-runway", "How long an agent’s budget lasts"]); // H170
 
 sections.push(["ask-about-this", "Ask about a highlighted part"]); // H175
+sections.push(["your-images", "Your images"]); // H167
 
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);

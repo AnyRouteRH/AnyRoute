@@ -1,0 +1,13 @@
+/* H167 */
+.body { display: grid; gap: 16px; min-width: 0; }
+.body p { margin: 0; overflow-wrap: anywhere; }
+.filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.filters label { display: grid; gap: 6px; font: 500 12px var(--mono); }
+.filters input, .filters select { box-sizing: border-box; width: 100%; min-width: 0; padding: 10px; color: var(--ink); background: var(--paper-2); border: 1px solid var(--line); font: 400 14px var(--sans); }
+.body button { min-height: 44px; }
+.body button:focus-visible, .filters input:focus-visible, .filters select:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+.cards { display: grid; gap: 24px; list-style: none; margin: 0; padding: 0; }
+.cards li { min-width: 0; border-top: 1px solid var(--line); padding-top: 16px; }
+.prompt { font-weight: 500; }
+.meta { color: var(--muted); font: 400 12px/1.5 var(--mono); }
+@media (max-width: 480px) { .filters { grid-template-columns: minmax(0, 1fr); } }

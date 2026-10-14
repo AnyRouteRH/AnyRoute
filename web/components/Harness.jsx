@@ -30,6 +30,7 @@ import PrivateMode, { ReplyPrivacy, usePrivateMode } from "./harness/PrivateMode
 import ModelFilters from "./harness/ModelFilters";
 import ImageMode from "./harness/ImageMode";
 import GeneratedImages from "./harness/GeneratedImages";
+import { YourImagesInputProvider } from "./harness/YourImages"; // H167
 import { ImageAttach, ImageNotice, useImageAttachments } from "./harness/ImageAttachments";
 import { imageOutput, imageSettings, imageSendBlock, imageSendError, readsImages } from "../lib/harness-images";
 import { ReadAloud, useHarnessVoice } from "./harness/VoiceMode";
@@ -1155,6 +1156,7 @@ export default function Harness() {
   return (
     <ChatCapProvider value={chatCap}> {/* G162 */}
     <SavedAnswersProvider history={promptHistory} lanes={lanes} busy={busy}> {/* D140 */}
+    <YourImagesInputProvider onUse={acceptsImages ? addFiles : null}> {/* H167 */}
     <FolderInstructionsProvider scope={folderScope} onScope={setFolderScope}> {/* G157 */}
     <BranchProvider lanes={lanes} setLanes={setLanes} busy={busy} beforeSwitch={() => { voice.stop(); setEditing(null); setFileNote(""); }}> {/* G156 */}
     <div className={s.harness} data-harness-app data-compare={compare || undefined}>
@@ -1437,6 +1439,7 @@ export default function Harness() {
     </div>
     </BranchProvider> {/* G156 */}
     </FolderInstructionsProvider> {/* G157 */}
+    </YourImagesInputProvider> {/* H167 */}
     </SavedAnswersProvider> /* D140 */
     </ChatCapProvider> /* G162 */
   );
