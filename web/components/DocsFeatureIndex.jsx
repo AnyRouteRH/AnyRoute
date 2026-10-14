@@ -1,4 +1,5 @@
 const sections = [
+  ["business-details", "Business details on statements"], // H168
   ["rotate-key", "Rotate a key without downtime"], // G158
   ["approval-nudges", "Approval reminders"], // G164
   ["model-watch", "Model watch"], // G159

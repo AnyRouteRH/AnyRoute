@@ -1,0 +1,2 @@
+.form{min-width:0;max-width:42rem}.form fieldset{border:0;padding:0;margin:0;min-width:0}.form input,.form textarea{width:100%;max-width:100%;box-sizing:border-box}.form textarea{resize:vertical}.billed{margin:20px 0;padding:16px;border:1px solid var(--line);break-inside:avoid}.billed p,.billed dd{white-space:pre-wrap;overflow-wrap:anywhere}.billed dl{margin:0}.billed dt{font-weight:600;margin-top:12px}.billed dd{margin:4px 0}.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0}
+@media print{.controls{display:none!important}}

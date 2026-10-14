@@ -4,6 +4,7 @@ import { Button } from '../UI';
 import { api } from '../../lib/api.js';
 import { downloadJson, statementPath } from '../../lib/statements.js';
 import s from './Statements.module.css';
+import StatementBusinessDetails from '../business-details/StatementBusinessDetails'; // H168
 export default function AccountStatements({ apiKey }) {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0,7));
   const [statement, setStatement] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -22,6 +23,7 @@ export default function AccountStatements({ apiKey }) {
     {error && <p role="alert" className="error">{error}</p>}
     {p && <><div className={`button-row ${s.controls}`}><Button onClick={() => downloadJson(statement, `statement-${p.month}.json`)}>Download signed JSON</Button><Button secondary onClick={() => window.print()}>Print / Save PDF</Button><a href="/verify/#v-statement">Check the signature</a></div>
       <article className={s.print} data-monthly-statement><h2>Anyroute · {p.month}{p.so_far ? ' · so far' : ''}</h2><p>{p.scope === 'account' ? 'Account statement' : 'This key only · attributed movements, not the account balance'}</p><p className={s.identifier}>{p.key_hash}</p><p>{p.from} to {p.to_exclusive} (exclusive), UTC</p>
+        <StatementBusinessDetails key={p.generated_at} statement={statement} apiKey={apiKey}/><h3>Signed statement</h3> {/* H168 */}
         <dl className={s.totals}>{[['Opening balance','opening_balance'],['Deposits','deposits'],['Refunds','refunds'],['Usage charged','usage'],['Separate fees','fees'],['Other changes','other_changes'],['Closing balance','closing_balance']].map(([label, field]) => <div key={field}><dt>{label}</dt><dd>{p[field]} USDG</dd></div>)}<div><dt>Calls</dt><dd>{p.calls}</dd></div></dl>
         <p>Opening + deposits + refunds − usage − fees + other changes = closing. Difference: {p.reconciliation.difference} USDG.</p>
         {[['Usage by model','usage_by_model'],['Usage by key / agent','usage_by_key_agent'],['Usage by lane','usage_by_lane'],['Ledger movements','movements_by_kind']].map(([label, field]) => <section key={field}><h3>{label}</h3><table className={s.table}><thead><tr><th scope="col">{label}</th><th scope="col">USDG</th></tr></thead><tbody>{p[field].map((r,i) => <tr key={i}><td>{r.label || r.id || 'Not recorded'}{r.label && r.id && <small className={s.identifier}>{r.id}</small>}</td><td>{r.amount}</td></tr>)}</tbody></table>{!p[field].length && <p>No entries.</p>}</section>)}

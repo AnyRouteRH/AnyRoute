@@ -19,6 +19,7 @@ import { inferenceScopeMiddleware, keyDefaultsRoutes } from "./provisioning/scop
 import { structuredOutputMiddleware } from "./structured-output/chat.ts"; // V83
 import { paymentRecovery } from "./pay/recovery.ts";
 import { statementRoutes } from "./api/statements.ts"; // V87
+import { businessDetailsRoutes } from "./api/business-details.ts"; // H168
 import { proofPackRoutes } from "./api/proof-pack.ts"; // U100
 import { laneReportRoutes } from "./api/lane-report.ts"; // Lane report
 import { accountReliabilityRoutes } from "./api/account-reliability.ts"; // E155
@@ -238,6 +239,7 @@ export async function createApp(opts: AppOptions = {}) {
   generationRoutes(app, ctx);
   activityRoutes(app, ctx);
   statementRoutes(app, ctx); // V87
+  businessDetailsRoutes(app, ctx); // H168
   proofPackRoutes(app, ctx); // U100
   laneReportRoutes(app, ctx); // Lane report: read-only, with statements
   insightsRoutes(app, ctx); // V88: read-only, off by default.

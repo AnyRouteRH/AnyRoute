@@ -2,6 +2,7 @@
 import KeyRotation from "./account/KeyRotation"; // G158
 import ModelWatchSettings from "./model-watch/ModelWatchSettings"; // G159
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
+import BusinessDetailsSettings from "./business-details/BusinessDetailsSettings"; // H168
 import AccountNotifications from "./notifications/AccountNotifications"; // E146
 import { api as apiRequest } from "../lib/api"; // E149
 import { useReadOnlyKey, ReadOnlyKeyBadge } from "./account/ReadOnlyKeys"; // E149
@@ -1837,6 +1838,7 @@ export default function Dashboard() {
               {live && apiKey && <SignedInBrowsers key={apiKey} apiKey={apiKey} onChanged={refresh} onSignedOut={() => { setApiKey(""); setWs(null); setSecrets({}); setResult(null); setModal(null); abort.current?.abort(); }}/>} {/* E147 */}
               {live && apiKey && <ModelWatchSettings key={apiKey} apiKey={apiKey}/>} {/* G159 */}
               {live && apiKey && <LinkedWalletsSettings key={apiKey} apiKey={apiKey}/>} {/* E154 */}
+              {live && apiKey && <BusinessDetailsSettings key={apiKey} apiKey={apiKey}/>} {/* H168 */}
               <div className="settings-grid">
                 <div className="settings-panel">
                   <h3>{live ? "This browser" : "Browser-local data"}</h3>

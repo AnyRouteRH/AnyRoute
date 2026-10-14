@@ -36,6 +36,7 @@ import { feedbackLimit, identityBodyReader, identityStores } from "./identity.ts
 import { provisioningBodyReader, inferenceModelReader } from "./provisioning.ts"; // ZK6
 import { structuredOutputReader } from "./structured-output.ts"; // V83
 import { statementStores } from "./statements.ts"; // V87
+import { businessDetailsReader, businessDetailsStores } from "./business-details.ts"; // H168
 import { proofPackLimit, proofPackStores } from "./proof-pack.ts"; // U100
 import { laneReportLimit, laneReportStores } from "./lane-report.ts"; // Lane report
 import { reliabilityStores } from "./reliability.ts"; // E155
@@ -448,6 +449,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  businessDetailsReader, // H168
   rotationReader, // G158
   modelWatchReader, // G159
   agentApproversReader, // E153
@@ -825,6 +827,7 @@ export const EXTERNAL: ExternalDoc = {
     ...identityStores, // v6 I
     ...activityStores,
     ...statementStores, // V87
+    ...businessDetailsStores, // H168
     ...proofPackStores, // U100
     ...laneReportStores, // Lane report
     ...insightsStores, // V88: spend insights.

@@ -4,6 +4,7 @@ import ApprovalNudgesDocs from "../../components/ApprovalNudgesDocs"; // G164
 import ModelWatchDocs from "../../components/model-watch/ModelWatchDocs"; // G159
 import TelegramStopDocs from "../../components/TelegramStopDocs"; // G163
 import SignedInBrowsersDocs from "../../components/SignedInBrowsersDocs"; // E147
+import BusinessDetailsDocs from "../../components/business-details/BusinessDetailsDocs"; // H168
 import ModelPerformanceDocs from "../../components/ModelPerformanceDocs"; // E150
 import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
 import KeyIpAllowlistDocs from "../../components/KeyIpAllowlistDocs"; // E148
@@ -951,6 +952,7 @@ export default function Docs() {
           <TelegramStopDocs /> {/* G163 */}
           <SecurityAlertsDocs /> {/* D138 */}
           <SignedInBrowsersDocs /> {/* E147 */}
+          <BusinessDetailsDocs /> {/* H168 */}
           <NotificationSettingsDocs /> {/* E146 */}
           <ScheduledPromptsDocs /> {/* D136 */}
           <PriceNoticesDocs /> {/* C133 */}

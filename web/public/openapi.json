@@ -218,6 +218,114 @@
     }
   ],
   "paths": {
+    "/api/v1/account/business-details": {
+      "get": {
+        "operationId": "getBusinessDetails",
+        "tags": [
+          "Statements"
+        ],
+        "summary": "Read business details for statements",
+        "description": "H168: follows STATEMENTS_ENABLED (default false). Auth and read visibility follow statements. The read-only allow-list is unchanged, so read keys must use the existing statement route with business_details=true instead of this settings route. Details are current, user-entered and unsigned.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No-store. Current user-entered details or null; editable only for account management keys.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "editable"
+                  ],
+                  "properties": {
+                    "data": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/BusinessDetails"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "editable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "operationId": "putBusinessDetails",
+        "tags": [
+          "Statements"
+        ],
+        "summary": "Replace or delete business details",
+        "description": "H168: account management keys only; session and team-only owner/admin keys cannot edit. All strings optional; omitted fields clear. Empty object or all-empty fields deletes business-details:<account id> from kv. No email field; reference rejects email addresses. Stored until replaced or deleted. Never changes the signed statement payload.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BusinessDetails"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "No-store. Current user-entered details or null; editable only for account management keys.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "editable"
+                  ],
+                  "properties": {
+                    "data": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/BusinessDetails"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "editable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+,
     "/api/v1/account/savings": {
       "get": {
         "operationId": "accountSavings",
@@ -1334,6 +1442,7 @@
     "/api/v1/statements/{yyyy-mm}": {
       "get": {
         "operationId": "getMonthlyStatement",
+        "x-H168-business-details": "Optional business_details=true adds current user-entered business_details beside payload, alg, key_id and sig in data, outside the signed payload. Default response and signature bytes remain unchanged for the same payload. Read-only keys can use this existing allowed statement route. CSV and print/PDF use an unsigned Billed to block; signed JSON downloads omit identity.",
         "tags": [
           "Statements"
         ],
@@ -1345,6 +1454,7 @@
           }
         ],
         "parameters": [
+          { "name": "business_details", "in": "query", "description": "H168: include unsigned current business identity outside payload; default omits it.", "schema": { "type": "boolean", "default": false } },
           {
             "name": "yyyy-mm",
             "in": "path",
@@ -1386,6 +1496,7 @@
                         "sig"
                       ],
                       "properties": {
+                        "business_details": { "description": "H168: present only with business_details=true, outside the signature.", "oneOf": [{ "$ref": "#/components/schemas/BusinessDetails" }, { "type": "null" }] },
                         "alg": {
                           "type": "string",
                           "enum": [
@@ -22766,6 +22877,39 @@
       }
     },
     "schemas": {
+      "BusinessDetails": {
+        "x-card": "H168",
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Optional user-entered business identity, outside the signed statement. Values are trimmed; address line endings normalized. Empty fields clear. No control characters except address newlines.",
+        "properties": {
+          "business_name": {
+            "type": "string",
+            "maxLength": 160,
+            "default": "",
+            "description": "Business name."
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 1000,
+            "default": "",
+            "description": "Multi-line postal address."
+          },
+          "tax_id": {
+            "type": "string",
+            "maxLength": 120,
+            "default": "",
+            "description": "Free-text VAT, GST or EIN."
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 240,
+            "default": "",
+            "description": "Purchase order or billing reference; no email addresses."
+          }
+        }
+      }
+,
       "ScheduledPromptInput": {
         "x-card": "D136",
         "type": "object",

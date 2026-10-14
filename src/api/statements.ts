@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import type { Ctx } from "../context.ts";
 import { requireKey } from "./auth.ts";
 import { readStatement } from "../statements/read.ts";
+import { readBusinessDetails } from "../statements/business-details.ts"; // H168
 import { fail } from "../lib/errors.ts";
 export function statementRoutes(app: Hono, ctx: Ctx) {
   if (!ctx.cfg.statementsEnabled) return;
@@ -9,6 +10,7 @@ export function statementRoutes(app: Hono, ctx: Ctx) {
     c.header("cache-control", "no-store");
     const key = await requireKey(ctx, c.req.header("authorization"));
     if (c.req.query("format") && c.req.query("format") !== "json") fail(400, "Use format=json. Print the account statement page for PDF.", "invalid_request");
+    if (c.req.query("business_details") === "true") return c.json({ data: { ...await readStatement(ctx, key, c.req.param("month")), business_details: await readBusinessDetails(ctx, key.accountId) } }); // H168: outside the signed payload; default response stays identical.
     return c.json({ data: await readStatement(ctx, key, c.req.param("month")) });
   });
 }

@@ -1,4 +1,5 @@
 import { describeKeyRotation } from "./key-rotation.ts"; // G158
+import { describeBusinessDetails } from "./business-details.ts"; // H168
 import { describeWorkHours } from "./work-hours.ts"; // G161
 import { describeApprovalNudges } from "./approval-nudges.ts"; // G164
 import { describeModelWatch } from "./model-watch.ts"; // G159
@@ -78,6 +79,7 @@ describeNotifications(TABLE_DOCS); // E146
 describeApprovalNudges(TABLE_DOCS); // G164
 describeModelWatch(TABLE_DOCS); // G159
 describeLinkedWallets(TABLE_DOCS); // E154
+describeBusinessDetails(TABLE_DOCS); // H168
 export { EXTERNAL };
 
 // ---- consistency -----------------------------------------------------------------------------------------------------
