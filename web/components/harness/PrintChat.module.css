@@ -1,0 +1,50 @@
+/* H174: screen menu uses the same tokens as Chat's existing action strip. */
+.menu { position: relative; font-size: 13px; }
+.menu summary { cursor: pointer; padding: 6px 0; }
+.menu summary:focus-visible, .actions button:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }
+.actions { position: absolute; z-index: 5; top: 100%; left: 0; width: max-content; max-width: calc(100vw - 32px); padding: 12px; color: var(--ink); background: var(--paper-2); border: 1px solid var(--line); }
+.print { display: none; }
+
+@media (max-width: 480px) {
+  .menu[open] { flex-basis: 100%; }
+  .actions { position: static; max-width: 100%; }
+}
+
+@media print {
+  @page chat-print {
+    size: auto;
+    margin: 18mm 16mm 20mm;
+    @bottom-center { content: "Page " counter(page); color: var(--night); font-size: 9pt; }
+  }
+  :global(html:has([data-chat-print])), :global(body:has(> [data-chat-print])) { height: auto !important; overflow: visible !important; color-scheme: light; background: var(--qr-paper) !important; }
+  :global(body:has(> [data-chat-print]) > :not([data-chat-print])) { display: none !important; }
+  .print {
+    display: block;
+    page: chat-print;
+    --ink: var(--night);
+    --muted: var(--night);
+    --paper: var(--qr-paper);
+    --paper-2: var(--qr-paper);
+    --white: var(--qr-paper);
+    color: var(--night);
+    background: var(--qr-paper);
+    font: 11pt/1.5 var(--sans);
+    overflow-wrap: anywhere;
+  }
+  .print * { color: var(--night) !important; background: transparent !important; box-shadow: none !important; text-shadow: none !important; }
+  .print h1 { font-size: 22pt; margin: 0 0 6pt; }
+  .print h2 { font-size: 16pt; margin: 0 0 12pt; }
+  .print h3 { font-size: 12pt; margin: 0 0 6pt; }
+  .print h1, .print h2, .print h3 { break-after: avoid; }
+  .print p { margin: 6pt 0; }
+  .lane + .lane { break-before: page; }
+  .message { margin-top: 18pt; }
+  .message footer { font-size: 8pt; margin-top: 6pt; }
+  .print pre, .print code { white-space: pre-wrap !important; overflow-wrap: anywhere; word-break: break-word; }
+  .print pre { overflow: visible !important; max-height: none !important; padding: 8pt; border: 1px solid var(--night); font-size: 9pt; }
+  .print figure { margin: 8pt 0; break-inside: avoid; }
+  .print img { display: block; max-width: 100%; max-height: 85mm; width: auto; height: auto; object-fit: contain; }
+  .print table { width: 100%; table-layout: fixed; }
+  .print :global([role="region"]) { overflow: visible; }
+  .print a { text-decoration: underline; }
+}

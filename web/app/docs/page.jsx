@@ -32,6 +32,7 @@ import ModelAlternativesDocs from "../../components/ModelAlternativesDocs"; // B
 import RunwayDocs from "../../components/RunwayDocs"; // B119
 import ContinueAnswerDocs from "../../components/ContinueAnswerDocs"; // H166
 import ChatCapDocs from "../../components/ChatCapDocs"; // G162
+import PrintChatDocs from "../../components/PrintChatDocs"; // H174
 import ChatCostDocs from "../../components/ChatCostDocs"; // C128
 import QuietAgentAlertsDocs from '../../components/QuietAgentAlertsDocs'; // D141
 import AgentSpendGlanceDocs from "../../components/AgentSpendGlanceDocs"; // C132
@@ -916,6 +917,7 @@ export default function Docs() {
           </div>
           <DocsFeatureIndex />
           <ChatCostDocs /> {/* C128 */}
+          <PrintChatDocs /> {/* H174 */}
           <ChatCapDocs /> {/* G162 */}
           <ContinueAnswerDocs /> {/* H166 */}
           <SavedAnswersDocs /> {/* D140 */}

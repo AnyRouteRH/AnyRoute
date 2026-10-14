@@ -1,4 +1,5 @@
 "use client";
+import PrintChat from "./PrintChat"; // H174
 import { savedAnswerOnScreen } from "../../lib/saved-answers.js"; // D140
 import { SavedHistoryBridge } from "./SavedAnswers"; // D140
 import { proofBadges } from "../../lib/proof-badge.js";
@@ -389,6 +390,7 @@ export default function PrivateMode({ priv, lanes, setLanes, setFocus, busy, fin
         <button type="button" className="text-button" disabled={busy || vault === "checking"} aria-keyshortcuts="Meta+K Control+K" onClick={() => { setShown(true); setDialog(!on ? "access" : vault === "open" ? "list" : vault === "locked" ? "unlock" : "create"); }}>Search history</button>
         <YourImages history={vault === "open" ? historyRef.current : null} revision={chats} busy={busy} checking={vault === "checking"} onAccess={() => { setShown(true); setDialog(!on ? "access" : vault === "open" ? "list" : vault === "locked" ? "unlock" : "create"); }} onOpen={image => { openChat(image.chatId); setLanes(lanes => selectImageVersion(lanes, image)); setFocus(image.laneIndex); }} /> {/* H167 */}
         {started && <button type="button" className="text-button" disabled={busy} aria-keyshortcuts="Meta+Shift+E Control+Shift+E" onClick={() => setDialog("export")}>Export chat</button>}
+        <PrintChat chat={current} lanes={lanes} find={find} busy={busy} /> {/* H174 */}
         {on && (
           <button type="button" className={`text-button ${s.fold}`} aria-expanded={shown} aria-controls="private-panel" onClick={() => setShown((v) => !v)}>
             {shown ? "Hide" : "Details"}
