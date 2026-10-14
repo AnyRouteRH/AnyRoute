@@ -2,6 +2,7 @@ import InboxFiltersDocs from '../../components/InboxFiltersDocs'; // H173
 import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import DuplicateAgentDocs from "../../components/DuplicateAgentDocs"; // H171
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
+import AgentRunwayDocs from "../../components/AgentRunwayDocs"; // H170
 import ApprovalNudgesDocs from "../../components/ApprovalNudgesDocs"; // G164
 import IncidentAlertsDocs from "../../components/incident-notices/IncidentAlertsDocs"; // H169
 import ModelWatchDocs from "../../components/model-watch/ModelWatchDocs"; // G159
@@ -943,6 +944,7 @@ export default function Docs() {
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />
           <AgentSpendGlanceDocs /> {/* C132 */}
+          <AgentRunwayDocs /> {/* H170 */}
           <QuietAgentAlertsDocs /> {/* D141 */}
           <WebhookDocs/> {/* V86. */}
           <ToolsMarketDocs /> {/* v6 T */}

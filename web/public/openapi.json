@@ -2324,7 +2324,17 @@
           }
         ],
         "parameters": [
-          { "name": "kinds", "in": "query", "required": false, "description": "H173. Comma-separated group names or item kinds, e.g. approvals,money or approval,deposit. Empty or malformed values return 400. Counts describe the bounded authorized snapshot before filtering.", "schema": { "type": "string", "maxLength": 512, "pattern": "^[a-z][a-z_-]*(?:,[a-z][a-z_-]*)*$" } },
+          {
+            "name": "kinds",
+            "in": "query",
+            "required": false,
+            "description": "H173. Comma-separated group names or item kinds, e.g. approvals,money or approval,deposit. Empty or malformed values return 400. Counts describe the bounded authorized snapshot before filtering.",
+            "schema": {
+              "type": "string",
+              "maxLength": 512,
+              "pattern": "^[a-z][a-z_-]*(?:,[a-z][a-z_-]*)*$"
+            }
+          },
           {
             "name": "since",
             "in": "query",
@@ -2337,7 +2347,54 @@
         ],
         "responses": {
           "200": {
-            "content": { "application/json": { "schema": { "type": "object", "properties": { "kind_counts": { "type": "object", "description": "H173: present only when kinds is supplied; counts of returned authorized items before kind filtering, after since and source limits.", "required": ["approvals", "agents", "money", "security", "models", "other"], "properties": { "approvals": { "type": "integer", "minimum": 0 }, "agents": { "type": "integer", "minimum": 0 }, "money": { "type": "integer", "minimum": 0 }, "security": { "type": "integer", "minimum": 0 }, "models": { "type": "integer", "minimum": 0 }, "other": { "type": "integer", "minimum": 0 } }, "additionalProperties": false } } } } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kind_counts": {
+                      "type": "object",
+                      "description": "H173: present only when kinds is supplied; counts of returned authorized items before kind filtering, after since and source limits.",
+                      "required": [
+                        "approvals",
+                        "agents",
+                        "money",
+                        "security",
+                        "models",
+                        "other"
+                      ],
+                      "properties": {
+                        "approvals": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "agents": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "money": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "security": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "models": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "other": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            },
             "description": "OK"
           },
           "400": {
@@ -22647,6 +22704,156 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{key_hash}/runway": {
+      "get": {
+        "operationId": "agentRunway",
+        "summary": "Estimate how long an agent’s caps last",
+        "description": "H170: Same auth and visibility as agent policy GET; read-only keys refused. Existing AGENT_POLICY_ENABLED defaults false; off returns 404. Own posted charges only, excluding sessions and open holds. Rulebook windows remain rolling; calendar key budgets reset in UTC. Gross charges ignore refunds. Daily pace uses elapsed local day; week/month/total use seven rolling days. Estimates hold the current effective cap constant and do not predict enforcement. No new storage, migration or flag. See /docs/#agent-runway.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Uncached runway estimate, including keys with no caps.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "key_hash": {
+                          "type": "string"
+                        },
+                        "as_of": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "time_zone": {
+                          "type": "string"
+                        },
+                        "today_from": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "today_charged_usd": {
+                          "type": "number"
+                        },
+                        "spend_7d_usd": {
+                          "type": "number"
+                        },
+                        "estimate": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "limits": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "enum": [
+                                  "rulebook",
+                                  "key_budget"
+                                ]
+                              },
+                              "period": {
+                                "enum": [
+                                  "request",
+                                  "hour",
+                                  "day",
+                                  "week",
+                                  "month",
+                                  "total"
+                                ]
+                              },
+                              "cap_usd": {
+                                "type": "number"
+                              },
+                              "pace_per_day_usd": {
+                                "type": "number"
+                              },
+                              "charged_usd": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "remaining_usd": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "estimated_days_left": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "estimated_reaches_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "format": "date-time"
+                              },
+                              "resets_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "format": "date-time"
+                              },
+                              "reaches_before_reset": {
+                                "type": [
+                                  "boolean",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
       }

@@ -9,6 +9,7 @@ import { newModelsFeedRoutes } from "./api/models-new-feed.ts"; // C131
 import { projectCors } from "./projects/cors.ts"; // C134
 import { quietAgentAlertRoutes } from "./api/quiet-agent-alerts.ts"; // D141
 import { accountRunwayRoutes } from "./api/account-runway.ts"; // B119
+import { agentRunwayRoutes } from "./api/agent-runway.ts"; // H170
 import { agentSpendRoutes } from "./agents/spend-glance.ts"; // C132
 import { hardeningMiddleware, originLockMiddleware } from "./hardening/middleware.ts"; // HD1
 import { internalEnv } from "./hardening/client.ts"; // HD1
@@ -270,6 +271,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentSealedRoutes(app, ctx);
   agentsRoutes(app, ctx);
   agentDuplicateRoutes(app, ctx); // H171
+  agentRunwayRoutes(app, ctx); // H170
   agentPolicyHistoryRoutes(app, ctx); // D144
   agentSpendRoutes(app, ctx); // C132
   quietAgentAlertRoutes(app, ctx); // D141

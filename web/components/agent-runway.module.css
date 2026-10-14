@@ -1,0 +1,2 @@
+.runway { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; min-width: 0; color: var(--ink); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; text-align: start; }
+.limit { color: var(--muted); }

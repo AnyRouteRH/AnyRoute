@@ -1,5 +1,6 @@
 'use client';
 import WorkHours from './WorkHours'; // G161
+import AgentRunway from '../../components/AgentRunway'; // H170
 import AgentApprovers from '../../components/AgentApprovers'; // E153
 import AccountShell from '../../components/account/AccountShell';
 import { useMemo } from 'react'; // C132
@@ -39,7 +40,10 @@ function Errors({ errors }) {
   return errors.length > 0 && <ul className={s.errors} role="alert">{errors.map(e => <li key={e}>{e}</li>)}</ul>;
 }
 function Spend({ agent }) {
+  function Caps({ agent }) { // H170: keep the existing cap bars intact.
   return <div className={s.bars}>{capBars(agent).map(bar => <div key={bar.period}><span className={s.barLabel}><span>Rolling {bar.period}</span><span>{bar.label}</span></span><progress max="100" value={bar.percent} aria-label={`Rolling ${bar.period}: ${bar.label}`}/></div>)}</div>;
+  } // H170
+  return <AgentRunway agent={agent}><Caps agent={agent}/></AgentRunway>; // H170
 }
 
 const SpendCaps = Spend; // C132: keep the existing caps renderer inside the spend glance.
