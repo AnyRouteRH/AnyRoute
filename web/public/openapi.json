@@ -261,9 +261,15 @@
               }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       },
       "put": {
@@ -318,14 +324,21 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
-    }
-,
+    },
     "/api/v1/account/savings": {
       "get": {
         "operationId": "accountSavings",
@@ -1454,7 +1467,15 @@
           }
         ],
         "parameters": [
-          { "name": "business_details", "in": "query", "description": "H168: include unsigned current business identity outside payload; default omits it.", "schema": { "type": "boolean", "default": false } },
+          {
+            "name": "business_details",
+            "in": "query",
+            "description": "H168: include unsigned current business identity outside payload; default omits it.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
           {
             "name": "yyyy-mm",
             "in": "path",
@@ -1496,7 +1517,17 @@
                         "sig"
                       ],
                       "properties": {
-                        "business_details": { "description": "H168: present only with business_details=true, outside the signature.", "oneOf": [{ "$ref": "#/components/schemas/BusinessDetails" }, { "type": "null" }] },
+                        "business_details": {
+                          "description": "H168: present only with business_details=true, outside the signature.",
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/BusinessDetails"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "alg": {
                           "type": "string",
                           "enum": [
@@ -20767,7 +20798,25 @@
                                 }
                               }
                             },
-                            "status_incidents": { "type": "object", "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": { "inbox": { "type": "boolean", "default": false }, "telegram": { "type": "boolean", "default": false } } },
+                            "status_incidents": {
+                              "type": "object",
+                              "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean",
+                                  "default": false
+                                },
+                                "telegram": {
+                                  "type": "boolean",
+                                  "default": false
+                                }
+                              }
+                            },
                             "model_watch": {
                               "type": "object",
                               "additionalProperties": false,
@@ -21070,7 +21119,25 @@
                                 }
                               }
                             },
-                            "status_incidents": { "type": "object", "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": { "inbox": { "type": "boolean", "default": false }, "telegram": { "type": "boolean", "default": false } } },
+                            "status_incidents": {
+                              "type": "object",
+                              "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean",
+                                  "default": false
+                                },
+                                "telegram": {
+                                  "type": "boolean",
+                                  "default": false
+                                }
+                              }
+                            },
                             "model_watch": {
                               "type": "object",
                               "additionalProperties": false,
@@ -21359,7 +21426,25 @@
                           }
                         }
                       },
-                      "status_incidents": { "type": "object", "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": { "inbox": { "type": "boolean", "default": false }, "telegram": { "type": "boolean", "default": false } } },
+                      "status_incidents": {
+                        "type": "object",
+                        "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean",
+                            "default": false
+                          },
+                          "telegram": {
+                            "type": "boolean",
+                            "default": false
+                          }
+                        }
+                      },
                       "model_watch": {
                         "type": "object",
                         "additionalProperties": false,
@@ -22463,6 +22548,105 @@
         },
         "operationId": "removeModelWatch"
       }
+    },
+    "/api/v1/agents/{key}/duplicate": {
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Duplicate an agent",
+        "description": "H171. Requires AGENT_POLICY_ENABLED. Management key in the same account or owner/admin in the source team; no permission escalation. Read-only, inference-only and session callers are refused, as are session sources. Copies configuration and current rulebook as its first revision, detached from playbooks, with a Copied from note in the new event log. New key shares the account balance. Spend, history, approvals, disabled/Stop state, rotation links, browser sign-ins, principal bindings, Telegram links, profiles, attestation and spend-alert destinations are not copied. Existing security_alerts preferences and quiet-hour delivery apply. No new flag. Secret returned once with Cache-Control: no-store.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "description": "Trimmed new name; omitted uses source name plus copy, shortened to 100 characters."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Independent key created; secret is returned once.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "key",
+                    "note"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "description": "Existing key details: hash, name, label, limits, zero usage, copied settings and fresh identity."
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "One-time new API secret; never stored by the duplication interface."
+                    },
+                    "note": {
+                      "type": "string",
+                      "description": "Copied from followed by the source name; also saved on the new event log."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -22915,8 +23099,7 @@
             "description": "Purchase order or billing reference; no email addresses."
           }
         }
-      }
-,
+      },
       "ScheduledPromptInput": {
         "x-card": "D136",
         "type": "object",

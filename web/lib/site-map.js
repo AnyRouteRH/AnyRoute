@@ -262,3 +262,4 @@ TASKS.push({ ...task('telegram-stop', 'agents', 'Stop an agent from Telegram', '
 
 TASKS.push({ ...task('business-details', 'build', 'Add business details to statements', 'Save a business name, address, tax ID and reference in Settings.', '/docs/#business-details', 'business, billing, billed to, statement, tax, VAT, GST, EIN, reference, address'), menu: false }); // H168
 TASKS.push({ ...task("incident-alerts", "build", "Choose service incident alerts", "Choose public service incident notices; not switched on yet.", "/docs/#incident-alerts", "service, incident, status, alerts, notifications"), menu: false }); // H169
+TASKS.push({ ...task('duplicate-agent', 'agents', 'Duplicate an agent', 'Copy an agent’s current rules and settings into an independent key.', '/docs/#duplicate-agent', 'duplicate, copy, agent, rules, settings, key'), menu: false }); // H171

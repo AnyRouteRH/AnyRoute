@@ -1,4 +1,5 @@
 import { rotationReader, rotationStores } from "./key-rotation.ts"; // G158
+import { duplicateAgentReader, duplicateAgentStores } from "./agent-duplicate.ts"; // H171
 import { approvalNudgeStores } from "./approval-nudges.ts"; // G164
 import { modelWatchReader } from "./model-watch.ts"; // G159
 import { chatCapBrowser } from "./chat-cap.ts"; // G162
@@ -451,6 +452,7 @@ const addressReaders: Touchpoint[] = [
 const bodyReaders: ExternalDoc["bodyReaders"] = [
   businessDetailsReader, // H168
   rotationReader, // G158
+  duplicateAgentReader, // H171
   modelWatchReader, // G159
   agentApproversReader, // E153
   telegramPhotoReader, // D142
@@ -812,6 +814,7 @@ export const EXTERNAL: ExternalDoc = {
   },
   otherStores: [
     ...rotationStores, // G158
+    ...duplicateAgentStores, // H171
     ...approvalNudgeStores, // G164
     ...browserSessionStores, // E147
     ...quietAlertStores, // D141

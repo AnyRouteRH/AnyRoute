@@ -1,0 +1,16 @@
+// H171
+import type { ExternalDoc } from "./types.ts";
+export const duplicateAgentReader: ExternalDoc["bodyReaders"][number] = {
+  file: "src/agent-duplicate/routes.ts", carries: "settings",
+  reads: "An optional new agent name, trimmed to 1–100 characters. The source key hash is read from the route.",
+  then: "Requires account management or same-team owner/admin authentication, rejects restricted and session callers, rechecks authority inside the locked account transaction, and enforces team budgets and no permission escalation. Returns the fresh secret once with no-store; the router handles it in memory.",
+  kept: "A new keys row, a fresh team_members API-key membership without a principal binding, current agent_policies rules detached from any playbook, one policy_versions save, and a new hash-chained agent_policy_events duplicated entry whose reasons hold Copied from plus the original readable name. Existing agent-approvers and quiet-agent-alert kv settings are copied, with quiet delivery history reset. No secret is stored.",
+  evidence: [{ file: "src/agent-duplicate/routes.ts", contains: "duplicateBody.parse(await readJson(c))" }],
+};
+export const duplicateAgentStores: ExternalDoc["otherStores"] = [{
+  id: "duplicate-agent", name: "Independent agent settings copy",
+  purpose: "An explicit owner action makes a fresh key on the same account balance; it copies configuration, not runtime state.",
+  holds: "Existing keys columns retain the new name, account and creating parent key hashes, scope, management rights, project, team, limits/reset, expiry, allowed models/IPs, rate limits, routing, guardrails, sealed tracing destination and auto top-up. Existing agent_policies and policy_versions keep the current readable rulebook including work_hours and saving caller hash. Existing agent_policy_events retains the readable source-name note. Existing kv agent-approvers:<new key hash> retains approval authority settings, quiet-agent-alert:<new key hash> retains the hour choice and new enable time with empty notices. Team creation audit records use the existing key.create fields. Agent duplicated titles use the existing security-alerts:event family and security_alerts channel preferences and Telegram quiet-hour delivery. No new Redis family, log field, table, column or address reader is added. Spend/history, approvals, disabled/Stop state, rotation links, Telegram credentials, browser sign-ins, principal bindings, public profiles, attestation and per-key spend-alert destinations are not copied. Account notification settings and account-linked Telegram deliveries still apply.",
+  ttl: "Copied configuration follows existing table retention, until operator deletion; the new event log follows its existing 90-day pruning. The source-name note remains on that new event, not on saved revisions. A fresh secret exists in router response memory and browser component state until dismissal, switching agents, disconnecting or navigation; the duplication interface never writes it to browser storage. Ordinary inference request text is still read by the router in memory.",
+  requestText: "none", evidence: [{ file: "src/agent-duplicate/store.ts", contains: 'kind: "duplicated"' }, { file: "web/components/agents/DuplicateAgent.jsx", contains: "setSecret(result.key)" }],
+}];

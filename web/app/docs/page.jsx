@@ -1,4 +1,5 @@
 import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
+import DuplicateAgentDocs from "../../components/DuplicateAgentDocs"; // H171
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
 import ApprovalNudgesDocs from "../../components/ApprovalNudgesDocs"; // G164
 import IncidentAlertsDocs from "../../components/incident-notices/IncidentAlertsDocs"; // H169
@@ -929,6 +930,7 @@ export default function Docs() {
           <UnusedKeysDocs /> {/* B125 */}
           <KeyExpiryDocs /> {/* C127 */}
           <KeyRotationDocs /> {/* G158 */}
+          <DuplicateAgentDocs /> {/* H171 */}
           <KeyIpAllowlistDocs /> {/* E148 */}
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}

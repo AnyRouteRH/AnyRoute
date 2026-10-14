@@ -78,6 +78,7 @@ const sections = [
   ["network-stats", "Live network statistics"],
   ["commerce-stats", "Commerce ledger"],
 ];
+sections.push(["duplicate-agent", "Duplicate an agent"]); // H171
 
 sections.push(["incident-alerts", "Service incident alerts"]); // H169
 

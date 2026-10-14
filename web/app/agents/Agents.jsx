@@ -30,6 +30,7 @@ import RequestCheck from './RequestCheck'; // V85: check the selected agent’s 
 import PayAgent from './PayAgent'; // Pay another agent: the rulebook decides, your own wallet sends, Anyroute checks and signs.
 import { agentLink, focusSelector } from '../../lib/site-actions'; // U106: ⌘K links here to an agent's spending limits or default route.
 import FollowPlaybook from '../../components/limits/FollowPlaybook'; // U115: follow a playbook, or stop following one.
+import DuplicateAgent from '../../components/agents/DuplicateAgent'; // H171
 
 function Field({ label, id, children }) {
   return <div className="field"><label htmlFor={id}>{label}</label>{children}</div>;
@@ -170,6 +171,7 @@ export default function Agents() {
     {!(key && !off && agent) && <p id="replay-rules" className="note">Select an agent after connecting to replay its spending limits on the last 7 days before you save them. Nothing is saved.</p>} {/* Replay your rules: beside Save once an agent is selected */}
     <div id="request-check">{key && !off && agent && !agent.approval_only ? <RequestCheck key={key+selected} agent={agent} refreshVersion={revision}/> : <p className="note">Select an agent after connecting to check a request against its rules without spending.</p>}</div> {/* V85 */}
     <PayAgent agent={key && !off ? agent : null}/>
+    {key && !off && agent && !agent.approval_only && <DuplicateAgent key={key+agent.key_hash} agent={agent} request={request} onChanged={() => setRevision(r => r+1)}/>} {/* H171 */}
     {key && agent && !agent.approval_only && <AgentApprovers key={key+agent.key_hash} request={request} keyHash={agent.key_hash}/>} {/* E153 */}
     {error && <p className="note" role="alert">{error}</p>}
     {off ? <section className="empty" role="status"><h2>{FEATURE_OFF}</h2><p>This router is not serving agent rulebooks.</p></section> : <>
