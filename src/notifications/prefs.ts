@@ -1,3 +1,4 @@
+import { saveIncidentSubscription } from "../incident-notices/preferences.ts"; // H169
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, Tx } from "../db/client.ts";
@@ -5,7 +6,7 @@ import type { Ctx } from "../context.ts";
 import { kv } from "../db/schema.ts";
 import { accountLinks, linkKey } from "../telegram/linking.ts";
 import { preferenceKey as securityKey } from "../security-alerts/records.ts";
-export const NOTICE_TYPES = ["approvals", "agent_alerts", "deposits", "low_balance", "weekly_summary", "security_alerts", "quiet_agents", "price_notices", "project_budgets", "scheduled_results", "approval_reminders", "model_watch"] as const;
+export const NOTICE_TYPES = ["approvals", "agent_alerts", "deposits", "low_balance", "weekly_summary", "security_alerts", "quiet_agents", "price_notices", "project_budgets", "scheduled_results", "approval_reminders", "model_watch", "status_incidents"] as const; // H169
 export type NoticeType = typeof NOTICE_TYPES[number];
 export type Channels = { inbox: boolean; telegram: boolean };
 const channels = z.strictObject({ inbox: z.boolean(), telegram: z.boolean() });
@@ -28,10 +29,12 @@ export async function readPreferences(db: Db | Tx, account: string): Promise<Pre
   const values = Object.fromEntries(NOTICE_TYPES.map(type => [type, { inbox: true, telegram: true, ...saved.channels?.[type] }])) as Record<NoticeType, Channels>;
   values.weekly_summary.telegram = weekly;
   values.weekly_summary.inbox = saved.channels?.weekly_summary?.inbox ?? false;
+  values.status_incidents = { inbox: false, telegram: false, ...saved.channels?.status_incidents }; // H169
   values.security_alerts = { inbox: sec.inbox ?? sec.enabled !== false, telegram: sec.telegram ?? sec.enabled !== false };
   return { channels: values, quiet_hours: saved.quiet_hours ?? null };
 }
 export async function savePreferences(db: Db | Tx, account: string, value: Preferences) {
+  await saveIncidentSubscription(db, account, value.channels.status_incidents); // H169
   // Reuse security's existing value and each link's existing summary column, never a second toggle.
   const security = value.channels.security_alerts;
   const secValue = { ...security, enabled: security.inbox || security.telegram };

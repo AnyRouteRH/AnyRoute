@@ -1,3 +1,4 @@
+import { incidentNoticesEnv } from "./incident-notices/config.ts"; // H169
 import { modelWatchEnv } from "./model-watch/config.ts"; // G159
 import { notificationsEnv } from "./notifications/config.ts"; // E146
 import { securityAlertsEnv } from "./security-alerts/config.ts"; // D138
@@ -385,6 +386,7 @@ const schema = z.object({
   PRICE_NOTICES_ENABLED: bool.default(false), // C133
   ...securityAlertsEnv, // D138
   ...notificationsEnv, // E146
+  ...incidentNoticesEnv, // H169
   APPROVAL_NUDGES_ENABLED: bool.default(false), // G164
   ...modelWatchEnv, // G159
   PROJECT_BUDGET_TELEGRAM_ENABLED: bool.default(false), // D139
@@ -559,6 +561,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("notification-quiet"); // E146
       allowed.push("approval-nudges"); // G164
       allowed.push("model-watch"); // G159
+      allowed.push("incident-notices"); // H169
       allowed.push("deposit-pings"); // B123
       allowed.push("low-balance-alerts"); // B119
       allowed.push("price-notices"); // C133
@@ -712,6 +715,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     notificationQuietHoursEnabled: e.NOTIFICATION_QUIET_HOURS_ENABLED, // E146
     approvalNudgesEnabled: e.APPROVAL_NUDGES_ENABLED, // G164
     modelWatchEnabled: e.MODEL_WATCH_ENABLED, // G159
+    statusIncidentNoticesEnabled: e.STATUS_INCIDENT_NOTICES_ENABLED, // H169
     projectBudgetTelegramEnabled: e.PROJECT_BUDGET_TELEGRAM_ENABLED, // D139
     siteUrl: (e.SITE_URL ?? e.PUBLIC_BASE_URL).replace(/\/$/, ""),
     webauthn: {

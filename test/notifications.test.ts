@@ -36,6 +36,7 @@ function telegram() {
 const clock = (date: Date) => date.toISOString().slice(11, 16);
 function quietNow() { const now = new Date(); return { from_utc: clock(new Date(now.getTime() - 60_000)), to_utc: clock(new Date(now.getTime() + 60 * 60_000)) }; }
 const kinds = ["approval", "alert", "deposit", "low_balance", "weekly_summary", "security", "quiet-agent", "price_notice", "project_budget", "schedule", "approval_reminder", "model_watch"];
+kinds.push("status_incidents"); // H169
 test("quiet windows include start, exclude end, wrap midnight and reject equal clocks as a delay", () => {
   const quiet = { from_utc: "22:00", to_utc: "08:00" };
   for (const at of ["2026-10-10T22:00:00Z", "2026-10-11T07:59:59Z"]) expect(quietUntil(quiet, new Date(at))?.toISOString()).toBe("2026-10-11T08:00:00.000Z");
@@ -61,7 +62,7 @@ test("GET/PUT authenticate, isolate accounts, exclude ordinary and session keys 
   const value = (await response.json()).data;
   expect(value.telegram_linked).toBe(false); expect(value.quiet_hours).toBeNull();
   expect(value.channels.weekly_summary).toEqual({ inbox: false, telegram: false });
-  for (const type of NOTICE_TYPES.filter(t => t !== "weekly_summary")) expect(value.channels[type]).toEqual({ inbox: true, telegram: true });
+  for (const type of NOTICE_TYPES.filter(t => t !== "weekly_summary" && t !== "status_incidents")) expect(value.channels[type]).toEqual({ inbox: true, telegram: true });
   for (const json of [{}, { channels: {} }, { ...value }, { channels: value.channels, quiet_hours: { from_utc: "24:00", to_utc: "08:00" } }]) expect((await h.request(PATH, { method: "PUT", headers: owner.auth, json })).status).toBe(400);
   value.channels.agent_alerts.inbox = false; await save(owner, value);
   expect((await read(other)).channels.agent_alerts.inbox).toBe(true);
@@ -78,6 +79,7 @@ test("GET/PUT authenticate, isolate accounts, exclude ordinary and session keys 
 test("each notice respects both switches and defaults keep exact Telegram text", async () => {
   const owner = await h.fundedKey(), link = await linked(owner), caller = await principal(owner), tg = telegram();
   let value = await read(owner);
+  value.channels.status_incidents = { inbox: true, telegram: true }; // H169
   value.channels.weekly_summary.telegram = true; value.channels.weekly_summary.inbox = true; value = await save(owner, value);
   for (const [index, type] of NOTICE_TYPES.entries()) {
     const text = `Notice ${type}`;
@@ -143,9 +145,10 @@ test("queue encrypts preview text, rejects revoked links, honors muting and paus
 });
 test("every source feature guard is rechecked at queue delivery, including API role", async () => {
   const flags = { approvals: "agentPolicyEnabled", agent_alerts: "agentPolicyEnabled", deposits: "depositPingsEnabled", low_balance: "lowBalanceAlertsEnabled", weekly_summary: "weeklySummaryEnabled", security_alerts: "securityAlertsEnabled", quiet_agents: "quietAgentAlertsEnabled", price_notices: "priceNoticesEnabled", project_budgets: "projectBudgetTelegramEnabled", scheduled_results: "scheduledPromptsEnabled", approval_reminders: "approvalNudgesEnabled", model_watch: "modelWatchEnabled" } as const;
+  Object.assign(flags, { status_incidents: "statusIncidentNoticesEnabled" }); // H169
   for (const type of NOTICE_TYPES) {
-    expect(noticeFeatureEnabled({ ...h.ctx, cfg: { ...h.ctx.cfg, [flags[type]]: false } }, type)).toBe(false);
-    expect(noticeFeatureEnabled({ ...h.ctx, cfg: { ...h.ctx.cfg, [flags[type]]: true } }, type)).toBe(true);
+    expect(noticeFeatureEnabled({ ...h.ctx, cfg: { ...h.ctx.cfg, [flags[type as keyof typeof flags] ?? "statusIncidentNoticesEnabled"]: false } }, type)).toBe(false);
+    expect(noticeFeatureEnabled({ ...h.ctx, cfg: { ...h.ctx.cfg, [flags[type as keyof typeof flags] ?? "statusIncidentNoticesEnabled"]: true } }, type)).toBe(true);
   }
   expect(await flushQuietNotifications({ ...h.ctx, cfg: { ...h.ctx.cfg, runtimeRole: "api" } })).toEqual({ sent: 0, skipped: "disabled" });
   const owner = await h.fundedKey(), link = await linked(owner), caller = await principal(owner), tg = telegram();

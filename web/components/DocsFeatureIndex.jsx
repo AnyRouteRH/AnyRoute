@@ -79,6 +79,8 @@ const sections = [
   ["commerce-stats", "Commerce ledger"],
 ];
 
+sections.push(["incident-alerts", "Service incident alerts"]); // H169
+
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);
 }

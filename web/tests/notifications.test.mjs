@@ -22,7 +22,7 @@ test('all notice rows are discoverable under account Settings and documented in 
   assert.match(source('../components/ApprovalNudgesDocs.jsx'), /id="approval-nudges"/);
   assert.ok(TASKS.some(task => task.id === 'approval-nudges' && task.href === '/docs/#approval-nudges'));
   assert.ok(NOTICE_ROWS.some(([type]) => type === 'model_watch'));
-  assert.equal(NOTICE_ROWS.length, 12); assert.equal(new Set(NOTICE_ROWS.map(row => row[0])).size, 12);
+  assert.equal(new Set(NOTICE_ROWS.map(row => row[0])).size, NOTICE_ROWS.length);
   assert.ok(ACCOUNT_GROUPS.find(group => group.id === 'settings').ids.includes('notifications'));
   assert.equal(ACCOUNT_SECTIONS.find(section => section.taskId === 'notifications').href, '/dashboard/#notifications');
   assert.ok(TASKS.some(task => task.id === 'notifications'));

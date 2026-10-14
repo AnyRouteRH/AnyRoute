@@ -2281,6 +2281,7 @@
     "/api/v1/inbox": {
       "get": {
         "operationId": "listInbox",
+        "x-h169-incident-alerts": "When STATUS_INCIDENT_NOTICES_ENABLED (default false) is on, opted-in management inboxes include status_incidents items with id, at (public update time), kind, title (status and public incident title), status null, href /status/ and unread true. Both channels default off in account notification settings. Ordinary and session keys receive none. Unique kv claims record each change once across workers; notices last up to 90 days. Telegram uses linked management principals and quiet hours. No inference text is included.",
         "x-d141-quiet-agent-alerts": "With QUIET_AGENT_ALERTS_ENABLED (default false) and AGENT_POLICY_ENABLED, account-management and current owning-team owner/admin inboxes include quiet-agent items; ordinary and session keys receive none. Fields: id (random quiet notice id), at (notice timestamp), kind (quiet-agent), title (readable agent name, window and last charged call or Guard decision time), status (quiet), href (/agents/), key_label (current name), unread (true). since and as_of filtering apply, with at most 100 items returned and capped when more exist. History is bounded to 100 per agent and 90 days. Off contributes no items. D141.",
         "x-c133-price-notices": "With PRICE_NOTICES_ENABLED (default false), active account management keys excluding sessions receive price_notice items for catalogue changes of at least 1% to models used by the account in the last 30 days. Fields: id, at, kind, title, model (null for grouped changes), status (null), href (/models/), unread. Existing since filtering applies. First snapshot is silent. At most five items per account per UTC day: four individual and one grouped item whose count can update. Ordinary keys, sessions and team-only administrators do not see account-wide price notices. Rows are retained for 30 UTC days while enabled. No new endpoint or authentication change.",
         "summary": "List items that need attention",
@@ -20583,6 +20584,7 @@
                             "project_budgets",
                             "approval_reminders",
                             "scheduled_results",
+                            "status_incidents",
                             "model_watch"
                           ],
                           "properties": {
@@ -20765,6 +20767,7 @@
                                 }
                               }
                             },
+                            "status_incidents": { "type": "object", "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": { "inbox": { "type": "boolean", "default": false }, "telegram": { "type": "boolean", "default": false } } },
                             "model_watch": {
                               "type": "object",
                               "additionalProperties": false,
@@ -20884,6 +20887,7 @@
                             "project_budgets",
                             "approval_reminders",
                             "scheduled_results",
+                            "status_incidents",
                             "model_watch"
                           ],
                           "properties": {
@@ -21066,6 +21070,7 @@
                                 }
                               }
                             },
+                            "status_incidents": { "type": "object", "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": { "inbox": { "type": "boolean", "default": false }, "telegram": { "type": "boolean", "default": false } } },
                             "model_watch": {
                               "type": "object",
                               "additionalProperties": false,
@@ -21171,6 +21176,7 @@
                       "project_budgets",
                       "approval_reminders",
                       "scheduled_results",
+                      "status_incidents",
                       "model_watch"
                     ],
                     "properties": {
@@ -21353,6 +21359,7 @@
                           }
                         }
                       },
+                      "status_incidents": { "type": "object", "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.", "additionalProperties": false, "required": ["inbox", "telegram"], "properties": { "inbox": { "type": "boolean", "default": false }, "telegram": { "type": "boolean", "default": false } } },
                       "model_watch": {
                         "type": "object",
                         "additionalProperties": false,

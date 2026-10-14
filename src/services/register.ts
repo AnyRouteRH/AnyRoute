@@ -1,3 +1,4 @@
+import { registerIncidentNoticesJob } from "../incident-notices/worker.ts"; // H169
 import { registerApprovalNudges } from "../agents/approval-nudges.ts"; // G164
 import { registerModelWatchJob } from "../model-watch/worker.ts"; // G159
 import { registerNotificationQuietJob } from "../notifications/telegram.ts"; // E146
@@ -56,6 +57,7 @@ export function registerJobs(ctx: Ctx, router?: RouterCall, dispatch?: Dispatch)
   registerNotificationQuietJob(ctx); // E146
   registerApprovalNudges(ctx); // G164
   registerModelWatchJob(ctx); // G159
+  registerIncidentNoticesJob(ctx); // H169
   if (cfg.depositPingsEnabled && cfg.runtimeRole !== "api") jobs.register("deposit-pings", 5_000, () => runDepositPings(ctx)); // B123
   registerScheduledPrompts(ctx, dispatch); // D136
   registerLowBalanceJob(ctx); // B119

@@ -261,3 +261,4 @@ TASKS.push({ ...task("chat-cap", "chat", "Set a chat spending cap", "Hold sends 
 TASKS.push({ ...task('telegram-stop', 'agents', 'Stop an agent from Telegram', 'List your linked agents, stop for a while and resume from Telegram.', '/docs/#telegram-stop', 'telegram, stop, resume, agents, bot, tomorrow'), menu: false }); // G163
 
 TASKS.push({ ...task('business-details', 'build', 'Add business details to statements', 'Save a business name, address, tax ID and reference in Settings.', '/docs/#business-details', 'business, billing, billed to, statement, tax, VAT, GST, EIN, reference, address'), menu: false }); // H168
+TASKS.push({ ...task("incident-alerts", "build", "Choose service incident alerts", "Choose public service incident notices; not switched on yet.", "/docs/#incident-alerts", "service, incident, status, alerts, notifications"), menu: false }); // H169
