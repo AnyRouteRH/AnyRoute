@@ -18,5 +18,5 @@ test('Service incidents reuses notification controls, with opt-in schema and dis
   }
   const docs = read('../components/incident-notices/IncidentAlertsDocs.jsx');
   assert.match(docs, /id="incident-alerts"/); assert.match(docs, /STATUS_INCIDENT_NOTICES_ENABLED defaults to false/);
-  assert.match(docs, /Quiet hours hold Telegram/); assert.match(docs, /not switched on yet/);
+  assert.match(docs, /Quiet hours hold Telegram/); assert.match(docs, /switched on at anyroute\.tech/);
 });

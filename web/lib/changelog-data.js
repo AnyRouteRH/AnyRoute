@@ -5,6 +5,196 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "continue-answer",
+    "date": "2026-10-14",
+    "title": "Continue a cut-off answer",
+    "summary": "When a reply stops at the length limit, Continue has the same model carry on, and the new text joins the same reply with its cost added.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#continue-answer"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ab634199579bb82a026064edd1f3d397dca3bfc8"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "your-images",
+    "date": "2026-10-14",
+    "title": "Your images",
+    "summary": "Every image you made in Chat, from this browser's saved history, in one gallery: search by prompt, filter by model, download at full size or use it again.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#your-images"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/69dd1835b3354bf85892abaa39e275c7b66aea54"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "business-details",
+    "date": "2026-10-14",
+    "title": "Business details on statements",
+    "summary": "Add an optional business name, address and tax ID; statements, CSV and print show them as a Billed to block, outside the signed content.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#business-details"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/f0515ce8a64e3a3f309620541b547d7b7fc91a1c"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "incident-alerts",
+    "date": "2026-10-14",
+    "title": "Incident alerts",
+    "summary": "Turn on Service incidents in Notifications to hear in your inbox or on Telegram when a public incident opens, updates or is resolved.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#incident-alerts"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/6c1d37e7a57394da549c2bafc4be9187e7f8cfcb"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "agent-runway",
+    "date": "2026-10-14",
+    "title": "How long an agent's budget lasts",
+    "summary": "Agent cards show today's spend against the daily cap and when it would reach it at this pace, plus how weekly and monthly caps are holding up.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#agent-runway"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/3dbcb801fc9dbd0df238d129014ec93596631345"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "duplicate-agent",
+    "date": "2026-10-14",
+    "title": "Duplicate an agent",
+    "summary": "Start a new, independent agent with the same rulebook, work hours and approvers; spend, history and approvals stay with the original.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#duplicate-agent"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ccea9f245f98ee8d91fe8f8769388f0f4be409c0"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "stop-all",
+    "date": "2026-10-14",
+    "title": "Stop all agents at once",
+    "summary": "Stop every agent for an hour, until tomorrow or until you resume, and resume them together, on /agents or with /stopall and /startall in Telegram.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#stop-all"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/643213331e0ca0bf4d402b9b4b80c6999b783d53"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "inbox-filters",
+    "date": "2026-10-14",
+    "title": "Inbox filters and mark all read",
+    "summary": "Filter the inbox by Approvals, Agents, Money, Security or Models, and mark everything read with a short undo.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#inbox-filters"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/5f2eb6fba58bd70bb4688089bc68b2bafd76ff94"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "print-chat",
+    "date": "2026-10-14",
+    "title": "Print or save a chat as PDF",
+    "summary": "Print any chat, or save it as a PDF, in a clean layout with each reply's model, cost and receipt id.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#print-chat"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/c15e60c383b1123a470204542a486f18f5409dab"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "ask-about-this",
+    "date": "2026-10-14",
+    "title": "Ask about a highlighted part",
+    "summary": "Select part of an answer and Ask about this puts it into your next message as a quote.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#ask-about-this"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/681c87975c7cb58939db7cc713e50ae58f09261c"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
     "id": "edit-and-branch",
     "date": "2026-10-12",
     "title": "Edit a message and switch versions",
