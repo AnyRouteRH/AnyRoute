@@ -1,0 +1,18 @@
+/* H175 */
+.action {
+  position: fixed;
+  z-index: 90;
+  min-height: 44px;
+  max-width: calc(100vw - 16px);
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px var(--line);
+}
+.action:hover { background: var(--paper-2); }
+.action:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }

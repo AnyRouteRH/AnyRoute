@@ -1,4 +1,5 @@
 "use client";
+import AskAboutThis, { AskAboutReply } from "./harness/AskAboutThis"; // H175
 import { SavedAnswersProvider, SavedAnswersButton, SaveAnswer } from "./harness/SavedAnswers"; // D140
 import ContextMeter, { useContextMeter } from "./harness/ContextMeter"; // C129
 import SharedDraft, { useSharedDraft } from "./harness/SharedDraft"; // D137
@@ -471,7 +472,9 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
           <div className={s.thinkingBody}>{msg.reasoning}</div>
         </details>
       )}
+      <AskAboutReply> {/* H175 */}
       {msg.text && <Markdown text={msg.text} />}
+      </AskAboutReply> {/* H175 */}
       {streaming && !msg.text && !msg.reasoning && !(msg.toolCalls || []).length && <div className={s.wait} role="progressbar" aria-label="Waiting for the first token"><i /></div>}
       {(msg.images || []).length > 0 && <GeneratedImages images={msg.images} busy={busy} onUse={onUseImage} />}
       {msg.audio && <AudioOut audio={msg.audio} />}
@@ -1412,6 +1415,7 @@ export default function Harness() {
       </main>
 
       <ChatCapDialogs control={chatCap} /> {/* G162 */}
+      <AskAboutThis input={input} setDraft={setDraft} scope={focusLane?.id} blocked={!!(signin || editing || palette || sheet)} /> {/* H175 */}
       <PromptLibrary library={prompts} /> {/* V81: outside the composer form. */}
       <ToolsPanel model={focusModel} settings={settings} set={set} open={sheet === "tools"} onClose={() => setSheet(null)} compare={compare} system={system} setSystem={setSystem} limitsControl={<Limits limits={limits} signedIn={auth.state === "ok"} busy={busy} onStop={stop} />} />
       {sheet && <button type="button" className={s.scrim} aria-label="Close panel" onClick={() => setSheet(null)} />}

@@ -1,4 +1,5 @@
 import InboxFiltersDocs from '../../components/InboxFiltersDocs'; // H173
+import AskAboutThisDocs from "../../components/AskAboutThisDocs"; // H175
 import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import DuplicateAgentDocs from "../../components/DuplicateAgentDocs"; // H171
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
@@ -918,6 +919,7 @@ export default function Docs() {
           <ChatFoldersDocs /> {/* D143 */}
           <FolderInstructionsDocs /> {/* G157 */}
           <EditAndBranchDocs /> {/* G156 */}
+          <AskAboutThisDocs /> {/* H175 */}
           <DarkModeDocs/> {/* C126 */}
           <NewModelsDocs /> {/* C131 */}
           <ModelPerformanceDocs /> {/* E150 */}
