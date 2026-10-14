@@ -26,7 +26,7 @@ test('row controls are separate from the row button, labelled, and discard disco
 test('quiet alerts have a docs section, index/search entry and authenticated API specification', () => {
   assert.equal(TASKS.find(task => task.id === 'quiet-agent-alerts').href, '/docs/#quiet-agent-alerts');
   const docs = readFileSync(new URL('../components/QuietAgentAlertsDocs.jsx', import.meta.url), 'utf8');
-  assert.match(docs, /id="quiet-agent-alerts"/); assert.match(docs, /defaults to/); assert.match(docs, /not switched on yet/);
+  assert.match(docs, /id="quiet-agent-alerts"/); assert.match(docs, /defaults to/); assert.match(docs, /switched on at anyroute\.tech/);
   const spec = JSON.parse(readFileSync(new URL('../public/openapi.json', import.meta.url), 'utf8'));
   const endpoint = spec.paths['/api/v1/agents/{key_hash}/quiet-alert'];
   for (const method of ['get', 'put']) {
