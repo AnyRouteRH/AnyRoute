@@ -1,4 +1,5 @@
 'use client';
+import AgentStopAll from '../../components/AgentStopAll'; // H172
 import WorkHours from './WorkHours'; // G161
 import AgentRunway from '../../components/AgentRunway'; // H170
 import AgentApprovers from '../../components/AgentApprovers'; // E153
@@ -180,6 +181,7 @@ export default function Agents() {
     {error && <p className="note" role="alert">{error}</p>}
     {off ? <section className="empty" role="status"><h2>{FEATURE_OFF}</h2><p>This router is not serving agent rulebooks.</p></section> : <>
       {key && <section aria-label="Agent keys"><div className={s.heading}><h2>Agent keys</h2><button className="text-button" disabled={busy} onClick={() => setRevision(r => r+1)}>Refresh</button></div>{busy && <p role="status">Reading agent keys…</p>}{loaded && !agents.length && <div className="empty"><p>No agent keys returned for this account.</p><a className="inline-link" href="/dashboard/#api-keys">Manage API keys</a></div>}<div className={s.list}>{agents.map(a => <div key={a.key_hash}><button className={s.agent} aria-pressed={selected === a.key_hash} onClick={() => { setSelected(a.key_hash); setError(''); }}><div className={s.heading}><strong>{a.name || 'Unnamed agent'}</strong><span className={s.badges}><span className="badge">Rulebook {a.has_policy ? 'on' : 'off'}</span>{a.playbook && <span className="badge">Playbook {a.playbook.name}</span>}{a.killed && <span className="badge dark">{stoppedLabel(a.stopped_until)}</span>}</span></div><span className={s.hash}>Policy SHA {a.policy_sha256 ? a.policy_sha256.slice(0,12) : 'None'}</span><Spend agent={a}/></button><SealedBadge sealed={a.sealed}/><QuietAgentAlert key={key+a.key_hash} agent={a} request={request}/>{/* D141 */}</div>)}</div></section>}
+      {key && agents.length > 0 && <AgentStopAll key={key} agents={agents} request={request} disabled={busy || !loaded}/>} {/* H172 */}
       {key && <TelegramLink key={key} principalKey={key}/>}
       {key && <section id="approvals"><Approvals key={key} request={request} agents={agents} onError={onError}/></section>}
       {key && agent && !agent.approval_only && <Autonomy agent={agent}/> }

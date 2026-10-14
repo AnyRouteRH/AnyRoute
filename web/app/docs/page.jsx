@@ -1,5 +1,6 @@
 import InboxFiltersDocs from '../../components/InboxFiltersDocs'; // H173
 import AskAboutThisDocs from "../../components/AskAboutThisDocs"; // H175
+import StopAllDocs from "../../components/StopAllDocs"; // H172
 import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import DuplicateAgentDocs from "../../components/DuplicateAgentDocs"; // H171
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
@@ -946,6 +947,7 @@ export default function Docs() {
           <ZkapiDocs /> {/* ZK9 */}
           <FacilitatorDocs /> {/* v6 F */}
           <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs /><ReplayRulesDocs /><PlaybooksDocs /><StopUntilDocs /><RulebookWordsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs /> {/* B117 B124 */}
+          <StopAllDocs /> {/* H172 */}
           <RulebookHistoryDocs /> {/* D144 */}
           <WorkHoursDocs /> {/* G161 */}
           <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}<LaneReportDocs /> {/* Lane report */}

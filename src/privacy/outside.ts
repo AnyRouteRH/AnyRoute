@@ -1,5 +1,6 @@
 import { askAboutThisBrowser } from "./ask-about-this.ts"; // H175
 import { continueAnswerBrowser } from "./continue-answer.ts"; // H166
+import { agentStopAllReaders } from "./agent-stop-all.ts"; // H172
 import { rotationReader, rotationStores } from "./key-rotation.ts"; // G158
 import { duplicateAgentReader, duplicateAgentStores } from "./agent-duplicate.ts"; // H171
 import { approvalNudgeStores } from "./approval-nudges.ts"; // G164
@@ -774,6 +775,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
 
 const noLog = (item: string, file: string, contains: string): { item: string; evidence: Evidence[] } => ({ item, evidence: [ev(file, contains)] });
 
+bodyReaders.push(...agentStopAllReaders); // H172
 describePolicyHistoryReaders(bodyReaders); // D144
 export const EXTERNAL: ExternalDoc = {
   redis: {

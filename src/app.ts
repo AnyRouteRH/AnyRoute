@@ -91,6 +91,7 @@ import { agentCertificatesRoutes } from "./api/agent-certificates.ts";
 import { guardRoutes } from "./api/guard.ts"; // V98
 import { agentPayRoutes } from "./api/agent-pay.ts"; // Pay another agent
 import { linkedWalletRoutes } from "./api/linked-wallets.ts"; // E154
+import { agentStopAllRoutes } from "./api/agent-stop-all.ts"; // H172
 import { agentsRoutes } from "./api/agents.ts";
 import { agentPolicyHistoryRoutes } from "./api/agent-policy-history.ts"; // D144
 import { playbooksRoutes } from "./api/playbooks.ts"; // U115
@@ -272,6 +273,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentsRoutes(app, ctx);
   agentDuplicateRoutes(app, ctx); // H171
   agentRunwayRoutes(app, ctx); // H170
+  agentStopAllRoutes(app, ctx); // H172
   agentPolicyHistoryRoutes(app, ctx); // D144
   agentSpendRoutes(app, ctx); // C132
   quietAgentAlertRoutes(app, ctx); // D141

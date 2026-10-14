@@ -22857,6 +22857,148 @@
           }
         }
       }
+    },
+    "/api/v1/agents/stop-all": {
+      "post": {
+        "operationId": "stopAllAgents",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Stop all agents",
+        "description": "H172: Owner/admin/management Bearer key. Team keys act only within their own team and account; management keys act across the account. Read-only, inference-only and session keys refused. AGENT_POLICY_ENABLED defaults false; off returns 404. Only own rulebooks are changed, in one transaction through the existing per-agent Stop path. Counts reflect changes; repeats return zero. Existing active stops retain their duration; resume clears any stored stop.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Changed-agent count and plain confirmation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "count",
+                        "message"
+                      ],
+                      "properties": {
+                        "count": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 160
+                  },
+                  "until": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Future absolute time within 30 days. Omit to stop until resumed."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/resume-all": {
+      "post": {
+        "operationId": "resumeAllAgents",
+        "tags": [
+          "Agent rulebook"
+        ],
+        "summary": "Resume all agents",
+        "description": "H172: Owner/admin/management Bearer key. Team keys act only within their own team and account; management keys act across the account. Read-only, inference-only and session keys refused. AGENT_POLICY_ENABLED defaults false; off returns 404. Only own rulebooks are changed, in one transaction through the existing per-agent Stop path. Counts reflect changes; repeats return zero. Existing active stops retain their duration; resume clears any stored stop.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Changed-agent count and plain confirmation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "count",
+                        "message"
+                      ],
+                      "properties": {
+                        "count": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {

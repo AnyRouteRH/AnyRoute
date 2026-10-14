@@ -1,3 +1,4 @@
+import { AGENT_STOP_ALL_COMMANDS } from "./agent-stop-all.ts"; // H172
 // G163: linked commands reuse the web Stop state, event chain and security context.
 import { and, eq } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -41,6 +42,7 @@ export async function registerAgentStopCommands(api: TelegramApi, base: { comman
   await api.call("setMyCommands", { commands: [
     ...base.map(command => command.command === "start" ? { ...command, description: "Connect, or resume with /start followed by an agent name" } : command),
     ...BALANCE_SPEND_COMMANDS,
+    ...AGENT_STOP_ALL_COMMANDS, // H172
     { command: "link", description: "Link agent approvals and alerts" },
     { command: "unlink", description: "Remove the account link" },
     { command: "agents", description: "List your agents with Stop and Resume buttons" },
