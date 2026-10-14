@@ -6,7 +6,7 @@ const groups: Record<string, InboxGroup> = {
   approval: "approvals", approval_reminder: "approvals",
   alert: "agents", "quiet-agent": "agents", playbook: "agents", schedule: "agents",
   deposit: "money", topup: "money", payment: "money", low_balance: "money", project_budget: "money",
-  security: "security", price_notice: "models", model_watch: "models",
+  security: "security", price_notice: "models", model_watch: "models", status_incidents: "models", // H169 incidents sit with model notices
   agreement: "other", host: "other", weekly_summary: "other",
 };
 export const inboxGroup = (kind: string): InboxGroup => Object.hasOwn(groups, kind) ? groups[kind]! : "other";
