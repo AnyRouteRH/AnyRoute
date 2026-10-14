@@ -1,3 +1,4 @@
+import { continuationContextFacts } from './harness-continue.js'; // H166
 import { systemMessages, systemIdentity } from './folder-instructions.js'; // G157
 import { buildRequest, defaultSettings, replyFacts } from './harness.js';
 
@@ -27,6 +28,7 @@ export function contextMeter({ model, messages = [], system = '', draft = '', at
   for (const m of messages) {
     if (m.role === 'assistant' && !m.text && !m.toolCalls?.length) continue;
     const facts = replyFacts(m);
+    Object.assign(facts, continuationContextFacts(m)); // H166
     const output = m.role === 'assistant' ? count(facts.tokensOut) : null;
     tokens += (output ?? textTokens(m.text)) + 6;
     for (const a of m.attachments || []) { const value = attachmentTokens(a); tokens += value.tokens; uncertain ||= value.uncertain; }

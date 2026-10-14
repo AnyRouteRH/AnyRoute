@@ -1,3 +1,4 @@
+import { continuationCostAdjustment } from "./harness-continue-cost.js"; // H166
 // C128: sum the dollar amounts shown on reply footers, without floating-point addition.
 import { formatUsd } from "./arena.js";
 import { replyFacts } from "./harness.js";
@@ -40,6 +41,7 @@ export function chatCost(lanes = []) {
       replies++;
     }
   }
+  microUsd += continuationCostAdjustment(lanes, replyCostUnits); // H166
   return { microUsd: String(microUsd), replies };
 }
 

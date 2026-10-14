@@ -1,0 +1,6 @@
+// H166: browser-only extension of the existing Chat vault.
+export const continueAnswerBrowser = {
+  store: 'IndexedDB and browser memory',
+  holds: 'Continue adds text to the selected answer version in the existing opt-in, passphrase-encrypted Chat history vault and exports. Optional finish and servedModel keep the finish reason and responding model id. continuationCalls keeps browser-generated call ids for deduplicating copied comparison history, receipt ids, provider names, finish reasons and reported prompt tokens, completion tokens and dollar cost per call; the reply usage and chat cost include the additional reported charges. No full signed receipts, credentials or continuation instruction are added to saved call records. The conversation including the cut-off answer and a short user instruction is sent through the existing authenticated inference path; the router reads ordinary request text in memory. Folder instructions and system prompt still apply. No new table, column, Redis key family, log field, body reader, address reader or browser storage key. Lock and Forget use the existing vault controls.',
+  evidence: [{ file: 'web/lib/harness-continue-history.js', contains: 'export function continuationFields(message)' }, { file: 'web/lib/harness-continue.js', contains: 'export const CONTINUE_PROMPT' }],
+};

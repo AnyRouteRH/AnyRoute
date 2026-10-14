@@ -6,6 +6,7 @@ import s from "./Branches.module.css";
 
 const Branches = createContext(null);
 const Lane = createContext(null);
+export const useBranchLane = () => useContext(Lane); // H166
 export function BranchLane({ laneId, onInteract, children }) {
   return <Lane.Provider value={laneId}><div className={s.lane} onClickCapture={onInteract}>{children}</div></Lane.Provider>;
 }

@@ -1,0 +1,8 @@
+// H166
+export default function ContinueAnswerDocs() {
+  return <section id="continue-answer"><h2>Continue a cut-off answer</h2>
+    <p>When the latest answer reaches its length limit, Chat shows “This answer was cut off” and a Continue button. Continue asks the same model to pick up where it stopped without repeating its answer. New text joins the same reply, with the added usage and cost and a receipt link for each call. Each comparison lane has its own button, and the text stays with the version you are viewing.</p>
+    <p>The chat’s spending cap checks the extra call before sending. The context meter includes the cut-off answer and the continuation instruction; a full context holds the call. Folder instructions and the chat’s system prompt apply as usual. Models can still repeat text or fail to continue cleanly. Charges depend on usage reported by the router; missing usage or receipts remain pending. A failed follow-up keeps the text and reported costs already delivered.</p>
+    <p>Continue uses the existing authenticated <code>POST /api/v1/chat/completions</code> request, with the conversation including the cut-off answer followed by a short user instruction. It adds no endpoint, flag or migration. The router reads ordinary request text in memory. Optional <code>finish</code>, <code>servedModel</code> and <code>continuationCalls</code> fields travel in the existing passphrase-encrypted browser history and exports, including message versions. Each call record keeps only a browser-generated call id, its receipt id, provider, finish reason and reported input tokens, output tokens and cost. Older history still opens; answers without a recorded length limit have no Continue button.</p>
+  </section>;
+}

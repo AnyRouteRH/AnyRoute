@@ -89,6 +89,8 @@ sections.push(["agent-runway", "How long an agent’s budget lasts"]); // H170
 sections.push(["ask-about-this", "Ask about a highlighted part"]); // H175
 sections.push(["your-images", "Your images"]); // H167
 
+sections.push(["continue-answer", "Continue a cut-off answer"]); // H166
+
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);
 }

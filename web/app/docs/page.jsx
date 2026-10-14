@@ -30,6 +30,7 @@ import ModelCompareDocs from "../../components/ModelCompareDocs"; // G165
 import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B123
 import ModelAlternativesDocs from "../../components/ModelAlternativesDocs"; // B121
 import RunwayDocs from "../../components/RunwayDocs"; // B119
+import ContinueAnswerDocs from "../../components/ContinueAnswerDocs"; // H166
 import ChatCapDocs from "../../components/ChatCapDocs"; // G162
 import ChatCostDocs from "../../components/ChatCostDocs"; // C128
 import QuietAgentAlertsDocs from '../../components/QuietAgentAlertsDocs'; // D141
@@ -916,6 +917,7 @@ export default function Docs() {
           <DocsFeatureIndex />
           <ChatCostDocs /> {/* C128 */}
           <ChatCapDocs /> {/* G162 */}
+          <ContinueAnswerDocs /> {/* H166 */}
           <SavedAnswersDocs /> {/* D140 */}
           <ChatFoldersDocs /> {/* D143 */}
           <FolderInstructionsDocs /> {/* G157 */}

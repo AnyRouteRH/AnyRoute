@@ -42,6 +42,8 @@ import Limits, { ReplyApproval, useHarnessLimits } from "./harness/Limits"; // U
 import { Button, CopyButton, Modal } from "./UI";
 import { FolderInstructionsProvider, FolderInstructionsChip } from "./harness/FolderInstructions"; // G157
 import { activeFolder, folderSystems, systemText } from "../lib/folder-instructions.js"; // G157
+import ContinueAnswer, { ContinueAnswerProvider } from "./harness/ContinueAnswer"; // H166
+import { continueAnswer, continuationPatcher } from "../lib/harness-continue.js"; // H166
 import s from "./Harness.module.css";
 import CopyAsCode from "./harness/CopyAsCode"; // C130
 import { BranchLane, BranchProvider, BranchVersions } from "./harness/Branches"; // G156
@@ -533,6 +535,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
       )}
       {!streaming && <SaveAnswer msg={msg} />} {/* D140 */}
       <ReplyPrivacy msg={msg} open={last} />
+      <ContinueAnswer msg={msg} last={last} busy={busy} /> {/* H166 */}
       <BranchVersions messageId={msg.id} /> {/* G156 */}
     </article>
   );
@@ -961,7 +964,11 @@ export default function Harness() {
   // ---- sending ----
   const patchMsg = (laneId, msgId, patch) => setLanes((ls) => ls.map((l) => (l.id === laneId ? { ...l, messages: l.messages.map((m) => (m.id === msgId ? { ...m, ...(typeof patch === "function" ? patch(m) : patch) } : m)) } : l)));
 
+  const patchContinuationMessage = patchMsg; // H166
+  const continueReply = (laneId, messageId) => continueAnswer({ lane: lanesRef.current.find(lane => lane.id === laneId), messageId, busy: busy || controllers.current.size > 0, find, system: systemRef.current, settings: settingsRef.current, needKey, cap: chatCap, setLanes, runLane, onError: setFileNote, onStart: () => { stick.current = true; setFileNote(""); }, resume: () => continueReply(laneId, messageId) }); // H166
+
   async function runLane(laneId, modelId, history, msgId, imageMode = null) {
+    const patchMsg = continuationPatcher(patchContinuationMessage, lanesRef.current.find(lane => lane.id === laneId), history, msgId); // H166
     const model = find(modelId);
     const key = authRef.current.key;
     if (modelUnavailable(model)) return patchMsg(laneId, msgId, { status: "error", error: "This model is temporarily unavailable. Choose another model." }); // ON5
@@ -1155,6 +1162,7 @@ export default function Harness() {
 
   return (
     <ChatCapProvider value={chatCap}> {/* G162 */}
+    <ContinueAnswerProvider value={continueReply}> {/* H166 */}
     <SavedAnswersProvider history={promptHistory} lanes={lanes} busy={busy}> {/* D140 */}
     <YourImagesInputProvider onUse={acceptsImages ? addFiles : null}> {/* H167 */}
     <FolderInstructionsProvider scope={folderScope} onScope={setFolderScope}> {/* G157 */}
@@ -1441,6 +1449,7 @@ export default function Harness() {
     </FolderInstructionsProvider> {/* G157 */}
     </YourImagesInputProvider> {/* H167 */}
     </SavedAnswersProvider> /* D140 */
+    </ContinueAnswerProvider> {/* H166 */}
     </ChatCapProvider> /* G162 */
   );
 }

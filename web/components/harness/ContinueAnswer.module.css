@@ -1,0 +1,4 @@
+.controls { display: grid; gap: 0.5rem; }
+.note, .receipts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; font-size: 0.85rem; }
+.note { color: var(--signal-deep); }
+.receipts { color: var(--muted); }

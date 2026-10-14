@@ -1,3 +1,4 @@
+import { continuationFields } from "./harness-continue-history.js"; // H166
 import { capDollars, capFields } from './chat-cap.js'; // G162
 import { historyMetadata } from "./history-metadata.js";
 import { validateSavedAnswers } from "./saved-answers.js"; // D140
@@ -43,6 +44,7 @@ function validateChat(c) {
           const value = text(m[key], 300, true);
           if (value !== undefined) out[key] = value;
         }
+        Object.assign(out, continuationFields(m)); // H166
         if (m.stopped !== undefined && typeof m.stopped !== "boolean") bad();
         if (m.stopped) out.stopped = true;
         if (m.ms !== undefined) out.ms = number(m.ms);
