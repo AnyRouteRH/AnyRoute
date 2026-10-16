@@ -1,0 +1,8 @@
+import type { ExternalDoc } from './types.ts';
+export const modelSummaryStores: ExternalDoc['otherStores'] = [{
+  id: 'account-model-summary', name: 'Your view of a model response in memory',
+  purpose: 'J178: GET /api/v1/account/models/:id/summary composes existing Insights, reliability, savings and price notice readers. Uses Activity account-or-own-key visibility including sessions and deleted-key account stamps. Insights filters the model before aggregation and group limits. No new storage or background work.',
+  holds: 'Public model id; 30-day exact decimal call charges, posted refunds and net spend with call counts; seven-day recorded completion counts and success percentage; existing conservative savings suggestion and current catalogue rates/abilities; latest matching price notice time/title among the existing latest 101 retained notices over 30 days. Notices require a non-session management key and enabled inbox preference and feature switch. The panel reuses existing watch and comparison controls and their guards/storage. No new notices, messages, body or address readers, key secrets, tables, columns, log fields or Redis families. Ordinary inference still reads request text in router memory.',
+  ttl: 'No-store HTTP response; browser component memory cleared on key/model change or leaving the page. Signed-out visitors make no summary request and render no panel. Existing source retention unchanged.',
+  requestText: 'none', evidence: [{ file: 'src/account/model-summary.ts', contains: 'export async function readModelSummary' }, { file: 'src/api/account-model-summary.ts', contains: "c.header('cache-control', 'no-store')" }],
+}];

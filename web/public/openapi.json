@@ -218,6 +218,21 @@
     }
   ],
   "paths": {
+    "/api/v1/account/models/{id}/summary": {
+      "get": {
+        "operationId": "getAccountModelSummary",
+        "summary": "Your view of a model",
+        "description": "J178: composes existing readers using Activity visibility. Encode the complete model id as one path segment. No storage or new flag. Usage covers 30 rolling days; reliability covers 7. Read-only keys are refused. Price notices require non-session management access, PRICE_NOTICES_ENABLED and enabled inbox preferences; only the latest 101 retained notices are searched. Savings retain existing estimate limits.",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "No-store summary: model and scope; usage with days/from/to and decimal-string calls/charged_usd/refunded_usd/cost_usd; reliability with days/from/to and decimal-string calls/succeeded and nullable numeric success_rate; nullable savings in the existing account savings model shape; nullable price_notice with at/title; boolean price_notices_visible." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/v1/account/business-details": {
       "get": {
         "operationId": "getBusinessDetails",

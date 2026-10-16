@@ -270,3 +270,5 @@ TASKS.push({ ...task('agent-runway', 'agents', 'Check an agent’s budget runway
 TASKS.push({ ...task('ask-about-this', 'chat', 'Ask about a highlighted part', 'Select part of an answer and quote it in your follow-up.', '/docs/#ask-about-this', 'highlight, selection, quote, follow-up, code'), menu: false }); // H175
 TASKS.push({ ...task('continue-answer', 'chat', 'Continue a cut-off answer', 'Ask the same model to finish an answer that reached its length limit.', '/docs/#continue-answer', 'continue, cut off, length, answer, chat'), menu: false }); // H166
 TASKS.push({ ...task('stop-all', 'agents', 'Stop all agents at once', 'Stop every agent you can manage, then resume them together.', '/docs/#stop-all', 'stop, all, resume, telegram, team'), menu: false }); // H172
+
+TASKS.push({ ...task('your-view-of-a-model', 'chat', 'Your view of a model', 'See your calls, spend, reliability, ways to save and recent notices on a model page.', '/docs/#your-view-of-a-model', 'model, account, calls, spend, reliability, watch, savings'), menu: false }); // J178

@@ -93,6 +93,7 @@ sections.push(["continue-answer", "Continue a cut-off answer"]); // H166
 sections.push(["print-chat", "Print or save a chat as PDF"]); // H174
 
 sections.push(["stop-all", "Stop all agents at once"]); // H172
+sections.push(["your-view-of-a-model", "Your view of a model"]); // J178
 
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);

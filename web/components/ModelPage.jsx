@@ -1,5 +1,6 @@
 "use client";
 import ModelWatchButton from "./model-watch/ModelWatchButton"; // G159
+import ModelAccountSummary from "./ModelAccountSummary"; // J178
 // E151: one exported shell, resolved from the public catalogue in the browser.
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
@@ -28,6 +29,7 @@ export function ModelPageView({ model, providers = null, endpoints = null, obser
       <ModelWatchButton model={model} /> {/* G159 */}
       {modelUnavailable(model) && <p role="status">Temporarily unavailable. You can open Chat and choose another model.</p>}
     </header>
+    {/* J178 */}<ModelAccountSummary model={model} />
     <section aria-label="Prices and context"><h2>Prices and context</h2><dl className={s.facts}>
       <div><dt>Input per million tokens</dt><dd>{prices.input}</dd></div>
       <div><dt>Output per million tokens</dt><dd>{prices.output}</dd></div>

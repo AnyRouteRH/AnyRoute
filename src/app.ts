@@ -26,6 +26,7 @@ import { proofPackRoutes } from "./api/proof-pack.ts"; // U100
 import { laneReportRoutes } from "./api/lane-report.ts"; // Lane report
 import { accountReliabilityRoutes } from "./api/account-reliability.ts"; // E155
 import { accountSavingsRoutes } from "./api/account-savings.ts"; // G160
+import { accountModelSummaryRoutes } from "./api/account-model-summary.ts"; // J178
 import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
 import { webhookRoutes } from "./webhooks/routes.ts"; // V86: signed destinations.
 import { makegoodRoutes } from "./services/makegood.ts"; // V6 R: make-good refunds.
@@ -248,6 +249,7 @@ export async function createApp(opts: AppOptions = {}) {
   insightsRoutes(app, ctx); // V88: read-only, off by default.
   accountReliabilityRoutes(app, ctx); // E155: opt-in account reader.
   accountSavingsRoutes(app, ctx); // G160: opt-in savings reader.
+  accountModelSummaryRoutes(app, ctx); // J178
   accountRunwayRoutes(app, ctx); // B119
   scheduledPromptRoutes(app, ctx, (path, init, env) => app.request(path, init, internalEnv(env) as never)); // D136
   inboxRoutes(app, ctx); // U78: account inbox.

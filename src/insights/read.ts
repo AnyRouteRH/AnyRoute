@@ -12,7 +12,7 @@ export function insightRow(r: InsightRaw) {
     average_cost_usd: calls ? picoToUsdString(net / calls) : null,
     average_cost_ratio: { numerator_usd: picoToUsdString(net), denominator: r.calls } };
 }
-export async function readInsights(ctx: Ctx, key: KeyRow, q: InsightsQuery) {
+export async function readInsights(ctx: Ctx, key: KeyRow, q: InsightsQuery, model?: string) {
   const { whole } = await activityAccess(ctx, key);
   // Existing gen_key_ts_idx / gen_ts_idx and ledger_account_idx bound the two sources before grouping.
   // A deleted key's account-stamped generations stay visible to account managers, as in Activity.
@@ -34,6 +34,7 @@ export async function readInsights(ctx: Ctx, key: KeyRow, q: InsightsQuery) {
         then 1::numeric else 0::numeric end proven
     from generations g left join keys k on k.key_hash = g.key_hash
     where g.ts >= ${q.from}::timestamptz and g.ts < ${q.to}::timestamptz and ${visible} and (${q.project ?? null}::text is null or g.project = ${q.project ?? null})
+      and (${model ?? null}::text is null or g.model_id = ${model ?? null}) -- J178: filter before group limits.
     union all
     select g.project, l.created_at, g.model_id, l.key_hash, coalesce(nullif(k.name,''),k.label,'Removed key'),
       coalesce(g.receipt->>'lane',g.receipt_v2->>'lane','unknown'), coalesce(g.receipt->>'disclosure',g.receipt_v2->>'disclosure','unknown'), 0, l.amount::numeric, 0, 0, 0, 0
@@ -42,6 +43,7 @@ export async function readInsights(ctx: Ctx, key: KeyRow, q: InsightsQuery) {
     where l.account_id = ${key.accountId} and (${whole} or l.key_hash = ${key.keyHash}) and l.kind = 'refund'
       and l.created_at >= ${q.from}::timestamptz and l.created_at < ${q.to}::timestamptz
       and (${q.project ?? null}::text is null or g.project = ${q.project ?? null})
+      and (${model ?? null}::text is null or g.model_id = ${model ?? null}) -- J178
   ), grouped as (
     select case when grouping(bucket) = 0 then 'time' when grouping(model) = 0 then 'model'
       when grouping(key_id) = 0 then 'key' when grouping(lane) = 0 then 'lane' when grouping(project) = 0 then 'project' else 'total' end dimension,
