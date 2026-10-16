@@ -1,5 +1,6 @@
 // J179: command equivalence and current link authority through the existing bot.
 import { afterAll, beforeAll, expect, test } from "bun:test";
+const withoutSnapshotTime = (text: string) => text.replace(/to=[^&]+/g, "to=as-of");
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { keys, kv, ledger, teamMembers } from "../src/db/schema.ts";
@@ -130,7 +131,7 @@ test("Balance and Spend buttons equal their commands and do not create stored me
   await tg.bot.handleUpdate(message(linked.uid, "/menu")); expect(tg.sends().at(-1)!.params.reply_markup.inline_keyboard).toEqual(menuButtons(h.ctx.cfg.siteUrl, linked.generation));
   for (const command of ["balance", "spend"] as const) {
     await tg.bot.handleUpdate(message(linked.uid, `/${command}`)); const direct = tg.texts().at(-1);
-    await click(tg, linked, command); expect(tg.texts().at(-1)).toBe(direct);
+    await click(tg, linked, command); expect(withoutSnapshotTime(tg.texts().at(-1)!)).toBe(withoutSnapshotTime(direct!)); // J182 links end at each reply's own snapshot time
   }
   expect(await h.ctx.db.select().from(kv)).toEqual(before); expect(await h.ctx.db.select().from(ledger)).toEqual(billing); expect(tg.routerCalls()).toBe(0);
 });
