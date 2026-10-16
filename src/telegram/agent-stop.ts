@@ -1,3 +1,4 @@
+import { menuLinkMatches, STALE_MENU, MENU_COMMANDS } from "./menu-command.ts"; // J179
 import { AGENT_STOP_ALL_COMMANDS } from "./agent-stop-all.ts"; // H172
 // G163: linked commands reuse the web Stop state, event chain and security context.
 import { and, eq } from "drizzle-orm";
@@ -42,6 +43,7 @@ export async function registerAgentStopCommands(api: TelegramApi, base: { comman
   await api.call("setMyCommands", { commands: [
     ...base.map(command => command.command === "start" ? { ...command, description: "Connect, or resume with /start followed by an agent name" } : command),
     ...BALANCE_SPEND_COMMANDS,
+    ...MENU_COMMANDS, // J179
     ...AGENT_STOP_ALL_COMMANDS, // H172
     { command: "link", description: "Link agent approvals and alerts" },
     { command: "unlink", description: "Remove the account link" },
@@ -70,6 +72,7 @@ export async function handleAgentStop(ctx: Ctx, api: TelegramApi, update: TgUpda
     await ctx.db.transaction(async tx => {
       await lockLinks(tx);
       const link = await readLink(tx, uid);
+      if (!menuLinkMatches(update, link)) { await say(STALE_MENU); return; } // J179
       if (!link) { outcome = LINK_FIRST; if (!callback) await say(outcome); return; }
       if (callback && (!callbackMatch || link.generation !== callbackMatch[3])) fail(403, "Choose an agent from /agents again.");
       const scoped = { ...ctx, db: tx as unknown as Db };

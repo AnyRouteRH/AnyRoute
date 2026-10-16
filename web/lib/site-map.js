@@ -272,3 +272,4 @@ TASKS.push({ ...task('continue-answer', 'chat', 'Continue a cut-off answer', 'As
 TASKS.push({ ...task('stop-all', 'agents', 'Stop all agents at once', 'Stop every agent you can manage, then resume them together.', '/docs/#stop-all', 'stop, all, resume, telegram, team'), menu: false }); // H172
 
 TASKS.push({ ...task('your-view-of-a-model', 'chat', 'Your view of a model', 'See your calls, spend, reliability, ways to save and recent notices on a model page.', '/docs/#your-view-of-a-model', 'model, account, calls, spend, reliability, watch, savings'), menu: false }); // J178
+TASKS.push({ ...task("telegram-menu", "agents", "Open the Telegram menu", "Use one menu for balance, agents, approvals, inbox and notifications.", "/docs/#telegram-menu", "telegram, menu, bot, balance, spend, agents, approvals, inbox, settings"), menu: false }); // J179

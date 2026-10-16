@@ -1,3 +1,4 @@
+import { menuLinkMatches, STALE_MENU } from "./menu-command.ts"; // J179
 // E152: read existing account billing through the current Telegram link authority.
 import { and, eq, inArray } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -62,6 +63,7 @@ export async function handleBalanceSpend(ctx: Ctx, api: TelegramApi, update: TgU
   const say = (text: string) => api.call("sendMessage", { chat_id: uid, text, link_preview_options: { is_disabled: true } }, AbortSignal.timeout(5_000));
   try {
     const link = await readLink(ctx.db, uid);
+    if (!menuLinkMatches(update, link)) { await say(STALE_MENU); return true; } // J179
     if (!link) { await say(LINK_FIRST); return true; }
     const caller = await validPrincipal(ctx, link);
     // The dashboard middleware refuses account reads with inference-only keys.

@@ -1,4 +1,5 @@
 {
+  "x-anyroute-telegram-menu": { "documentation": "/docs/#telegram-menu", "description": "J179: /menu in linked private Telegram chats delegates Balance, Spend, Agents and Stop all to their existing command handlers and permissions. Waiting approvals reuses Telegram approval delivery, lists up to ten oldest pending unexpired requests the current linked principal may decide, respects the approvals Telegram switch and refreshes existing message bindings. Approve and Deny retain their current single-use decision rules. Callback actions are bound to the current link generation. Inbox opens /dashboard/#inbox and Settings opens /dashboard/#notifications with normal site sign-in. No new HTTP endpoint, request field, migration or flag; requires existing TELEGRAM_LINKING_ENABLED and AGENT_POLICY_ENABLED (both default false), plus the existing bot token and worker. No new background job or notice type." },
   "x-anyroute-telegram-photos": {
     "card": "D142",
     "flag": "TELEGRAM_PHOTOS_ENABLED",

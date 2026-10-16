@@ -1,3 +1,5 @@
+import { handleTelegramMenu } from "../telegram/menu.ts"; // J179
+import { MENU_HELP } from "../telegram/menu-command.ts"; // J179
 import { AGENT_STOP_ALL_HELP, handleAgentStopAll } from "../telegram/agent-stop-all.ts"; // H172
 import { AGENT_STOP_HELP, handleAgentStop, registerAgentStopCommands } from "../telegram/agent-stop.ts"; // G163
 import { hasPhoto, photoCaption, photoCapability, PHOTO_HELP, prepareTelegramPhoto, visionReply, type PhotoMessage, type TgPhoto } from "../telegram/photos.ts"; // D142
@@ -183,6 +185,7 @@ export class TelegramBot {
   // ---- One update ------------------------------------------------------------------------------
 
   async handleUpdate(u: TgUpdate) {
+    if (await handleTelegramMenu(this.ctx, this.api, u)) return; // J179
     if (await handleAgentStopAll(this.ctx, this.api, u)) return; // H172
     if (await handleAgentStop(this.ctx, this.api, u)) return; // G163
     if (await handleLinkedUpdate(this.ctx, this.api, u)) return;
@@ -237,6 +240,7 @@ export class TelegramBot {
       "/private on|off  only talk to providers with a router-verified enclave",
       "/forget  delete your stored key",
       "/help  show this",
+      ...(this.ctx.cfg.telegram.linkingEnabled && this.ctx.cfg.agentPolicyEnabled ? [MENU_HELP] : []), // J179
       ...(this.ctx.cfg.telegram.linkingEnabled ? ["/link <code>  link agent approvals and alerts from /agents", "/unlink  remove the account link"] : []),
       ...(this.ctx.cfg.telegram.linkingEnabled ? BALANCE_SPEND_HELP : []), // E152
       ...(this.ctx.cfg.telegram.linkingEnabled && this.ctx.cfg.agentPolicyEnabled ? AGENT_STOP_HELP : []), // G163

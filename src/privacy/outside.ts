@@ -1,3 +1,4 @@
+import { telegramMenuReader } from "./telegram-menu.ts"; // J179
 import { askAboutThisBrowser } from "./ask-about-this.ts"; // H175
 import { continueAnswerBrowser } from "./continue-answer.ts"; // H166
 import { agentStopAllReaders } from "./agent-stop-all.ts"; // H172
@@ -777,6 +778,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
 const noLog = (item: string, file: string, contains: string): { item: string; evidence: Evidence[] } => ({ item, evidence: [ev(file, contains)] });
 
 bodyReaders.push(...agentStopAllReaders); // H172
+bodyReaders.push(telegramMenuReader); // J179
 describePolicyHistoryReaders(bodyReaders); // D144
 export const EXTERNAL: ExternalDoc = {
   redis: {

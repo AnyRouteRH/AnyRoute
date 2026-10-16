@@ -1,3 +1,4 @@
+import TelegramMenuDocs from "../../components/TelegramMenuDocs"; // J179
 import InboxFiltersDocs from '../../components/InboxFiltersDocs'; // H173
 import AskAboutThisDocs from "../../components/AskAboutThisDocs"; // H175
 import StopAllDocs from "../../components/StopAllDocs"; // H172
@@ -969,6 +970,7 @@ export default function Docs() {
           <TelegramPhotosDocs /> {/* D142 */}
           <TelegramBalanceSpendDocs /> {/* E152 */}
           <TelegramStopDocs /> {/* G163 */}
+          <TelegramMenuDocs /> {/* J179 */}
           <SecurityAlertsDocs /> {/* D138 */}
           <SignedInBrowsersDocs /> {/* E147 */}
           <BusinessDetailsDocs /> {/* H168 */}

@@ -1,3 +1,4 @@
+import { STALE_MENU } from "./menu-command.ts"; // J179
 import { approvalMessageMatches } from "./approval-nudges.ts"; // G164
 import { deferTelegram } from "../notifications/telegram.ts"; // E146
 import { channelEnabled, type NoticeType } from "../notifications/prefs.ts"; // E146
@@ -30,10 +31,10 @@ export function approvalText(row: ApprovalRow, name?: string, policySha256?: str
   if (action) return action;
   return `AnyRoute approval ${row.id}\nIntent: ${JSON.stringify(row.intent).slice(0, 2600)}\nMaximum cost: $${picoToUsdString(row.maxCostPico)}\nExpires: ${row.expiresAt.toISOString()}\nStatus: ${approvalStatus(row).status}`;
 }
-async function noticeText(ctx: Ctx, row: ApprovalRow) {
+async function noticeText(ctx: Ctx, row: ApprovalRow, plain = false) { // J179
   const [key] = await ctx.db.select({ name: keys.name }).from(keys).where(eq(keys.keyHash, row.keyHash));
   const policies = await policiesFor(ctx.db, row.keyHash);
-  if (ctx.cfg.agentRulebookWordsEnabled || ctx.cfg.agentTeamApproversEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
+  if (plain || ctx.cfg.agentRulebookWordsEnabled || ctx.cfg.agentTeamApproversEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
   return approvalText(row, key?.name ?? undefined, policies[0]?.sha256, ctx.cfg.agentGuardEnabled);
 }
 async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Notice, row: ApprovalRow) {
@@ -74,12 +75,16 @@ export async function linkedAlertTargets(ctx: Ctx, account: string, keyHash: str
   return targets;
 }
 /** Called by the existing Telegram polling job. Claim before sending avoids duplicate buttons across workers. */
-export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi) {
+export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi, requested?: { uid: number; generation: string }) { // J179: opt-in listing reuses delivery and decision buttons.
   if (!ctx.cfg.telegram.linkingEnabled || !ctx.cfg.agentPolicyEnabled) return;
-  const links = await ctx.db.select().from(kv).where(like(kv.key, "telegram-link:%"));
+  if (requested) await linkLimit(ctx, "callback", requested.uid, 20); // J179
+  let sentCount = 0; // J179
+  const links = await ctx.db.select().from(kv).where(requested ? eq(kv.key, `telegram-link:${requested.uid}`) : like(kv.key, "telegram-link:%")); // J179
+  if (requested && !links.length) throw new Error(STALE_MENU); // J179
   for (const saved of links) await ctx.db.transaction(async tx => {
     await lockLinks(tx);
     const link = await readLink(tx, (saved.value as Link).uid);
+    if (requested && link?.generation !== requested.generation) throw new Error(STALE_MENU); // J179
     if (!link) return;
     const scoped = { ...ctx, db: tx as unknown as Db };
     let caller;
@@ -92,20 +97,23 @@ export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi) {
     }
     const eligible = ctx.cfg.agentTeamApproversEnabled ? (await approvableKeys(scoped, caller)).map(k => k.keyHash) : undefined; // E153
     if (eligible && !eligible.length) return; // E153
-    const pending = await tx.select({ row: agentApprovals }).from(agentApprovals).innerJoin(keys, eq(keys.keyHash, agentApprovals.keyHash)).leftJoin(kv, sql`${kv.key} = 'telegram-approval:' || ${agentApprovals.id} || ':' || ${String(link.uid)} || ':' || ${link.generation}`).where(and(eq(keys.accountId, link.account), caller.management ? undefined : eq(keys.teamId, caller.teamId!), eligible ? inArray(agentApprovals.keyHash, eligible) : undefined, eq(agentApprovals.status, "pending"), gt(agentApprovals.expiresAt, new Date()), isNull(kv.key))).orderBy(agentApprovals.requestedAt).limit(10);
+    const pending = await tx.select({ row: agentApprovals }).from(agentApprovals).innerJoin(keys, eq(keys.keyHash, agentApprovals.keyHash)).leftJoin(kv, sql`${kv.key} = 'telegram-approval:' || ${agentApprovals.id} || ':' || ${String(link.uid)} || ':' || ${link.generation}`).where(and(eq(keys.accountId, link.account), caller.management ? undefined : eq(keys.teamId, caller.teamId!), eligible ? inArray(agentApprovals.keyHash, eligible) : undefined, eq(agentApprovals.status, "pending"), gt(agentApprovals.expiresAt, new Date()), requested ? undefined : isNull(kv.key))).orderBy(agentApprovals.requestedAt).limit(10);
     for (const { row } of pending) {
       if (await deferTelegram(scoped, link, row.keyHash, "", "approvals", caller)) continue; // E146: approvals are never queued
       if (!await telegramCanApprove(scoped, caller, row.keyHash)) continue; // E153
       const key = notificationKey(row.id, link);
       const notice: Notice = { uid: link.uid, approval: row.id, generation: link.generation, expires: row.expiresAt.getTime(), status: "pending" };
-      await tx.insert(kv).values({ key, value: notice });
+      const [previous] = requested ? await tx.select().from(kv).where(eq(kv.key, key)) : []; // J179
+      await tx.insert(kv).values({ key, value: notice }).onConflictDoNothing(); // J179: retain prior buttons if a requested send fails.
       try {
-        const sent = await api.call<{ message_id: number }>("sendMessage", { chat_id: link.uid, text: await noticeText(scoped, row), reply_markup: { inline_keyboard: [[{ text: "Approve", callback_data: callbackData("approve", row.id, link.generation) }, { text: "Deny", callback_data: callbackData("deny", row.id, link.generation) }]] } }, AbortSignal.timeout(5_000));
+        const sent = await api.call<{ message_id: number }>("sendMessage", { chat_id: link.uid, text: await noticeText(scoped, row, !!requested), reply_markup: { inline_keyboard: [[{ text: "Approve", callback_data: callbackData("approve", row.id, link.generation) }, { text: "Deny", callback_data: callbackData("deny", row.id, link.generation) }]] } }, AbortSignal.timeout(5_000));
         await tx.update(kv).set({ value: { ...notice, message_id: sent.message_id } }).where(eq(kv.key, key));
-      } catch { await tx.delete(kv).where(eq(kv.key, key)); }
+        sentCount++; // J179: listing refreshes the originating message binding.
+      } catch { if (!previous) await tx.delete(kv).where(eq(kv.key, key)); } // J179
     }
   });
   await pruneLinks(ctx.db);
+  return sentCount; // J179
 }
 /** Where a link code comes from, in words a first-time visitor can follow. */
 export const linkHowTo = (ctx: Ctx) => `To get your agent approvals and alerts here, sign in at ${ctx.cfg.siteUrl}/agents, press Link Telegram, then tap Open in Telegram (or send the /link message it shows).`;

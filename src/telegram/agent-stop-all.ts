@@ -1,3 +1,4 @@
+import { menuLinkMatches, STALE_MENU } from "./menu-command.ts"; // J179
 // H172: linked private commands, current authority, existing limiter and link lock.
 import type { Ctx } from "../context.ts";
 import type { Db } from "../db/client.ts";
@@ -31,6 +32,7 @@ export async function handleAgentStopAll(ctx: Ctx, api: TelegramApi, update: TgU
     await ctx.db.transaction(async tx => {
       await lockLinks(tx);
       const link = await readLink(tx, uid);
+      if (!menuLinkMatches(update, link)) { await say(STALE_MENU); return; } // J179
       if (!link) { await say(LINK_FIRST); return; }
       const scoped = { ...ctx, db: tx as unknown as Db };
       const caller = await validPrincipal(scoped, link);
