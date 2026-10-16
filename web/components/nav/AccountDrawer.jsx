@@ -1,4 +1,5 @@
 'use client';
+import ApprovalContext from '../ApprovalContext'; // J185
 import ThemeToggle from '../ThemeToggle'; // C126
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
@@ -67,6 +68,7 @@ export default function AccountDrawer({ apiKey, snapshot, onClose }) {
         {!page ? <p className="help-text">{snapshot ? 'Approvals could not be read.' : 'Reading approvals…'}</p> : !approvals.length ? <p>No pending approvals.</p> : <ul className={s.list}>{approvals.map(item => <li key={item.id}>
           <p><strong>{item.key_label || 'Unnamed agent'}</strong></p>
           <p>{intentSummary(item.intent)}</p>
+          <ApprovalContext lines={item.approval_context}/> {/* J185 */}
           <p className="help-text">Limit {item.approval_limit} USDG · Expires {when(item.expires_at)}</p>
           {item.can_decide ? <div className={s.actions}>
             <Button type="button" className={armed?.id === item.id ? s.confirm : undefined} disabled={!!busy || Date.parse(item.expires_at) <= Date.now()} onClick={() => approve(item)} onBlur={() => { if (armed?.id === item.id) setArmed(null); }}>{armed?.id === item.id ? approveConfirmText(item) : 'Approve'}</Button>

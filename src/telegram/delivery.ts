@@ -1,4 +1,5 @@
 import { STALE_MENU } from "./menu-command.ts"; // J179
+import { readApprovalContext } from "../agents/approval-context.ts"; // J185
 import { approvalMessageMatches } from "./approval-nudges.ts"; // G164
 import { deferTelegram } from "../notifications/telegram.ts"; // E146
 import { channelEnabled, type NoticeType } from "../notifications/prefs.ts"; // E146
@@ -35,6 +36,8 @@ async function noticeText(ctx: Ctx, row: ApprovalRow, plain = false) { // J179
   const [key] = await ctx.db.select({ name: keys.name }).from(keys).where(eq(keys.keyHash, row.keyHash));
   const policies = await policiesFor(ctx.db, row.keyHash);
   if (plain || ctx.cfg.agentRulebookWordsEnabled || ctx.cfg.agentTeamApproversEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
+  if (ctx.cfg.agentApprovalContextEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined, await readApprovalContext(ctx.db, row)); // J185
+  if (ctx.cfg.agentRulebookWordsEnabled || ctx.cfg.agentTeamApproversEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
   return approvalText(row, key?.name ?? undefined, policies[0]?.sha256, ctx.cfg.agentGuardEnabled);
 }
 async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Notice, row: ApprovalRow) {

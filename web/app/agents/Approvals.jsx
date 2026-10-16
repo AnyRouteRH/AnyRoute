@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import ApproveAndAllow from '../../components/ApproveAndAllow'; // B118
-import ApprovalRulebook from '../../components/limits/ApprovalRulebook'; // B124
+import Rulebook from '../../components/limits/ApprovalRulebook'; // B124
+import ApprovalContext from '../../components/ApprovalContext'; // J185
 import { Button } from '../../components/UI';
 import { pendingApprovals, decideAgentApproval, intentSummary, formatUsd, picoUsd, utcTime } from '../../lib/agents';
 
@@ -28,6 +29,11 @@ export default function Approvals({ request, agents, onError }) {
     catch(error) { onError(error); }
     finally { setBusy(''); setRevision(r => r+1); }
   };
+  // J185: reuse the approval row already read by this view; no second request.
+  function ApprovalRulebook(props) {
+    const row = rows.find(row => row.intent === props.intent);
+    return <><Rulebook {...props}/><ApprovalContext lines={row?.approval_context}/></>;
+  }
   return <section className="control-panel"><div className="button-row"><h2>Waiting for you</h2><Button secondary disabled={!!busy} onClick={() => setRevision(r => r+1)}>Refresh approvals</Button></div>
     <p className="help-text">Your agent asks you first above its approval threshold. Approval authorizes one matching request up to this estimated ceiling; the agent must retry before expiry. Other rulebook restrictions still apply.</p>
     {!rows.length && <p role="status">{loading ? 'Reading approvals…' : 'No pending approvals.'}</p>}

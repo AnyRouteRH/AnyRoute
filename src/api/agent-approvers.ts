@@ -1,3 +1,4 @@
+import { readApprovalContext } from "../agents/approval-context.ts"; // J185
 // E153
 import type { Context, Hono } from "hono";
 import { and, eq } from "drizzle-orm";
@@ -61,6 +62,7 @@ export async function delegatedAgentRows(ctx: Ctx, caller: Awaited<ReturnType<ty
 export async function approvalListJson(ctx: Ctx, caller: Awaited<ReturnType<typeof principal>>, row: import("../agents/approvals.ts").ApprovalRow) {
   const { approvalJson } = await import("../agents/approvals.ts");
   const data = approvalJson(row);
+  if (ctx.cfg.agentApprovalContextEnabled) Object.assign(data, { approval_context: await readApprovalContext(ctx.db, row) }); // J185
   if (!ctx.cfg.agentTeamApproversEnabled) return data;
   const who = await approvalIdentity(ctx.db, caller);
   return { ...data, can_allow: ["owner", "admin"].includes(who.role) };

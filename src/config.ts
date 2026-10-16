@@ -468,6 +468,7 @@ const schema = z.object({
   AGENT_PROFILES_ENABLED: bool.default(false),
   AGENT_POLICY_ENABLED: bool.default(false),
   AGENT_TEAM_APPROVERS_ENABLED: bool.default(false), // E153
+  AGENT_APPROVAL_CONTEXT_ENABLED: bool.default(false), // J185
   AGENT_RULEBOOK_WORDS_ENABLED: bool.default(false), // B124: Telegram wording only
   AGENT_GUARD_ENABLED: bool.default(false), // V98
   // Pay another agent: Agent Guard decides, the paying wallet sends USDG straight to the recipient, the router checks the
@@ -618,6 +619,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   // The bot token is optional and secret (it is part of every Telegram API URL): never echo it.
   // The API only issues and checks link codes; every Telegram message is sent by the process that runs the bot and
   // alert jobs, so only roles that run jobs need the bot token.
+  if (e.AGENT_APPROVAL_CONTEXT_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("AGENT_APPROVAL_CONTEXT_ENABLED requires AGENT_POLICY_ENABLED."); // J185
   if (e.APPROVAL_NUDGES_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("APPROVAL_NUDGES_ENABLED requires AGENT_POLICY_ENABLED."); // G164
   if (e.AGENT_TEAM_APPROVERS_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("AGENT_TEAM_APPROVERS_ENABLED requires AGENT_POLICY_ENABLED."); // E153
   if (e.AGENT_GUARD_ENABLED && !e.AGENT_POLICY_ENABLED) throw new Error("AGENT_GUARD_ENABLED requires AGENT_POLICY_ENABLED."); // V98
@@ -732,6 +734,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     agentPolicyEnabled: e.AGENT_POLICY_ENABLED,
     agentTeamApproversEnabled: e.AGENT_TEAM_APPROVERS_ENABLED, // E153
     quietAgentAlertsEnabled: e.QUIET_AGENT_ALERTS_ENABLED, // D141
+    agentApprovalContextEnabled: e.AGENT_APPROVAL_CONTEXT_ENABLED, // J185
     agentRulebookWordsEnabled: e.AGENT_RULEBOOK_WORDS_ENABLED, // B124
     agentGuardEnabled: e.AGENT_GUARD_ENABLED, // V98
     agentPayEnabled: e.AGENT_PAY_ENABLED,

@@ -1,3 +1,4 @@
+import { enrichApprovalContext } from "./approval-context.ts"; // J185
 import { incidentNoticeItems } from "../incident-notices/worker.ts"; // H169
 import { highlightApprovalNudges } from "./approval-nudges.ts"; // G164
 import { modelWatchInbox } from "../model-watch/worker.ts"; // G159
@@ -117,6 +118,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
   items.push(...await weeklyInbox(ctx, key, scope.whole, since)); // E146
   await filterNotificationInbox(ctx, key.accountId, items); // E146
   { const approvals = await delegatedInbox(ctx, key, asOf); capped ||= approvals.length > 100; items.push(...approvals.slice(0, 100).filter(row => !items.some(item => item.id === row.id))); await refreshInboxAuthority(ctx, key, items); } // E153
+  if (key.scope !== "read") await enrichApprovalContext(ctx, items, new Date(asOf)); // J185
   await highlightApprovalNudges(ctx, key, items, new Date(asOf)); // G164
   items.sort((a, b) => micros(a.at) === micros(b.at) ? (a.id > b.id ? -1 : a.id < b.id ? 1 : 0) : micros(a.at) > micros(b.at) ? -1 : 1);
   return { data: items, count: items.filter(item => item.unread).length, capped, as_of: asOf, seen_scope: scope.seenScope, scope: scope.whole ? "account" : ctx.cfg.agentTeamApproversEnabled && items.some(item => item.kind === "approval" && item.can_decide) ? "team_approvals" : "key" };

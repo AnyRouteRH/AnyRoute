@@ -55,6 +55,7 @@ const sections = [
   ["work-hours", "Agent work hours"], // G161
   ["rulebook-history", "Rulebook history"], // D144
   ["agent-rulebook", "Agent rulebook"],
+  ["approvals", "Approval context"], // J185
   ["agent-approvals", "Ask-first approvals"],
   ["approvers", "Let teammates approve"], // E153
   ["approve-and-allow", "Allow this next time"], // B118

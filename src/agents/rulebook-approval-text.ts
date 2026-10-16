@@ -4,7 +4,7 @@ import type { AgentPolicy } from './policy.ts';
 import { rulebookApprovalLine } from './rulebook-words.ts';
 import { picoToUsdString } from '../lib/money.ts';
 const plain = (value: unknown) => String(value ?? '').replace(/[\r\n\t]/g, ' ');
-export function plainApprovalText(row: ApprovalRow, policies: { policy: AgentPolicy; inherited: boolean }[], name?: string): string {
+export function plainApprovalText(row: ApprovalRow, policies: { policy: AgentPolicy; inherited: boolean }[], name?: string, context: string[] = []): string {
   const intent = row.intent as { intents?: Record<string, unknown>[] } & Record<string, unknown>;
   const intents = intent.intents ?? [intent];
   const details = intents.map(i => i.kind === 'action' ? `Action: ${plain(i.action)}${i.target === undefined ? '' : `; target: ${plain(i.target)}`}${i.amount_pico === undefined ? '' : `; amount: $${picoToUsdString(BigInt(String(i.amount_pico)))}`}${i.details_sha256 === undefined ? '' : `; details fingerprint: ${plain(i.details_sha256)}`}`
@@ -16,5 +16,6 @@ export function plainApprovalText(row: ApprovalRow, policies: { policy: AgentPol
   return [`Anyroute: your agent asks first`, `Approval: ${row.id}`, `Agent: ${plain(name || 'Unnamed agent').slice(0, 100)}`, detailText.length > 2600 ? detailText.slice(0, 2600) + '… (more details on Agents)' : detailText,
     `Maximum cost: $${picoToUsdString(row.maxCostPico)}`,
     `Rulebook: ${summaries.length ? summaries.join(' · ') : 'unavailable'}`,
+    ...context, // J185: the same context lines appear on every approval surface.
     `Expires: ${row.expiresAt.toISOString()}`, `Status: ${['pending', 'approved'].includes(row.status) && row.expiresAt <= new Date() ? 'expired' : row.status}`].join('\n');
 }

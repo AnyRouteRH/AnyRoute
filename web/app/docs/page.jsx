@@ -6,6 +6,7 @@ import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import DuplicateAgentDocs from "../../components/DuplicateAgentDocs"; // H171
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
 import AgentRunwayDocs from "../../components/AgentRunwayDocs"; // H170
+import ApprovalContextDocs from "../../components/ApprovalContextDocs"; // J185
 import ApprovalNudgesDocs from "../../components/ApprovalNudgesDocs"; // G164
 import IncidentAlertsDocs from "../../components/incident-notices/IncidentAlertsDocs"; // H169
 import ModelWatchDocs from "../../components/model-watch/ModelWatchDocs"; // G159
@@ -962,6 +963,7 @@ export default function Docs() {
           <ToolsMarketDocs /> {/* v6 T */}
           <AgentAlertDocs />
           <AgentApprovalDocs />
+          <ApprovalContextDocs /> {/* J185 */}
           <AgentApproversDocs /> {/* E153 */}
           <ApprovalNudgesDocs /> {/* G164 */}
           <ApproveAndAllowDocs /> {/* B118 */}
