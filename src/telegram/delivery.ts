@@ -35,9 +35,9 @@ export function approvalText(row: ApprovalRow, name?: string, policySha256?: str
 async function noticeText(ctx: Ctx, row: ApprovalRow, plain = false) { // J179
   const [key] = await ctx.db.select({ name: keys.name }).from(keys).where(eq(keys.keyHash, row.keyHash));
   const policies = await policiesFor(ctx.db, row.keyHash);
-  if (plain || ctx.cfg.agentRulebookWordsEnabled || ctx.cfg.agentTeamApproversEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
-  if (ctx.cfg.agentApprovalContextEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined, await readApprovalContext(ctx.db, row)); // J185
-  if (ctx.cfg.agentRulebookWordsEnabled || ctx.cfg.agentTeamApproversEnabled) return plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), key?.name ?? undefined); // B124
+  const rules = policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash }));
+  if (ctx.cfg.agentApprovalContextEnabled) return plainApprovalText(row, rules, key?.name ?? undefined, await readApprovalContext(ctx.db, row)); // J185: context first, on every surface
+  if (plain || ctx.cfg.agentRulebookWordsEnabled || ctx.cfg.agentTeamApproversEnabled) return plainApprovalText(row, rules, key?.name ?? undefined); // B124, J179
   return approvalText(row, key?.name ?? undefined, policies[0]?.sha256, ctx.cfg.agentGuardEnabled);
 }
 async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Notice, row: ApprovalRow) {
