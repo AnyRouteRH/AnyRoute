@@ -2245,6 +2245,7 @@
     },
     "/api/v1/activity": {
       "get": {
+        "x-j182-trace-a-charge": "Activity links retain kind, model, key (agent hash), project, from inclusive and to exclusive in the dashboard URL. Optional basis=charges selects posted negative usage/tool_call/data_tool ledger entries by settlement time, with unchanged account/key/session visibility. charge_kind=usage restricts to statement usage; charge_kind=rulebook to usage/tool_call. paid=true selects negative amounts; lane selects coalesced recorded lane (unknown for missing); missing_model=true or missing_project=true selects absent metadata (incompatible with the corresponding value filter). All filters bind cursors and CSV. Missing signed call receipts/models remain null; no new storage or flag. See /docs/#trace-a-charge. J182",
         "operationId": "listActivity",
         "summary": "List account activity",
         "description": "Calls (with receipt ids and verify links), agent approvals and rule decisions, alerts, deposits and balance changes, and agreement events, newest first, in one item shape with exact USDG amounts. A key sees its own activity; management, owner and admin keys see the account within their team boundaries. format=csv returns this page as CSV with X-Next-Cursor when another page exists.",
@@ -2254,6 +2255,12 @@
           }
         ],
         "parameters": [
+          { "name": "basis", "in": "query", "schema": { "type": "string", "enum": ["charges"] } },
+          { "name": "charge_kind", "in": "query", "schema": { "type": "string", "enum": ["usage", "rulebook"] } },
+          { "name": "paid", "in": "query", "schema": { "type": "string", "enum": ["true"] } },
+          { "name": "missing_model", "in": "query", "schema": { "type": "string", "enum": ["true"] } },
+          { "name": "missing_project", "in": "query", "schema": { "type": "string", "enum": ["true"] } },
+          { "name": "lane", "in": "query", "schema": { "type": "string", "maxLength": 64 } },
           {
             "name": "project",
             "in": "query",

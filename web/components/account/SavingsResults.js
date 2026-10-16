@@ -1,3 +1,4 @@
+import { SavingsChargeLink } from '../TraceChargeLinks.js'; // J182
 import { createElement as h } from 'react';
 import { savingsMoney } from '../../lib/savings.js';
 import { modelPageHref } from '../../lib/model-page.js';
@@ -9,6 +10,7 @@ export default function SavingsResults({ report }) {
       h('p', null, 'Same tokens on ' + row.alternative.name + ': about ' + savingsMoney(row.alternative.estimated_cost_usd) + ' instead of ' + savingsMoney(row.charged_usd) + '.'),
       h('p', { className: 'help-text' }, 'Estimate at current catalogue prices; no claim of equal quality.'),
       h('div', { className: 'button-row' },
+        h(SavingsChargeLink, { report, row }), // J182
         h('a', { className: 'inline-link', href: modelPageHref(row.alternative.model) }, 'View ' + row.alternative.name),
         h('a', { className: 'inline-link', href: '/harness/?model=' + encodeURIComponent(row.alternative.model) }, 'Try in Chat')))))
       : h('p', null, 'No cheaper match found with enough information about your calls and the models’ abilities.'),

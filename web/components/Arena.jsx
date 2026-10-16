@@ -1,4 +1,5 @@
 "use client";
+import { RecordedChargeLinks } from "./TraceChargeLinks.js"; // J182
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { api, loadKey, toCatalogModel, validKey } from "../lib/api";
 import {
@@ -204,6 +205,7 @@ function Lane({ lane, index, elapsed, winners, reserve, picker, canRemove, onRem
           </dd>
         </div>
       </dl>
+      <RecordedChargeLinks receiptId={lane.receiptId} model={lane.model}/> {/* J182 */}
     </article>
   );
 }

@@ -102,6 +102,8 @@ sections.push(["chat-projects", "Chat in a project"]); // J183
 sections.push(["agent-status", "How each agent is doing"]); // J176
 sections.push(["watching", "What you’re watching"]); // J180
 
+sections.push(["trace-a-charge", "From any number to its receipt"]); // J182
+
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);
 }

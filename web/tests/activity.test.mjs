@@ -23,7 +23,7 @@ test('page validation retains exact amounts and independent next cursor',()=>{
 });
 test('list uses keyboard-expandable rows, exact amounts, recorded location and prefilled receipt links',()=>{
   const html=renderToStaticMarkup(h(ActivityList,{rows:[row,{...row,id:'approval:two',title:'Payment approval',amount:'0',receipt_id:null,approval_limit:'1.000000000001'}]}));
-  assert.match(html,/<details>/);assert.match(html,/<summary>/);assert.match(html,/-0\.000000000001 USDG/);assert.match(html,/1\.000000000001 USDG/);assert.match(html,/Provider A/);assert.match(html,/href="\/verify\/\?r=one"/);assert.match(html,/Check this receipt/);assert.match(html,/No signed call receipt recorded/);assert.doesNotMatch(html,/attested|verified|we can.t read/i);
+  assert.match(html,/<details>/);assert.match(html,/<summary>/);assert.match(html.replace(/<[^>]+>/g,''),/-0\.000000000001 USDG/);assert.match(html,/1\.000000000001 USDG/);assert.match(html,/Provider A/);assert.match(html,/href="\/verify\/\?r=one"/);assert.match(html,/Check this receipt/);assert.match(html,/No signed call receipt recorded/);assert.doesNotMatch(html,/attested|verified|we can.t read/i);
 });
 test('JSON export follows every filtered page rather than only loaded rows',async()=>{
   const requests=[];

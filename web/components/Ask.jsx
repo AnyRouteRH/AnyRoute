@@ -1,4 +1,5 @@
 'use client';
+import { ChargeModelLink } from "./TraceChargeLinks.js"; // J182
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, ApiError, api, validKey } from "../lib/api";
 import {
@@ -304,6 +305,7 @@ function ReceiptRow({ r, label, onLabel, onCopy, copied }) {
           </>
         )}
       </dl>
+      <ChargeModelLink model={r.model}/> {/* J182 */}
       {r.developmentAttestation && <p className={styles.hint}>This router reports development attestation for this call, so treat nothing about its hardware as proven.</p>}
       {links && (
         <div className={styles.links}>

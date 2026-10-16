@@ -1,4 +1,5 @@
 "use client";
+import { RecordedChargeLinks } from "../TraceChargeLinks.js"; // J182
 // H174: reuse Chat's current metadata, selected lanes and Markdown renderer.
 import { useEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
@@ -22,6 +23,7 @@ export function PrintChatView({ model, viewRef }) {
           {message.status && <span>{message.status} · </span>}
           <span>Cost: {message.cost === null ? "pending" : formatUsd(message.cost)}</span>
           <span> · Receipt: {message.receiptId || "unavailable"}</span>
+          <RecordedChargeLinks receiptId={message.receiptId} model={message.modelId}/> {/* J182 */}
         </footer>}
       </section>)}
     </section>)}

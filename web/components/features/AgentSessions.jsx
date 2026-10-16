@@ -1,4 +1,5 @@
 "use client";
+import { RecordedChargeLinks } from "../TraceChargeLinks.js"; // J182
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE, ApiError, api, setMode } from "../../lib/api";
 import { Button, Code, CopyButton, Modal } from "../UI";
@@ -181,6 +182,7 @@ function Drawer({ s, detail, error, now, onClose, onEnd, onReceipts, restricted 
                 </div>
                 <div className={styles.callSide}>
                   <span className="mono">{formatUsd(g.cost_usd)}</span>
+                  {!s.sample && <RecordedChargeLinks receiptId={g.receipt ? g.id : null} model={g.model}/>} {/* J182 */}
                   <span className={styles.receipt} data-state={s.sample ? "sample" : g.receipt ? (g.anchored ? "anchored" : "signed") : "none"}>
                     {s.sample ? "Sample" : g.receipt ? (g.anchored ? "Signed · anchored" : "Signed") : "No receipt"}
                   </span>

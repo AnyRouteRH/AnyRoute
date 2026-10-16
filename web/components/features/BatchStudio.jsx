@@ -1,4 +1,5 @@
 "use client";
+import { RecordedChargeLinks } from "../TraceChargeLinks.js"; // J182
 import { useDeferredValue, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { api } from "../../lib/api";
 import { models as sampleModels, money } from "../../lib/demo";
@@ -1276,6 +1277,7 @@ function Results({ rows, states, laneRun, intro, fileBase, estimate, note, view,
                     </td>
                     <td className="num" data-label="Cost / USDG">
                       {u?.cost != null ? money(u.cost, 6) : "—"}
+                      {st.status === "done" && <RecordedChargeLinks receiptId={st.served?.receipt_id || st.response?.body?.receipt?.id} model={st.response?.body?.model || row.body.model}/>} {/* J182 */}
                     </td>
                     <td className="cell-action">
                       <button type="button" className="text-button" onClick={() => onInspect(i)} aria-label={"Inspect row " + row.custom_id}>
@@ -1520,6 +1522,7 @@ function RowDetails({ row, st, laneRun, navigate, onClose }) {
           <div>
             <dt>Cost</dt>
             <dd>{money(u.cost, 8)} USDG</dd>
+            <dd><RecordedChargeLinks receiptId={st.served?.receipt_id || body?.receipt?.id} model={body?.model || row.body.model}/></dd> {/* J182 */}
           </div>
         )}
         {laneRun && (

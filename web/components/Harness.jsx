@@ -1,4 +1,6 @@
 "use client";
+import { replyChargeModel } from "../lib/charge-links.js"; // J182
+import { TraceChatFooter } from "./TraceChargeLinks.js"; // J182
 import AskAboutThis, { AskAboutReply } from "./harness/AskAboutThis"; // H175
 import { SavedAnswersProvider, SavedAnswersButton, SaveAnswer } from "./harness/SavedAnswers"; // D140
 import ContextMeter, { useContextMeter } from "./harness/ContextMeter"; // C129
@@ -509,6 +511,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
       {last && msg.errorKind === "funds" && funding && <AddFunds key={funding.apiKey} {...funding} force onResume={onRegenerate} disabled={busy}/>} {/* ON1 */}
       {!streaming && (msg.status === "done" || msg.status === "stopped" || facts.receiptId) && (
         <footer className={s.replyFoot}>
+          <TraceChatFooter receiptId={facts.receiptId} model={replyChargeModel(msg, model?.id)} calls={msg.continuationCalls}> {/* J182 */}
           <span title="Tokens in / out">
             {facts.tokensIn ?? "?"} in · {facts.tokensOut ?? "?"} out
           </span>
@@ -533,6 +536,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
               </button>
             )}
           </span>
+          </TraceChatFooter> {/* J182 */}
         </footer>
       )}
       {!streaming && <SaveAnswer msg={msg} />} {/* D140 */}

@@ -7,7 +7,7 @@ export function spendPage(response) {
     if (typeof row?.key_hash !== 'string' || !Array.isArray(row.daily) || row.daily.length !== 7 ||
       row.daily.some(day => !/^\d{4}-\d{2}-\d{2}$/.test(day?.date) || !Number.isFinite(day.charged_usd) || day.charged_usd < 0) ||
       !Number.isFinite(row.total_usd) || row.total_usd < 0) throw new Error('Spend could not be read.');
-    rows[row.key_hash] = row;
+    rows[row.key_hash] = response.as_of ? { ...row, as_of: response.as_of } : row; // J182
   }
   return rows;
 }

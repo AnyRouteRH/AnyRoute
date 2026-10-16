@@ -1,3 +1,4 @@
+import { chargeSource, traceFilter, stampedCallScope } from "./trace.ts"; // J182
 import { nameApprovalDecisions } from "../agents/approver-records.ts"; // E153
 import { activityProject, projectActivityFilter, projectJson } from "../projects/tags.ts"; // C134
 import { sql, type SQL } from "drizzle-orm";
@@ -32,7 +33,7 @@ export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, elig
     g.model_id model, coalesce(g.receipt->>'lane',g.receipt_v2->>'lane') lane, g.provider_id "where", ${label} key_label,
     case when g.receipt_sig is not null or g.receipt_cose is not null then g.receipt_id end receipt_id,
     case when g.cancelled then 'cancelled' else 'completed' end status, g.id reference, null::text limit_pico
-    from generations g left join keys k on k.key_hash = g.key_hash where (${keys} or (${whole} and ${q.key ?? null}::text is null and g.account_id = ${key.accountId})) and (g.account_id is null or g.account_id = ${key.accountId})`);
+    from generations g left join keys k on k.key_hash = g.key_hash where (${stampedCallScope(keys, key, whole, q)}) and (g.account_id is null or g.account_id = ${key.accountId})`);
   if (ctx.cfg.agentPolicyEnabled) {
     if (!q.kind || q.kind === "approval") sources.push(sql`select 'approval:' || a.id, coalesce(a.used_at,a.decided_at,a.requested_at), 'approval', 'Payment approval', '0', a.intent->>'model', a.intent->>'lane', null, ${label}, null,
       case when a.status in ('pending','approved') and a.expires_at <= now() then 'expired' else a.status end, a.id, a.max_cost_pico::text
@@ -87,9 +88,11 @@ export async function readActivity(ctx: Ctx, key: KeyRow, q: ActivityQuery, elig
       and (p.data->>'agreementId' = e.args->>'id' and (not (e.args ? 'milestone') or p.data->>'milestone' = e.args->>'milestone')
         or exists (select 1 from agreement_events r where r.scope = e.scope and r.event = 'RulingPosted' and r.args->>'key' = e.args->>'key'
           and r.args->>'id' = p.data->>'agreementId' and r.args->>'milestone' = p.data->>'milestone')))`);
+  if (q.basis === "charges") sources.splice(0, sources.length, chargeSource(key, whole, q)); // J182
   if (!sources.length) return { data: [], next_cursor: null, scope: whole ? "account" : "key" };
   const bounded = sources.map(s => sql`(select * from (${s}) source(id,at,kind,title,amount_pico,model,lane,"where",key_label,receipt_id,status,reference,limit_pico) where
     (${projectActivityFilter(q.project)}) and -- C134
+    (${traceFilter(q)}) and -- J182
     (${eligible ?? sql`true`}) and (${q.kind ?? null}::text is null or kind = ${q.kind ?? null}) and (${q.model ?? null}::text is null or model = ${q.model ?? null})
     and (${q.from ?? null}::timestamptz is null or at >= ${q.from ?? null}::timestamptz)
     and (${q.to ?? null}::timestamptz is null or at < ${q.to ?? null}::timestamptz)

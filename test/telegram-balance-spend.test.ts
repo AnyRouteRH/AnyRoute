@@ -31,6 +31,7 @@ function telegram(router = h) {
   return { bot, api: new TelegramApi(TOKEN, fetchImpl), calls, routerCalls: () => routerCalls,
     texts: () => calls.filter(c => c.method === "sendMessage").map(c => c.params.text as string) };
 }
+const withoutSnapshotTime = (text: string) => text.replace(/to=[^&]+/g, "to=as-of"); // J182: independently captured command snapshots have different end times.
 const row = async (hash: string) => (await h.ctx.db.select().from(keys).where(eq(keys.keyHash, hash)))[0]!;
 async function entry(hash: string, amount: bigint, at: Date, kind = "usage") {
   const key = await row(hash), id = `telegram-spend-${++sequence}`;
@@ -105,9 +106,9 @@ test("linked commands match runway and charged-spend APIs for the same account w
   const week = api.data.reduce((sum: number, agent: any) => sum + agent.daily.filter((day: any) => day.date >= start.toISOString().slice(0, 10)).reduce((n: number, day: any) => n + day.charged_usd, 0), 0);
   const summary = await readTelegramSpend(h.ctx, await row(owner.hash));
   expect(summary.today).toBe(today); expect(summary.week).toBe(week);
-  expect(summary.top.slice(0, 2)).toEqual([{ name: "shop-agent", amount: .8 }, { name: "notes-agent", amount: .4 }]);
+  expect(summary.top.slice(0, 2)).toMatchObject([{ name: "shop-agent", amount: .8 }, { name: "notes-agent", amount: .4 }]);
   await tg.bot.handleUpdate(message(uid, "/spend"));
-  expect(tg.texts().at(-1)).toBe(spendText(summary));
+  expect(withoutSnapshotTime(tg.texts().at(-1)!)).toBe(withoutSnapshotTime(spendText(summary)));
   expect(tg.routerCalls()).toBe(0);
   expect(await h.ctx.db.select().from(kv)).toEqual(before);
   expect(await h.ctx.db.select().from(ledger)).toEqual(billing);
@@ -123,7 +124,7 @@ test("UTC settlement boundaries, charged kinds, top three and names use the exis
   await entry(agents[0]!.hash, -100n * USD, new Date(monday.getTime() - 1));
   await entry(agents[0]!.hash, -100n * USD, new Date(now.getTime() + 1));
   for (const [kind, amount] of [["refund", USD], ["deposit", USD], ["usage", USD], ["withdrawal", -USD], ["usage", 0n]] as const) await entry(agents[0]!.hash, amount, now, kind);
-  expect(await readTelegramSpend(h.ctx, await row(owner.hash), now)).toEqual({ today: 2, week: 12,
+  expect(await readTelegramSpend(h.ctx, await row(owner.hash), now)).toMatchObject({ today: 2, week: 12,
     top: [{ name: "shop-agent", amount: 6 }, { name: "notes-agent", amount: 3 }, { name: "third-agent", amount: 2 }] });
   expect((await readTelegramSpend(h.ctx, await row(owner.hash), monday)).today).toBe(10);
   const empty = await h.newKey();
@@ -146,7 +147,7 @@ test("team admin and owner spend matches visible dashboard agents; balance match
     const spend = await readTelegramSpend(h.ctx, await row(admin.hash));
     expect(spend.today).toBe(api.data.reduce((sum: number, agent: any) => sum + agent.daily.at(-1).charged_usd, 0));
     expect(spend.week).toBe(2); expect(spend.top.map(agent => agent.name).sort()).toEqual(["team-admin", "team-agent"]);
-    await tg.bot.handleUpdate(message(uid, "/spend")); expect(tg.texts().at(-1)).toBe(spendText(spend));
+    await tg.bot.handleUpdate(message(uid, "/spend")); expect(withoutSnapshotTime(tg.texts().at(-1)!)).toBe(withoutSnapshotTime(spendText(spend)));
     const runway = await (await h.request("/api/v1/account/runway", { headers: admin.auth })).json();
     await tg.bot.handleUpdate(message(uid, "/balance")); expect(tg.texts().at(-1)).toBe(balanceText(runway));
   }

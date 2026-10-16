@@ -1,7 +1,9 @@
+import { linkedReliability } from '../TraceChargeLinks.js'; // J182
 import { createElement as h } from 'react';
 import { reliabilityHeadline, reliabilityRate, reliabilityTiming } from '../../lib/reliability.js';
 const cell = (value, key) => h('td', { key }, value);
 export default function ReliabilityResults({ report }) {
+  report = linkedReliability(report); // J182
   const ttft = report.models.some(row => row.time_to_first_token_ms), total = report.models.some(row => row.total_latency_ms);
   const headings = ['Model', 'Recorded calls', 'Succeeded', 'Fallback calls', 'Route records', 'Fallback use', ...(ttft ? ['First token · median', 'First token · 95th percentile', 'First token · samples'] : []), ...(total ? ['Total time · median', 'Total time · 95th percentile', 'Total time · samples'] : []), 'Lane refusals', 'Budget refusals', 'Other rulebook refusals'];
   return h('div', null,

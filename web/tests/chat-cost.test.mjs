@@ -1,9 +1,11 @@
+import { chatCharges, chargeLinks } from '../lib/charge-links.js'; // J182
+import { formatUsd } from '../lib/arena.js'; // J182
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { createElement } from 'react';
+import { createElement, Fragment } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { chatCost, costSummaryFields, formatChatCost, replyCostUnits, restoreChatCost, savedChatCost } from '../lib/chat-cost.js';
 import { applyChunk, blankReply } from '../lib/harness.js';
@@ -110,13 +112,14 @@ test('export/import retains valid totals and strips unrecognized summary fields'
 test('header and saved rows render the same total, with a live accessible header', () => {
   const source = read('components/harness/ChatCost.jsx');
   const transpiled = execFileSync('bun', ['-e', 'process.stdout.write(new Bun.Transpiler({loader:"jsx",target:"node",tsconfig:{compilerOptions:{jsx:"react",jsxFactory:"React.createElement"}}}).transformSync(await Bun.stdin.text()));'], { input: source, encoding: 'utf8' });
-  const Component = new Function('React', 'chatCost', 'formatChatCost', 'savedChatCost', 's', transpiled.replace(/^import .*;\n/gm, '').replace('export default function', 'function') + '\nreturn ChatCost;')({ createElement }, chatCost, formatChatCost, savedChatCost, { total: 'total' });
+  const Component = new Function('React', 'chatCost', 'formatChatCost', 'savedChatCost', 's', 'chatCharges', 'chargeLinks', 'formatUsd', transpiled.replace(/^import .*;\n/gm, '').replace('export default function', 'function') + '\nreturn ChatCost;')({ createElement, Fragment }, chatCost, formatChatCost, savedChatCost, { total: 'total' }, chatCharges, chargeLinks, formatUsd);
   const live = lanes(reply('a', 0.0123));
   const header = renderToStaticMarkup(createElement(Component, { lanes: live }));
   const row = renderToStaticMarkup(createElement(Component, { chat: { costSummary: chatCost(live) } }));
   for (const html of [header, row]) assert.ok(html.includes('This chat: $0.0123 · 1 reply'));
   assert.match(header, /role="status" aria-live="polite" aria-atomic="true"/);
   assert.ok(!row.includes('role="status"'));
+  assert.doesNotMatch(row, /<details|<a /); // J182: saved total stays safe inside Open chat.
   assert.ok(read('components/Harness.jsx').includes('<ChatCost lanes={lanes} />'));
   assert.ok(read('components/harness/HistoryTools.jsx').includes('<ChatCost chat={chat} />'));
 });

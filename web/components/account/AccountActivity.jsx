@@ -1,4 +1,5 @@
 'use client';
+import { useTraceActivity } from '../../lib/trace-activity.js'; // J182
 import ProjectFilter from './ProjectFilter.js'; // C134
 import ProjectBudget from './ProjectBudget.jsx'; // D139
 import { useProjectActivity } from '../../lib/project-activity.js'; // C134
@@ -17,6 +18,7 @@ export default function AccountActivity({ apiKey, keys = [], recent = false }) {
   const [exporting, setExporting] = useState(false);
   const [revision, setRevision] = useState(0);
   const { project, changeProject, api } = useProjectActivity(setRevision); // C134
+  useTraceActivity({ recent, filters, setFilters, setForm, project, changeProject }); // J182
   const loadController = useRef(null), exportController = useRef(null);
   const request = (path, options) => api(path, { ...options, key: apiKey });
   useEffect(() => {

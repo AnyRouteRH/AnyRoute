@@ -1,4 +1,5 @@
 "use client";
+import { RecordedChargeLinks } from "./TraceChargeLinks.js"; // J182
 import KeyRotation from "./account/KeyRotation"; // G158
 import ModelWatchSettings from "./model-watch/ModelWatchSettings"; // G159
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
@@ -212,6 +213,7 @@ function ReceiptTable({ receipts, onInspect, emptyAction, live, emptyTitle, empt
               </td>
               <td className="num" data-label="Cost / USDG">
                 {money(r.cost, 6)}
+                <RecordedChargeLinks receiptId={live && r.signature ? r.id : null} model={live ? r.modelId || r.model : null}/> {/* J182 */}
               </td>
               <td data-label="Payment">{r.paidWith}</td>
               <td className="cell-action">
@@ -1410,6 +1412,7 @@ export default function Dashboard() {
                             <div className="model-meta">
                               <span>{result.tokens} tokens</span>
                               <span>{money(result.cost, 6)} USDG</span>
+                              <RecordedChargeLinks receiptId={result.signature ? result.id : null} model={result.modelId || result.model}/> {/* J182 */}
                             </div>
                             <button className="text-button" onClick={() => setModal({ type: "receipt", data: result })}>
                               Inspect generation receipt →

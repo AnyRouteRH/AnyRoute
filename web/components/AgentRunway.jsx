@@ -1,4 +1,5 @@
 'use client';
+import RunwayChargeLinks from './RunwayChargeLinks.js'; // J182
 // H170: shared renderer for agent cards and the selected agent's rulebook page.
 import { useEffect, useState } from 'react';
 import { useAccountKey } from './account/useAccountKey';
@@ -21,6 +22,7 @@ export default function AgentRunway({ agent, children }) {
   const current = state?.key === key && state?.hash === agent.key_hash ? state : null;
   return <>{children}{!agent.approval_only && <span className={s.runway} aria-label="Agent budget runway">
     {current?.data ? <>{agentRunwayLines(current.data).map(line => <span key={line}>{line}</span>)}
+      <RunwayChargeLinks data={current.data}/> {/* J182 */}
       {current.data.limits.length > 0 && <span className={s.limit}>Estimates use only this key’s charged spend. Rolling windows, session spend and pending requests can change when requests are refused.</span>}
     </> : <span role="status">{current?.error ? 'Budget runway could not be read.' : 'Reading budget runway…'}</span>}
   </span>}</>;

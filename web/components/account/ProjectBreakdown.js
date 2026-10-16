@@ -1,5 +1,7 @@
+import { useLinkedProjects } from '../TraceChargeLinks.js'; // J182
 import { createElement as h } from 'react';
 export default function ProjectBreakdown({ rows }) {
+  rows = useLinkedProjects(rows); // J182
   if (!rows) return null;
   return h('section', { className: 'control-panel' }, h('h3', null, 'By project'), h('div', { className: 'insights-table-wrap' }, h('table', null,
     h('caption', null, 'By project · USDG'), h('thead', null, h('tr', null, ...['Project', 'Net spend', 'Calls'].map(label => h('th', { key: label, scope: 'col' }, label)))),

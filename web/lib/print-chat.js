@@ -1,3 +1,4 @@
+import { replyChargeModel } from './charge-links.js'; // J182
 // H174: a transient projection of the conversation already shown, never a history write.
 import { replyFacts } from "./harness.js";
 import { safeImageUrl } from "./harness-images.js";
@@ -23,6 +24,7 @@ export function printChatModel({ lanes = [], chat = null, find = () => null, now
           omittedImages: (message.role === "assistant" ? message.images?.length || 0 : (message.attachments || []).filter(file => file.kind === "image").length) - images.length,
           files: message.role === "user" ? (message.files || (message.attachments || []).filter(file => file.kind !== "image").map(file => file.name)).filter(Boolean) : [],
           ...(message.role === "assistant" ? {
+            modelId: replyChargeModel(message, lane.modelId) || null, // J182
             model: find(message.model)?.name || message.model || find(lane.modelId)?.name || lane.modelId || "Model unavailable",
             cost: Number.isFinite(facts.cost) && facts.cost >= 0 ? facts.cost : null,
             receiptId: facts.receiptId || message.receiptId || null,

@@ -1,4 +1,5 @@
 "use client";
+import { ChargeModelLink } from "../TraceChargeLinks.js"; // J182
 // D140: UI over the existing history vault; the bridge reuses its access and open-chat flows.
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { answerFromReply, savedAnswerOnScreen, searchSavedAnswers } from "../../lib/saved-answers.js";
@@ -41,6 +42,7 @@ export function SavedAnswersProvider({ history, lanes, busy, children }) {
           <p className={s.meta}>{answer.model || "Model not recorded"} · {answer.cost === null ? "Cost not reported" : formatUsd(answer.cost)} · {new Date(answer.at).toLocaleString()}</p>
           <div className={s.answer}>{answer.answer || "No reply text"}</div>
           <div className={s.actions}>
+            <ChargeModelLink model={answer.model}/> {/* J182 */}
             {answer.receiptId && <a href={receiptHref(answer.receiptId)} target="_blank" rel="noopener noreferrer">Receipt ↗</a>}
             {(history.get(answer.chatId) || onScreen) && <button type="button" className="text-button" disabled={busy || pending} onClick={() => { if (!onScreen) access.current?.onOpen(answer.chatId); close(); }}>Open chat</button>}
             <button type="button" className="text-button" disabled={pending} onClick={() => void run(async () => { await history.unsaveAnswer(answer.id); select(null); })}>Unsave</button>

@@ -1,4 +1,5 @@
 'use client';
+import { TraceInsights, useLinkedBreakdown } from '../TraceChargeLinks.js'; // J182
 import ProjectFilter from './ProjectFilter.js'; // C134
 import ProjectBudget from './ProjectBudget.jsx'; // D139
 import ProjectBreakdown from './ProjectBreakdown.js'; // C134
@@ -8,6 +9,7 @@ import { initialInsightRange, insightsPath, insightSeries, provenShare } from '.
 import InsightsChart from './InsightsChart.js';
 import s from './Insights.module.css';
 function Breakdown({ title, rows, keyLabels = false }) {
+  rows = useLinkedBreakdown(title, rows); // J182
   return <section className="control-panel"><h3>{title}</h3><div className="insights-table-wrap"><table><caption>{title} · USDG</caption><thead><tr><th scope="col">{keyLabels ? 'Key or agent' : 'Name'}</th><th scope="col">Net spend</th><th scope="col">Calls</th></tr></thead><tbody>{rows.map((row,i)=><tr key={row.id ?? i}><th scope="row">{keyLabels ? row.label : row.id || 'Unknown'}</th><td>{row.cost_usd}</td><td>{row.calls}</td></tr>)}</tbody></table></div>{!rows.length && <p>No records in this range.</p>}</section>;
 }
 export default function AccountInsights({ apiKey, compareHref = '/cost/' }) {
@@ -20,6 +22,7 @@ export default function AccountInsights({ apiKey, compareHref = '/cost/' }) {
   },[apiKey,query,revision]);
   const field = name => ({value:form[name],onChange:e=>setForm(old=>({...old,[name]:e.target.value}))});
   return <div className={s.insights}>
+    <TraceInsights report={report} project={query.project}> {/* J182 */}
     <section className="control-panel"><div className="panel-heading"><h2>Insights</h2><a className="inline-link" href="/dashboard/#activity">Open activity</a></div><p>See where your money goes, by date, model, key or agent and lane.</p>
       <form className={s.filters} onSubmit={e=>{e.preventDefault();const days=(Date.parse(form.to)-Date.parse(form.from))/86400000;if(!Number.isFinite(days)||days<=0||days>92){setError('Choose a range of 1 to 92 days.');return;}setQuery({...form});}}>
         <ProjectFilter value={form.project || ''} onChange={project => setForm(old => ({ ...old, project }))}/> {/* C134 */}
@@ -40,5 +43,6 @@ export default function AccountInsights({ apiKey, compareHref = '/cost/' }) {
         {report.suggestions.length ? report.suggestions.map(group=><div className={s.suggestions} key={group.model}><h4>{group.model}</h4><p className="help-text">{group.tokens_in} input tokens · {group.tokens_out} output tokens</p>{group.alternatives.map(model=><div key={model.model}><strong>{model.name}</strong><p>Estimated saving: {model.estimated_saving_usd} USDG over this range ({model.baseline_usd} → {model.estimated_cost_usd} USDG).</p><div className="button-row"><a className="inline-link" href={'/harness/?model='+encodeURIComponent(model.model)}>Try it in the chat</a><a className="inline-link" href={compareHref}>{compareHref==='/cost/'?'Compare on /cost/':'Compare models and prices'}</a></div></div>)}</div>):<p>No lower-price match found for your top models with the recorded lanes and token mix.</p>}
       </section>
     </>}
+    </TraceInsights> {/* J182 */}
   </div>;
 }

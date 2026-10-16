@@ -1,5 +1,6 @@
 import TelegramMenuDocs from "../../components/TelegramMenuDocs"; // J179
 import AgentStatusDocs from "../../components/AgentStatusDocs"; // J176
+import TraceChargeDocs from "../../components/TraceChargeDocs"; // J182
 import InboxFiltersDocs from '../../components/InboxFiltersDocs'; // H173
 import AskAboutThisDocs from "../../components/AskAboutThisDocs"; // H175
 import StopAllDocs from "../../components/StopAllDocs"; // H172
@@ -993,6 +994,7 @@ export default function Docs() {
           <ReliabilityDocs /> {/* E155 */}
           <SavingsFinderDocs /> {/* G160 */}
           <ModelAccountDocs /> {/* J178 */}
+          <TraceChargeDocs /> {/* J182 */}
           <IdempotencyDocs /> {/* D145 */}
           <ProjectBudgetsDocs /> {/* D139 */}
           <AgentCertificateDocs /><AgentProfileDocs /><AgentIdentityDocs /><SealedAgentDocs />

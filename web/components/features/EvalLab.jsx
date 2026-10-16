@@ -1,4 +1,5 @@
 "use client";
+import { RecordedChargeLinks } from "../TraceChargeLinks.js"; // J182
 
 /**
  * Eval Lab workspace tab. Props (from Dashboard): { live, apiKey, ws, status, catalog, refresh, notify, fail, navigate }.
@@ -1130,6 +1131,7 @@ function CellSummary({ r, judged }) {
         {fmtMs(r.latencyMs)} · {money(r.cost, 6)}
         {judge}
       </small>
+      <RecordedChargeLinks receiptId={r.receipt?.id} model={r.model}/> {/* J182 */}
     </>
   );
 }

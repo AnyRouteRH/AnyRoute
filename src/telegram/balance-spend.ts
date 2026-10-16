@@ -1,4 +1,5 @@
 import { menuLinkMatches, STALE_MENU } from "./menu-command.ts"; // J179
+import { spendActivityUrl, spendWebLinks } from "./spend-links.ts"; // J182
 // E152: read existing account billing through the current Telegram link authority.
 import { and, eq, inArray } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
@@ -41,12 +42,12 @@ export async function readTelegramSpend(ctx: Ctx, caller: KeyRow, now = new Date
   return {
     today: spend.data.reduce((sum, agent) => sum + agent.daily.at(-1)!.charged_usd, 0),
     week: spend.data.reduce((sum, agent) => sum + agent.total_usd, 0),
-    top: ranked.slice(0, 3).map(agent => ({ name: labels.get(agent.key_hash) ?? "Unnamed agent", amount: agent.total_usd })),
+    top: ranked.slice(0, 3).map(agent => ({ name: labels.get(agent.key_hash) ?? "Unnamed agent", amount: agent.total_usd, activity_url: spendActivityUrl(agent.key_hash, spend.from, spend.as_of) })),
   };
 }
-export function spendText(spend: Awaited<ReturnType<typeof readTelegramSpend>>) {
+export function spendText(spend: { today: number; week: number; top: { name: string; amount: number; activity_url?: string }[] }) {
   return `Today ${money(spend.today)} · this week ${money(spend.week)} · top agents: ${spend.top.length
-    ? spend.top.map(agent => `${agent.name} ${money(agent.amount)}`).join(", ") : "none yet"}`;
+    ? spend.top.map(agent => `${agent.name} ${money(agent.amount)}`).join(", ") : "none yet"}${spendWebLinks(spend.top)}`;
 }
 function sameScope(a: KeyRow, b: KeyRow) {
   return a.accountId === b.accountId && a.keyHash === b.keyHash && a.teamId === b.teamId && a.management === b.management && a.scope === b.scope;
