@@ -1,5 +1,6 @@
 'use client';
 // D141: one independent setting on each agent row, outside its selection button.
+import AgentStatusTarget from './AgentStatusTarget'; // J176
 import { useEffect, useId, useRef, useState } from 'react';
 import { QUIET_OPTIONS, quietAlertPath, quietChoice, quietSetting } from '../lib/quiet-agent-alerts';
 import s from './QuietAgentAlert.module.css';
@@ -30,6 +31,7 @@ export default function QuietAgentAlert({ agent, request }) {
   }
   if (state.off || (!state.ready && !state.message)) return null;
   return <div className={s.setting}>
+    <AgentStatusTarget id={'agent-status-quiet-' + agent.key_hash} section="quiet"/> {/* J176 */}
     <label htmlFor={id}>Alert me if this agent makes no calls for</label>
     <select id={id} aria-label={`Quiet alert for ${agent.name || 'Unnamed agent'}`} value={state.hours ?? 'off'} disabled={!state.ready || state.busy} onChange={event => save(event.target.value)}>
       {QUIET_OPTIONS.map(hours => <option key={hours ?? 'off'} value={hours ?? 'off'}>{hours === null ? 'Off' : `${hours} ${hours === 1 ? 'hour' : 'hours'}`}</option>)}

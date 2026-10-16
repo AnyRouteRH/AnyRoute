@@ -112,3 +112,5 @@ export async function quietInboxItems(ctx: Ctx, caller: KeyRow, asOf: string, si
   }))).filter(item => Date.parse(item.at) <= Date.parse(asOf) && Date.parse(item.at) > Date.parse(asOf) - RETENTION && (!since || Date.parse(item.at) > Date.parse(since)))
     .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id)).slice(0, 101);
 }
+
+export { lastQuietActivity as lastQuietActivityForStatus }; // J176: reuse the worker's existing activity scope, without writes.

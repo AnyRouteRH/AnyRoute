@@ -1,0 +1,3 @@
+.line{color:var(--muted);font-size:13px;line-height:1.6;margin:8px 0 16px;overflow-wrap:anywhere}
+.line a{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.line a:focus-visible{outline:2px solid var(--signal);outline-offset:3px}

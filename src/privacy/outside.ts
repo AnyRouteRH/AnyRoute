@@ -1,5 +1,6 @@
 import { telegramMenuReader } from "./telegram-menu.ts"; // J179
 import { approvalContextStores } from "./approval-context.ts"; // J185
+import { agentStatusView } from "./agent-status.ts"; // J176
 import { askAboutThisBrowser } from "./ask-about-this.ts"; // H175
 import { continueAnswerBrowser } from "./continue-answer.ts"; // H166
 import { agentStopAllReaders } from "./agent-stop-all.ts"; // H172
@@ -823,6 +824,7 @@ export const EXTERNAL: ExternalDoc = {
   },
   otherStores: [
     ...approvalContextStores, // J185
+    agentStatusView, // J176
     ...rotationStores, // G158
     ...duplicateAgentStores, // H171
     ...approvalNudgeStores, // G164

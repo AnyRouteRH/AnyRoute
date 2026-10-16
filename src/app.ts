@@ -1,3 +1,4 @@
+import { agentStatusRoutes } from "./api/agent-status.ts"; // J176
 import { keyRotationRoutes } from "./key-rotation/routes.ts"; // G158
 import { agentDuplicateRoutes } from "./agent-duplicate/routes.ts"; // H171
 import { modelWatchRoutes } from "./model-watch/routes.ts"; // G159
@@ -275,6 +276,7 @@ export async function createApp(opts: AppOptions = {}) {
   agentsRoutes(app, ctx);
   agentDuplicateRoutes(app, ctx); // H171
   agentRunwayRoutes(app, ctx); // H170
+  agentStatusRoutes(app, ctx); // J176
   agentStopAllRoutes(app, ctx); // H172
   agentPolicyHistoryRoutes(app, ctx); // D144
   agentSpendRoutes(app, ctx); // C132

@@ -1,5 +1,8 @@
 {
-  "x-anyroute-telegram-menu": { "documentation": "/docs/#telegram-menu", "description": "J179: /menu in linked private Telegram chats delegates Balance, Spend, Agents and Stop all to their existing command handlers and permissions. Waiting approvals reuses Telegram approval delivery, lists up to ten oldest pending unexpired requests the current linked principal may decide, respects the approvals Telegram switch and refreshes existing message bindings. Approve and Deny retain their current single-use decision rules. Callback actions are bound to the current link generation. Inbox opens /dashboard/#inbox and Settings opens /dashboard/#notifications with normal site sign-in. No new HTTP endpoint, request field, migration or flag; requires existing TELEGRAM_LINKING_ENABLED and AGENT_POLICY_ENABLED (both default false), plus the existing bot token and worker. No new background job or notice type." },
+  "x-anyroute-telegram-menu": {
+    "documentation": "/docs/#telegram-menu",
+    "description": "J179: /menu in linked private Telegram chats delegates Balance, Spend, Agents and Stop all to their existing command handlers and permissions. Waiting approvals reuses Telegram approval delivery, lists up to ten oldest pending unexpired requests the current linked principal may decide, respects the approvals Telegram switch and refreshes existing message bindings. Approve and Deny retain their current single-use decision rules. Callback actions are bound to the current link generation. Inbox opens /dashboard/#inbox and Settings opens /dashboard/#notifications with normal site sign-in. No new HTTP endpoint, request field, migration or flag; requires existing TELEGRAM_LINKING_ENABLED and AGENT_POLICY_ENABLED (both default false), plus the existing bot token and worker. No new background job or notice type."
+  },
   "x-anyroute-telegram-photos": {
     "card": "D142",
     "flag": "TELEGRAM_PHOTOS_ENABLED",
@@ -224,13 +227,34 @@
         "operationId": "getAccountModelSummary",
         "summary": "Your view of a model",
         "description": "J178: composes existing readers using Activity visibility. Encode the complete model id as one path segment. No storage or new flag. Usage covers 30 rolling days; reliability covers 7. Read-only keys are refused. Price notices require non-session management access, PRICE_NOTICES_ENABLED and enabled inbox preferences; only the latest 101 retained notices are searched. Savings retain existing estimate limits.",
-        "security": [{ "BearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "No-store summary: model and scope; usage with days/from/to and decimal-string calls/charged_usd/refunded_usd/cost_usd; reliability with days/from/to and decimal-string calls/succeeded and nullable numeric success_rate; nullable savings in the existing account savings model shape; nullable price_notice with at/title; boolean price_notices_visible." },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "200": {
+            "description": "No-store summary: model and scope; usage with days/from/to and decimal-string calls/charged_usd/refunded_usd/cost_usd; reliability with days/from/to and decimal-string calls/succeeded and nullable numeric success_rate; nullable savings in the existing account savings model shape; nullable price_notice with at/title; boolean price_notices_visible."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -2329,7 +2353,15 @@
       "get": {
         "x-h173-inbox-filters": "Optional kinds filters by comma-separated groups (approvals, agents, money, security, models, other) or individual item kinds. Unknown kinds map to Other. Filtered responses add kind_counts with integer counts for all six groups before filtering; data and unread count cover the selection. Omitted kinds leaves the response unchanged. Existing since, visibility, notification preferences and capped source limits apply. Browser mark-all uses the full as_of snapshot with POST /api/v1/inbox/seen, stores only the returned time under seen_scope, and can restore the prior bookmark for 10 seconds unless replaced by a newer time. Pending approvals remain actionable even when read in the browser. No server persistence or cross-browser sync. H173.",
         "operationId": "listInbox",
-        "x-approval-context": { "description": "J185: approval items the caller may decide include optional approval_context string lines when AGENT_APPROVAL_CONTEXT_ENABLED (default false); identical builder and limits to AgentApproval.approval_context.", "schema": { "type": "array", "items": { "type": "string" } } },
+        "x-approval-context": {
+          "description": "J185: approval items the caller may decide include optional approval_context string lines when AGENT_APPROVAL_CONTEXT_ENABLED (default false); identical builder and limits to AgentApproval.approval_context.",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
         "x-h169-incident-alerts": "When STATUS_INCIDENT_NOTICES_ENABLED (default false) is on, opted-in management inboxes include status_incidents items with id, at (public update time), kind, title (status and public incident title), status null, href /status/ and unread true. Both channels default off in account notification settings. Ordinary and session keys receive none. Unique kv claims record each change once across workers; notices last up to 90 days. Telegram uses linked management principals and quiet hours. No inference text is included.",
         "x-d141-quiet-agent-alerts": "With QUIET_AGENT_ALERTS_ENABLED (default false) and AGENT_POLICY_ENABLED, account-management and current owning-team owner/admin inboxes include quiet-agent items; ordinary and session keys receive none. Fields: id (random quiet notice id), at (notice timestamp), kind (quiet-agent), title (readable agent name, window and last charged call or Guard decision time), status (quiet), href (/agents/), key_label (current name), unread (true). since and as_of filtering apply, with at most 100 items returned and capped when more exist. History is bounded to 100 per agent and 90 days. Off contributes no items. D141.",
         "x-c133-price-notices": "With PRICE_NOTICES_ENABLED (default false), active account management keys excluding sessions receive price_notice items for catalogue changes of at least 1% to models used by the account in the last 30 days. Fields: id, at, kind, title, model (null for grouped changes), status (null), href (/models/), unread. Existing since filtering applies. First snapshot is silent. At most five items per account per UTC day: four individual and one grouped item whose count can update. Ordinary keys, sessions and team-only administrators do not see account-wide price notices. Rows are retained for 30 UTC days while enabled. No new endpoint or authentication change.",
@@ -23016,6 +23048,147 @@
           }
         }
       }
+    },
+    "/api/v1/agents/{key_hash}/status": {
+      "get": {
+        "operationId": "agentStatus",
+        "summary": "Read one agent’s current status",
+        "description": "J176. Same active management or team owner/admin Bearer and target-key visibility as policy GET. Session, inference and read-only keys refused. AGENT_POLICY_ENABLED (default false); off 404. No writes. Work hours, timed Stop, unexpired pending approvals for this key, existing runway and optional quiet/Guard state. See /docs/#agent-status for limits.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No-store data: key_hash, as_of, stopped, optional stopped_until, work_hours [{key_hash, inside, time_zone, outside, next_at (nullable)}], pending_approvals, runway (same as agentRunway), quiet ({hours, last_call_at (nullable)} or null), guard_paused. Quiet respects QUIET_AGENT_ALERTS_ENABLED; guard_paused respects AGENT_GUARD_ENABLED.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "key_hash": {
+                          "type": "string"
+                        },
+                        "as_of": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "stopped": {
+                          "type": "boolean"
+                        },
+                        "stopped_until": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "work_hours": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "key_hash": {
+                                "type": "string"
+                              },
+                              "inside": {
+                                "type": "boolean"
+                              },
+                              "time_zone": {
+                                "type": "string"
+                              },
+                              "outside": {
+                                "enum": [
+                                  "refuse",
+                                  "ask_first"
+                                ]
+                              },
+                              "next_at": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "format": "date-time"
+                              }
+                            }
+                          }
+                        },
+                        "pending_approvals": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "runway": {
+                          "$ref": "#/paths/~1api~1v1~1agents~1{key_hash}~1runway/get/responses/200/content/application~1json/schema/properties/data"
+                        },
+                        "quiet": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "hours": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "last_call_at": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "format": "date-time"
+                            }
+                          }
+                        },
+                        "guard_paused": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "key_hash",
+                        "as_of",
+                        "stopped",
+                        "work_hours",
+                        "pending_approvals",
+                        "runway",
+                        "quiet",
+                        "guard_paused"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -24539,7 +24712,13 @@
       "AgentApproval": {
         "type": "object",
         "properties": {
-          "approval_context": { "type": "array", "items": { "type": "string" }, "description": "J185: optional shared context lines on lists when AGENT_APPROVAL_CONTEXT_ENABLED (default false). Spend today, daily caps, estimate if used, current work hours, requests since Monday UTC and approved among them, retained duplicate/rotation metadata. No prompt or tool arguments. Status/decision responses are unchanged." },
+          "approval_context": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "J185: optional shared context lines on lists when AGENT_APPROVAL_CONTEXT_ENABLED (default false). Spend today, daily caps, estimate if used, current work hours, requests since Monday UTC and approved among them, retained duplicate/rotation metadata. No prompt or tool arguments. Status/decision responses are unchanged."
+          },
           "can_allow": {
             "type": "boolean",
             "description": "E153: present on approval lists only when AGENT_TEAM_APPROVERS_ENABLED; true for owners/admins with rulebook access."

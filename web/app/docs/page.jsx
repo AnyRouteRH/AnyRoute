@@ -1,4 +1,5 @@
 import TelegramMenuDocs from "../../components/TelegramMenuDocs"; // J179
+import AgentStatusDocs from "../../components/AgentStatusDocs"; // J176
 import InboxFiltersDocs from '../../components/InboxFiltersDocs'; // H173
 import AskAboutThisDocs from "../../components/AskAboutThisDocs"; // H175
 import StopAllDocs from "../../components/StopAllDocs"; // H172
@@ -960,6 +961,7 @@ export default function Docs() {
           <AgentLedgerDocs /><AgreementsDocs />
           <AgentSpendGlanceDocs /> {/* C132 */}
           <AgentRunwayDocs /> {/* H170 */}
+          <AgentStatusDocs /> {/* J176 */}
           <QuietAgentAlertsDocs /> {/* D141 */}
           <WebhookDocs/> {/* V86. */}
           <ToolsMarketDocs /> {/* v6 T */}

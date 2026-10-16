@@ -99,6 +99,8 @@ sections.push(["your-view-of-a-model", "Your view of a model"]); // J178
 
 sections.push(["chat-projects", "Chat in a project"]); // J183
 
+sections.push(["agent-status", "How each agent is doing"]); // J176
+
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);
 }
