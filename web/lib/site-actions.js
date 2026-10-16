@@ -117,6 +117,8 @@ export async function runAgentCommand(kind, agent, request, { confirmed = false,
 
 // The /agents link from ⌘K: which agent to select, and which part of its spending limits to focus.
 const FOCUS = { limits: id => `#${id}-${LIMIT_CAPS[0][0]}`, route: id => `input[name="${id}-route-default"]:checked` };
+FOCUS.day = id => `#${id}-per_day_usd`; // J177
+FOCUS.hours = () => '#account-checkup-work-hours + label input'; // J177
 export const focusSelector = (focus, editorId) => focus && Object.hasOwn(FOCUS, focus) ? FOCUS[focus](editorId) : null;
 export function agentLink(search) {
   const params = new URLSearchParams(String(search ?? '').replace(/^\?/, ''));

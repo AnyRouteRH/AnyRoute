@@ -1,5 +1,6 @@
 "use client";
 import { RecordedChargeLinks } from "./TraceChargeLinks.js"; // J182
+import AccountCheckupTarget from './account/AccountCheckupTarget'; // J177
 import KeyRotation from "./account/KeyRotation"; // G158
 import ModelWatchSettings from "./model-watch/ModelWatchSettings"; // G159
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
@@ -1252,6 +1253,7 @@ export default function Dashboard() {
     <main className="dashboard-main" id="content" data-workspace={workspaceState}>
       <div className="dashboard-heading"><div><span className="eyebrow">YOUR ACCOUNT</span><h1>One balance. Every call.</h1></div></div>
       <AccountAnchors/>
+      <AccountCheckupTarget enabled={live && signedIn} tab={tab} keys={liveKeys} onEdit={setModal}/> {/* J177 */}
       <AccountShell current={tab} apiKey={signedIn ? apiKey : ""} onConnect={signInWith} onNavigate={navigate} publicContent={tab === "Teams" && typeof window !== "undefined" && new URLSearchParams(window.location.search).has("join")}
         onDisconnect={() => { clearKey(); setApiKey(""); setWs(null); setSecrets({}); setResult(null); setModal(null); setError(""); setNotice(""); abort.current?.abort(); }}>
       <section ref={sectionRef} className="dashboard-section" tabIndex={-1} aria-label={`${tab} workspace section`}>

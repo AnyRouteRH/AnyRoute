@@ -6,6 +6,7 @@ import s from './agents.module.css';
 export default function WorkHours({ value, onChange, disabled }) {
   const set = (key, next) => onChange({ ...value, [key]: next });
   return <LimitGroup title="Work hours" disabled={disabled}>
+    <span id="account-checkup-work-hours" hidden/> {/* J177 */}
     <label className="check-label"><input type="checkbox" checked={value != null} onChange={e => onChange(e.target.checked ? defaultWorkHours() : undefined)}/>Choose when this agent works</label>
     <p className="help-text">Times follow your chosen time zone, including daylight saving changes. Other rules still apply.</p>
     {value && <>

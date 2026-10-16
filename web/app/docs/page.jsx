@@ -61,6 +61,7 @@ import GetUsdgDocs from "../../components/GetUsdgDocs"; // ON1
 import FirstCallDocs from "../../components/FirstCallDocs"; // ON2
 import CopyAsCodeDocs from "../../components/CopyAsCodeDocs"; // C130
 import GettingStartedDocs from "../../components/GettingStartedDocs"; // C135
+import AccountCheckupDocs from "../../components/AccountCheckupDocs"; // J177
 import RouteExplanationDocs from "../../components/RouteExplanationDocs"; // V84
 import StructuredOutputDocs from "../../components/StructuredOutputDocs"; // V83
 import StatementDocs from "../../components/StatementDocs"; // V87
@@ -1005,6 +1006,7 @@ export default function Docs() {
           <CopyAsCodeDocs /> {/* C130 */}
           <ShareToAnyrouteDocs /> {/* D137 */}
           <GettingStartedDocs /> {/* C135 */}
+          <AccountCheckupDocs /> {/* J177 */}
           <p>
             Anyroute accepts the familiar chat-completions request. Replace the base URL and key; requests, streaming, tools, provider preferences and usage fields work unchanged. Keys are self-custodial: POST /api/v1/keys (no account) returns a key and the hash to deposit USDG to.
           </p>

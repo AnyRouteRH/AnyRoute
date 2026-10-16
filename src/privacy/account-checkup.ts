@@ -1,0 +1,7 @@
+import type { ExternalDoc } from './types.ts';
+// J177: existing authenticated reads only; no new request/address reader or server store.
+export const accountCheckupBrowser: ExternalDoc['browser']['items'][number] = {
+  store: 'localStorage',
+  holds: 'Account checkup stores up to 2000 dismissed item identifiers under anyroute-account-checkup-v1:<connected key public hash>. Key and agent item identifiers include their public key hashes. No key secret, account value, network address, request text or rulebook is persisted by checkup. It composes existing authenticated key, agent, Telegram link, balance alert, security alert and notification settings reads in browser memory with their existing visibility and guards. Fix links carry a public key hash and fixed control name where needed; they open existing editors and do not save changes. Read-only keys are refused by the browser checkup reader. Dismissals are never sent to the router and remain until restored or browser storage is cleared; unavailable storage keeps dismissals in the current view only. Existing APIs do not expose counts of places using a key, so IP-list suggestions do not infer locations. No new server persistence or readers.',
+  evidence: [{ file: 'web/lib/account-checkup.js', contains: "export const CHECKUP_PREFIX = 'anyroute-account-checkup-v1:';" }, { file: 'web/lib/account-checkup.js', contains: 'export async function readAccountCheckup' }],
+};

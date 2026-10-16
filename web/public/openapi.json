@@ -37562,5 +37562,11 @@
       "GET /api/v1/inbox": "Adds delegated pending approvals with can_decide=true. Non-management approvers with actionable requests use scope=team_approvals; other sources remain key-scoped.",
       "GET/POST/DELETE /api/v1/telegram/link": "Allowed approvers may link their own Telegram; callback authorization matches API decisions. Other notifications and Stop remain owner/admin guarded."
     }
+  },
+  "x-j177-account-checkup": {
+    "documentation": "/docs/#account-checkup",
+    "endpoint": null,
+    "flag": null,
+    "description": "Browser composition of existing authenticated GET /api/v1/key, /api/v1/keys, /api/v1/agents, /api/v1/telegram/link, /api/v1/account/low-balance, /api/v1/account/security-alerts and /api/v1/account/notifications. Existing guards and feature switches apply; failed reads remain unavailable. Read-only keys are refused by the checkup reader; the GET allow-list is unchanged. No new endpoint, fields, server storage or automatic action. Fix opens existing controls. Dismissed item ids and public key hashes stay in browser localStorage. Used management keys without an IP list get a suggestion; existing APIs provide no count of usage locations. Optional business details check omitted."
   }
 }

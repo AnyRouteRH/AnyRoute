@@ -1,5 +1,6 @@
 const sections = [
   ["telegram-menu", "One Telegram menu"], // J179
+  ["account-checkup", "Account checkup"], // J177
   ["business-details", "Business details on statements"], // H168
   ["rotate-key", "Rotate a key without downtime"], // G158
   ["approval-nudges", "Approval reminders"], // G164

@@ -1,0 +1,8 @@
+.card{min-width:0;overflow-wrap:anywhere}
+.items{list-style:none;padding:0;margin:0;display:grid;gap:16px}
+.items li{display:flex;gap:16px;justify-content:space-between;align-items:start;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:16px}
+.items li>div:first-child{flex:1 1 240px;min-width:0}
+.items p{margin:0 0 8px}
+.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.card a:focus-visible,.card button:focus-visible{outline:2px solid var(--signal-deep);outline-offset:3px}
+@media(max-width:600px){.actions{width:100%}}
