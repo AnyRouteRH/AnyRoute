@@ -5,6 +5,199 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "agent-status",
+    "date": "2026-10-16",
+    "title": "How each agent is doing, in one line",
+    "summary": "Each agent on /agents gets one status line: working or stopped, inside work hours, approvals waiting and today's spend against its cap, each linking to where you manage it.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#agent-status"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/462f99578f4fc662302b844c359a6bee9a3e7f5c"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "account-checkup",
+    "date": "2026-10-16",
+    "title": "Account checkup",
+    "summary": "Home checks your account against the safety features you already have, like Telegram linking, low-balance alerts and key expiry, with a one-tap fix for each.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#account-checkup"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/ba5b361f2abd0446afaf4f39689c26af9912fbc6"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "your-view-of-a-model",
+    "date": "2026-10-16",
+    "title": "Your view of a model",
+    "summary": "Signed in, a model's page shows your calls, spend and success rate with it, plus Watch, a savings suggestion, Compare and Try in Chat.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#your-view-of-a-model"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/2e30b802e561a97ca27dd961496b202adbc2c254"
+      }
+    ],
+    "tags": [
+      "chat",
+      "build"
+    ]
+  },
+  {
+    "id": "telegram-menu",
+    "date": "2026-10-16",
+    "title": "One Telegram menu",
+    "summary": "Send /menu to @TryAnyrouteBot for buttons to your balance, spend, agents, Stop all, waiting approvals, inbox and settings.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#telegram-menu"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/25d1c5ea1844c1e590b49c9b63fd3a0151c82e22"
+      }
+    ],
+    "tags": [
+      "agents",
+      "chat"
+    ]
+  },
+  {
+    "id": "watching",
+    "date": "2026-10-16",
+    "title": "Everything you're watching",
+    "summary": "Notifications lists every watch and threshold you have set across the product, each with a link to change it.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#watching"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/2f38bc98f1cc5f4df57195e214edf403580bc7e1"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "command-palette",
+    "date": "2026-10-16",
+    "title": "Do it from ⌘K",
+    "summary": "The command palette knows the recent features, from Stop all agents to Print this chat, and opens the right page or dialog.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#command-palette"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/3c29fca78eba38f02cf8d5efa470f0578eb794ac"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "trace-a-charge",
+    "date": "2026-10-16",
+    "title": "Every charge links to its receipt",
+    "summary": "Spending shown anywhere on the site links to the calls behind it and their signed receipts.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#trace-a-charge"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/f086f2e45c8f1afe9fabeb9f2414483b68627e80"
+      }
+    ],
+    "tags": [
+      "verify",
+      "build"
+    ]
+  },
+  {
+    "id": "chat-projects",
+    "date": "2026-10-16",
+    "title": "Chat in a project",
+    "summary": "Pick a project for a chat, or let its folder choose; Chat spend now counts toward project spend and budgets.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#chat-projects"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/9c51b1c51ba6bb5f3b2c9403d2d3453c08f88267"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "smarter-summary",
+    "date": "2026-10-16",
+    "title": "A smarter Monday summary",
+    "summary": "The weekly summary adds your success rate, a savings tip, watched-model outages, agents near their caps and expired approvals, when there is something to say.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#weekly-summary"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/35aab2aacad949cd18e9cc5cb522cbf1e70684f9"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "approval-context",
+    "date": "2026-10-16",
+    "title": "Approvals with the full picture",
+    "summary": "Every approval request shows the agent's spend today against its cap, whether it's inside work hours and its recent approval history, on the web, in the inbox and in Telegram.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#approvals"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/2db07b24362a0f98ce753d90bf2c0af5c2f5acbd"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
     "id": "continue-answer",
     "date": "2026-10-14",
     "title": "Continue a cut-off answer",
