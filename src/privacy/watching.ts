@@ -1,0 +1,8 @@
+import type { ExternalDoc } from "./types.ts";
+export const watchingMemory: ExternalDoc["otherStores"][number] = {
+  id: "account-watching-memory", name: "Watching settings in browser memory",
+  purpose: "J180: read-only composition of existing account notification, model watch, agent rulebook, quiet-agent, project budget, balance threshold and schedule GET readers. Each reader keeps its existing authorization and feature guards.",
+  holds: "Existing responses pass through browser memory, including names, public model ids, key hashes, inherited alert rules, monthly budgets, balance thresholds, cadence, maximum run costs and channel preferences. The existing schedules list also returns decrypted prompt text; the composition discards it and retains only active schedules' names, ids, cadence, UTC clock and maximum cost for display. Summary rows and per-reader failure states are held only in React component memory. No new database table or column, Redis key family, application log field, body/address reader, browser storage, outbound notice or server snapshot is added. The router still reads ordinary inference requests in memory.",
+  ttl: "Component state is replaced on refresh and cleared on account change or unmount. In-flight requests are aborted on change or unmount; no durable copy is created by this view. Existing source storage and retention are unchanged.",
+  requestText: "request-and-answer-text", evidence: [{ file: "web/lib/watching.js", contains: "export async function readWatching" }, { file: "web/components/watching/AccountWatching.jsx", contains: "return () => controller.abort()" }],
+};

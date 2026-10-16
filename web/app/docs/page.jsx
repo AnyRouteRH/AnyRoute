@@ -25,6 +25,7 @@ import EditAndBranchDocs from "../../components/EditAndBranchDocs"; // G156
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
 import TelegramBalanceSpendDocs from "../../components/TelegramBalanceSpendDocs"; // E152
 import NotificationSettingsDocs from "../../components/notifications/NotificationSettingsDocs"; // E146
+import WatchingDocs from "../../components/watching/WatchingDocs"; // J180
 import SecurityAlertsDocs from "../../components/security-alerts/SecurityAlertsDocs"; // D138
 import ContextMeterDocs from "../../components/ContextMeterDocs"; // C129
 import ShareToAnyrouteDocs from "../../components/ShareToAnyrouteDocs"; // D137
@@ -981,6 +982,7 @@ export default function Docs() {
           <SignedInBrowsersDocs /> {/* E147 */}
           <BusinessDetailsDocs /> {/* H168 */}
           <NotificationSettingsDocs /> {/* E146 */}
+          <WatchingDocs /> {/* J180 */}
           <ScheduledPromptsDocs /> {/* D136 */}
           <PriceNoticesDocs /> {/* C133 */}
           <AgentPayDocs /> {/* Pay another agent */}

@@ -4,6 +4,7 @@ import ModelWatchSettings from "./model-watch/ModelWatchSettings"; // G159
 import SignedInBrowsers from "./account/SignedInBrowsers"; // E147
 import BusinessDetailsSettings from "./business-details/BusinessDetailsSettings"; // H168
 import AccountNotifications from "./notifications/AccountNotifications"; // E146
+import AccountWatching from "./watching/AccountWatching"; // J180
 import { api as apiRequest } from "../lib/api"; // E149
 import { useReadOnlyKey, ReadOnlyKeyBadge } from "./account/ReadOnlyKeys"; // E149
 import { withReadScope } from "../lib/read-only-keys"; // E149
@@ -1300,6 +1301,7 @@ export default function Dashboard() {
           {tab === "Insights" && signedIn && <AccountReliability key={apiKey} apiKey={apiKey}/>} {/* E155 */}
           {tab === "Insights" && signedIn && <AccountSavings key={apiKey} apiKey={apiKey}/>} {/* G160 */}
           {tab === "Notifications" && apiKey && <AccountNotifications key={apiKey} apiKey={apiKey}/>} {/* E146 */}
+          {tab === "Notifications" && apiKey && <AccountWatching key={apiKey} apiKey={apiKey}/>} {/* J180 */}
           {tab === "Schedules" && apiKey && <AccountSchedules key={apiKey} apiKey={apiKey} keys={ws?.keys || []}/>} {/* D136 */}
           {tab === "Inbox" && apiKey && <AccountInbox key={apiKey} apiKey={apiKey}/>}
           {tab === "Playbooks" && <Playbooks key={apiKey} live={live && signedIn} apiKey={apiKey}/>} {/* U115 */}

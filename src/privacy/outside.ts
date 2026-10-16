@@ -21,6 +21,7 @@ import { modelCompareBrowser } from "./model-compare"; // G165
 import { chatBranchesBrowser } from "./chat-branches"; // G156
 import { telegramPhotoReader } from "./telegram-photos.ts"; // D142
 import { notificationReader, notificationStores } from "./notifications.ts"; // E146
+import { watchingMemory } from "./watching.ts"; // J180
 import { securityAlertReader, securityAlertStores } from "./security-alerts.ts"; // D138
 import { scheduledPromptsReader, scheduledPromptsStores } from "./scheduled-prompts.ts"; // D136
 import { approveAndAllowBodyReader } from "./approve-and-allow.ts"; // B118
@@ -832,6 +833,7 @@ export const EXTERNAL: ExternalDoc = {
     ...quietAlertStores, // D141
     ...securityAlertStores, // D138
     ...notificationStores, // E146
+    watchingMemory, // J180
     idempotencyMemory, // D145
     ...scheduledPromptsStores, // D136
     ...priceNoticeStores, // C133

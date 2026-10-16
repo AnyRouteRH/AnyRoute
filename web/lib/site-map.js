@@ -137,6 +137,7 @@ TASKS.push({ ...task('playbooks', 'agents', 'Share one rulebook across agents', 
 TASKS.push({ ...task('commerce', 'verify', 'Read the commerce ledger', 'See anchored settlements without self-dealing, beside the gross figures.', '/commerce/', 'commerce, settlements, volume, self-dealing, dune'), menu: false }); // v6 L: search-only.
 
 TASKS.push({ ...task('notifications', 'build', 'Choose notifications', 'Choose inbox and Telegram notices and quiet hours.', '/dashboard/#notifications', 'notifications, settings, telegram, inbox, quiet hours'), menu: false }); // E146
+TASKS.push({ ...task('watching', 'build', 'See what you’re watching', 'Review watches, thresholds, alerts and schedules in Notifications.', '/dashboard/#notifications', 'watching, watches, thresholds, alerts, schedules, notifications, budgets'), menu: false }); // J180
 // Account sections share the task map; existing dashboard hashes remain stable.
 // U104: five account tabs. Each opens its first section; its id is also a dashboard hash (#keys opens API keys).
 TASKS.push({ ...task('schedules', 'build', 'Schedule a prompt', 'Run saved prompts on a schedule using your key’s limits and rulebook.', '/dashboard/#schedules', 'schedule, prompt, recurring, hourly, daily, monday'), menu: false }); // D136

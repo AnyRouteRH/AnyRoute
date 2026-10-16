@@ -22,6 +22,7 @@ export default function AccountNotifications({ apiKey }) {
     try {
       if (quiet && from === to) throw new Error('Choose different start and end times.');
       apply(await saveNotifications(api, { ...value, quiet_hours: quiet ? { from_utc: localToUtc(from), to_utc: localToUtc(to) } : null }, { key: apiKey })); setStatus('Notifications saved.');
+      window.dispatchEvent(new Event('anyroute:notifications-saved')); // J180
     } catch { setError('Notifications could not be saved. Check the times and try again.'); }
     finally { setBusy(false); }
   }
