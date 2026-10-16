@@ -16,3 +16,10 @@ test("only roles that run the bot and alert jobs need the bot token", () => {
   expect(() => loadConfig({ RUNTIME_ROLE: "worker", AGENT_POLICY_ENABLED: "true", TELEGRAM_LINKING_ENABLED: "true" })).toThrow(/TELEGRAM_BOT_TOKEN/);
   expect(() => loadConfig({ RUNTIME_ROLE: "api", TELEGRAM_LINKING_ENABLED: "true" })).toThrow(/AGENT_POLICY_ENABLED/);
 });
+
+test('TELEGRAM_BOT_USERNAME must look like a Telegram @username without the @', () => {
+  const base = { TELEGRAM_LINKING_ENABLED: 'true', AGENT_POLICY_ENABLED: 'true', RUNTIME_ROLE: 'api' };
+  expect(() => loadConfig({ ...base, TELEGRAM_BOT_USERNAME: '@SampleLinkBot' } as any)).toThrow(/TELEGRAM_BOT_USERNAME/);
+  expect(() => loadConfig({ ...base, TELEGRAM_BOT_USERNAME: 'bad name' } as any)).toThrow(/TELEGRAM_BOT_USERNAME/);
+  expect(loadConfig({ ...base, TELEGRAM_BOT_USERNAME: 'SampleLinkBot' } as any).telegram.botUsername).toBe('SampleLinkBot');
+});

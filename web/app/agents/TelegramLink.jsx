@@ -1,8 +1,8 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { Button } from '../../components/UI';
+import { Button, CopyButton } from '../../components/UI';
 import { api } from '../../lib/api';
-import { readTelegramLink, issueTelegramLink, unlinkTelegram } from '../../lib/telegram-linking';
+import { readTelegramLink, issueTelegramLink, unlinkTelegram, botUsername } from '../../lib/telegram-linking';
 import WeeklySummary from './WeeklySummary'; // B120
 
 export default function TelegramLink({ principalKey }) {
@@ -31,10 +31,13 @@ export default function TelegramLink({ principalKey }) {
   return <section className="control-panel"><h2>Telegram</h2>
     <p className="help-text">Link this owner/admin key’s account for agent approvals and alerts. Send a one-time code to Anyroute’s bot; no API key is needed in Telegram. Telegram can read these messages. The link’s authority ends if the key expires, is disabled or loses its role.</p>
     <p className="help-text">Agent approvals and alerts are also in <a className="inline-link" href="/dashboard/#inbox">your inbox</a>.</p>
+    {botUsername(status?.bot_username) && <p className="help-text">Anyroute’s bot is <a className="inline-link" href={`https://t.me/${botUsername(status.bot_username)}`} target="_blank" rel="noopener noreferrer">@{botUsername(status.bot_username)}</a> on Telegram.</p>}
     <p role="status">{status ? status.linked ? `Linked to Telegram user ${status.telegram_user_id}.` : 'Telegram is not linked for this key.' : 'Reading Telegram status…'}</p>
     {status?.linked && <WeeklySummary request={request} />} {/* B120 */}
     {error && <p role="alert">{error}</p>}
     {status && <div className="button-row">{!status.linked && <Button disabled={busy} onClick={() => act(async () => setCode(await issueTelegramLink(request)))}>Link Telegram</Button>}<Button secondary disabled={busy} onClick={() => act(async () => { await unlinkTelegram(request); setCode(null); setStatus(await readTelegramLink(request)); })}>{status.linked ? 'Unlink Telegram' : 'Cancel linking'}</Button></div>}
-    {code && <div><p>Send <code>/link {code.code}</code> in a private chat with Anyroute’s bot. Keep this code to yourself; it grants approval authority. It expires at {new Date(code.expires_at).toLocaleTimeString()} and works once.</p><p className="help-text">Status refreshes every five seconds. You can also send /unlink to the bot. Linking does not connect chat inference; /key and /forget manage that separately.</p></div>}
+    {code && code.link_url && <div className="button-row"><Button href={code.link_url} target="_blank" rel="noopener noreferrer">Open @{code.bot_username} in Telegram</Button><CopyButton text={`/link ${code.code}`} label="Copy /link code" /></div>}
+    {code && code.link_url && <p className="help-text">Telegram opens a chat with the bot; press Start and it links. If Telegram doesn’t open, send the copied <code>/link</code> message to @{code.bot_username} yourself.</p>}
+    {code && <div><p>Send <code>/link {code.code}</code> in a private chat with {code.bot_username ? `@${code.bot_username}` : 'Anyroute’s bot'}. Keep this code to yourself; it grants approval authority. It expires at {new Date(code.expires_at).toLocaleTimeString()} and works once.</p><p className="help-text">Status refreshes every five seconds. You can also send /unlink to the bot. Linking does not connect chat inference; /key and /forget manage that separately.</p></div>}
   </section>;
 }

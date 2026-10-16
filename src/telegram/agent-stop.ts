@@ -55,7 +55,7 @@ export async function handleAgentStop(ctx: Ctx, api: TelegramApi, update: TgUpda
   const callback = update.callback_query;
   const callbackMatch = /^tgs:([htrs]):([A-Za-z0-9_-]{43}):([A-Za-z0-9_-]{12})$/.exec(callback?.data ?? "");
   const command = /^\/(agents|stop|start)(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(update.message?.text?.trim() ?? "");
-  if (callback ? !callback.data?.startsWith("tgs:") : !command || (command[1]!.toLowerCase() === "start" && !command[2]?.trim())) return false;
+  if (callback ? !callback.data?.startsWith("tgs:") : !command || (command[1]!.toLowerCase() === "start" && (!command[2]?.trim() || /^link-[A-Za-z0-9_-]{8,64}$/i.test(command[2].trim())))) return false; // a t.me link-panel start goes to linking
   const message = callback?.message ?? update.message;
   const from = callback?.from ?? message?.from;
   if (!message || !from || from.is_bot || message.chat.type !== "private" || message.chat.id !== from.id) return true;

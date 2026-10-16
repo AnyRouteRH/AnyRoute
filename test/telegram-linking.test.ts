@@ -236,3 +236,24 @@ test('team admin link sees only its team and callback role/scope is rechecked', 
   await h.ctx.db.update(teamMembers).set({ role: 'viewer' }).where(eq(teamMembers.keyHash, admin.hash));
   await click(user, id, tg); expect((await row(id)).status).toBe('pending');
 });
+
+test('with the bot username configured, the panel gets a one-tap start link and "/start link-<code>" links like /link', async () => {
+  const before = h.ctx.cfg.telegram.botUsername;
+  h.ctx.cfg.telegram.botUsername = 'SampleLinkBot';
+  try {
+    const key = await h.fundedKey(), tg = telegram(), user = ++uid;
+    const status = (await (await h.request('/api/v1/telegram/link', { headers: key.auth })).json()).data;
+    expect(status.bot_username).toBe('SampleLinkBot');
+    const issued = await issue(key);
+    expect(issued.link_url).toBe(`https://t.me/SampleLinkBot?start=link-${issued.code}`);
+    await tg.bot.handleUpdate(msg(user, `/start link-${issued.code}`));
+    expect((await readLink(h.ctx.db, user))?.key_hash).toBe(key.hash);
+    expect(tg.calls.some(c => c.method === 'deleteMessage')).toBe(true); // the code-bearing message is removed
+    expect(tg.calls.find(c => c.method === 'sendMessage')?.params.text).toContain('Telegram linked');
+    // A plain /start is still the chat bot's welcome, not a link attempt.
+    const other = ++uid; await tg.bot.handleUpdate(msg(other, '/start'));
+    expect(await readLink(h.ctx.db, other)).toBeUndefined();
+  } finally { h.ctx.cfg.telegram.botUsername = before; }
+  const plain = await issue(await h.fundedKey());
+  expect(plain.link_url).toBeUndefined(); expect(plain.bot_username).toBeUndefined();
+});

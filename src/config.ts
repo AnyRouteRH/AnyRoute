@@ -380,6 +380,7 @@ const schema = z.object({
 
   // Optional Telegram bot (BotFather token, a secret). Without it the bot never starts.
   TELEGRAM_BOT_TOKEN: opt,
+  TELEGRAM_BOT_USERNAME: opt, // the bot's public @username, shown on the link panel with a one-tap t.me link
   TELEGRAM_PHOTOS_ENABLED: bool.default(false), // D142
   LOW_BALANCE_ALERTS_ENABLED: bool.default(false), // B119
   SCHEDULED_PROMPTS_ENABLED: bool.default(false), // D136
@@ -627,6 +628,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
   if (e.WEEKLY_SUMMARY_ENABLED && !e.TELEGRAM_LINKING_ENABLED) throw new Error("WEEKLY_SUMMARY_ENABLED requires TELEGRAM_LINKING_ENABLED."); // B120
   if (e.PROJECT_BUDGET_TELEGRAM_ENABLED && !e.TELEGRAM_LINKING_ENABLED) throw new Error("PROJECT_BUDGET_TELEGRAM_ENABLED requires TELEGRAM_LINKING_ENABLED."); // D139
   if (e.TELEGRAM_LINKING_ENABLED && e.RUNTIME_ROLE !== "api" && !e.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_LINKING_ENABLED requires TELEGRAM_BOT_TOKEN on the worker (or a combined role).");
+  if (e.TELEGRAM_BOT_USERNAME && !/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(e.TELEGRAM_BOT_USERNAME)) throw new Error("TELEGRAM_BOT_USERNAME must be the bot's @username without the @.");
   if (e.TELEGRAM_BOT_TOKEN && !/^\d{3,20}:[A-Za-z0-9_-]{20,}$/.test(e.TELEGRAM_BOT_TOKEN)) throw new Error("TELEGRAM_BOT_TOKEN must be the token BotFather issued (<id>:<secret>).");
   // The webhook is optional: without it the alert-notifier job only records state. Never echo the URL.
   if (e.ALERT_WEBHOOK_URL) {
@@ -888,7 +890,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     limits: { defaultRpm: e.DEFAULT_RPM, defaultTpm: e.DEFAULT_TPM, unauthRpm: e.UNAUTH_RPM, newKeysPerHour: e.NEW_KEYS_PER_HOUR },
     alerts: { webhookUrl: e.ALERT_WEBHOOK_URL, webhookFormat: e.ALERT_WEBHOOK_FORMAT },
     telegramPhotosEnabled: e.TELEGRAM_PHOTOS_ENABLED, // D142
-    telegram: { botToken: e.TELEGRAM_BOT_TOKEN, linkingEnabled: e.TELEGRAM_LINKING_ENABLED },
+    telegram: { botToken: e.TELEGRAM_BOT_TOKEN, linkingEnabled: e.TELEGRAM_LINKING_ENABLED, botUsername: e.TELEGRAM_BOT_USERNAME },
     weeklySummaryEnabled: e.WEEKLY_SUMMARY_ENABLED, // B120
     backup: { required: e.BACKUP_REQUIRED, maxAgeHours: e.BACKUP_MAX_AGE_HOURS },
     holders,

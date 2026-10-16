@@ -141,7 +141,10 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
   }
   const message = update.message;
   if (!message?.from || message.from.is_bot || message.chat.type !== "private" || message.chat.id !== message.from.id) return false;
-  const command = /^\/(link|unlink)(?:@\w+)?(?:\s+(.*))?$/i.exec(message.text?.trim() ?? "");
+  const text0 = message.text?.trim() ?? "";
+  // A t.me start link from the link panel arrives as "/start link-<code>"; plain /start stays with the chat bot.
+  const started = /^\/start(?:@\w+)?\s+link-([A-Za-z0-9_-]{8,64})$/i.exec(text0);
+  const command = started ? ["", "link", started[1]] as const : /^\/(link|unlink)(?:@\w+)?(?:\s+(.*))?$/i.exec(text0);
   if (!command) return false;
   let text: string;
   try {
