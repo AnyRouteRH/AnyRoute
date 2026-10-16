@@ -14,6 +14,7 @@ export function useHistoryKeys(onSearch, onExport) {
   callbacks.current = { onSearch, onExport };
   useEffect(() => {
     const key = (e) => {
+      if (e.defaultPrevented) return; // J181: Find anything owns the shortcut outside a history dialog.
       const action = historyShortcut(e);
       if (!action) return;
       // Let a passphrase or another modal finish first. Search in the history dialog already has focus.

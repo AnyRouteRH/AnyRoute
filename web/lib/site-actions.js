@@ -1,6 +1,7 @@
 // U106: ⌘K actions, built from the site map's ACTIONS. Each is tied to the task whose page does it, so search, menus and
 // actions stay one source. Pure logic: which actions need a connected key, where each one goes, the pick lists, the
 // confirm words and the only calls ⌘K makes itself. Nothing here keeps a key, and an API key never goes into a link.
+import { commandDestination } from './command-palette.js'; // J181
 import { ACTIONS, TASKS } from './site-map.js';
 import { searchTasks } from './site-search.js';
 import { isReceiptId, privacyHref } from './privacy.js';
@@ -23,12 +24,14 @@ export const needsSignIn = (action, signedIn) => !!action?.signIn && !signedIn;
 // Where an action goes before anything is chosen. Signed out, this is its own page, which asks for a key there and
 // carries on once one is connected (the dashboard opens Create key after connecting, for example).
 export function startHref(action) {
+  if (action.command) return commandDestination(action); // J181
   if (action.open === 'new-key') return link(pathOf(action.page), { new: 'key' }, hashOf(action.page));
   return action.page;
 }
 
 // Where an action goes once its pick step chose something. Null for anything that is not a plain id, or looks like a key.
 export function actionHref(action, choice = '') {
+  if (action.command) return commandDestination(action, action.pick ? choice : undefined); // J181
   if (!action.pick) return startHref(action);
   const value = String(choice ?? '').trim();
   if (!value || KEY_LIKE.test(value)) return null;
@@ -68,7 +71,7 @@ export const firstStep = action => action.pick === 'receipt' ? 'input' : action.
 export function agentChoices(rows, action) {
   const choices = (Array.isArray(rows) ? rows : []).filter(row => row && AGENT_ID.test(String(row.key_hash ?? ''))).map(row => {
     const state = row.killed ? 'Stopped' : 'Running';
-    const note = action.run === 'stop' ? (row.killed ? 'Already stopped.' : !row.has_policy ? LIMIT_WORDS.stopFirst : '')
+    const note = action.command === 'duplicate-agent' && row.approval_only ? 'Use an owner or admin key.' : action.run === 'stop' ? (row.killed ? 'Already stopped.' : !row.has_policy ? LIMIT_WORDS.stopFirst : '')
       : action.run === 'resume' ? (row.killed ? '' : 'This agent is not stopped.') : '';
     return { id: row.key_hash, title: String(row.name || '').trim() || 'Unnamed agent', description: `${state} · rulebook ${row.has_policy ? 'on' : 'off'} · key ${row.key_hash.slice(0, 12)}`,
       keywords: [row.key_hash, state], featured: true, disabled: !!note, note, agent: row };

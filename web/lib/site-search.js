@@ -27,7 +27,7 @@ export function searchTasks(query, tasks = TASKS) {
     const title = normalize(task.title);
     const keywords = normalize(task.keywords.join(' '));
     const description = normalize(task.description);
-    let score = title === q ? 600 : title.startsWith(q) ? 500 : title.includes(q) ? 400 : 0;
+    let score = (task.aliases || []).some(alias => normalize(alias) === q) ? 600 : title === q ? 600 : title.startsWith(q) ? 500 : title.includes(q) ? 400 : 0;
     if (!score) {
       const fields = [title.split(' '), keywords.split(' '), description.split(' ')];
       const scores = tokens.map(token => {
@@ -45,10 +45,10 @@ export function searchTasks(query, tasks = TASKS) {
   return ranked.filter(row => row.score).sort((a, b) => b.score - a.score || a.index - b.index).map(row => row.task);
 }
 
-// The Harness owns its keyboard shortcuts. Other dialogs also keep their keys.
+// J181: command search also opens in Chat; slash and other dialogs keep their keys.
 export function isSearchShortcut(event, { pathname, editable = false, dialogOpen = false }) {
-  if (event.defaultPrevented || event.isComposing || /^\/harness\/?$/.test(pathname) || dialogOpen) return false;
+  if (event.defaultPrevented || event.isComposing || event.repeat || dialogOpen) return false;
   const command = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k';
-  const slash = event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !editable;
+  const slash = !/^\/harness\/?$/.test(pathname) && event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !editable;
   return Boolean(command || slash);
 }

@@ -4,11 +4,13 @@ import { useId, useRef, useState } from 'react';
 import { Button, CopyButton, Modal } from '../UI';
 import { duplicateAgent, duplicateName } from '../../lib/duplicate-agent';
 import s from '../account/AccountShell.module.css';
+import usePageCommand from '../commands/usePageCommand'; // J181
 
 export default function DuplicateAgent({ agent, request, onChanged }) {
   const [open, setOpen] = useState(false), [name, setName] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [secret, setSecret] = useState('');
   const id = useId(), button = useRef(null);
+  usePageCommand('duplicate-agent', () => { setName(duplicateName(agent.name)); setOpen(true); }, !busy, agent.key_hash); // J181
   const close = event => { if (busy) { event?.preventDefault?.(); return; } setOpen(false); setSecret(''); setError(''); button.current?.focus(); };
   return <section className="control-panel" aria-labelledby={id + '-title'}>
     <h2 id={id + '-title'}>Duplicate this agent</h2>

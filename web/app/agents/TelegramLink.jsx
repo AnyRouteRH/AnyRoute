@@ -28,7 +28,7 @@ export default function TelegramLink({ principalKey }) {
     setBusy(true); setError('');
     try { await fn(); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
-  return <section className="control-panel"><h2>Telegram</h2>
+  return <section id="telegram" className="control-panel"><h2>Telegram</h2>
     <p className="help-text">Link this owner/admin key’s account for agent approvals and alerts. Send a one-time code to Anyroute’s bot; no API key is needed in Telegram. Telegram can read these messages. The link’s authority ends if the key expires, is disabled or loses its role.</p>
     <p className="help-text">Agent approvals and alerts are also in <a className="inline-link" href="/dashboard/#inbox">your inbox</a>.</p>
     {botUsername(status?.bot_username) && <p className="help-text">Anyroute’s bot is <a className="inline-link" href={`https://t.me/${botUsername(status.bot_username)}`} target="_blank" rel="noopener noreferrer">@{botUsername(status.bot_username)}</a> on Telegram.</p>}

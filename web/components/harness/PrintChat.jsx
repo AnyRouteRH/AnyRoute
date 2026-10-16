@@ -7,6 +7,7 @@ import Markdown from "../Markdown";
 import { formatUsd } from "../../lib/arena.js";
 import { openChatPrint, printChatModel } from "../../lib/print-chat.js";
 import s from "./PrintChat.module.css";
+import usePageCommand from '../commands/usePageCommand'; // J181
 
 export function PrintChatView({ model, viewRef }) {
   return <article ref={viewRef} data-chat-print className={s.print} aria-label="Chat print layout">
@@ -36,6 +37,7 @@ export default function PrintChat({ chat, lanes, find, busy }) {
   const [error, setError] = useState("");
   const menu = useRef(null), view = useRef(null);
   const available = lanes.some(lane => lane.messages?.length);
+  usePageCommand('print-chat', print, available && !busy && !pending); // J181
   useEffect(() => {
     const finished = () => {
       setModel(null);

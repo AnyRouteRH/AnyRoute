@@ -76,6 +76,7 @@ import ReliabilityDocs from "../../components/ReliabilityDocs"; // E155
 import SavingsFinderDocs from "../../components/SavingsFinderDocs"; // G160
 import ModelAccountDocs from "../../components/ModelAccountDocs"; // J178
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
+import CommandPaletteDocs from "../../components/CommandPaletteDocs"; // J181
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import NetworkStatsDocs from "../../components/NetworkStatsDocs";
 import CommerceStatsDocs from "../../components/CommerceStatsDocs"; // v6 L
@@ -926,6 +927,7 @@ export default function Docs() {
           <DocsFeatureIndex />
           <ChatCostDocs /> {/* C128 */}
           <PrintChatDocs /> {/* H174 */}
+          <CommandPaletteDocs /> {/* J181 */}
           <ChatCapDocs /> {/* G162 */}
           <ContinueAnswerDocs /> {/* H166 */}
           <SavedAnswersDocs /> {/* D140 */}

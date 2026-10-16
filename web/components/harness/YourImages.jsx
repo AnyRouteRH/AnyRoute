@@ -5,6 +5,7 @@ import { collectYourImages, filterYourImages, yourImagesAccess } from '../../lib
 import { Modal } from '../UI';
 import GeneratedImages from './GeneratedImages';
 import s from './YourImages.module.css';
+import usePageCommand from '../commands/usePageCommand'; // J181
 
 const InputContext = createContext(null);
 export function YourImagesInputProvider({ onUse, children }) {
@@ -39,6 +40,7 @@ function Gallery({ history, revision, busy, onOpen, onClose }) {
 
 export default function YourImages({ history, revision, busy, checking, onAccess, onOpen }) {
   const [open, setOpen] = useState(false);
+  usePageCommand('your-images', () => setOpen(true), !checking); // J181
   return <>
     <button type="button" className="text-button" disabled={checking} onClick={() => setOpen(true)}>Your images</button>
     {open && <Modal title="Your images" onClose={() => setOpen(false)}>

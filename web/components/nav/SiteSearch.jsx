@@ -1,11 +1,12 @@
 'use client';
+import { COMMAND_EVENT, commandActions, paletteContext, rotationKeyChoices, runPageCommand } from '../../lib/command-palette'; // J181
 import StopMenu from '../limits/StopMenu'; // B117
 import { stoppedLabel, stopHelp } from '../../lib/stop-until'; // B117
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSearchShortcut } from '../../lib/site-search';
 import { GROUPS } from '../../lib/site-map';
 // U106: actions beside links. Each opens its screen ready, or acts only after the same confirm step its page uses.
-import { actionHref, agentChoices, agentQuestion, filterChoices, firstStep, loadAgents, modelChoices, needsSignIn, receiptIdFromQuery, runAgentCommand, searchAll, startHref } from '../../lib/site-actions';
+import { SITE_ACTIONS, actionHref, agentChoices, agentQuestion, filterChoices, firstStep, loadAgents, modelChoices, needsSignIn, receiptIdFromQuery, runAgentCommand, searchAll, startHref } from '../../lib/site-actions';
 import { FEATURE_OFF, errorState } from '../../lib/agents';
 import { LIMIT_WORDS as W } from '../../lib/spending-limits';
 import { api, toCatalogModel } from '../../lib/api';
@@ -35,12 +36,28 @@ export default function SiteSearch() {
   const loading = useRef(null);
   const models = useRef(null);
   const armed = useRef(0);
-  const results = useMemo(() => searchAll(query), [query]);
+  const [context, setContext] = useState({}); // J181
+  const [access, setAccess] = useState({ caller: null, accessError: false }); // J181
+  const results = useMemo(() => searchAll(query, { actions: [...commandActions(context, { signedIn, ...access }), ...SITE_ACTIONS] }), [query, context, signedIn, access]); // J181
+
   const choices = useMemo(() => step?.phase === 'pick' ? filterChoices(filter, items.choices) : [], [step?.phase, filter, items]);
   const phase = step?.phase || 'list';
   const list = phase === 'list' ? results : choices;
+  useEffect(() => { // J181
+    const sync = () => { let storage; try { storage = window.sessionStorage; } catch {} setContext(paletteContext(window.location, storage)); };
+    sync(); window.addEventListener(COMMAND_EVENT, sync); window.addEventListener('anyroute:site-search', sync);
+    return () => { window.removeEventListener(COMMAND_EVENT, sync); window.removeEventListener('anyroute:site-search', sync); };
+  }, []);
+  useEffect(() => { // J181
+    setAccess({ caller: null, accessError: false });
+    if (!open || !key) return;
+    const ac = new AbortController();
+    api('/api/v1/key', { key, signal: ac.signal }).then(({ data }) => { if (!ac.signal.aborted) setAccess({ caller: data, accessError: false }); })
+      .catch(() => { if (!ac.signal.aborted) setAccess({ caller: null, accessError: true }); });
+    return () => ac.abort();
+  }, [open, key]);
   useEffect(() => {
-    const show = () => { setQuery(''); setSelected(0); setStep(null); setFilter(''); setMessage(''); setOpen(true); };
+    const show = () => { window.dispatchEvent(new Event(COMMAND_EVENT)); setQuery(''); setSelected(0); setStep(null); setFilter(''); setMessage(''); setOpen(true); }; // J181
     const shortcut = event => {
       if (isSearchShortcut(event, { pathname: location.pathname, editable: editable(event.target), dialogOpen: !!document.querySelector('dialog[open]') })) { event.preventDefault(); show(); }
     };
@@ -67,7 +84,7 @@ export default function SiteSearch() {
   const close = () => setOpen(false);
   const go = href => { if (!href) return; close(); window.location.assign(href); };
   const request = (path, options = {}) => api(path, { ...options, key });
-  const rowHref = row => row.kind !== 'action' ? row.href : needsSignIn(row, signedIn) ? startHref(row) : row.prefill ? actionHref(row, row.prefill) : firstStep(row) ? null : startHref(row);
+  const rowHref = row => row.disabled || row.command && context.ready?.includes(row.command) ? null : row.kind !== 'action' ? row.href : needsSignIn(row, signedIn) ? startHref(row) : row.prefill ? actionHref(row, row.prefill) : firstStep(row) ? null : startHref(row);
 
   // Only a signed-in key reads its agents; the model catalogue is public and read once per page.
   const load = action => {
@@ -75,12 +92,15 @@ export default function SiteSearch() {
     const ac = new AbortController(); loading.current = ac;
     const done = next => { if (!ac.signal.aborted) setItems(next); };
     setItems({ state: 'loading', choices: [] });
+    if (action.pick === 'key') { rotationKeyChoices(request, access.caller, ac.signal).then(rows => done({ state: 'ok', choices: rows })).catch(error => { if (error?.name !== 'AbortError') done({ state: 'error', choices: [], error: 'Keys could not be loaded. Try again.' }); }); return; } // J181
     if (action.pick === 'agent') loadAgents(request, signedIn, ac.signal).then(r => done(r.state === 'ok' ? { state: 'ok', choices: agentChoices(r.rows, action) } : { state: r.state, choices: [], error: r.error })).catch(() => {});
     else (models.current ? Promise.resolve(models.current) : api('/api/v1/models', { signal: ac.signal }).then(r => (models.current = modelChoices((r?.data || []).map(toCatalogModel)))))
       .then(rows => done({ state: 'ok', choices: rows })).catch(error => { if (error?.name !== 'AbortError') done({ state: 'error', choices: [], error: 'The model catalogue could not be loaded. Try again.' }); });
   };
   const chooseResult = row => {
     if (!row) return;
+    if (row.disabled) { setMessage(row.note); return; } // J181
+    if (row.command && !row.pick && context.ready?.includes(row.command)) { dialog.current?.close(); close(); requestAnimationFrame(() => runPageCommand(row.command)); return; } // J181
     const href = rowHref(row);
     if (href) return go(href);
     const next = firstStep(row);
@@ -133,7 +153,7 @@ export default function SiteSearch() {
   const listed = phase === 'list' || phase === 'pick';
   const option = (index, id) => ({ id, 'data-result': index, role: 'option', 'aria-selected': selected === index, onFocus: () => setSelected(index), onMouseMove: () => setSelected(index) });
   const status = message || (phase === 'list' ? (query.trim() ? `${results.length} ${results.length === 1 ? 'result' : 'results'}` : 'Start here')
-    : phase === 'pick' ? (items.state === 'loading' ? (step.action.pick === 'agent' ? 'Reading your agents…' : 'Reading the model catalogue…') : items.state === 'ok' ? `${choices.length < items.choices.length ? `Showing ${choices.length} of ${items.choices.length}` : choices.length} ${step.action.pick === 'agent' ? (items.choices.length === 1 ? 'agent' : 'agents') : (items.choices.length === 1 ? 'model' : 'models')}` : '')
+    : phase === 'pick' ? (items.state === 'loading' ? (step.action.pick === 'agent' ? 'Reading your agents…' : step.action.pick === 'key' ? 'Reading your keys…' : 'Reading the model catalogue…') : items.state === 'ok' ? `${choices.length < items.choices.length ? `Showing ${choices.length} of ${items.choices.length}` : choices.length} ${step.action.pick === 'agent' ? (items.choices.length === 1 ? 'agent' : 'agents') : (step.action.pick === 'key' ? (items.choices.length === 1 ? 'key' : 'keys') : (items.choices.length === 1 ? 'model' : 'models'))}` : '')
     : phase === 'input' ? 'Opens Verify with this receipt' : '');
   const activeId = phase === 'list' && results[selected] ? `search-${results[selected].kind === 'action' ? 'do-' : ''}${results[selected].id}` : phase === 'pick' && choices[selected] ? `search-pick-${selected}` : undefined;
   return <dialog ref={dialog} id="site-search" className="modal site-search" data-phase={phase} aria-labelledby="site-search-title" onCancel={event => { event.preventDefault(); if (step && phase !== 'done') back(); else close(); }} onClose={close} onClick={event => { if (event.target === event.currentTarget) close(); }} onKeyDown={keys}>
@@ -150,7 +170,7 @@ export default function SiteSearch() {
       const href = rowHref(row);
       const props = option(index, `search-${action ? 'do-' : ''}${row.id}`);
       const body = <><small>{action ? 'Action' : GROUPS.find(group => group.id === row.group).title}{action && needsSignIn(row, signedIn) && <em className="search-lock">Sign in first</em>}</small><strong>{row.prefill ? `Open receipt ${row.prefill}` : row.title}</strong><span>{row.description}</span></>;
-      return href ? <a key={(action ? 'do-' : '') + row.id} {...props} href={href} onClick={close}>{body}</a> : <button key={'do-' + row.id} {...props} type="button" onClick={() => chooseResult(row)}>{body}</button>;
+      return href ? <a key={(action ? 'do-' : '') + row.id} {...props} href={href} onClick={close}>{body}</a> : <button key={'do-' + row.id} {...props} aria-disabled={row.disabled || undefined} type="button" onClick={() => chooseResult(row)}>{body}</button>;
     })}</div>}
     {phase === 'list' && open && !results.length && <p className="search-empty">No matching tasks. Try another word or <a href="/docs/" onClick={close}>browse the docs</a>.</p>}
     {phase === 'pick' && <div className="search-results" id="site-search-results" role="listbox" aria-label={stepLabel(step.action)}>{choices.map((choice, index) => <button key={choice.id} {...option(index, `search-pick-${index}`)} type="button" aria-disabled={choice.disabled || undefined} onClick={() => chooseChoice(choice)}>

@@ -45,6 +45,7 @@ import { Button, CopyButton, Modal } from "./UI";
 import { FolderInstructionsProvider, FolderInstructionsChip } from "./harness/FolderInstructions"; // G157
 import { activeFolder, folderSystems, systemText } from "../lib/folder-instructions.js"; // G157
 import ContinueAnswer, { ContinueAnswerProvider } from "./harness/ContinueAnswer"; // H166
+import ChatCommands from "./commands/ChatCommands"; // J181
 import { continueAnswer, continuationPatcher } from "../lib/harness-continue.js"; // H166
 import s from "./Harness.module.css";
 import CopyAsCode from "./harness/CopyAsCode"; // C130
@@ -1180,6 +1181,7 @@ export default function Harness() {
     <ChatProjectsProvider value={{ lanes, setLanes, scope: folderScope, apiKey: auth.key, busy }}> {/* J183 */}
     <BranchProvider lanes={lanes} setLanes={setLanes} busy={busy} beforeSwitch={() => { voice.stop(); setEditing(null); setFileNote(""); }}> {/* G156 */}
     <div className={s.harness} data-harness-app data-compare={compare || undefined}>
+      <ChatCommands lanes={lanes} focus={focus} busy={busy} continueReply={continueReply} /> {/* J181 */}
       <Rail
         models={models}
         routes={routes}

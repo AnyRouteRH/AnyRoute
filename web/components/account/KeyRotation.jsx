@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { canRotateKey, rotateAccountKey, rotationChoices, rotationLines } from '../../lib/key-rotation';
 import { Button, Modal } from '../UI';
 import s from './KeyRotation.module.css';
+import usePageCommand from '../commands/usePageCommand'; // J181
 
 export default function KeyRotation({ apiKey, keys = [], caller, onChanged, onSecret }) {
   const [links, setLinks] = useState({});
@@ -13,6 +14,9 @@ export default function KeyRotation({ apiKey, keys = [], caller, onChanged, onSe
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const id = useId();
+  const rotationTarget = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('target'); // J181
+  const rotationKey = keys.find(key => key.hash === rotationTarget); // J181
+  usePageCommand('rotate-key', () => { setSelected(rotationKey); setGrace('24h'); setError(''); }, !busy && !!rotationKey && Object.hasOwn(links, rotationTarget) && canRotateKey(rotationKey, caller, links[rotationTarget]), rotationTarget); // J181
   useEffect(() => {
     if (!apiKey || !keys.length || ['read', 'inference'].includes(caller?.scope)) return;
     const ac = new AbortController();
