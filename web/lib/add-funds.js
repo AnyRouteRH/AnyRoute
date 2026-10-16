@@ -1,7 +1,7 @@
 // ON1: account funding state and API-derived deposit instructions.
 import { depositCreditLabel } from './fast-credit.js';
 import { isAddress, toRawAmount, erc20TransferData } from './anyr-pay.js';
-export const fundingError = error => error?.type !== 'key_budget_exceeded' && (error?.status === 402 || ['insufficient_credits', 'insufficient_balance'].includes(error?.type) || /insufficient (?:balance|credits)/i.test(error?.message || ''));
+export const fundingError = error => error?.type !== 'project_budget_exceeded' && error?.type !== 'key_budget_exceeded' && (error?.status === 402 || ['insufficient_credits', 'insufficient_balance'].includes(error?.type) || /insufficient (?:balance|credits)/i.test(error?.message || ''));
 export const recoverFundingDraft = (draft, history) => draft || history.findLast(message => message.role === 'user')?.text || '';
 export const initialFunding = { phase: 'zero', baseline: null, status: '' };
 export function fundingState(state, event) {

@@ -97,6 +97,8 @@ sections.push(["print-chat", "Print or save a chat as PDF"]); // H174
 sections.push(["stop-all", "Stop all agents at once"]); // H172
 sections.push(["your-view-of-a-model", "Your view of a model"]); // J178
 
+sections.push(["chat-projects", "Chat in a project"]); // J183
+
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);
 }

@@ -1,0 +1,11 @@
+/* J183 */
+.root { min-width: 0; font: 400 12px/1.5 var(--mono); overflow-wrap: anywhere; }
+.root button { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.editor { display: grid; gap: 12px; padding: 20px; min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+.editor p { margin: 0; color: var(--muted); }
+.editor input { box-sizing: border-box; width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font: inherit; }
+.actions { display: flex; flex-wrap: wrap; gap: 14px; }
+:is(.root, .editor) :is(button, input, a):focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 2px; }
+@media (max-width: 540px) { .root button, .actions button { min-height: 36px; } }
+.budget { max-width: 28ch; margin: 4px 0; color: var(--muted); font: 400 11px/1.5 var(--mono); }
+.cost { display: grid; gap: 2px; min-width: 0; font: 400 11px/1.5 var(--mono); color: var(--muted); overflow-wrap: anywhere; }

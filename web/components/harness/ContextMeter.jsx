@@ -35,6 +35,7 @@ export function useContextMeter({ lanes, find, system, draft, files, busy, auth,
     if (model?.route) return setError('Choose a single model before summarizing so the same model makes the summary.');
     let request;
     try { request = summaryRequest(model, lane.messages, system); } catch (e) { setError(e.message); return; }
+    const project = limits.currentProject; // J183: keep this project when continuing from the summary.
     const id = crypto.randomUUID(), ctl = new AbortController(), version = generation.current;
     controllers.current.set(id, ctl); active.current = true; setPending(id); setInflight(n => n + 1);
     let reply = blankReply();
@@ -42,6 +43,7 @@ export function useContextMeter({ lanes, find, system, draft, files, busy, auth,
       await limits.streamChat({ messageId: id, key: auth.key, body: request.body, signal: ctl.signal, headers: { 'x-title': 'Anyroute Chat', ...priv.headers() }, onEvent: ev => { reply = applyChunk(reply, ev); } });
       if (version !== generation.current) return;
       const seed = summarySeed(reply.text, model.id, id);
+      if (project) seed.project = project; // J183
       const old = lanes.map(l => l.id === lane.id ? { ...l, messages: [...l.messages, { id: 'request-' + id, role: 'user', text: request.body.messages.at(-1).content, attachments: [] }, { ...reply, id, model: model.id, role: 'assistant', status: 'done' }] } : l);
       setLink({ old, next: [seed], system, privateMode: priv.on, showingOld: false, reply, omitted: request.omitted, seedId: seed.messages[0].id });
       setLanes([{ ...seed, messages: [] }]); setFocus(0); setEditing(null); setQueued(seed);

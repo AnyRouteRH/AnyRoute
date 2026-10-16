@@ -5,6 +5,7 @@ import { folderCounts } from '../../lib/chat-folders.js';
 import { FolderInstructionsEditor } from "./FolderInstructions"; // G157
 import s from './ChatFolders.module.css';
 
+import { FolderProjectEditor } from "./ChatProjects"; // J183
 export const FOLDER_DRAG_TYPE = 'application/x-anyroute-chat-id';
 export function ChatFolderMove({ chat, folders, disabled, onMove }) {
   return <details className={s.move}>
@@ -17,7 +18,7 @@ export function ChatFolderMove({ chat, folders, disabled, onMove }) {
   </details>;
 }
 
-export default function ChatFolders({ chats, folders, selected, onSelect, disabled, onCreate, onRename, onDelete, onMove, onInstructions }) {
+export default function ChatFolders({ chats, folders, selected, onSelect, disabled, onCreate, onRename, onDelete, onMove, onInstructions, onProject }) {
   const id = useId();
   const [editing, setEditing] = useState(null), [name, setName] = useState('');
   const counts = folderCounts(chats, folders);
@@ -45,6 +46,7 @@ export default function ChatFolders({ chats, folders, selected, onSelect, disabl
     <div className={s.controls}>
       <button type="button" className="text-button" disabled={disabled} onClick={() => begin('create')}>New folder</button>
       {active && <>
+        <FolderProjectEditor key={`project-${active.id}`} folder={active} disabled={disabled} onSave={project => onProject(active.id, project)} /> {/* J183 */}
         <FolderInstructionsEditor key={active.id} folder={active} disabled={disabled} onSave={text => onInstructions(active.id, text)} /> {/* G157 */}
         <button type="button" className="text-button" disabled={disabled} onClick={() => begin('rename')}>Rename folder</button>
         <button type="button" className="text-button" disabled={disabled} onClick={() => begin('delete')}>Delete folder</button>

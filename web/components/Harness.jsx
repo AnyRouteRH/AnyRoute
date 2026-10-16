@@ -54,6 +54,8 @@ import catalogStyles from "./ModelPickerCapabilities.module.css";
 import RouteCard, { useRouteProviders } from "./RouteCard"; // U99: route cards in the picker.
 import routeCardStyles from "./RouteCard.module.css";
 
+import { ChatProjectsProvider, ChatProjectPicker, ChatProjectCost } from "./harness/ChatProjects"; // J183
+import { effectiveProject, projectFolder, projectStream, projectBudgetRefusal, projectFields } from "../lib/chat-projects.js"; // J183
 const MAX_LANES = 3;
 const FAVS = "anyroute-harness-favs";
 const PREFS = "anyroute-harness-prefs";
@@ -807,6 +809,8 @@ export default function Harness() {
   const branchLaneRef = useRef(null); // G156
   const lanesRef = useRef(lanes);
   lanesRef.current = lanes;
+  limits.currentProject = effectiveProject(lanesRef.current[0], projectFolder(folderScope)); // J183
+  limits.streamChat = projectStream(limits.streamChat, () => effectiveProject(lanesRef.current[0], projectFolder(folderScope))); // J183
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const systemRef = useRef(system);
@@ -929,6 +933,7 @@ export default function Harness() {
     if (add) {
       setLanes((ls) => (ls.length >= MAX_LANES ? ls : [...ls, { id: "l" + uid(), modelId: id, messages: structuredClone(ls[focus]?.messages || []) }]));
       setLanes(ls => ls.map((lane, index) => index === ls.length - 1 && index !== focus && ls[focus]?.branches ? { ...lane, branches: structuredClone(ls[focus].branches) } : lane)); // G156
+      setLanes(ls => ls.map(lane => ({ ...lane, ...projectFields(ls[0]) }))); // J183
       setFocus(Math.min(MAX_LANES - 1, lanesRef.current.length));
       return;
     }
@@ -1022,6 +1027,7 @@ export default function Harness() {
         message = wait != null ? `Rate limited. You can try again in ${Math.max(1, Math.ceil(wait / 1000))} s.` : "Rate limited. Wait a moment and try again.";
         kind = "rate";
       }
+      if (projectBudgetRefusal(err)) { message = err.message; kind = err.type; } // J183
       patchMsg(laneId, msgId, { ...reply, status: stopped ? "stopped" : "error", ttft, ms: performance.now() - t0, error: stopped ? (reply.text ? "Stopped. The part already delivered is billed." : "Stopped before the first token.") : message, errorKind: stopped ? "stopped" : kind, suggestedModels: stopped ? [] : suggestedModels(err?.suggested_models) }); // B121
     } finally {
       controllers.current.delete(msgId);
@@ -1101,6 +1107,7 @@ export default function Harness() {
   const stop = () => controllers.current.forEach((c) => c.abort());
   const newChat = () => {
     setLanes(ls => ls.map(({ chatCostRemainder, ...lane }) => lane)); // C128: clear saved accounting on a new chat.
+    setLanes(ls => ls.map(({ project, ...lane }) => lane)); setFolderScope(null); // J183
     setLanes(ls => ls.map(({ branches, ...lane }) => lane)); // G156
     chatCap.reset(); // G162
     voice.stop();
@@ -1166,6 +1173,7 @@ export default function Harness() {
     <SavedAnswersProvider history={promptHistory} lanes={lanes} busy={busy}> {/* D140 */}
     <YourImagesInputProvider onUse={acceptsImages ? addFiles : null}> {/* H167 */}
     <FolderInstructionsProvider scope={folderScope} onScope={setFolderScope}> {/* G157 */}
+    <ChatProjectsProvider value={{ lanes, setLanes, scope: folderScope, apiKey: auth.key, busy }}> {/* J183 */}
     <BranchProvider lanes={lanes} setLanes={setLanes} busy={busy} beforeSwitch={() => { voice.stop(); setEditing(null); setFileNote(""); }}> {/* G156 */}
     <div className={s.harness} data-harness-app data-compare={compare || undefined}>
       <Rail
@@ -1201,8 +1209,11 @@ export default function Harness() {
       >
         <div className={s.bar}>
           <ChatCapCost control={chatCap} busy={busy}> {/* G162 */}
+          <ChatProjectCost> {/* J183 */}
           <ChatCost lanes={lanes} /> {/* C128 */}
+          </ChatProjectCost> {/* J183 */}
           </ChatCapCost> {/* G162 */}
+          <ChatProjectPicker /> {/* J183 */}
           {!compare && (
             <button type="button" className={s.modelBtn} onClick={() => setPalette({ lane: 0, add: false })} aria-label={`Model: ${focusModel?.name || "none"}. Change model`} aria-keyshortcuts="Meta+Shift+K Control+Shift+K">
               <b>{focusModel?.name || "Loading models"}</b>
@@ -1446,6 +1457,7 @@ export default function Harness() {
       </p>
     </div>
     </BranchProvider> {/* G156 */}
+    </ChatProjectsProvider> {/* J183 */}
     </FolderInstructionsProvider> {/* G157 */}
     </YourImagesInputProvider> {/* H167 */}
     </SavedAnswersProvider> /* D140 */

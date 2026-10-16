@@ -3,8 +3,9 @@ import { mergeSavedAnswers } from "./saved-answers.js"; // D140
 // These operations run inside the existing vault's serial queue. Metadata and imports are sealed with its key.
 import { folderFields } from "./chat-folders.js"; // D143
 import { costSummaryFields } from "./chat-cost.js"; // C128
+import { projectFields } from "./chat-projects.js"; // J183
 export function savedEntry(chat, previous, at) {
-  return { id: String(chat.id), title: String(previous?.title || chat.title || "Untitled").slice(0, 80), at, lanes: chat.lanes, ...folderFields(previous || chat), ...(previous?.pinned ? { pinned: true } : {}), ...costSummaryFields(chat), ...capFields(chat) }; // C128
+  return { id: String(chat.id), title: String(previous?.title || chat.title || "Untitled").slice(0, 80), at, lanes: chat.lanes, ...projectFields(Object.hasOwn(chat, "project") ? chat : previous || {}), ...folderFields(previous || chat), ...(previous?.pinned ? { pinned: true } : {}), ...costSummaryFields(chat), ...capFields(chat) }; // C128
 }
 
 export function historyEdits({ serial, need, seal, maxBytes, maxChats }) {

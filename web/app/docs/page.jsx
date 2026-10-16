@@ -18,6 +18,7 @@ import ReadOnlyKeysDocs from "../../components/ReadOnlyKeysDocs"; // E149
 import KeyIpAllowlistDocs from "../../components/KeyIpAllowlistDocs"; // E148
 import SavedAnswersDocs from "../../components/SavedAnswersDocs"; // D140
 import FolderInstructionsDocs from "../../components/FolderInstructionsDocs"; // G157
+import ChatProjectsDocs from "../../components/ChatProjectsDocs"; // J183
 import ChatFoldersDocs from "../../components/ChatFoldersDocs"; // D143
 import EditAndBranchDocs from "../../components/EditAndBranchDocs"; // G156
 import TelegramPhotosDocs from "../../components/TelegramPhotosDocs"; // D142
@@ -926,6 +927,7 @@ export default function Docs() {
           <ContinueAnswerDocs /> {/* H166 */}
           <SavedAnswersDocs /> {/* D140 */}
           <ChatFoldersDocs /> {/* D143 */}
+          <ChatProjectsDocs /> {/* J183 */}
           <FolderInstructionsDocs /> {/* G157 */}
           <EditAndBranchDocs /> {/* G156 */}
           <AskAboutThisDocs /> {/* H175 */}

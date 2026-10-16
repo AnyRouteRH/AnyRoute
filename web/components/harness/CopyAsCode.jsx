@@ -8,9 +8,12 @@ import s from "./CopyAsCode.module.css";
 import { useCurrentFolderInstructions } from "./FolderInstructions"; // G157
 import { folderSystems } from "../../lib/folder-instructions.js"; // G157
 
+import { useChatProject } from "./ChatProjects"; // J183
+import { projectHeaders } from "../../lib/chat-projects.js"; // J183
 const labels = { curl: "curl", typescript: "TypeScript", python: "Python" };
 
 export default function CopyAsCode({ model, settings, system, messages, headers, apiKey, busy }) {
+  headers = { ...headers, ...projectHeaders(useChatProject()) }; // J183
   const folderInstructions = useCurrentFolderInstructions(); // G157
   const [samples, setSamples] = useState(null);
   const [language, setLanguage] = useState("curl");

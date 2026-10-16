@@ -8,6 +8,7 @@ import { snapshotLanes } from "./harness-image-history.js"; // G156
 import { branchFingerprint, validateBranches } from "./harness-branch-history.js"; // G156
 import { chatCost, costSummaryFields } from "./chat-cost.js"; // C128
 
+import { projectFields } from "./chat-projects.js"; // J183
 export const EXPORT_FORMAT = "anyroute-harness-history";
 export const EXPORT_VERSION = 1;
 const bytes = (value) => new TextEncoder().encode(value).length;
@@ -61,7 +62,7 @@ function validateChat(c) {
     return { modelId, messages };
   });
   lanes.forEach((lane, index) => Object.assign(lane, validateBranches(c.lanes[index].branches, message => validateChat({ id: "branch", title: "Branch", at: 0, lanes: [{ modelId: lane.modelId, messages: [message] }] }).lanes[0].messages[0]))); // G156
-  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...folderFields(c), ...costSummaryFields(c), ...capFields(c) }; // C128, G162
+  return { id, title, at: c.at, pinned: c.pinned === true, lanes, ...projectFields(c), ...folderFields(c), ...costSummaryFields(c), ...capFields(c) }; // C128, G162
 }
 
 // Dedupe ids, plus identical conversation content with different ids. Do not overwrite anything already kept.
@@ -96,7 +97,7 @@ export function parseImport(source) {
 export function currentChat(lanes, saved, now = Date.now()) {
   const snapshot = snapshotLanes(lanes);
   if (!snapshot.some((l) => l.messages.length)) return null;
-  return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, ...folderFields(saved || {}), lanes: snapshot, costSummary: chatCost(lanes), ...capFields(lanes[0]) }; // C128
+  return { id: saved?.id || "c" + now.toString(36), title: saved?.title || titleOf(lanes), at: saved?.at ?? now, pinned: saved?.pinned === true, ...folderFields(saved || {}), lanes: snapshot, ...projectFields(lanes[0]), costSummary: chatCost(lanes), ...capFields(lanes[0]) }; // C128
 }
 
 export function exportJson(chats, metadata = [], folders = []) {
@@ -109,6 +110,7 @@ export function exportMarkdown(chats) {
   return chats.map((c) => {
     const lines = [`# ${literal(c.title)}`, "", `Saved: ${new Date(c.at).toISOString()}`, ""];
     if (c.spendingCap) lines.push(`Chat cap: $${capDollars(c.spendingCap)}`, "");
+    if (c.project) lines.push(`Project: ${literal(c.project)}`, ""); // J183
     c.lanes.forEach((l, i) => {
       lines.push(`## ${chats.length > 0 && c.lanes.length > 1 ? `Conversation ${i + 1} · ` : ""}${literal(l.modelId || "Model not recorded")}`, "");
       for (const m of l.messages) {

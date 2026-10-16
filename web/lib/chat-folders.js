@@ -4,6 +4,7 @@ import { buildSearchIndex, mergeImport, parseImport, searchChats } from './harne
 
 import { instructionFields, setFolderInstructions } from "./folder-instructions.js"; // G157
 
+import { projectFields, setFolderProject } from "./chat-projects.js"; // J183
 export const MAX_FOLDERS = 40;
 const folderError = () => { throw new Error('Choose a history export with valid folders.'); };
 const validId = value => typeof value === 'string' && !!value.trim() && value.length <= 200;
@@ -20,7 +21,7 @@ export function validateFolders(folders = []) {
     const name = nameOf(folder.name);
     if (ids.has(folder.id) || names.has(key(name))) folderError();
     ids.add(folder.id); names.add(key(name));
-    return { id: folder.id, name, ...instructionFields(folder) }; // G157
+    return { id: folder.id, name, ...instructionFields(folder), ...projectFields(folder) }; // G157, J183
   });
 }
 export function folderFields(chat) {
@@ -85,7 +86,7 @@ export function mergeFolderImport(existing, incoming, makeId) {
     let id = folder.id;
     if (folders.some(held => held.id === id)) id = makeId();
     const next = createFolder({ chats: [], folders }, folder.name, id);
-    folders.push({ ...next.folders.at(-1), ...instructionFields(folder) }); mapping.set(folder.id, id); // G157
+    folders.push({ ...next.folders.at(-1), ...instructionFields(folder), ...projectFields(folder) }); mapping.set(folder.id, id); // G157
   }
   const remapped = incoming.chats.map(chat => chat.folderId ? { ...chat, folderId: mapping.get(chat.folderId) } : chat);
   const { additions, skipped } = mergeImport(existing.chats, remapped);
@@ -102,6 +103,7 @@ export function folderVaultEdits({ serial, need, seal, maxBytes, makeId }) {
     return next;
   });
   return {
+    setFolderProject: (id, project) => change(state => setFolderProject(state, id, project)), // J183
     setFolderInstructions: (id, instructions) => change(state => setFolderInstructions(state, id, instructions)), // G157
     listFolders: () => structuredClone(need().folders || []),
     createFolder: name => change(state => createFolder(state, name, makeId())),
