@@ -1,7 +1,7 @@
 import { AGENT_STOP_ALL_HELP, handleAgentStopAll } from "../telegram/agent-stop-all.ts"; // H172
 import { AGENT_STOP_HELP, handleAgentStop, registerAgentStopCommands } from "../telegram/agent-stop.ts"; // G163
 import { hasPhoto, photoCaption, photoCapability, PHOTO_HELP, prepareTelegramPhoto, visionReply, type PhotoMessage, type TgPhoto } from "../telegram/photos.ts"; // D142
-import { deliverTelegramApprovals, handleLinkedUpdate } from "../telegram/delivery.ts";
+import { deliverTelegramApprovals, handleLinkedUpdate, linkHowTo } from "../telegram/delivery.ts";
 import { BALANCE_SPEND_COMMANDS, BALANCE_SPEND_HELP, handleBalanceSpend } from "../telegram/balance-spend.ts"; // E152
 import { eq } from "drizzle-orm";
 import { KEY_RE } from "../chain/keys.ts";
@@ -229,6 +229,7 @@ export class TelegramBot {
       "",
       `Connect: create a budget-capped API key at ${site}/dashboard (a spend limit keeps a chat bot safe to run), then send /key sk-ar-v1-... I delete your message right away and store the key encrypted.`,
       "",
+      ...(this.ctx.cfg.telegram.linkingEnabled ? [`Approvals and alerts: ${linkHowTo(this.ctx).replace(/^To get your agent approvals and alerts here, s/, "S")}`, ""] : []), // how to link, for people who open the bot first
       ...(this.ctx.cfg.telegramPhotosEnabled ? [PHOTO_HELP, ""] : []), // D142
       "Then just send a message. Commands:",
       "/model <id>  set your default model",

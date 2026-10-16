@@ -107,6 +107,9 @@ export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi) {
   });
   await pruneLinks(ctx.db);
 }
+/** Where a link code comes from, in words a first-time visitor can follow. */
+export const linkHowTo = (ctx: Ctx) => `To get your agent approvals and alerts here, sign in at ${ctx.cfg.siteUrl}/agents, press Link Telegram, then tap Open in Telegram (or send the /link message it shows).`;
+
 export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgUpdate): Promise<boolean> {
   if (!ctx.cfg.telegram.linkingEnabled) return false;
   if (await handleGuardResume(ctx, api, update)) return true; // V98
@@ -152,9 +155,12 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
       await removeLink(ctx, message.from.id);
       text = "Telegram account link removed. Agent approvals and alerts through this link have stopped. Your chat key, if connected, is separate; /forget removes it.";
     } else {
-      await api.call("deleteMessage", { chat_id: message.chat.id, message_id: message.message_id }).catch(() => undefined);
-      await consumeCode(ctx, message.from.id, command[2] ?? "");
-      text = "Telegram linked for agent approvals and alerts. No API key was sent to Telegram. Use /unlink to remove the link. Chatting still needs a separate chat key.";
+      if (!command[2]?.trim()) text = linkHowTo(ctx); // a bare /link: say where the code comes from
+      else {
+        await api.call("deleteMessage", { chat_id: message.chat.id, message_id: message.message_id }).catch(() => undefined);
+        await consumeCode(ctx, message.from.id, command[2]).catch(error => { throw error instanceof ApiError && error.message === "Link code is unavailable." ? new ApiError(400, `That code didn't work. Codes work once and expire after five minutes. ${linkHowTo(ctx)}`) : error; });
+        text = "Telegram linked for agent approvals and alerts. No API key was sent to Telegram. Use /unlink to remove the link. Chatting still needs a separate chat key.";
+      }
     }
   } catch (error) { text = error instanceof ApiError ? error.message : "Telegram linking is unavailable. Try again shortly."; }
   await api.call("sendMessage", { chat_id: message.chat.id, text }).catch(() => undefined);

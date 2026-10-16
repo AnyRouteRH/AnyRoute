@@ -257,3 +257,18 @@ test('with the bot username configured, the panel gets a one-tap start link and 
   const plain = await issue(await h.fundedKey());
   expect(plain.link_url).toBeUndefined(); expect(plain.bot_username).toBeUndefined();
 });
+
+test('people who open the bot first are told where a link code comes from', async () => {
+  const tg = telegram(), user = ++uid;
+  await tg.bot.handleUpdate(msg(user, '/start'));
+  expect(tg.calls.find(c => c.method === 'sendMessage')?.params.text).toContain('/agents, press Link Telegram');
+  tg.calls.length = 0;
+  await tg.bot.handleUpdate(msg(user, '/link'));
+  expect(tg.calls.find(c => c.method === 'sendMessage')?.params.text).toContain('press Link Telegram');
+  expect(tg.calls.some(c => c.method === 'deleteMessage')).toBe(false);
+  tg.calls.length = 0;
+  await tg.bot.handleUpdate(msg(user, '/link AAAAAAAAAAAAAAAA'));
+  const reply = tg.calls.find(c => c.method === 'sendMessage')?.params.text;
+  expect(reply).toContain("That code didn't work"); expect(reply).toContain('press Link Telegram');
+  expect(await readLink(h.ctx.db, user)).toBeUndefined();
+});
