@@ -1,3 +1,4 @@
+import { readSummarySections } from "./weekly-summary-sections.ts"; // J184
 import { and, asc, eq, like } from "drizzle-orm";
 import type { Ctx } from "../context.ts";
 import type { Db } from "../db/client.ts";
@@ -18,6 +19,7 @@ export async function runWeeklySummaries(ctx: Ctx, opts: { now?: Date; telegramF
   if (!summaryDue(now)) return { sent: 0, skipped: "outside_window" };
   const week = previousIsoWeek(now);
   const candidates = await ctx.db.select().from(kv).where(and(like(kv.key, "telegram-link:%"), eq(kv.weeklySummaryOptedIn, true))).orderBy(asc(kv.key));
+  if (candidates.length) await ctx.catalog.ensureFresh(); // J184: outside the single-connection transaction.
   const visited = new Set<string>();
   let sent = 0;
   for (const candidate of candidates) {
@@ -36,6 +38,7 @@ export async function runWeeklySummaries(ctx: Ctx, opts: { now?: Date; telegramF
       try { caller = await validPrincipal(scoped, live); } catch { return "ineligible"; }
       const summary = await readWeeklySummary(scoped.db, caller, week);
       if (!summary.activity) return "empty";
+      summary.sections = await readSummarySections(scoped, caller, week, true); // J184
       if (summary.topModel) summary.topModel = ctx.catalog.models.get(summary.topModel)?.name ?? summary.topModel;
       // Reuse the Telegram link limiter and its counter family. No message or key name enters Redis.
       try { await linkLimit(ctx, "summary", live.uid, RATE_PER_MINUTE); } catch { return "limited"; }

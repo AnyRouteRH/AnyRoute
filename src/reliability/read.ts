@@ -24,7 +24,7 @@ export function reliabilityRow(r: Raw) {
     refusals: { decisions: r.refusal_decisions, lane: r.lane, budget: r.budget, rulebook: r.rulebook },
   };
 }
-export async function readReliability(ctx: Ctx, key: KeyRow, q: ReturnType<typeof reliabilityQuery>) {
+export async function readReliability(ctx: Ctx, key: KeyRow, q: ReturnType<typeof reliabilityQuery>, teamOnly = false) {
   const { whole } = await activityAccess(ctx, key);
   const visible = sql`((${whole} and g.account_id = ${key.accountId}) or (k.account_id = ${key.accountId} and (${whole} or g.key_hash = ${key.keyHash}))) and (g.account_id is null or g.account_id = ${key.accountId})`;
   // Keep Activity's separate team boundary for agent decisions, including management/session restrictions.
@@ -35,7 +35,7 @@ export async function readReliability(ctx: Ctx, key: KeyRow, q: ReturnType<typeo
       case when g.streamed and g.latency_ms >= 0 and g.mode <> 'cache' then g.latency_ms end ttft,
       case when g.generation_time_ms >= 0 then g.generation_time_ms end total
     from generations g left join keys k on k.key_hash = g.key_hash
-    where g.ts >= ${q.from}::timestamptz and g.ts < ${q.to}::timestamptz and ${visible}
+    where g.ts >= ${q.from}::timestamptz and g.ts < ${q.to}::timestamptz and ${visible} and (${!teamOnly} or k.team_id = ${key.teamId})
   ), refusals as (
     select e.intent->>'model' model,
       bool_or(r->>'code' = 'lane_not_allowed') lane,

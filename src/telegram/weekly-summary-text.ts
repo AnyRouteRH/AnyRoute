@@ -1,3 +1,4 @@
+import type { SummarySection } from "./weekly-summary-sections.ts"; // J184
 const DAY = 86_400_000;
 /** The previous ISO week, Monday inclusive to Monday exclusive, always in UTC. */
 export function previousIsoWeek(now: Date) {
@@ -10,6 +11,7 @@ export function previousIsoWeek(now: Date) {
   return { start, end, id: `${year}-W${String(week).padStart(2, "0")}` };
 }
 export type WeekSummary = {
+  sections?: SummarySection[]; // J184
   activity: number; spent: bigint; agents: number; topKeys: { name: string; spent: bigint }[];
   approvals: number; approved: number; denied: number; stops: number; topModel: string | null;
 };
@@ -28,6 +30,7 @@ export function weeklySummaryText(week: ReturnType<typeof previousIsoWeek>, summ
     ...(summary.topKeys.length ? [summary.topKeys.slice(0, 5).map(k => `${label(k.name)} ${money(k.spent)}`).join(" · ")] : []),
     `Approvals: ${summary.approvals} (${summary.approved} approved, ${summary.denied} denied) · Stops: ${summary.stops}`,
     `Top model: ${summary.topModel ? label(summary.topModel) : "No model calls"}`,
+    ...(summary.sections ?? []).slice(0, 6).map(section => section.text), // J184
     `Activity: ${siteUrl.replace(/\/$/, "")}/dashboard/#activity`,
   ];
   return lines.join("\n");

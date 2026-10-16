@@ -1,5 +1,6 @@
 'use client';
 import ApprovalContext from '../ApprovalContext'; // J185
+import WeeklySummarySections from './WeeklySummarySections'; // J184
 import { useCallback, useEffect, useRef, useState } from 'react';
 import InboxFilters, { InboxItemReadState } from './InboxFilters'; // H173
 import DelegatedInboxNote from '../DelegatedInboxNote'; // E153
@@ -40,6 +41,7 @@ export default function AccountInbox({ apiKey, panel = false }) {
     <InboxRulebooks apiKey={apiKey} page={page}><ul className={s.list}>{page?.data.map(item => <li key={item.id}>
       <div className={s.row}><a className="inline-link" href={item.href}>{item.title}</a><time dateTime={item.at}>{new Date(item.at).toLocaleString()}</time></div>
       <p className="help-text">{[item.key_label, item.model, item.status, item.amount && item.amount !== '0' ? `${item.amount} USDG` : ''].filter(Boolean).join(' · ')}</p>
+      <WeeklySummarySections item={item}/> {/* J184 */}
       <InboxItemReadState item={item}/> {/* H173 */}
       <ApprovalContext lines={item.approval_context}/> {/* J185 */}
       {item.kind === 'approval' && <><InboxApprovalRulebook approvalId={item.approval_id} intent={item.intent}/><p>{intentSummary(item.intent)}</p>{item.intent?.intents?.filter(intent => intent.max_output_tokens !== undefined).map((intent, index) => <p className="help-text" key={index}>{intent.model} · Output limit: {intent.max_output_tokens} tokens</p>)}<p>Limit {item.approval_limit} USDG · Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p>{item.can_decide && <div className={s.actions}>{['approve', 'deny'].map(choice => <Button secondary key={choice} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onClick={() => run(item.id, () => decideInboxApproval(request, item.approval_id, choice))}>{choice === 'approve' ? 'Approve' : 'Deny'}</Button>)}</div>}{item.can_decide && <ApproveAndAllow request={request} id={item.approval_id} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onApproved={refresh}/>}</>}

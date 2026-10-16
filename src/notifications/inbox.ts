@@ -1,3 +1,4 @@
+import { readSummarySections } from "../telegram/weekly-summary-sections.ts"; // J184
 import type { Ctx } from "../context.ts";
 import type { KeyRow } from "../api/auth.ts";
 import { readPreferences, type NoticeType } from "./prefs.ts";
@@ -16,6 +17,7 @@ export async function weeklyInbox(ctx: Ctx, key: KeyRow, whole: boolean, since?:
   if (since && at <= since) return [];
   const summary = await readWeeklySummary(ctx.db, key, week);
   if (!summary.activity) return [];
+  const sections = await readSummarySections(ctx, key, week); // J184
   if (summary.topModel) summary.topModel = ctx.catalog.models.get(summary.topModel)?.name ?? summary.topModel;
-  return [{ id: `weekly-summary:${week.id}`, kind: "weekly_summary", at, title: weeklySummaryText(week, summary, ctx.cfg.siteUrl), href: "/dashboard/#activity", status: null, unread: true }];
+  return [{ id: `weekly-summary:${week.id}`, kind: "weekly_summary", at, title: weeklySummaryText(week, summary, ctx.cfg.siteUrl), href: "/dashboard/#activity", status: null, unread: true, ...(sections.length ? { sections } : {}) }];
 }

@@ -2255,12 +2255,65 @@
           }
         ],
         "parameters": [
-          { "name": "basis", "in": "query", "schema": { "type": "string", "enum": ["charges"] } },
-          { "name": "charge_kind", "in": "query", "schema": { "type": "string", "enum": ["usage", "rulebook"] } },
-          { "name": "paid", "in": "query", "schema": { "type": "string", "enum": ["true"] } },
-          { "name": "missing_model", "in": "query", "schema": { "type": "string", "enum": ["true"] } },
-          { "name": "missing_project", "in": "query", "schema": { "type": "string", "enum": ["true"] } },
-          { "name": "lane", "in": "query", "schema": { "type": "string", "maxLength": 64 } },
+          {
+            "name": "basis",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "charges"
+              ]
+            }
+          },
+          {
+            "name": "charge_kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "usage",
+                "rulebook"
+              ]
+            }
+          },
+          {
+            "name": "paid",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          },
+          {
+            "name": "missing_model",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          },
+          {
+            "name": "missing_project",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          },
+          {
+            "name": "lane",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
           {
             "name": "project",
             "in": "query",
@@ -2461,7 +2514,8 @@
           }
         },
         "x-D138-security-alerts": "When SECURITY_ALERTS_ENABLED: security items have kind security, id, at, title, status null, href /dashboard/#settings and unread. Account management keys see all account security items; team owners/admins see only their team; session and ordinary keys see none. since filters event time. One item per recorded event, including changes by the current key. Claimed items expire after 90 days while the worker is enabled.",
-        "x-d136-scheduled-prompts": "When SCHEDULED_PROMPTS_ENABLED is true, owner inboxes include finished retained runs visible in their paying-key team scope: kind schedule, id, at, title (name and first 300 reply characters or failure code), status, href to the authenticated saved result, unread. Inference and session keys never receive these items. Deleting the schedule removes its inbox items."
+        "x-d136-scheduled-prompts": "When SCHEDULED_PROMPTS_ENABLED is true, owner inboxes include finished retained runs visible in their paying-key team scope: kind schedule, id, at, title (name and first 300 reply characters or failure code), status, href to the authenticated saved result, unread. Inference and session keys never receive these items. Deleting the schedule removes its inbox items.",
+        "x-j184-weekly-summary": "Weekly summary items optionally add sections, an array of text and href pairs linking reliability and estimated savings to /dashboard/#insights, retained model-watch changes to /models/, agent caps and undecided expired approvals to /agents/. Empty sections are omitted. Existing management auth, weekly_summary notification preferences and WEEKLY_SUMMARY_ENABLED (default false) apply. No new endpoint or persistence."
       }
     },
     "/api/v1/inbox/seen": {
