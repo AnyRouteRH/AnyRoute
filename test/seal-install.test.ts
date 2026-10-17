@@ -431,7 +431,7 @@ describe("helm chart", () => {
     const out = Bun.spawnSync([helm, "template", "t", chart, ...set]);
     expect(out.exitCode).toBe(0);
     expect(out.stdout.toString()).toContain("kind: Deployment");
-  });
+  }, 30_000); // helm lint + template takes over 5 s on CI runners
 });
 
 describe("terraform modules", () => {
