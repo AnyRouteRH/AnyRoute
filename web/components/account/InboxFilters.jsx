@@ -1,5 +1,6 @@
 // H173
 'use client';
+import { SnoozedChip } from './InboxSnooze'; // K187
 import { useEffect, useRef, useState } from 'react';
 import { INBOX_EVENT } from '../../lib/inbox.js';
 import { filterUrl, INBOX_GROUPS, markAllRead, undoMarkAllRead } from '../../lib/inbox-filters.js';
@@ -40,6 +41,7 @@ export default function InboxFilters({ apiKey, page, request, busy, refresh, pan
   }
   return <div className={s.controls}>
     <div className={s.chips} role="group" aria-label="Filter inbox by kind">
+      <SnoozedChip busy={busy || pending}/> {/* K187 */}
       <button type="button" aria-pressed={!kinds.length} onClick={() => choose([])}>All <span>{Object.values(page?.filters?.counts || {}).reduce((a, b) => a + b, 0)}</span></button>
       {INBOX_GROUPS.map(([kind, label]) => <button type="button" key={kind} aria-pressed={kinds.includes(kind)} onClick={() => choose(kinds.includes(kind) ? kinds.filter(value => value !== kind) : [...kinds, kind])}>{label} <span>{page?.filters?.counts[kind] || 0}</span></button>)}
     </div>

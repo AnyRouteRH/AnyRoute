@@ -12,6 +12,7 @@ export function inboxRoutes(app: Hono, ctx: Ctx) {
     const key = await requireKey(ctx, c.req.header("authorization"));
     const since = c.req.query("since") === undefined ? undefined : instant.parse(c.req.query("since"));
     if (since && Date.parse(since) > Date.now()) fail(400, "Seen time must not be in the future.", "invalid_request");
+    if (c.req.query("snoozed") !== undefined) { const sleeping = z.enum(["true", "false"]).parse(c.req.query("snoozed")) === "true", page = await readInbox(ctx, key, since, { snoozed: sleeping }); return c.json(c.req.query("kinds") === undefined ? page : filterInboxPage(page, inboxKinds(c.req.query("kinds")!))); } // K187
     if (c.req.query("kinds") !== undefined) { const kinds = inboxKinds(c.req.query("kinds")!); return c.json(filterInboxPage(await readInbox(ctx, key, since), kinds)); } // H173
     return c.json(await readInbox(ctx, key, since));
   });

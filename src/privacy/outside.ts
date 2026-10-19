@@ -1,3 +1,4 @@
+import { snoozeReader, snoozeStores } from "./inbox-snooze.ts"; // K187
 import { telegramMenuReader } from "./telegram-menu.ts"; // J179
 import { approvalContextStores } from "./approval-context.ts"; // J185
 import { agentStatusView } from "./agent-status.ts"; // J176
@@ -785,6 +786,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
 const noLog = (item: string, file: string, contains: string): { item: string; evidence: Evidence[] } => ({ item, evidence: [ev(file, contains)] });
 
 bodyReaders.push(...agentStopAllReaders); // H172
+bodyReaders.push(snoozeReader); // K187
 bodyReaders.push(telegramMenuReader); // J179
 describePolicyHistoryReaders(bodyReaders); // D144
 export const EXTERNAL: ExternalDoc = {
@@ -856,6 +858,7 @@ export const EXTERNAL: ExternalDoc = {
     ...yourModelsStores, // K192
     ...reliabilityStores, // E155
     ...dataToolStores, // B
+    ...snoozeStores, // K187
     ...inboxStores,
     { id: "network-routing-evidence", name: "Network host routing evidence in memory", purpose: "When NETWORK_HOSTS_ENABLED is on, routing uses existing signed generation records, health probes and attestation outcomes to limit admitted hosts during probation and exclude unavailable hosts.", holds: "Provider ids, probation deadlines, aggregate attested success and recent outcome counts, fresh canonical active bond base units matched to the host id and operator wallet, probe availability and median latency, the latest attestation failure flag and refresh time. No request text or caller address. Successful network probes also record latency in the existing health table.", ttl: "Rebuilt by health refreshes, including idle flushes; evidence older than 120 seconds is refused. Failed refreshes clear the evidence. Lost when the router instance is released or exits.", requestText: "none", evidence: [ev("src/network/routing.ts", "const states = new WeakMap<HealthView, State>();"), ev("src/network/routing.ts", "state.evidence = new Map();"), ev("src/network/weight-config.ts", "evidenceMaxAgeMs: 120_000")] },
     ...networkJoinStores,

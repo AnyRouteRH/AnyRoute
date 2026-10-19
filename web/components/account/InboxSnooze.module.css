@@ -1,0 +1,5 @@
+.controls { margin-block: 12px; min-width: 0; overflow-wrap: anywhere; }
+.controls summary { cursor: pointer; color: var(--signal-deep); padding-block: 12px; min-height: 44px; }
+.options { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.options button { min-height: 44px; text-align: start; white-space: normal; }
+.controls summary:focus-visible, .controls button:focus-visible { outline: 2px solid var(--signal-deep); outline-offset: 3px; }

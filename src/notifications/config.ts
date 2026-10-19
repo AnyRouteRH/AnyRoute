@@ -6,6 +6,7 @@ import type { NoticeType } from "./prefs.ts";
 // Reuse every source sender's service guard when a queued notice leaves the router.
 export function noticeFeatureEnabled(ctx: Ctx, type: NoticeType) {
   switch (type) {
+    case "inbox_snooze": return ctx.cfg.inboxSnoozeRemindersEnabled; // K187
     case "status_incidents": return ctx.cfg.statusIncidentNoticesEnabled; // H169
     case "approval_reminders": return ctx.cfg.approvalNudgesEnabled && ctx.cfg.agentPolicyEnabled; // G164
     case "approvals": case "agent_alerts": return ctx.cfg.agentPolicyEnabled;

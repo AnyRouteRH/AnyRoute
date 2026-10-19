@@ -1,3 +1,5 @@
+import { readPreferences } from "../notifications/prefs.ts"; // K187
+import { projectSnoozes, readSnoozes, snoozeReadSince, type SnoozeItem } from "./snooze.ts"; // K187
 import { enrichApprovalContext } from "./approval-context.ts"; // J185
 import { incidentNoticeItems } from "../incident-notices/worker.ts"; // H169
 import { highlightApprovalNudges } from "./approval-nudges.ts"; // G164
@@ -43,9 +45,10 @@ export async function inboxScope(ctx: Ctx, key: KeyRow) {
   const seenScope = createHmac("sha256", ctx.cfg.appSecret).update(JSON.stringify([key.accountId, whole ? "account" : key.keyHash, whole && !key.management ? key.teamId : null, key.management])).digest("hex");
   return { whole, canDecide, seenScope };
 }
-export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
+export async function readInbox(ctx: Ctx, key: KeyRow, since?: string, options: { snoozed?: boolean; ignoreSnooze?: boolean } = {}) {
   const asOf = new Date().toISOString();
   const scope = await inboxScope(ctx, key);
+  const requestedSince = since, snoozes = options.ignoreSnooze ? [] : await readSnoozes(ctx, key, scope.seenScope); since = snoozeReadSince(since, snoozes); // K187
   type Item = { id: string; at: string; kind: string; title: string; status: string | null; href: string; amount?: string; key_label?: string | null; model?: string | null; approval_id?: string; approval_limit?: string; expires_at?: string; can_decide?: boolean; intent?: ReturnType<typeof inboxIntent>; unread: boolean };
   const items: Item[] = [];
   let capped = false;
@@ -120,6 +123,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string) {
   { const approvals = await delegatedInbox(ctx, key, asOf); capped ||= approvals.length > 100; items.push(...approvals.slice(0, 100).filter(row => !items.some(item => item.id === row.id))); await refreshInboxAuthority(ctx, key, items); } // E153
   if (key.scope !== "read") await enrichApprovalContext(ctx, items, new Date(asOf)); // J185
   await highlightApprovalNudges(ctx, key, items, new Date(asOf)); // G164
+  if (!options.ignoreSnooze) projectSnoozes(items as (Item & SnoozeItem)[], snoozes, requestedSince, asOf, !!options.snoozed, !snoozes.length || (await readPreferences(ctx.db, key.accountId)).channels.inbox_snooze.inbox); // K187
   items.sort((a, b) => micros(a.at) === micros(b.at) ? (a.id > b.id ? -1 : a.id < b.id ? 1 : 0) : micros(a.at) > micros(b.at) ? -1 : 1);
   return { data: items, count: items.filter(item => item.unread).length, capped, as_of: asOf, seen_scope: scope.seenScope, scope: scope.whole ? "account" : ctx.cfg.agentTeamApproversEnabled && items.some(item => item.kind === "approval" && item.can_decide) ? "team_approvals" : "key" };
 }

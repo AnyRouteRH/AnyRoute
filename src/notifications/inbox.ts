@@ -7,8 +7,10 @@ import { readPreferences, type NoticeType } from "./prefs.ts";
 import { previousIsoWeek, weeklySummaryText } from "../telegram/weekly-summary-text.ts";
 import { readWeeklySummary } from "../telegram/weekly-summary-read.ts";
 const kinds: Record<string, NoticeType> = { approval_reminder: "approval_reminders", approval: "approvals", alert: "agent_alerts", deposit: "deposits", low_balance: "low_balance", weekly_summary: "weekly_summary", security: "security_alerts", "quiet-agent": "quiet_agents", price_notice: "price_notices", project_budget: "project_budgets", schedule: "scheduled_results" };
+kinds.inbox_snooze = "inbox_snooze"; // K187
 kinds.model_watch = "model_watch"; // G159
 kinds.status_incidents = "status_incidents"; // H169
+export const inboxNoticeType = (kind: string): NoticeType | undefined => Object.hasOwn(kinds, kind) ? kinds[kind] : undefined; // K187
 export async function filterNotificationInbox<T extends { kind: string }>(ctx: Ctx, account: string, items: T[]) {
   const prefs = await readPreferences(ctx.db, account);
   for (let i = items.length - 1; i >= 0; i--) if (kinds[items[i]!.kind] && !prefs.channels[kinds[items[i]!.kind]!].inbox) items.splice(i, 1);

@@ -8,7 +8,9 @@ import { kv } from "../db/schema.ts";
 import { accountLinks, linkKey } from "../telegram/linking.ts";
 import { preferenceKey as securityKey } from "../security-alerts/records.ts";
 export const NOTICE_TYPES = ["approvals", "agent_alerts", "deposits", "low_balance", "weekly_summary", "security_alerts", "quiet_agents", "price_notices", "project_budgets", "scheduled_results", "approval_reminders", "model_watch", "status_incidents"] as const; // H169
-export type NoticeType = typeof NOTICE_TYPES[number];
+// K187: append to the shared registry without rewriting other cards’ entries.
+(NOTICE_TYPES as unknown as NoticeType[]).push("inbox_snooze"); // K187
+export type NoticeType = typeof NOTICE_TYPES[number] | "inbox_snooze";
 export type Channels = { inbox: boolean; telegram: boolean };
 const channels = z.strictObject({ inbox: z.boolean(), telegram: z.boolean() });
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);

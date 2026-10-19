@@ -34,6 +34,7 @@ import { insightsRoutes } from "./api/insights.ts"; // V88: spend insights.
 import { webhookRoutes } from "./webhooks/routes.ts"; // V86: signed destinations.
 import { makegoodRoutes } from "./services/makegood.ts"; // V6 R: make-good refunds.
 import { scheduledPromptRoutes } from "./api/schedules.ts"; // D136
+import { inboxSnoozeRoutes } from "./inbox/snooze-routes.ts"; // K187
 import { inboxRoutes } from "./api/inbox.ts"; // U78: account inbox.
 import { projectBudgetRoutes } from "./api/project-budgets.ts"; // D139
 import { activityRoutes } from "./api/activity.ts";
@@ -257,6 +258,7 @@ export async function createApp(opts: AppOptions = {}) {
   accountModelsUsedRoutes(app, ctx); // K192
   accountRunwayRoutes(app, ctx); // B119
   scheduledPromptRoutes(app, ctx, (path, init, env) => app.request(path, init, internalEnv(env) as never)); // D136
+  inboxSnoozeRoutes(app, ctx); // K187
   inboxRoutes(app, ctx); // U78: account inbox.
   securityAlertsRoutes(app, ctx); // D138
   notificationRoutes(app, ctx); // E146

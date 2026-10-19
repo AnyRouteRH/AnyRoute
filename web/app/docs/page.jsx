@@ -2,6 +2,7 @@ import WhyRefusedDocs from "../../components/WhyRefusedDocs"; // K190
 import TelegramMenuDocs from "../../components/TelegramMenuDocs"; // J179
 import AgentStatusDocs from "../../components/AgentStatusDocs"; // J176
 import TraceChargeDocs from "../../components/TraceChargeDocs"; // J182
+import SnoozeDocs from '../../components/SnoozeDocs'; // K187
 import InboxFiltersDocs from '../../components/InboxFiltersDocs'; // H173
 import AskAboutThisDocs from "../../components/AskAboutThisDocs"; // H175
 import StopAllDocs from "../../components/StopAllDocs"; // H172
@@ -955,6 +956,7 @@ export default function Docs() {
           <IncidentAlertsDocs /> {/* H169 */}
           <DepositCountdownDocs /> {/* B123 */}
           <InboxFiltersDocs /> {/* H173 */}
+          <SnoozeDocs /> {/* K187 */}
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
           <KeyProvisioningDocs /> {/* ZK6 */}
           <ReadOnlyKeysDocs /> {/* E149 */}

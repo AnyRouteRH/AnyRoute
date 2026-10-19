@@ -1,4 +1,5 @@
 const sections = [
+  ["snooze", "Snooze a notice"], // K187
   ["telegram-menu", "One Telegram menu"], // J179
   ["account-checkup", "Account checkup"], // J177
   ["business-details", "Business details on statements"], // H168

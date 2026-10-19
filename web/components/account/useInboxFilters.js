@@ -1,5 +1,6 @@
 // H173: project the existing inbox; never persist item bodies or credentials.
 'use client';
+import useSnoozedInbox from './useSnoozedInbox'; // K187
 import { useEffect, useState } from 'react';
 import { readSeen } from '../../lib/inbox.js';
 import { projectInbox, selectedKinds } from '../../lib/inbox-filters.js';
@@ -12,6 +13,7 @@ export default function useInboxFilters(state) {
     return () => { window.removeEventListener('popstate', sync); window.removeEventListener(INBOX_FILTER_EVENT, sync); };
   }, []);
   // Reading this bookmark also updates the header's total after a mark or undo.
+  state = useSnoozedInbox(state, search); // K187
   let since = '';
   try { if (state.page) since = readSeen(window.localStorage, state.page.seen_scope); } catch {}
   return { ...state, page: state.page ? projectInbox(state.page, since, selectedKinds(search)) : null };

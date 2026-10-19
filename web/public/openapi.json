@@ -2434,6 +2434,7 @@
     },
     "/api/v1/inbox": {
       "get": {
+        "x-k187-snooze": "K187: Normal reads hide sleeping notices. snoozed=true shows only waiting items with snoozed_until and unread=false; combine with kinds. Waking items use the wake time as at and add reminder_at. Existing auth, visibility, preferences and bounded source retention apply. No clocks means unchanged response. INBOX_SNOOZE_REMINDERS_ENABLED defaults false; inbox works without the worker.",
         "x-h173-inbox-filters": "Optional kinds filters by comma-separated groups (approvals, agents, money, security, models, other) or individual item kinds. Unknown kinds map to Other. Filtered responses add kind_counts with integer counts for all six groups before filtering; data and unread count cover the selection. Omitted kinds leaves the response unchanged. Existing since, visibility, notification preferences and capped source limits apply. Browser mark-all uses the full as_of snapshot with POST /api/v1/inbox/seen, stores only the returned time under seen_scope, and can restore the prior bookmark for 10 seconds unless replaced by a newer time. Pending approvals remain actionable even when read in the browser. No server persistence or cross-browser sync. H173.",
         "operationId": "listInbox",
         "x-approval-context": {
@@ -2456,6 +2457,7 @@
           }
         ],
         "parameters": [
+          {"name":"snoozed","in":"query","required":false,"description":"K187: true lists waiting notices; false or omitted lists awake notices.","schema":{"type":"boolean"}},
           {
             "name": "kinds",
             "in": "query",
@@ -2541,6 +2543,7 @@
         "x-j184-weekly-summary": "Weekly summary items optionally add sections, an array of text and href pairs linking reliability and estimated savings to /dashboard/#insights, retained model-watch changes to /models/, agent caps and undecided expired approvals to /agents/. Empty sections are omitted. Existing management auth, weekly_summary notification preferences and WEEKLY_SUMMARY_ENABLED (default false) apply. No new endpoint or persistence."
       }
     },
+    "/api/v1/inbox/{id}/snooze": {"post":{"operationId":"snoozeInboxNotice","summary":"Snooze a notice","description":"K187. Same active Bearer key and visibility as the inbox. Read-only keys refused. Only a currently visible retained source id is accepted. Up to 100 clocks per visibility scope; until must be future and within 30 days. Approvals cap at expiry and return capped=true plus a message; expiry is unchanged. Expired/decided or no-longer-returned sources disappear. No migration. The optional inbox-snooze minute worker requires INBOX_SNOOZE_REMINDERS_ENABLED (default false) and Telegram linking; it respects original and inbox_snooze Telegram settings, source/link authorization and quiet hours. Claims commit before attempts; failures are not retried.","security":[{"BearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"required":["until"],"properties":{"until":{"type":"string","format":"date-time"}}}}}},"responses":{"200":{"description":"Snoozed; approval cap is explicit.","content":{"application/json":{"schema":{"type":"object","required":["id","until","capped"],"properties":{"id":{"type":"string"},"until":{"type":"string","format":"date-time"},"capped":{"type":"boolean"},"message":{"type":"string"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}}},"delete":{"operationId":"unsnoozeInboxNotice","summary":"Return a snoozed notice now","description":"K187. Same active Bearer key and visibility digest as the inbox; read-only keys refused. Idempotently wakes the matching clock as unread, without Telegram. No other scope is changed.","security":[{"BearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"Unsnoozed or already absent.","content":{"application/json":{"schema":{"type":"object","required":["id","snoozed"],"properties":{"id":{"type":"string"},"snoozed":{"type":"boolean","enum":[false]}}}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"}}}},
     "/api/v1/inbox/seen": {
       "post": {
         "operationId": "markInboxSeen",
@@ -20799,6 +20802,7 @@
                           "type": "object",
                           "additionalProperties": false,
                           "required": [
+                            "inbox_snooze",
                             "approvals",
                             "agent_alerts",
                             "deposits",
@@ -20993,6 +20997,7 @@
                                 }
                               }
                             },
+                            "inbox_snooze": {"type":"object","description":"K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.","additionalProperties":false,"required":["inbox","telegram"],"properties":{"inbox":{"type":"boolean","default":true},"telegram":{"type":"boolean","default":true}}},
                             "status_incidents": {
                               "type": "object",
                               "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",
@@ -21122,6 +21127,7 @@
                           "type": "object",
                           "additionalProperties": false,
                           "required": [
+                            "inbox_snooze",
                             "approvals",
                             "agent_alerts",
                             "deposits",
@@ -21316,6 +21322,7 @@
                                 }
                               }
                             },
+                            "inbox_snooze": {"type":"object","description":"K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.","additionalProperties":false,"required":["inbox","telegram"],"properties":{"inbox":{"type":"boolean","default":true},"telegram":{"type":"boolean","default":true}}},
                             "status_incidents": {
                               "type": "object",
                               "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",
@@ -21430,6 +21437,7 @@
                     "type": "object",
                     "additionalProperties": false,
                     "required": [
+                      "inbox_snooze",
                       "approvals",
                       "agent_alerts",
                       "deposits",
@@ -21624,6 +21632,7 @@
                           }
                         }
                       },
+                      "inbox_snooze": {"type":"object","description":"K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.","additionalProperties":false,"required":["inbox","telegram"],"properties":{"inbox":{"type":"boolean","default":true},"telegram":{"type":"boolean","default":true}}},
                       "status_incidents": {
                         "type": "object",
                         "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",

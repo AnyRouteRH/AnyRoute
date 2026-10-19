@@ -388,6 +388,7 @@ const schema = z.object({
   ...securityAlertsEnv, // D138
   ...notificationsEnv, // E146
   ...incidentNoticesEnv, // H169
+  INBOX_SNOOZE_REMINDERS_ENABLED: bool.default(false), // K187
   APPROVAL_NUDGES_ENABLED: bool.default(false), // G164
   ...modelWatchEnv, // G159
   PROJECT_BUDGET_TELEGRAM_ENABLED: bool.default(false), // D139
@@ -561,6 +562,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       const allowed = ["health-flush", "holds-expire", "catalog-refresh", "provider-registry", "health-probes", "canaries", "attestor", "receipts-anchor", "receipt-key-rotation", "settlement", "slasher", "chain-indexer", "paywith-aggregator", "escrow-indexer", "spend-watch", "alert-notifier", "telegram-bot", "measurements", "blind-key-rotation", "ipx-oracle", "dayzero", "ohttp-key-rotation", "host-anchor", "tlog", "batches", "skills-mirror", "sanctions-refresh"];
       allowed.push("weekly-summary"); // B120
       allowed.push("notification-quiet"); // E146
+      allowed.push("inbox-snooze"); // K187
       allowed.push("approval-nudges"); // G164
       allowed.push("model-watch"); // G159
       allowed.push("incident-notices"); // H169
@@ -717,6 +719,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     priceNoticesEnabled: e.PRICE_NOTICES_ENABLED, // C133
     securityAlertsEnabled: e.SECURITY_ALERTS_ENABLED, // D138
     notificationQuietHoursEnabled: e.NOTIFICATION_QUIET_HOURS_ENABLED, // E146
+    inboxSnoozeRemindersEnabled: e.INBOX_SNOOZE_REMINDERS_ENABLED, // K187
     approvalNudgesEnabled: e.APPROVAL_NUDGES_ENABLED, // G164
     modelWatchEnabled: e.MODEL_WATCH_ENABLED, // G159
     statusIncidentNoticesEnabled: e.STATUS_INCIDENT_NOTICES_ENABLED, // H169

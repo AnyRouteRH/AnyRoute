@@ -289,3 +289,5 @@ TASKS.push({ ...task('pin-messages', 'chat', 'Pin a message in Chat', 'Keep mess
 TASKS.push({ ...task("why-refused", "agents", "Understand a refused request", "Read which rule refused a request and where to change it.", "/why/", "refusal, refused, denied, rule, budget, approval, work hours, ip, read-only"), menu: false }); // K190
 
 TASKS.push({ ...task("summary-schedule", "agents", "Choose a daily or weekly summary", "Set the summary hour and time zone in Notifications.", "/docs/#summary-schedule", "daily, weekly, summary, monday, hour, time zone, notifications"), menu: false }); // K188
+
+TASKS.push({ ...task('snooze', 'build', 'Snooze a notice', 'Set a notice aside until a chosen time, or see what is snoozed.', '/docs/#snooze', 'snooze, inbox, reminder, tomorrow, monday, notifications'), menu: false }); // K187
