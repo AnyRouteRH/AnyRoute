@@ -5,6 +5,198 @@
 // Keep old ids and dates stable so bookmarks and feed readers keep working.
 export default [
   {
+    "id": "approval-notes",
+    "date": "2026-10-19",
+    "title": "Tell your agent why",
+    "summary": "Add a short note when you approve or deny an agent's request, on the web or in Telegram; the agent receives it with the decision.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#approval-notes"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/500626b756bbb131dbec63e6a46f8a6f9cf87b19"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "snooze",
+    "date": "2026-10-19",
+    "title": "Snooze a notice",
+    "summary": "Snooze an inbox item for an hour, until tomorrow or until Monday; it comes back unread, with an optional Telegram reminder.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#snooze"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/78392ea59c58cd18328a86d16c03d507604af189"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "summary-schedule",
+    "date": "2026-10-19",
+    "title": "A daily or weekly summary",
+    "summary": "Choose a daily or weekly summary and the hour it arrives, in your time zone.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#summary-schedule"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/6e3466aa30acb434a89deffd99470d243eba92c3"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "rulebook-review",
+    "date": "2026-10-19",
+    "title": "Review rulebook changes before saving",
+    "summary": "Before a rulebook change is saved, see the difference in plain words and what it would have done to last week's calls.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#rulebook-review"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/99988f202073b8317576cf9eb91f5aa06db7ce44"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "why-refused",
+    "date": "2026-10-19",
+    "title": "Every refusal explains itself",
+    "summary": "A refused request links to a page that says which rule refused it and where to change it.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#why-refused"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/e4ec5ddc8d2a6ad13cd299cbd6c17a60b9324d3b"
+      }
+    ],
+    "tags": [
+      "agents",
+      "build"
+    ]
+  },
+  {
+    "id": "pin-messages",
+    "date": "2026-10-19",
+    "title": "Pin a message in a chat",
+    "summary": "Pin messages to the top of a chat; pins survive history and summaries.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#pin-messages"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/88c76a301623e76ce6e34af9d69d064c743ef975"
+      }
+    ],
+    "tags": [
+      "chat"
+    ]
+  },
+  {
+    "id": "your-models",
+    "date": "2026-10-19",
+    "title": "Your models",
+    "summary": "Filter the model catalogue to the models you used in the last 30 days, with your calls, spend and success rate.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#your-models"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/bd354dffde1b520ce1d2d393562c682d65e3ed36"
+      }
+    ],
+    "tags": [
+      "chat",
+      "build"
+    ]
+  },
+  {
+    "id": "keyboard-shortcuts",
+    "date": "2026-10-19",
+    "title": "Keyboard shortcuts",
+    "summary": "Press ? on any page to see the keyboard shortcuts that work there.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#keyboard-shortcuts"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/46d66fee21704ea3e92ea0cb15f23e901f925e32"
+      }
+    ],
+    "tags": [
+      "build"
+    ]
+  },
+  {
+    "id": "approve-hour",
+    "date": "2026-10-19",
+    "title": "Approve for the next hour",
+    "summary": "Let the same kind of request from an agent through for the next hour, still within every other cap; end it early any time.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#approve-hour"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/d9400012ab56fafddeb61398ab6c37bea448e82c"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
+    "id": "low-balance-pause",
+    "date": "2026-10-19",
+    "title": "Pause agents when your balance runs low",
+    "summary": "Opt in to stop every agent automatically when your balance falls below an amount you choose, with one notice and Resume all.",
+    "links": [
+      {
+        "label": "Read docs",
+        "href": "/docs/#low-balance-pause"
+      },
+      {
+        "label": "View commit",
+        "href": "https://github.com/AnyRouteRH/AnyRoute/commit/f1bfbdec8aeb52a9ac0d4a2d12d51cf1ec0c64ce"
+      }
+    ],
+    "tags": [
+      "agents"
+    ]
+  },
+  {
     "id": "agent-status",
     "date": "2026-10-16",
     "title": "How each agent is doing, in one line",
