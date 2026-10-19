@@ -7,6 +7,7 @@ import Markdown from "../Markdown";
 import { formatUsd } from "../../lib/arena.js";
 import { openChatPrint, printChatModel } from "../../lib/print-chat.js";
 import s from "./PrintChat.module.css";
+import { PrintedPin } from './MessagePins'; // K191
 import usePageCommand from '../commands/usePageCommand'; // J181
 
 export function PrintChatView({ model, viewRef }) {
@@ -16,6 +17,7 @@ export function PrintChatView({ model, viewRef }) {
       {model.lanes.length > 1 && <h2>Lane {lane.number} · {lane.model}</h2>}
       {lane.messages.map((message, index) => <section className={s.message} key={index}>
         <h3>{message.role === "user" ? "You" : message.model}</h3>
+        <PrintedPin pinned={message.pinned} /> {/* K191 */}
         {message.text && <Markdown text={message.text} renderCode={block => <pre><code>{block.text}</code></pre>} />}
         {message.images.map((url, imageIndex) => <figure key={imageIndex}><img src={url} alt={`${message.role === "assistant" ? "Generated" : "Attached"} image ${imageIndex + 1}`} /></figure>)}
         {message.omittedImages > 0 && <p>Some images are unavailable for printing.</p>}

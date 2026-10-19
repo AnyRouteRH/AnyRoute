@@ -64,6 +64,7 @@ export function editBranch(lane, messageId, text, attachments, uid) {
   const cut = lane.messages.findIndex(message => message.id === messageId && message.role === "user");
   if (cut < 0) return null;
   const user = { ...lane.messages[cut], id: uid(), text, attachments };
+  delete user.pinned; // K191: a new version starts without the original version's pin.
   const reply = { id: uid(), role: "assistant", model: lane.modelId, status: "waiting", text: "" };
   const next = forkLane(lane, cut, [user, reply]);
   return { lane: next, history: next.messages.slice(0, -1), reply };

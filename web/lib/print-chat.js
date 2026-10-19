@@ -18,6 +18,7 @@ export function printChatModel({ lanes = [], chat = null, find = () => null, now
         const facts = replyFacts(message);
         const images = inlineImages(message.role === "assistant" ? message.images : (message.attachments || []).filter(file => file.kind === "image").map(file => file.url));
         return {
+          ...(message.pinned === true ? { pinned: true } : {}), // K191
           role: message.role,
           text: typeof message.text === "string" ? message.text : "",
           images,

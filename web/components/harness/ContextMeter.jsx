@@ -42,7 +42,7 @@ export function useContextMeter({ lanes, find, system, draft, files, busy, auth,
     try {
       await limits.streamChat({ messageId: id, key: auth.key, body: request.body, signal: ctl.signal, headers: { 'x-title': 'Anyroute Chat', ...priv.headers() }, onEvent: ev => { reply = applyChunk(reply, ev); } });
       if (version !== generation.current) return;
-      const seed = summarySeed(reply.text, model.id, id);
+      const seed = summarySeed(reply.text, model.id, id, lane); // K191
       if (project) seed.project = project; // J183
       const old = lanes.map(l => l.id === lane.id ? { ...l, messages: [...l.messages, { id: 'request-' + id, role: 'user', text: request.body.messages.at(-1).content, attachments: [] }, { ...reply, id, model: model.id, role: 'assistant', status: 'done' }] } : l);
       setLink({ old, next: [seed], system, privateMode: priv.on, showingOld: false, reply, omitted: request.omitted, seedId: seed.messages[0].id });

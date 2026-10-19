@@ -40,6 +40,7 @@ import RunwayDocs from "../../components/RunwayDocs"; // B119
 import ContinueAnswerDocs from "../../components/ContinueAnswerDocs"; // H166
 import ChatCapDocs from "../../components/ChatCapDocs"; // G162
 import PrintChatDocs from "../../components/PrintChatDocs"; // H174
+import PinMessagesDocs from "../../components/PinMessagesDocs"; // K191
 import ChatCostDocs from "../../components/ChatCostDocs"; // C128
 import QuietAgentAlertsDocs from '../../components/QuietAgentAlertsDocs'; // D141
 import AgentSpendGlanceDocs from "../../components/AgentSpendGlanceDocs"; // C132
@@ -930,6 +931,7 @@ export default function Docs() {
           <DocsFeatureIndex />
           <ChatCostDocs /> {/* C128 */}
           <PrintChatDocs /> {/* H174 */}
+          <PinMessagesDocs /> {/* K191 */}
           <CommandPaletteDocs /> {/* J181 */}
           <KeyboardShortcutsDocs /> {/* K193 */}
           <ChatCapDocs /> {/* G162 */}

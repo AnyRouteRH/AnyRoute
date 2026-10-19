@@ -2,6 +2,7 @@ import { snapshotLanes as snapshotText, restoreLanes as restoreText } from "./pr
 import { imageHistoryFields, storedImages } from "./harness-images.js";
 import { continuationFields } from "./harness-continue-history.js"; // H166
 import { restoreBranches, snapshotBranches } from "./harness-branch-history.js"; // G156
+import { pinHistoryFields, pinSnapshotSource } from './message-pins.js'; // K191
 
 // Inputs and generated outputs extend the same encrypted browser vault, with no new storage key.
 function snapshotImageLanes(lanes) {
@@ -9,8 +10,9 @@ function snapshotImageLanes(lanes) {
   return (lanes || []).map((lane) => {
     const messages = (lane.messages || []).flatMap((message) => {
       const fields = message.role === "assistant" ? imageHistoryFields(message) : {};
-      const source = fields.images && !message.text ? { ...message, text: "Generated image" } : message;
+      const source = pinSnapshotSource(fields.images && !message.text ? { ...message, text: "Generated image" } : message); // K191
       const saved = snapshotText([{ ...lane, messages: [source] }])[0].messages[0];
+      if (saved) Object.assign(saved, pinHistoryFields(message)); // K191
       if (saved && message.role === "assistant") Object.assign(saved, continuationFields(message)); // H166
       if (message.role === "user") {
         const images = storedImages(message.attachments);
@@ -34,6 +36,7 @@ function restoreImageLanes(saved, uid) {
     ...lane,
     messages: lane.messages.map((message, i) => {
       const source = saved?.[index]?.messages?.[i];
+      Object.assign(message, pinHistoryFields(source)); // K191
       if (message.role === "user") return { ...message, attachments: storedImages((source?.attachments || []).map((image) => image.imageRef ? images.get(image.imageRef) || {} : image)) };
       const fields = imageHistoryFields(source);
       Object.assign(message, continuationFields(source)); // H166

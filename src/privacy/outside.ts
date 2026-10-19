@@ -9,6 +9,7 @@ import { duplicateAgentReader, duplicateAgentStores } from "./agent-duplicate.ts
 import { approvalNudgeStores } from "./approval-nudges.ts"; // G164
 import { modelWatchReader } from "./model-watch.ts"; // G159
 import { chatProjectsBrowser } from "./chat-projects.ts"; // J183
+import { messagePinsBrowser } from './message-pins.ts'; // K191
 import { chatCapBrowser } from "./chat-cap.ts"; // G162
 import { telegramAgentStopReader } from "./telegram-agent-stop.ts"; // G163
 import { browserSessionStores } from "./browser-sessions.ts"; // E147
@@ -953,6 +954,7 @@ export const EXTERNAL: ExternalDoc = {
       folderInstructionsBrowser, // G157
       chatBranchesBrowser, // G156
       chatProjectsBrowser, // J183
+      messagePinsBrowser, // K191
       chatCapBrowser, // G162
       askAboutThisBrowser, // H175
       continueAnswerBrowser, // H166

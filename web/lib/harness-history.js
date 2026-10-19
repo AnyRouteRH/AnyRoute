@@ -1,4 +1,5 @@
 import { continuationFields } from "./harness-continue-history.js"; // H166
+import { pinHistoryFields } from './message-pins.js'; // K191
 import { capDollars, capFields } from './chat-cap.js'; // G162
 import { matchesShortcut } from './keyboard-shortcuts.js'; // K193
 import { historyMetadata } from "./history-metadata.js";
@@ -38,6 +39,7 @@ function validateChat(c) {
     const messages = l.messages.map((m) => {
       if (!m || !["user", "assistant"].includes(m.role)) bad();
       const out = { id: text(m.id, 200), role: m.role, text: text(m.text, MAX_BYTES) };
+      Object.assign(out, pinHistoryFields(m)); // K191
       if (m.role === "user") {
         if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 100)) bad();
         out.files = (m.files || []).map((f) => text(f, 500));
@@ -115,6 +117,7 @@ export function exportMarkdown(chats) {
     c.lanes.forEach((l, i) => {
       lines.push(`## ${chats.length > 0 && c.lanes.length > 1 ? `Conversation ${i + 1} · ` : ""}${literal(l.modelId || "Model not recorded")}`, "");
       for (const m of l.messages) {
+        if (m.pinned === true) lines.push('Pinned', ''); // K191
         lines.push(`### ${m.role === "user" ? "You" : "Assistant"}`, "", m.text, "");
         if (m.files?.length) lines.push(`Attachment names: ${m.files.map(literal).join(", ")}`, "");
         if (m.receiptId) lines.push(`Receipt: ${literal(m.receiptId)}`, "");

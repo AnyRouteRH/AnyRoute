@@ -15,6 +15,7 @@ import { SAVED_ANSWER_BYTES, savedAnswerEdits, validateSavedAnswers } from "./sa
 import { receiptLane } from "./private-mode.js";
 import { folderDocument, folderVaultEdits } from "./chat-folders.js"; // D143
 import { historyEdits, savedEntry } from "./harness-history-vault.js";
+import { pinFields } from './message-pins.js'; // K191
 
 export const VERSION = 1;
 export const KDF = "PBKDF2-SHA256";
@@ -266,7 +267,7 @@ export function snapshotLanes(lanes) {
   return (lanes || []).map((l) => ({
     modelId: l.modelId || null,
     messages: (l.messages || []).flatMap((m) => {
-      if (m.role === "user" && typeof m.text === "string" && m.text.trim()) return [{ id: m.id, role: "user", text: m.text, files: (m.attachments || []).map((a) => a.name).filter(Boolean) }];
+      if (m.role === "user" && typeof m.text === "string" && (m.text.trim() || m.pinned === true)) return [{ id: m.id, role: "user", text: m.text, files: (m.attachments || []).map((a) => a.name).filter(Boolean), ...pinFields(m) }]; // K191
       if (m.role !== "assistant" || !m.text || (m.toolCalls || []).length || m.status === "error") return [];
       const { lane, disclosure } = receiptLane(m.receipt);
       const u = m.usage || {};
@@ -274,6 +275,7 @@ export function snapshotLanes(lanes) {
         {
           id: m.id,
           role: "assistant",
+          ...pinFields(m), // K191
           text: m.text,
           model: m.model,
           provider: m.provider || undefined,
@@ -297,10 +299,11 @@ export function restoreLanes(saved, uid = () => Math.random().toString(36).slice
     modelId: l.modelId || null,
     messages: (l.messages || []).map((m) =>
       m.role === "user"
-        ? { id: m.id, role: "user", text: m.text, attachments: [] }
+        ? { id: m.id, role: "user", text: m.text, attachments: [], ...pinFields(m) } // K191
         : {
             id: m.id,
             role: "assistant",
+            ...pinFields(m), // K191
             model: m.model,
             status: m.stopped ? "stopped" : "done",
             text: m.text,

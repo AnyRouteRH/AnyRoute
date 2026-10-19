@@ -51,6 +51,7 @@ import { continueAnswer, continuationPatcher } from "../lib/harness-continue.js"
 import s from "./Harness.module.css";
 import CopyAsCode from "./harness/CopyAsCode"; // C130
 import { BranchLane, BranchProvider, BranchVersions } from "./harness/Branches"; // G156
+import { MessagePinsProvider, MessagePinMenu, MessagePinsStrip } from "./harness/MessagePins"; // K191
 import { resendEdit, resendReply } from "../lib/harness-branch-actions.js"; // G156
 import { modelUnavailable, selectableModels } from "../lib/model-availability.js"; // ON5
 import { useCatalogRefresh } from "./harness/useCatalogRefresh"; // ON5
@@ -544,6 +545,7 @@ function Reply({ msg, model, last, busy, onRegenerate, onToolResults, onSignIn, 
       {!streaming && <SaveAnswer msg={msg} />} {/* D140 */}
       <ReplyPrivacy msg={msg} open={last} />
       <ContinueAnswer msg={msg} last={last} busy={busy} /> {/* H166 */}
+      <MessagePinMenu message={msg} /> {/* K191 */}
       <BranchVersions messageId={msg.id} /> {/* G156 */}
     </article>
   );
@@ -601,6 +603,7 @@ function UserMsg({ msg, editing, onEdit, onCancel, onSave, busy, onSavePrompt })
           )}
         </>
       )}
+      <MessagePinMenu message={msg} /> {/* K191 */}
       <BranchVersions messageId={msg.id} /> {/* G156 */}
     </article>
   );
@@ -1183,6 +1186,7 @@ export default function Harness() {
     <FolderInstructionsProvider scope={folderScope} onScope={setFolderScope}> {/* G157 */}
     <ChatProjectsProvider value={{ lanes, setLanes, scope: folderScope, apiKey: auth.key, busy }}> {/* J183 */}
     <BranchProvider lanes={lanes} setLanes={setLanes} busy={busy} beforeSwitch={() => { voice.stop(); setEditing(null); setFileNote(""); }}> {/* G156 */}
+    <MessagePinsProvider lanes={lanes} setLanes={setLanes} busy={busy}> {/* K191 */}
     <div className={s.harness} data-harness-app data-compare={compare || undefined}>
       <ChatCommands lanes={lanes} focus={focus} busy={busy} continueReply={continueReply} /> {/* J181 */}
       <Rail
@@ -1338,6 +1342,7 @@ export default function Harness() {
                 return (
                   <BranchLane key={l.id} laneId={l.id} onInteract={() => { branchLaneRef.current = l.id; }}> {/* G156 */}
                   <div key={l.id} className={s.lane} onClick={() => compare && setFocus(li)}>
+                    <MessagePinsStrip /> {/* K191 */}
                     {l.messages.map((m) =>
                       m.role === "user" ? (
                         <UserMsg key={m.id} msg={m} busy={busy} onSavePrompt={() => prompts.save(m.text, l.modelId)} editing={editing === m.id} onEdit={() => setEditing(m.id)} onCancel={() => setEditing(null)} onSave={(t) => send(t, m.attachments || [], turnIndex(l, m.id))} />
@@ -1465,6 +1470,7 @@ export default function Harness() {
         {announce}
       </p>
     </div>
+    </MessagePinsProvider> {/* K191 */}
     </BranchProvider> {/* G156 */}
     </ChatProjectsProvider> {/* J183 */}
     </FolderInstructionsProvider> {/* G157 */}
