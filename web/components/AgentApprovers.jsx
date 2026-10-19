@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Button } from './UI';
 import { APPROVER_MODES, approversBody, approversPath } from '../lib/agent-approvers';
+import { ApproverReview } from './limits/RulebookReview'; // K189
 export default function AgentApprovers({ request, keyHash }) {
   const id = useId();
   const [data, setData] = useState(null), [mode, setMode] = useState('owners'), [members, setMembers] = useState([]);
@@ -16,6 +17,8 @@ export default function AgentApprovers({ request, keyHash }) {
     return () => ac.abort();
   }, [request, keyHash]);
   if (!data) return error ? <p role="alert">{error}</p> : null;
+  return <ApproverReview before={data} after={approversBody(mode, members)} members={data.members} busy={busy} saveError={error}>{ReviewButton => { // K189
+  const Button = ReviewButton; // K189: final Save keeps the existing authenticated handler.
   return <section className="control-panel" style={{ minWidth: 0, overflowWrap: 'anywhere' }}><h2>Who can approve</h2>
     <p className="help-text">Choose who reviews this agent’s requests. Owners can always approve. Teammates cannot decide their own agent key’s requests. Approve and allow next time changes rules and stays with owners and admins.</p>
     <form onSubmit={async e => {
@@ -27,4 +30,5 @@ export default function AgentApprovers({ request, keyHash }) {
       {error && <p role="alert">{error}</p>}{saved && <p role="status">Approvers saved.</p>}<Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save approvers'}</Button>
     </form><p className="help-text">Allowed approvers see pending requests in their inbox and on Agents. They can link their own Telegram for approval buttons. Telegram can read approval details. Approval still works once and expires at its original time.</p>
   </section>;
+  }}</ApproverReview>; // K189
 }

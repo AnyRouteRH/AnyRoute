@@ -1,0 +1,6 @@
+/* K189 */
+.editor[hidden] { display: none; }
+.review { min-width: 0; overflow-wrap: anywhere; }
+.review ul { padding-inline-start: 1.25rem; }
+.review li + li { margin-top: .65rem; }
+.review h3:focus { outline: 2px solid var(--signal); outline-offset: .25rem; }

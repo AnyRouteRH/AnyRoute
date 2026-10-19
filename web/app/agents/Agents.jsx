@@ -20,6 +20,7 @@ import { stoppedLabel } from '../../lib/stop-until'; // B117
 import { LIMIT_WORDS as W, limitsFromRulebook, rulebookFromLimits } from '../../lib/spending-limits';
 import RulebookCard from '../../components/limits/RulebookSentences'; // B124
 import RulebookHistory from '../../components/limits/RulebookHistory'; // D144
+import RulebookReview from '../../components/limits/RulebookReview'; // K189
 import SpendingLimits, { LimitGroup, useAgentGuard } from '../../components/limits/SpendingLimits';
 import ReplayResult, { ReplayButton, useRuleReplay } from '../../components/limits/ReplayRules'; // Replay your rules
 import s from './agents.module.css';
@@ -62,6 +63,8 @@ function RulebookForm({ policy, onSave, onRemove, busy: working, locked = false,
   const built = rulebookFromLimits(form);
   const replay = useRuleReplay(request, keyHash);
   const replaySetup = () => { replay.run(rulebookFromLimits(form)); replay.reveal(); };
+  return <RulebookReview saved={policy} draft={built} replay={replay} busy={working} locked={locked}>{ReviewButton => { // K189
+  const Button = ReviewButton; // K189: keep the existing editor and save handler.
   return <form onSubmit={e => { e.preventDefault(); setErrors(built.errors); if (!built.errors.length) onSave(built.policy); }}>
     <AgentStatusTarget id="agent-status-guard" section="guard"/> {/* J176 */}
     <SpendingLimits id="rulebook" value={form} onChange={setForm} disabled={working} locked={locked} setups="agents" scope guard={guard || policy?.actions !== undefined} stop={stop} onReplay={replaySetup}>
@@ -82,6 +85,7 @@ function RulebookForm({ policy, onSave, onRemove, busy: working, locked = false,
     <Errors errors={errors}/><div className="button-row">{!locked && <Button type="submit" disabled={busy}>{W.save}</Button>}<ReplayButton replay={replay} disabled={working} onRun={() => replay.run(built)}/>{hasPolicy && !locked && <Button type="button" secondary disabled={busy} onClick={() => { if (window.confirm('Remove these spending limits? Their rules will no longer apply.')) onRemove(); }}>{W.remove}</Button>}</div>
     <ReplayResult id="replay-rules" replay={replay} current={built.policy}/>
   </form>;
+  }}</RulebookReview>; // K189
 }
 
 function AgentDetail({ agent, request, refreshList, refreshVersion, onError, guard }) {

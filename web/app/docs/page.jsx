@@ -103,6 +103,7 @@ import StopUntilDocs from "../../components/StopUntilDocs"; // B117
 import DefaultRouteDocs from "../../components/DefaultRouteDocs";
 import RulebookWordsDocs from "../../components/RulebookWordsDocs"; // B124
 import RulebookHistoryDocs from "../../components/RulebookHistoryDocs"; // D144
+import RulebookReviewDocs from "../../components/RulebookReviewDocs"; // K189
 import YourImagesDocs from "../../components/YourImagesDocs"; // H167
 import StarterSetupsDocs from "../../components/StarterSetupsDocs"; // U103
 import AgentBreakersDocs from "../../components/AgentBreakersDocs";
@@ -965,6 +966,7 @@ export default function Docs() {
           <SpendingLimitsDocs /><DefaultRouteDocs /><StarterSetupsDocs /><AutoTopupDocs /><ReplayRulesDocs /><PlaybooksDocs /><StopUntilDocs /><RulebookWordsDocs /><AgentRulebookDocs /><AgentBreakersDocs /><AgentAutonomyDocs /> {/* B117 B124 */}
           <StopAllDocs /> {/* H172 */}
           <RulebookHistoryDocs /> {/* D144 */}
+          <RulebookReviewDocs /> {/* K189 */}
           <WorkHoursDocs /> {/* G161 */}
           <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}<LaneReportDocs /> {/* Lane report */}
           <MakeGoodDocs /> {/* V6 R */}
