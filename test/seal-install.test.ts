@@ -239,7 +239,7 @@ describe("install.sh", () => {
     } finally {
       ollama.stop();
     }
-  });
+  }, 30_000); // runs install.sh twice; over 5 s on CI runners
 
   test("refuses claims the hardware cannot back, and missing engines", async () => {
     const snp = await install([...base(join(tmp, "snp"), engine.port), "--tee", "sev-snp", "--lanes", "public,attested"]);
