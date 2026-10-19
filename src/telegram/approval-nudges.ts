@@ -1,3 +1,4 @@
+import { canOfferApprovalHour } from "./approval-window.ts"; // K194
 import { readApprovalContext } from "../agents/approval-context.ts"; // J185
 // G164: reuse approval callback identities and current link/decision authorization.
 import { eq } from "drizzle-orm";
@@ -38,7 +39,7 @@ export async function sendApprovalNudge(ctx: Ctx, id: string, saved: Link, fetch
       const [agent] = await tx.select().from(keys).where(eq(keys.keyHash, row.keyHash));
       const policies = await policiesFor(tx, row.keyHash);
       const text = `${nudgeTitle(row.expiresAt, now)}\n${plainApprovalText(row, policies.map(p => ({ policy: p.spec, inherited: p.keyHash !== row.keyHash })), agent?.name ?? undefined, ctx.cfg.agentApprovalContextEnabled ? await readApprovalContext(tx, row, now) : [])}`; // J185
-      const sent = await new TelegramApi(ctx.cfg.telegram.botToken!, fetchImpl).call<{ message_id: number }>("sendMessage", { chat_id: link.uid, text, reply_markup: { inline_keyboard: approvalButtons(id, link.generation) } }, AbortSignal.timeout(5_000));
+      const sent = await new TelegramApi(ctx.cfg.telegram.botToken!, fetchImpl).call<{ message_id: number }>("sendMessage", { chat_id: link.uid, text, reply_markup: { inline_keyboard: approvalButtons(id, link.generation, await canOfferApprovalHour(scoped, caller, row)) } }, AbortSignal.timeout(5_000));
       const value = { ...old, uid: link.uid, approval: id, generation: link.generation, expires: row.expiresAt.getTime(), status: "pending", reminder_message_id: sent.message_id, ...(!old?.message_id ? { message_id: sent.message_id } : {}) };
       await tx.insert(kv).values({ key, value }).onConflictDoUpdate({ target: kv.key, set: { value, updatedAt: now } });
       return true;

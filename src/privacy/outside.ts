@@ -1,4 +1,5 @@
 import { snoozeReader, snoozeStores } from "./inbox-snooze.ts"; // K187
+import { approvalWindowReader } from "./approval-window.ts"; // K194
 import { telegramMenuReader } from "./telegram-menu.ts"; // J179
 import { approvalContextStores } from "./approval-context.ts"; // J185
 import { agentStatusView } from "./agent-status.ts"; // J176
@@ -790,6 +791,7 @@ const noLog = (item: string, file: string, contains: string): { item: string; ev
 bodyReaders.push(...agentStopAllReaders); // H172
 bodyReaders.push(snoozeReader); // K187
 bodyReaders.push(telegramMenuReader); // J179
+bodyReaders.push(approvalWindowReader); // K194
 describePolicyHistoryReaders(bodyReaders); // D144
 export const EXTERNAL: ExternalDoc = {
   redis: {

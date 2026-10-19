@@ -25,6 +25,7 @@ import SpendingLimits, { LimitGroup, useAgentGuard } from '../../components/limi
 import ReplayResult, { ReplayButton, useRuleReplay } from '../../components/limits/ReplayRules'; // Replay your rules
 import s from './agents.module.css';
 import Approvals from './Approvals';
+import ApprovalHours from '../../components/ApprovalHours'; // K194
 import { BreakersForm, TrippedBadge } from './Breakers';
 import AgentWorkspace from './AgentWorkspace';
 import QuietAgentAlert from '../../components/QuietAgentAlert'; // D141
@@ -198,6 +199,7 @@ export default function Agents() {
       {key && agents.length > 0 && <AgentStopAll key={key} agents={agents} request={request} disabled={busy || !loaded}/>} {/* H172 */}
       {key && <TelegramLink key={key} principalKey={key}/>}
       {key && <section id="approvals"><Approvals key={key} request={request} agents={agents} onError={onError}/></section>}
+      {key && <ApprovalHours key={key} request={request} agents={agents}/>} {/* K194 */}
       {key && agent && !agent.approval_only && <Autonomy agent={agent}/> }
       {key && agent && !agent.approval_only && <AgentWorkspace key={key+agent.key_hash} agent={agent} request={request} refreshVersion={revision}><AgentDetail agent={agent} request={request} onError={onError} guard={guard} refreshVersion={revision} refreshList={() => setRevision(r => r+1)}/></AgentWorkspace>}
       {key && agent && <Alerts key={"alerts"+key+agent.key_hash} /* U102: a key distinct from AgentWorkspace’s, so switching agents leaves no stale panel. */ keyHash={agent.key_hash} request={request} refreshVersion={revision} onError={onError}/>}

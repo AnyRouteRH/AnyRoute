@@ -292,3 +292,5 @@ TASKS.push({ ...task("why-refused", "agents", "Understand a refused request", "R
 TASKS.push({ ...task("summary-schedule", "agents", "Choose a daily or weekly summary", "Set the summary hour and time zone in Notifications.", "/docs/#summary-schedule", "daily, weekly, summary, monday, hour, time zone, notifications"), menu: false }); // K188
 
 TASKS.push({ ...task('snooze', 'build', 'Snooze a notice', 'Set a notice aside until a chosen time, or see what is snoozed.', '/docs/#snooze', 'snooze, inbox, reminder, tomorrow, monday, notifications'), menu: false }); // K187
+
+TASKS.push({ ...task("approve-hour", "agents", "Approve for the next hour", "Allow matching requests for one hour, then return to asking first.", "/docs/#approvals", "approval, hour, temporary, end early, agent, telegram"), menu: false }); // K194

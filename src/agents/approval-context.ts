@@ -1,3 +1,4 @@
+import { approvalWindowView } from "./approval-window.ts"; // K194
 // J185: read existing metadata on the supplied connection, including inside delivery transactions.
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.ts";
@@ -13,6 +14,7 @@ import { policiesFor } from "./store.ts";
 import { workHoursCheck } from "./work-hours.ts";
 
 export type ApprovalContext = {
+  windowLines?: string[]; // K194
   today?: bigint; dailyCaps?: { cap: bigint; rolling: boolean }[];
   insideWorkHours?: boolean; weekly?: { requested: number; approved: number };
   duplicated?: boolean; rotatedFrom?: boolean; rotatedTo?: boolean;
@@ -27,6 +29,7 @@ export function approvalContextLines(maxCost: bigint, context: ApprovalContext):
   }
   if (context.insideWorkHours !== undefined) facts.push(context.insideWorkHours ? "Inside work hours now" : "Outside work hours now");
   if (context.weekly) facts.push(`Approvals this week (UTC): ${context.weekly.requested} requested, ${context.weekly.approved} approved`);
+  facts.push(...(context.windowLines ?? [])); // K194
   if (context.duplicated) facts.push("Duplicate agent");
   if (context.rotatedFrom) facts.push("Replacement key after rotation");
   if (context.rotatedTo) facts.push("Rotated key; replacement exists");
@@ -52,6 +55,7 @@ export async function readApprovalContext(db: Db | Tx, row: ApprovalRow, now = n
     today: BigInt(charges.today),
     dailyCaps: runway.limits.filter(limit => limit.period === "day").map(limit => ({ cap: usdToPico(limit.cap_usd), rolling: limit.source === "rulebook" })),
     ...(hours.length ? { insideWorkHours: hours.every(value => workHoursCheck(value, now).inside) } : {}),
+    windowLines: (await approvalWindowView(db, row.keyHash, now, row.intent)).map(w => w.text), // K194
     weekly, duplicated: !!copy, rotatedFrom: !!rotation?.from, rotatedTo: !!rotation?.to,
   });
 }

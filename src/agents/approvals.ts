@@ -1,4 +1,5 @@
 import { inheritRefusal } from "../why/help.ts"; // K190
+import { matchesApprovalWindow, recordApprovalWindowUse } from "./approval-window.ts"; // K194
 import { assertDecisionApprover } from "./approvers.ts"; // E153
 import { recordApprovalDecision } from "./approver-records.ts"; // E153
 import { recordApprovalWebhook } from "../webhooks/approvals.ts"; // V86: transaction-bound notices.
@@ -49,6 +50,8 @@ export async function prepareApproval(db: Db, tx: Tx, rows: PolicyRow[], intents
   if (refusal && refusal.type !== "agent_approval_required") return { error: refusal };
   const id = approvalRequest.getStore();
   if (!refusal && id === undefined) return {};
+  const window = refusal ? await matchesApprovalWindow(tx, rows, intents, keyHash, now, id) : undefined; // K194: deny/cap failures returned above.
+  if (window) return { use: () => recordApprovalWindowUse(tx, window, rows, intents, keyHash, now) }; // K194
   const cost = intents.reduce((max, i) => { const c = i.kind === "inference" ? i.est_cost_pico : i.kind === "paid_tool" ? i.price_pico : i.kind === "action" ? i.amount_pico : 0n; return c > max ? c : max; }, 0n);
   await expireApprovals(tx, keyHash, now);
   if (id !== undefined) {

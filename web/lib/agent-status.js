@@ -28,5 +28,6 @@ export function agentStatusParts(data, policies = []) {
   if (runway.today_charged_usd > 0 || runway.limits.length) parts.push({ ...part('runway', spending + pace, 'agent-status-runway'), title });
   if (data.quiet) parts.push(part('quiet', `quiet for ${data.quiet.hours} ${data.quiet.hours === 1 ? 'hour' : 'hours'}`, 'agent-status-quiet-' + data.key_hash));
   if (data.guard_paused) parts.push(part('guard', 'Agent Guard stopped this agent', 'agent-status-guard'));
+  for (const window of data.approval_windows ?? []) parts.push(part('approval-hour-' + window.id, window.text, 'approval-hours')); // K194
   return parts;
 }

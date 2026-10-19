@@ -23444,6 +23444,13 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "approval_windows": {
+                      "type": "array",
+                      "description": "K194: present only while an approval hour is active; expires or becomes unavailable when its effective rules change.",
+                      "items": {
+                        "$ref": "#/components/schemas/ApprovalHourWindow"
+                      }
+                    },
                     "data": {
                       "type": "object",
                       "properties": {
@@ -23771,6 +23778,242 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/agents/approvals/{id}/approve-hour": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "K194: Preview approve for the next hour",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A current confirmation digest for this pending amount-based approval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "confirmation"
+                      ],
+                      "properties": {
+                        "confirmation": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Approval expired, decided, changed rulebook or unsupported ask-first reason."
+          }
+        },
+        "operationId": "approvalHourGetPreview"
+      },
+      "post": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "K194: Approve matching requests for one hour",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval-hour result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Approval expired, decided, changed rulebook or unsupported ask-first reason."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "confirmation"
+                ],
+                "properties": {
+                  "confirmation": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns data.approval (AgentApproval) and data.window {id, until, text}. Same agent, effective policy hashes, requesting amount-rule reasons, model/lane/declared tools or action/target must match; amounts may vary within other caps. All other restrictions apply. No new flag; AGENT_POLICY_ENABLED required (and AGENT_GUARD_ENABLED for actions).",
+        "operationId": "approvalHourPostPreview"
+      }
+    },
+    "/api/v1/agents/{key_hash}/approval-windows": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "K194: List active approval hours",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "data array of active {id, until, text, intent} windows; intent is the existing original approval metadata for identifying the allowance. Expired or changed-policy windows are omitted."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Approval expired, decided, changed rulebook or unsupported ask-first reason."
+          }
+        },
+        "operationId": "approvalHourGetList"
+      }
+    },
+    "/api/v1/agents/{key_hash}/approval-windows/{id}": {
+      "delete": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "K194: End an approval hour and withdraw its unused approval",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval-hour result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Approval expired, decided, changed rulebook or unsupported ask-first reason."
+          }
+        },
+        "operationId": "approvalHourDeleteEnd"
       }
     }
   },
@@ -38092,6 +38335,31 @@
             }
           }
         }
+      },
+      "ApprovalHourWindow": {
+        "type": "object",
+        "required": [
+          "id",
+          "until",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "text": {
+            "type": "string",
+            "description": "Approved for the next N minutes"
+          },
+          "intent": {
+            "type": "object",
+            "description": "Original projected approval intent; present on the approval-windows list only."
+          }
+        }
       }
     }
   },
@@ -38127,5 +38395,9 @@
     "endpoint": null,
     "flag": null,
     "description": "Browser composition of existing authenticated GET /api/v1/key, /api/v1/keys, /api/v1/agents, /api/v1/telegram/link, /api/v1/account/low-balance, /api/v1/account/security-alerts and /api/v1/account/notifications. Existing guards and feature switches apply; failed reads remain unavailable. Read-only keys are refused by the checkup reader; the GET allow-list is unchanged. No new endpoint, fields, server storage or automatic action. Fix opens existing controls. Dismissed item ids and public key hashes stay in browser localStorage. Used management keys without an IP list get a suggestion; existing APIs provide no count of usage locations. Optional business details check omitted."
+  },
+  "x-k194-approval-windows": {
+    "documentation": "/docs/#approvals",
+    "description": "K194: When active, GET /api/v1/agents/{key_hash}/status adds approval_windows, an array of {id,until,text}. Existing approval_context lines may include Approved for the next N minutes for matching requests. Properties are absent when no active window exists. Existing approvals/security_alerts preferences and Telegram quiet hours apply; no new notice type, worker, flag or migration."
   }
 }

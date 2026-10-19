@@ -1,3 +1,4 @@
+import { approvalWindowView } from "./approval-window.ts"; // K194
 // J176: compose existing metadata in one read-only snapshot; no report is stored.
 import { and, eq, gt, lte, sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.ts";
@@ -24,9 +25,11 @@ export async function readAgentStatus(db: Db | Tx, key: KeyRow, options: { quiet
     const anchor = last ?? setting.enabled_at;
     if (quietDue(setting.hours, anchor, null, now)) quiet = { hours: Math.floor((now.getTime() - Date.parse(anchor)) / 3_600_000), last_call_at: last };
   }
+  const approvalWindows = await approvalWindowView(db, key.keyHash, now); // K194
   return { key_hash: key.keyHash, as_of: now.toISOString(), stopped: stopped.length > 0,
     ...combinedStopFields(stopped.map(row => ({ killed: row.killed, ...stopFields(row) }))),
     work_hours: hours.map(({ key_hash, inside, time_zone, outside, next }) => ({ key_hash, inside, time_zone, outside, next_at: next?.toISOString() ?? null })),
+    ...(approvalWindows.length ? { approval_windows: approvalWindows } : {}), // K194
     pending_approvals: Number(approvals.count), runway: await readAgentRunway(db, key, now), quiet,
     guard_paused: options.guard && stopped.some(row => row.killedReason?.split(",").some(reason => guardReasons.has(reason))),
   };

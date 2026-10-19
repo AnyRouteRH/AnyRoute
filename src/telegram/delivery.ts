@@ -1,3 +1,5 @@
+import { canOfferApprovalHour } from "./approval-window.ts"; // K194
+import { approveForHour } from "../agents/approval-window.ts"; // K194
 import { STALE_MENU } from "./menu-command.ts"; // J179
 import { readApprovalContext } from "../agents/approval-context.ts"; // J185
 import { approvalMessageMatches } from "./approval-nudges.ts"; // G164
@@ -109,7 +111,7 @@ export async function deliverTelegramApprovals(ctx: Ctx, api: TelegramApi, reque
       const [previous] = requested ? await tx.select().from(kv).where(eq(kv.key, key)) : []; // J179
       await tx.insert(kv).values({ key, value: notice }).onConflictDoNothing(); // J179: retain prior buttons if a requested send fails.
       try {
-        const sent = await api.call<{ message_id: number }>("sendMessage", { chat_id: link.uid, text: await noticeText(scoped, row, !!requested), reply_markup: { inline_keyboard: [[{ text: "Approve", callback_data: callbackData("approve", row.id, link.generation) }, { text: "Deny", callback_data: callbackData("deny", row.id, link.generation) }]] } }, AbortSignal.timeout(5_000));
+        const sent = await api.call<{ message_id: number }>("sendMessage", { chat_id: link.uid, text: await noticeText(scoped, row, !!requested), reply_markup: { inline_keyboard: approvalButtons(row.id, link.generation, await canOfferApprovalHour(scoped, caller, row)) } }, AbortSignal.timeout(5_000));
         await tx.update(kv).set({ value: { ...notice, message_id: sent.message_id } }).where(eq(kv.key, key));
         sentCount++; // J179: listing refreshes the originating message binding.
       } catch { if (!previous) await tx.delete(kv).where(eq(kv.key, key)); } // J179
@@ -128,7 +130,7 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
   if (callback) {
     let outcome = "Approval unavailable.";
     try {
-      const match = /^tg:([ad]):([A-Za-z0-9_-]{24}):([A-Za-z0-9_-]{12})$/.exec(callback.data ?? "");
+      const match = /^tg:([adh]):([A-Za-z0-9_-]{24}):([A-Za-z0-9_-]{12})$/.exec(callback.data ?? "");
       if (!match || callback.from.is_bot || callback.message?.chat.type !== "private" || callback.message.chat.id !== callback.from.id) throw new Error("invalid");
       await linkLimit(ctx, "callback", callback.from.id, 20);
       await ctx.db.transaction(async tx => {
@@ -145,8 +147,8 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
         const notice = saved?.value as Notice | undefined;
         if (!approvalMessageMatches(notice, callback.message!.message_id)) throw new Error("invalid");
         // Exact same atomic decision and event recording as the dashboard. Intent consumption is unchanged.
-        const decided = await decideApproval(ctx.db, caller.accountId, row.id, caller.keyHash, match[1] === "a" ? "approve" : "deny", tx);
-        outcome = `Approval ${decided.status}.`;
+        const decided = match[1] === "h" ? (await approveForHour(ctx, caller.accountId, row.id, caller.keyHash, undefined, tx)).approval : await decideApproval(ctx.db, caller.accountId, row.id, caller.keyHash, match[1] === "a" ? "approve" : "deny", tx); // K194
+        outcome = match[1] === "h" ? "Approved for the next 60 minutes." : `Approval ${decided.status}.`; // K194
         await updateNotice(scoped, api, key, notice!, decided).catch(() => undefined);
       });
     } catch (error) { if (error instanceof ApiError && error.status === 409) outcome = "Approval is no longer pending."; }
@@ -179,4 +181,4 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
 }
 
 // G164: reminder buttons use the same callback binding as original approvals.
-export const approvalButtons = (id: string, generation: string) => [[{ text: "Approve", callback_data: callbackData("approve", id, generation) }, { text: "Deny", callback_data: callbackData("deny", id, generation) }]];
+export const approvalButtons = (id: string, generation: string, hour = false) => [[{ text: "Approve", callback_data: callbackData("approve", id, generation) }, { text: "Deny", callback_data: callbackData("deny", id, generation) }], ...(hour ? [[{ text: "Approve for the next hour", callback_data: `tg:h:${id}:${generation}` }]] : [])];

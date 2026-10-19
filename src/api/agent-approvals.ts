@@ -1,3 +1,4 @@
+import { agentApprovalWindowRoutes } from "./agent-approval-window.ts"; // K194
 import { approvalCaller, visibleApprovalKeys, approvalListJson } from "./agent-approvers.ts"; // E153
 import { configureTeamApprovers, canApprove } from "../agents/approvers.ts"; // E153
 import { agentApproveAndAllowRoutes } from "./agent-approve-and-allow.ts"; // B118
@@ -18,6 +19,7 @@ export function agentApprovalsRoutes(app: Hono, ctx: Ctx) {
   configureApprovals(ctx.db, ctx.cfg.agentApprovalTtlS);
   configureTeamApprovers(ctx.db, ctx); // E153
   agentApproveAndAllowRoutes(app, ctx); // B118
+  agentApprovalWindowRoutes(app, ctx); // K194
   app.use("/api/v1/agents/approvals/*", async (_c, next) => { if (!ctx.cfg.agentPolicyEnabled) fail(404, "Not found.", "not_found"); await next(); });
   app.use("/api/v1/agents/approvals", async (_c, next) => { if (!ctx.cfg.agentPolicyEnabled) fail(404, "Not found.", "not_found"); await next(); });
   app.get("/api/v1/agents/approvals", async c => {

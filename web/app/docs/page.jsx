@@ -1,4 +1,5 @@
 import WhyRefusedDocs from "../../components/WhyRefusedDocs"; // K190
+import ApprovalHourDocs from "../../components/ApprovalHourDocs"; // K194
 import TelegramMenuDocs from "../../components/TelegramMenuDocs"; // J179
 import AgentStatusDocs from "../../components/AgentStatusDocs"; // J176
 import TraceChargeDocs from "../../components/TraceChargeDocs"; // J182
@@ -987,6 +988,7 @@ export default function Docs() {
           <AgentAlertDocs />
           <AgentApprovalDocs />
           <ApprovalContextDocs /> {/* J185 */}
+          <ApprovalHourDocs /> {/* K194 */}
           <AgentApproversDocs /> {/* E153 */}
           <ApprovalNudgesDocs /> {/* G164 */}
           <ApproveAndAllowDocs /> {/* B118 */}

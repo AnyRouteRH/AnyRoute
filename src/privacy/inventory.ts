@@ -1,4 +1,5 @@
 import { describeSnoozes } from "./inbox-snooze.ts"; // K187
+import { describeApprovalWindow } from "./approval-window.ts"; // K194
 import { describeKeyRotation } from "./key-rotation.ts"; // G158
 import { describeBusinessDetails } from "./business-details.ts"; // H168
 import { describeWorkHours } from "./work-hours.ts"; // G161
@@ -66,6 +67,7 @@ export const TABLE_DOCS: Record<string, TableDoc> = { ...guardTables, ...agentPa
 describeSnoozes(TABLE_DOCS); // K187
 describeKeyRotation(TABLE_DOCS); // G158
 describeAgentApprovers(TABLE_DOCS); // E153
+describeApprovalWindow(TABLE_DOCS); // K194
 describeScheduledPrompts(TABLE_DOCS); // D136
 describeProjects(TABLE_DOCS); // C134
 describeSecurityAlerts(TABLE_DOCS); // D138

@@ -1,5 +1,6 @@
 'use client';
 import InboxSnooze, { SnoozeFeedback } from './InboxSnooze'; // K187
+import ApproveForHour from '../ApproveForHour'; // K194
 import ApprovalContext from '../ApprovalContext'; // J185
 import WeeklySummarySections from './WeeklySummarySections'; // J184
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -47,6 +48,7 @@ export default function AccountInbox({ apiKey, panel = false }) {
       <InboxItemReadState item={item}/> {/* H173 */}
       <InboxSnooze item={item} request={request} apiKey={apiKey} disabled={busy || !!action}/> {/* K187 */}
       <ApprovalContext lines={item.approval_context}/> {/* J185 */}
+      {item.kind === 'approval' && item.can_decide && <ApproveForHour request={request} id={item.approval_id} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onApproved={() => window.dispatchEvent(new Event(INBOX_EVENT))}/>} {/* K194 */}
       {item.kind === 'approval' && <><InboxApprovalRulebook approvalId={item.approval_id} intent={item.intent}/><p>{intentSummary(item.intent)}</p>{item.intent?.intents?.filter(intent => intent.max_output_tokens !== undefined).map((intent, index) => <p className="help-text" key={index}>{intent.model} · Output limit: {intent.max_output_tokens} tokens</p>)}<p>Limit {item.approval_limit} USDG · Expires <time dateTime={item.expires_at}>{new Date(item.expires_at).toLocaleString()}</time></p>{item.can_decide && <div className={s.actions}>{['approve', 'deny'].map(choice => <Button secondary key={choice} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onClick={() => run(item.id, () => decideInboxApproval(request, item.approval_id, choice))}>{choice === 'approve' ? 'Approve' : 'Deny'}</Button>)}</div>}{item.can_decide && <ApproveAndAllow request={request} id={item.approval_id} disabled={!!action || Date.parse(item.expires_at) <= Date.now()} onApproved={refresh}/>}</>}
     </li>)}</ul></InboxRulebooks> {/* B124 */}
   </section>;
