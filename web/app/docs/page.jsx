@@ -1,3 +1,4 @@
+import WhyRefusedDocs from "../../components/WhyRefusedDocs"; // K190
 import TelegramMenuDocs from "../../components/TelegramMenuDocs"; // J179
 import AgentStatusDocs from "../../components/AgentStatusDocs"; // J176
 import TraceChargeDocs from "../../components/TraceChargeDocs"; // J182
@@ -968,6 +969,7 @@ export default function Docs() {
           <RulebookHistoryDocs /> {/* D144 */}
           <RulebookReviewDocs /> {/* K189 */}
           <WorkHoursDocs /> {/* G161 */}
+          <WhyRefusedDocs /> {/* K190 */}
           <StatementDocs /> {/* V87 */}<ProofPackDocs /> {/* U100 */}<LaneReportDocs /> {/* Lane report */}
           <MakeGoodDocs /> {/* V6 R */}
           <AgentLedgerDocs /><AgreementsDocs />

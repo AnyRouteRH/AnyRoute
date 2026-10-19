@@ -1,3 +1,4 @@
+import { identifyRefusal } from "../why/help.ts"; // K190
 import { recordBreakerRequest, withBreakerModels } from "./breaker-state.ts";
 import { resumeScheduled } from "./stop-until.ts"; // B117
 import { breakerKillReason } from "./breakers.ts";
@@ -48,9 +49,10 @@ export async function recordDecisions(tx: Tx, rows: PolicyRow[], intents: AgentI
     await recordBreakerRequest(tx, row, state, intents, now);
     for (const intent of intents) {
       const decision = evaluateAgentPolicy(row.spec, state, intent, now);
-      await appendEvent(tx, { keyHash: row.keyHash, kind: "decision", decision: decision.decision, reasons: decision.reasons, intent: intentJson(intent), policySha256: row.sha256 }, now);
+      const event = await appendEvent(tx, { keyHash: row.keyHash, kind: "decision", decision: decision.decision, reasons: decision.reasons, intent: intentJson(intent), policySha256: row.sha256 }, now);
       if (decision.decision !== "allow") {
         const error = decisionError(decision, row);
+        identifyRefusal(error, String(event.id)); // K190
         const priority = (e: ApiError) => e.type === "agent_killed" ? 3 : e.type === "agent_policy_denied" ? 2 : 1;
         if (!refusal || priority(error) > priority(refusal)) refusal = error;
         if (decision.decision === "deny" && (row.spec.on_breach === "kill" || breakerKillReason(decision)) && !state.killed) {

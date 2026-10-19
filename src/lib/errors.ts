@@ -1,3 +1,4 @@
+import { refusalHelp } from "../why/help.ts"; // K190
 import { redactRpcFields, redactRpcText } from "../chain/rpc-redaction.ts";
 // OpenRouter-shaped errors: { error: { code: <http status>, message, metadata? } }.
 // `type` carries a stable machine-readable reason (OpenAI SDKs read error.type/code).
@@ -23,6 +24,7 @@ export class ApiError extends Error {
         code: this.status,
         message: this.message,
         type: this.type,
+        ...refusalHelp(this), // K190
         ...(this.metadata ? { metadata: this.metadata } : {}),
       },
     });

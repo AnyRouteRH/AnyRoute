@@ -1,0 +1,4 @@
+.explanation { max-width: 52rem; min-width: 0; overflow-wrap: anywhere; }
+.explanation h2, .explanation h3 { margin-block: 1rem; }
+.explanation p, .explanation li { margin-block: .8rem; }
+.explanation ul { padding-inline-start: 1.3rem; }

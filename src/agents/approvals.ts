@@ -1,3 +1,4 @@
+import { inheritRefusal } from "../why/help.ts"; // K190
 import { assertDecisionApprover } from "./approvers.ts"; // E153
 import { recordApprovalDecision } from "./approver-records.ts"; // E153
 import { recordApprovalWebhook } from "../webhooks/approvals.ts"; // V86: transaction-bound notices.
@@ -69,7 +70,9 @@ export async function prepareApproval(db: Db, tx: Tx, rows: PolicyRow[], intents
     await event(tx, row, "approval_requested", rows, now);
     await recordApprovalWebhook(db, tx, row); // V86.
   }
-  return { error: new ApiError(403, refusal.message, refusal.type, { ...refusal.metadata, approval_id: row.id, expires_at: row.expiresAt.toISOString(), poll: `/api/v1/agents/approvals/${row.id}` }) };
+  const error = new ApiError(403, refusal.message, refusal.type, { ...refusal.metadata, approval_id: row.id, expires_at: row.expiresAt.toISOString(), poll: `/api/v1/agents/approvals/${row.id}` });
+  inheritRefusal(error, refusal); // K190
+  return { error };
 }
 export async function decideApproval(db: Db, accountId: string, id: string, actor: string, action: "approve" | "deny", transaction?: Tx) {
   const decide = async (tx: Tx) => {

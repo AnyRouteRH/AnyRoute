@@ -111,6 +111,8 @@ sections.push(["command-palette", "Do it from ⌘K"]); // J181
 sections.push(["keyboard-shortcuts", "Keyboard shortcuts"]); // K193
 sections.push(["rulebook-review", "Review rulebook changes"]); // K189
 
+sections.push(["why-refused", "Why was a request refused?"]); // K190
+
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);
 }

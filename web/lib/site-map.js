@@ -285,3 +285,5 @@ TASKS.push({ ...task('command-palette', 'learn', 'Do it from ⌘K', 'Find action
 TASKS.push({ ...task('keyboard-shortcuts', 'learn', 'Keyboard shortcuts', 'See which keys work on each page, including Chat and Agents navigation.', '/docs/#keyboard-shortcuts', 'keyboard, shortcuts, keys, help, mac, windows'), menu: false }); // K193
 TASKS.push({ ...task('weekly-summary-details', 'agents', 'Read your Monday summary', 'Review reliability, savings estimates, watched models, agent caps and expired approvals.', '/docs/#weekly-summary', 'monday, weekly, summary, reliability, savings, caps, approvals'), menu: false }); // J184
 TASKS.push({ ...task('pin-messages', 'chat', 'Pin a message in Chat', 'Keep messages close, jump to them, and keep them when summarizing.', '/docs/#pin-messages', 'pin, unpin, message, chat, summary, print'), menu: false }); // K191
+
+TASKS.push({ ...task("why-refused", "agents", "Understand a refused request", "Read which rule refused a request and where to change it.", "/why/", "refusal, refused, denied, rule, budget, approval, work hours, ip, read-only"), menu: false }); // K190

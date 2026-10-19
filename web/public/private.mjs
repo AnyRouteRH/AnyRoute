@@ -3142,6 +3142,23 @@ async function chooseOnion(o) {
   }
 }
 
+// src/why/help.ts
+import { randomUUID } from "node:crypto";
+var types = new Set(["agent_policy_denied", "agent_killed", "agent_approval_required", "agent_approval_invalid", "model_not_allowed", "key_budget_exceeded", "project_budget_exceeded", "ip_not_allowed", "read_only_key"]);
+var ids = new WeakMap;
+function refusalHelp(error) {
+  if (typeof error.type !== "string" || !types.has(error.type))
+    return {};
+  if (typeof error.help_url === "string" && /^\/why\/\?type=[a-z_]+&id=[A-Za-z0-9-]+$/.test(error.help_url))
+    return { help_url: error.help_url };
+  let id = ids.get(error);
+  if (!id) {
+    id = randomUUID();
+    ids.set(error, id);
+  }
+  return { help_url: `/why/?type=${error.type}&id=${id}` };
+}
+
 // src/chain/rpc-redaction.ts
 var configured = new Set;
 var currentRedactor = (text) => text;
@@ -3182,6 +3199,7 @@ class ApiError extends Error {
         code: this.status,
         message: this.message,
         type: this.type,
+        ...refusalHelp(this),
         ...this.metadata ? { metadata: this.metadata } : {}
       }
     });
@@ -4294,21 +4312,21 @@ class TokenStore {
       const picked = selectTokens(usable, budget, cap);
       if (!picked)
         return { result: null };
-      const ids = new Set(picked.map((t) => t.token));
-      if (ids.size !== picked.length)
+      const ids2 = new Set(picked.map((t) => t.token));
+      if (ids2.size !== picked.length)
         throw new StoreError("The token store contains duplicate credentials.");
       return {
-        doc: { ...doc, tokens: doc.tokens.filter((t) => !ids.has(t.token)), unconfirmed: [...doc.unconfirmed, ...picked.map((t) => ({ ...t, sent_at: now.toISOString() }))] },
+        doc: { ...doc, tokens: doc.tokens.filter((t) => !ids2.has(t.token)), unconfirmed: [...doc.unconfirmed, ...picked.map((t) => ({ ...t, sent_at: now.toISOString() }))] },
         result: picked.map((token) => ({ token }))
       };
     });
   }
   settleMany(leases, outcome) {
     return this.locked((doc) => {
-      const ids = new Set(leases.map((l) => l.token.token));
-      const held = doc.unconfirmed.filter((t) => ids.has(t.token));
+      const ids2 = new Set(leases.map((l) => l.token.token));
+      const held = doc.unconfirmed.filter((t) => ids2.has(t.token));
       return {
-        doc: { ...doc, unconfirmed: doc.unconfirmed.filter((t) => !ids.has(t.token)), tokens: outcome === "returned" ? [...held.map(({ sent_at: _, ...t }) => t), ...doc.tokens] : doc.tokens },
+        doc: { ...doc, unconfirmed: doc.unconfirmed.filter((t) => !ids2.has(t.token)), tokens: outcome === "returned" ? [...held.map(({ sent_at: _, ...t }) => t), ...doc.tokens] : doc.tokens },
         result: undefined
       };
     });

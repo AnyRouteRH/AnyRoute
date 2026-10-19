@@ -1,3 +1,4 @@
+import { refusalHelp } from "../why/help.ts"; // K190
 import { fail } from "../lib/errors.ts";
 
 // Anthropic Messages API <-> the router's own chat-completions shape. Pure functions: the route (src/api/anthropic.ts)
@@ -383,13 +384,14 @@ export function errorType(status: number): string {
 }
 
 export function errorBody(status: number, message: string, requestId: string, anyroute?: Json): Json {
-  return { type: "error", error: { type: errorType(status), message }, request_id: requestId, ...(anyroute && Object.keys(anyroute).length ? { anyroute } : {}), ...(Array.isArray(anyroute?.suggested_models) ? { suggested_models: anyroute.suggested_models } : {}) /* B121 */ };
+  return { type: "error", error: { type: errorType(status), message, ...(anyroute?.help_url ? { help_url: anyroute.help_url } : {}) }, request_id: requestId, ...(anyroute && Object.keys(anyroute).length ? { anyroute } : {}), ...(Array.isArray(anyroute?.suggested_models) ? { suggested_models: anyroute.suggested_models } : {}) /* B121 */ };
 }
 
 /** What the caller should know about the router's own error beyond the Anthropic type: its stable type and metadata, and the receipt of a billed refusal. */
-export function routerErrorInfo(router: { type?: unknown; metadata?: unknown }, receiptId?: unknown): Json {
+export function routerErrorInfo(router: { type?: unknown; metadata?: unknown; help_url?: unknown }, receiptId?: unknown): Json {
   return {
     ...(typeof router.type === "string" ? { type: router.type } : {}),
+    ...refusalHelp(router), // K190
     ...(typeof receiptId === "string" ? { receipt_id: receiptId } : {}),
     ...(isObj(router.metadata) && Object.keys(router.metadata).length ? { metadata: router.metadata } : {}),
   };

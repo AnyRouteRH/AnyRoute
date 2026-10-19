@@ -1,3 +1,4 @@
+import { refusalHelp, inheritRefusal } from "../why/help.ts"; // K190
 import { dispatchMcp } from "../hardening/mcp-batch.ts";
 import { labelDirectory } from "../hardening/profile-text.ts";
 import { internalEnv } from "../hardening/client.ts";
@@ -61,7 +62,7 @@ const text = (t: string) => ({ type: "text" as const, text: t });
 const ok = (data: Json, ...lead: string[]): ToolResult => ({ content: [...lead.map(text), text(JSON.stringify(data, null, 2))], structuredContent: data });
 const toolError = (e: ApiError, extra: Json = {}): ToolResult => ({
   content: [text(typeof extra.hint === "string" ? `${e.message} ${extra.hint}` : e.message)],
-  structuredContent: { error: { code: e.status, type: e.type, message: e.message, ...(e.metadata ? { metadata: e.metadata } : {}), ...extra } },
+  structuredContent: { error: { ...refusalHelp(e), code: e.status, type: e.type, message: e.message, ...(e.metadata ? { metadata: e.metadata } : {}), ...extra } },
   isError: true,
 });
 
@@ -191,12 +192,14 @@ export function mcpRoutes(app: Hono, ctx: Ctx) {
   const internal = async (path: string, init?: RequestInit, c?: Context) => {
     const res = await app.request(path, withMcpScope(init), internalEnv());
     for (const name of ["X-Receipt-Id", "X-Anyroute-Lane", "X-Anyroute-Policy-Hash"]) { const value = res.headers.get(name); if (c && value !== null) c.header(name, value); }
-    const body = (await res.json().catch(() => null)) as { id?: unknown; error?: { message?: string; type?: string; metadata?: Record<string, unknown> } } | null;
+    const body = (await res.json().catch(() => null)) as { id?: unknown; error?: { message?: string; type?: string; help_url?: string; metadata?: Record<string, unknown> } } | null;
     if (!res.ok) {
       // A refusal that was billed (an attested answer withheld) carries the generation id of its receipt.
       const billed = typeof body?.id === "string" ? { receipt_id: body.id } : {};
       const metadata = body?.error?.metadata || billed.receipt_id ? { ...body?.error?.metadata, ...billed } : undefined;
-      throw new ApiError(res.status, body?.error?.message ?? `The router answered ${res.status}.`, body?.error?.type ?? "upstream_error", metadata);
+      const error = new ApiError(res.status, body?.error?.message ?? `The router answered ${res.status}.`, body?.error?.type ?? "upstream_error", metadata);
+      if (body?.error) inheritRefusal(error, body.error); // K190
+      throw error;
     }
     return body as Json;
   };

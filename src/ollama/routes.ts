@@ -1,3 +1,4 @@
+import { refusalHelp } from "../why/help.ts"; // K190
 import { internalEnv } from "../hardening/client.ts";
 import type { Context, Hono } from "hono";
 import { ZodError } from "zod";
@@ -42,10 +43,10 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.
 const passHeaders = (res: Response) => Object.fromEntries(PASS.flatMap((h) => (res.headers.get(h) !== null ? [[h, res.headers.get(h)!]] : [])));
 
 /** Ollama's error shape: {"error": "..."} with the HTTP status. */
-const refusal = (c: Context, status: number, message: string, headers: Record<string, string> = {}) => c.json({ error: message }, status as never, headers);
+const refusal = (c: Context, status: number, message: string, headers: Record<string, string> = {}, help = {}) => c.json({ error: message, ...help }, status as never, headers);
 
 function thrown(c: Context, e: unknown) {
-  if (e instanceof ApiError) return refusal(c, e.status, e.message, e.headers ?? {});
+  if (e instanceof ApiError) return refusal(c, e.status, e.message, e.headers ?? {}, refusalHelp(e));
   if (e instanceof ZodError) return refusal(c, 400, "Invalid request: " + e.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; "));
   if ((e as Error)?.name === "AbortError") return refusal(c, 499, "Client closed the request.");
   log.error("ollama request failed", { error: (e as Error)?.message });
@@ -84,12 +85,12 @@ export function ollamaRoutes(app: Hono, ctx: Ctx) {
 
   /** The router's refusal, in Ollama's shape, with its headers. */
   const fromRouter = async (c: Context, res: Response, requested: string, extra: Record<string, string>) => {
-    const body = (await res.json().catch(() => null)) as { error?: { message?: unknown; type?: unknown } } | null;
+    const body = (await res.json().catch(() => null)) as { error?: { message?: unknown; type?: unknown; help_url?: unknown } } | null;
     const err = isObj(body?.error) ? body!.error : {};
     let message = typeof err.message === "string" ? err.message : `The router answered ${res.status}.`;
     if (res.status === 404 && err.type === "model_not_found") message = notFound(requested);
     else if ((res.status === 401 || res.status === 402) && !c.req.header("authorization")) message = `Send your Anyroute key as Authorization: Bearer sk-ar-v1-... (the API key setting of your Ollama client). ${message}`;
-    return refusal(c, res.status, message, { ...passHeaders(res), ...extra });
+    return refusal(c, res.status, message, { ...passHeaders(res), ...extra }, refusalHelp(err));
   };
 
   /** A model the catalog lists, in the shape GET /api/v1/models gives it; null when the name does not resolve. */

@@ -1,3 +1,4 @@
+import { refusalRoutes } from "./why/routes.ts"; // K190
 import { agentStatusRoutes } from "./api/agent-status.ts"; // J176
 import { keyRotationRoutes } from "./key-rotation/routes.ts"; // G158
 import { agentDuplicateRoutes } from "./agent-duplicate/routes.ts"; // H171
@@ -244,6 +245,7 @@ export async function createApp(opts: AppOptions = {}) {
   newModelsFeedRoutes(app, ctx); // C131
   generationRoutes(app, ctx);
   activityRoutes(app, ctx);
+  refusalRoutes(app, ctx); // K190
   statementRoutes(app, ctx); // V87
   businessDetailsRoutes(app, ctx); // H168
   proofPackRoutes(app, ctx); // U100
