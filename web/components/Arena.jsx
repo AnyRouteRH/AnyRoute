@@ -1,4 +1,6 @@
 "use client";
+import { matchesShortcut, shortcutAria } from '../lib/keyboard-shortcuts'; // K193
+import ShortcutKeys from './shortcuts/ShortcutKeys'; // K193
 import { RecordedChargeLinks } from "./TraceChargeLinks.js"; // J182
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { api, loadKey, toCatalogModel, validKey } from "../lib/api";
@@ -470,6 +472,7 @@ export default function Arena() {
           <label htmlFor="arena-prompt">Prompt</label>
           <textarea
             id="arena-prompt"
+            aria-keyshortcuts={shortcutAria('arena-run')}
             value={prompt}
             maxLength={MAX_PROMPT}
             rows={4}
@@ -477,11 +480,11 @@ export default function Arena() {
             disabled={running}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.preventDefault(), race());
+              if (matchesShortcut(e, 'arena-run')) (e.preventDefault(), race());
             }}
           />
           <span className={styles.count}>
-            {prompt.length.toLocaleString("en-US")} / {MAX_PROMPT.toLocaleString("en-US")} · Ctrl/⌘ + Enter races
+            {prompt.length.toLocaleString("en-US")} / {MAX_PROMPT.toLocaleString("en-US")} · <ShortcutKeys id="arena-run"/> compares
           </span>
         </div>
 

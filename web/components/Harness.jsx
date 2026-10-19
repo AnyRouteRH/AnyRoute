@@ -1,4 +1,5 @@
 "use client";
+import useChatShortcutAttributes from './shortcuts/useChatShortcutAttributes'; // K193
 import { replyChargeModel } from "../lib/charge-links.js"; // J182
 import { TraceChatFooter } from "./TraceChargeLinks.js"; // J182
 import AskAboutThis, { AskAboutReply } from "./harness/AskAboutThis"; // H175
@@ -950,8 +951,10 @@ export default function Harness() {
   };
 
   // ---- keyboard ----
+  useChatShortcutAttributes(); // K193: registry labels for existing Chat controls.
   useEffect(() => {
     const onKey = (e) => {
+      if (e.defaultPrevented || e.isComposing || e.repeat || document.querySelector('dialog[open]')) return; // K193
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") { // H5: unmodified K searches chat history.
         e.preventDefault();
         setPalette((p) => (p ? null : { lane: focus, add: false }));

@@ -1,4 +1,5 @@
 import { TASKS } from './site-map.js';
+import { matchesShortcut } from './keyboard-shortcuts.js'; // K193
 
 // All matching runs in memory. Nothing is sent or retained.
 const words = value => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').match(/[a-z0-9]+/g) || [];
@@ -48,7 +49,7 @@ export function searchTasks(query, tasks = TASKS) {
 // J181: command search also opens in Chat; slash and other dialogs keep their keys.
 export function isSearchShortcut(event, { pathname, editable = false, dialogOpen = false }) {
   if (event.defaultPrevented || event.isComposing || event.repeat || dialogOpen) return false;
-  const command = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k';
-  const slash = !/^\/harness\/?$/.test(pathname) && event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !editable;
+  const command = matchesShortcut(event, 'site-search');
+  const slash = !/^\/harness\/?$/.test(pathname) && matchesShortcut(event, 'focus-search') && !editable; // K193: Chat keeps / for itself.
   return Boolean(command || slash);
 }

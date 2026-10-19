@@ -106,6 +106,7 @@ sections.push(["watching", "What you’re watching"]); // J180
 sections.push(["trace-a-charge", "From any number to its receipt"]); // J182
 
 sections.push(["command-palette", "Do it from ⌘K"]); // J181
+sections.push(["keyboard-shortcuts", "Keyboard shortcuts"]); // K193
 
 export function DocsFeatureLinks() {
   return sections.map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>);

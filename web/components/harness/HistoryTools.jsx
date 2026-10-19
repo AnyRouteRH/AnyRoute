@@ -8,6 +8,8 @@ import ChatFolders, { ChatFolderMove, FOLDER_DRAG_TYPE } from "./ChatFolders"; /
 import { parseFolderImport, searchFolder } from "../../lib/chat-folders.js"; // D143
 import ChatCost from "./ChatCost"; // C128
 import s from "./HistoryTools.module.css";
+import { shortcutAria } from '../../lib/keyboard-shortcuts'; // K193
+import ShortcutKeys from '../shortcuts/ShortcutKeys'; // K193
 
 export function useHistoryKeys(onSearch, onExport) {
   const callbacks = useRef({ onSearch, onExport });
@@ -119,8 +121,8 @@ export default function HistoryTools({ history, chats, current, busy, onChange, 
       <p>Encrypted in this browser. Search runs here while history is unlocked. Nothing is uploaded.</p>
       <label className={s.search}>
         <span className="sr-only">Search chat titles and messages</span>
-        <input type="search" ref={field} data-history-search value={query} placeholder="Search titles and messages" autoComplete="off" spellCheck={false} aria-keyshortcuts="Meta+K Control+K" onChange={(e) => setQuery(e.target.value)} />
-        <kbd>⌘ / Ctrl K</kbd>
+        <input type="search" ref={field} data-history-search value={query} placeholder="Search titles and messages" autoComplete="off" spellCheck={false} aria-keyshortcuts={shortcutAria('chat-history')} onChange={(e) => setQuery(e.target.value)} />
+        <ShortcutKeys id="chat-history"/>
       </label>
       {scope && <label className={s.scope}><input type="checkbox" checked={searchAll} onChange={event => setSearchAll(event.target.checked)} />Search all chats</label>}
       <div className={s.toolbar}>

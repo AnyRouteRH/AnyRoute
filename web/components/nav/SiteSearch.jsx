@@ -1,5 +1,6 @@
 'use client';
 import { COMMAND_EVENT, commandActions, paletteContext, rotationKeyChoices, runPageCommand } from '../../lib/command-palette'; // J181
+import { shortcutAria } from '../../lib/keyboard-shortcuts'; // K193
 import StopMenu from '../limits/StopMenu'; // B117
 import { stoppedLabel, stopHelp } from '../../lib/stop-until'; // B117
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -161,6 +162,7 @@ export default function SiteSearch() {
     {(phase === 'list' || phase === 'pick' || phase === 'input') && <>
       <label className="eyebrow" htmlFor="site-search-query">{step ? stepLabel(step.action) : 'Search tools, guides and actions'}</label>
       <input ref={input} id="site-search-query" type={phase === 'input' ? 'text' : 'search'} role={listed ? 'combobox' : undefined} aria-autocomplete={listed ? 'list' : undefined} aria-expanded={listed ? open : undefined} aria-controls={listed ? 'site-search-results' : undefined} aria-activedescendant={open && listed ? activeId : undefined}
+        aria-keyshortcuts={listed ? [shortcutAria('search-choose'), shortcutAria('search-open')].join(' ') : undefined} // K193
         value={step ? filter : query} placeholder={phase === 'input' ? 'gen-…' : undefined} maxLength={phase === 'input' ? 128 : undefined}
         onChange={event => { if (step) setFilter(event.target.value); else setQuery(event.target.value); setSelected(0); setMessage(''); }} autoComplete="off" spellCheck="false" />
     </>}

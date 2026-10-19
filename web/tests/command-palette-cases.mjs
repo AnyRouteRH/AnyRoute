@@ -115,7 +115,7 @@ export const commandPaletteCases = [
       assert.equal(isSearchShortcut(event, { pathname: '/harness/', dialogOpen: true }), false);
     }
     assert.equal(isSearchShortcut({ key: 'k', ctrlKey: true, repeat: true }, { pathname: '/harness/' }), false);
-    assert.equal(isSearchShortcut({ key: '/' }, { pathname: '/harness/' }), false);
+    assert.equal(isSearchShortcut({ key: '/' }, { pathname: '/harness/' }), true); // K193: outside Chat fields.
     assert.equal(isSearchShortcut({ key: 'k', metaKey: true, defaultPrevented: true }, { pathname: '/' }), false);
   }],
   ['keyboard flow selects an action with arrows and Enter, goes back with Escape and refuses held Enter', () => {

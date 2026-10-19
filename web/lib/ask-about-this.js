@@ -1,6 +1,7 @@
 // H175: selections stay in page memory until inserted into the existing draft.
+import { matchesShortcut, shortcutAria } from './keyboard-shortcuts.js'; // K193
 export const QUOTE_LIMIT = 1500;
-export const ASK_SHORTCUT = 'Alt+Shift+Q';
+export const ASK_SHORTCUT = shortcutAria('chat-ask');
 
 export function quoteSelection(text) {
   const chars = Array.from(String(text).replace(/\r\n?/g, '\n').trim());
@@ -72,7 +73,7 @@ export function bindAskAboutThis({ document, window, root, input, setDraft, onCh
   };
   const keydown = event => {
     if (event.key === 'Escape') { dismissed = true; current = null; onChange(null); }
-    if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyQ' && !event.isComposing && !editable(event.target)) {
+    if (matchesShortcut(event, 'chat-ask') && !editable(event.target)) {
       if (ask()) event.preventDefault();
     }
   };

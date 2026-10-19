@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ASK_SHORTCUT, bindAskAboutThis, insertQuote, quotePosition, quoteSelection, selectedReply } from '../lib/ask-about-this.js';
+import { shortcutLabel } from '../lib/keyboard-shortcuts.js'; // K193
 const read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const rect = { left: 50, right: 180, top: 100, bottom: 120, width: 130, height: 20 };
 
@@ -123,7 +124,7 @@ test('floating action fits 375 px and the visual viewport; offscreen selections 
 test('button is hidden by default, has an accessible label and shortcut, and preserves touch selection', () => {
   const source = read('components/harness/AskAboutThis.jsx');
   const transpiled = execFileSync('bun', ['-e', 'process.stdout.write(new Bun.Transpiler({loader:"jsx",target:"node",tsconfig:{compilerOptions:{jsx:"react",jsxFactory:"React.createElement"}}}).transformSync(await Bun.stdin.text()));'], { input: source, encoding: 'utf8' });
-  const Button = new Function('React', 'ASK_SHORTCUT', 's', transpiled.replace(/^import .*;\n/gm, '').replace(/export default function/g, 'function').replace(/export function/g, 'function') + '\nreturn AskAboutButton;')({ createElement }, ASK_SHORTCUT, { action: 'action' });
+  const Button = new Function('React', 'ASK_SHORTCUT', 's', 'useShortcutLabel', transpiled.replace(/^import .*;\n/gm, '').replace(/export default function/g, 'function').replace(/export function/g, 'function') + '\nreturn AskAboutButton;')({ createElement }, ASK_SHORTCUT, { action: 'action' }, id => shortcutLabel(id)); // K193
   assert.equal(renderToStaticMarkup(createElement(Button, {})), '');
   const html = renderToStaticMarkup(createElement(Button, { position: { left: 8, top: 8 } }));
   assert.match(html, /type="button"/);

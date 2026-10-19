@@ -1,5 +1,6 @@
 import { continuationFields } from "./harness-continue-history.js"; // H166
 import { capDollars, capFields } from './chat-cap.js'; // G162
+import { matchesShortcut } from './keyboard-shortcuts.js'; // K193
 import { historyMetadata } from "./history-metadata.js";
 import { validateSavedAnswers } from "./saved-answers.js"; // D140
 import { folderDocument, folderFields } from "./chat-folders.js"; // D143
@@ -174,8 +175,7 @@ export function highlightParts(value, query) {
 }
 
 export function historyShortcut(e) {
-  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.isComposing || e.repeat) return null;
-  if (e.key.toLowerCase() === "k" && !e.shiftKey) return "search";
-  if (e.key.toLowerCase() === "e" && e.shiftKey) return "export";
+  if (matchesShortcut(e, 'chat-history')) return "search";
+  if (matchesShortcut(e, 'chat-export')) return "export";
   return null;
 }

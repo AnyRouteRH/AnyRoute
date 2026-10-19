@@ -1,4 +1,5 @@
 // V81: browser prompt data only. Values are inserted literally, never evaluated.
+import { matchesShortcut } from './keyboard-shortcuts.js'; // K193
 export const PROMPT_FORMAT = "anyroute-harness-prompts";
 export const PROMPT_VERSION = 1;
 export const PROMPT_KEY = "anyroute-harness-prompts-v1";
@@ -76,7 +77,7 @@ export function searchPrompts(prompts, query) {
   }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name));
 }
 export function promptShortcut(e) {
-  return !!((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p" && !e.altKey && !e.repeat && !e.isComposing);
+  return matchesShortcut(e, 'chat-prompts');
 }
 export function slashPrompts(prompts, draft) {
   if (!/^\/[^\n]*$/.test(draft)) return [];

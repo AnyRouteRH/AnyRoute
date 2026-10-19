@@ -1,0 +1,12 @@
+.sheet { color: var(--ink); }
+.sheet > p { color: var(--muted); margin-bottom: 24px; }
+.sheet section + section { margin-top: 24px; }
+.sheet h3 { font: 500 12px/1.4 var(--mono); text-transform: uppercase; margin-bottom: 8px; }
+.sheet dl { margin: 0 0 24px; }
+.sheet dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.sheet dt { font-size: 15px; }
+.sheet dt small { display: block; margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.sheet dd { margin: 0; }
+.sheet kbd { display: inline-block; padding: 3px 6px; border: 1px solid var(--line); background: var(--paper-2); font-size: 12px; white-space: nowrap; }
+.sheet a { text-decoration: underline; text-underline-offset: 4px; }
+@media (max-width: 400px) { .sheet dl > div { gap: 8px; } .sheet dt { font-size: 14px; } }

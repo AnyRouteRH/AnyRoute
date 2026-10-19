@@ -80,10 +80,11 @@ test('Command K, Control K and slash open search outside the Harness', () => {
   }
 });
 
-test('Chat opens command search while slash, composition and existing dialogs retain their keys', () => {
+test('Chat opens command search while fields, composition and existing dialogs retain their keys', () => {
   for (const pathname of ['/harness', '/harness/']) {
     for (const event of [{ key: 'k', metaKey: true }, { key: 'k', ctrlKey: true }]) assert.equal(isSearchShortcut(event, { pathname }), true);
-    assert.equal(isSearchShortcut({ key: '/' }, { pathname }), false);
+    assert.equal(isSearchShortcut({ key: '/' }, { pathname }), false); // Chat keeps / for itself
+    assert.equal(isSearchShortcut({ key: '/' }, { pathname, editable: true }), false); // K193
   }
   for (const event of [{ key: '/', ctrlKey: true }, { key: 'k' }, { key: 'k', metaKey: true, altKey: true }, { key: 'k', metaKey: true, shiftKey: true }, { key: 'k', metaKey: true, defaultPrevented: true }, { key: '/', isComposing: true }]) assert.equal(isSearchShortcut(event, { pathname: '/' }), false);
   assert.equal(isSearchShortcut({ key: 'k', metaKey: true }, { pathname: '/', dialogOpen: true }), false);

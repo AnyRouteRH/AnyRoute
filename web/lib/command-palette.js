@@ -55,6 +55,7 @@ export function commandActions(context = {}, { signedIn = false, caller = null, 
     action('notifications', 'Notifications settings', 'Choose inbox and Telegram notices and quiet hours in Settings.', '/dashboard/#notifications', 'notification settings, alerts, quiet hours', { signIn: true, permission: 'management', direct: true }),
     action('telegram', 'Link Telegram', 'Open the existing Telegram link panel in Agents.', '/agents/#telegram', 'link telegram, connect telegram, bot', { signIn: true, permission: 'manage', direct: true }),
     ...INBOX_GROUPS.map(([kind, label]) => action('inbox-' + kind, 'Inbox: ' + label, 'Open your inbox filtered to ' + label.toLowerCase() + '.', filterUrl('https://anyroute.tech/dashboard/#inbox', [kind]), 'inbox, filter, ' + label.toLowerCase(), { signIn: true, direct: true })),
+    action('keyboard-shortcuts', 'Keyboard shortcuts', 'See the keys that work on this page.', '/docs/#keyboard-shortcuts', 'keyboard shortcuts, keys, help', { onlyReady: true }), // K193
   ];
   if (/^\/harness\/?$/.test(context.pathname)) {
     rows.push(action('print-chat', 'Print this chat', 'Print the shown conversation or save it as PDF.', '/harness/', 'print chat, pdf, save pdf', { onlyReady: true, aliases: ['pdf'] }));

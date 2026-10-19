@@ -78,6 +78,7 @@ import SavingsFinderDocs from "../../components/SavingsFinderDocs"; // G160
 import ModelAccountDocs from "../../components/ModelAccountDocs"; // J178
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
 import CommandPaletteDocs from "../../components/CommandPaletteDocs"; // J181
+import KeyboardShortcutsDocs from "../../components/KeyboardShortcutsDocs"; // K193
 import NetworkPayoutDocs from "../../components/NetworkPayoutDocs";
 import NetworkStatsDocs from "../../components/NetworkStatsDocs";
 import CommerceStatsDocs from "../../components/CommerceStatsDocs"; // v6 L
@@ -929,6 +930,7 @@ export default function Docs() {
           <ChatCostDocs /> {/* C128 */}
           <PrintChatDocs /> {/* H174 */}
           <CommandPaletteDocs /> {/* J181 */}
+          <KeyboardShortcutsDocs /> {/* K193 */}
           <ChatCapDocs /> {/* G162 */}
           <ContinueAnswerDocs /> {/* H166 */}
           <SavedAnswersDocs /> {/* D140 */}
