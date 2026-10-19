@@ -3,6 +3,7 @@ import { MENU_HELP } from "../telegram/menu-command.ts"; // J179
 import { AGENT_STOP_ALL_HELP, handleAgentStopAll } from "../telegram/agent-stop-all.ts"; // H172
 import { AGENT_STOP_HELP, handleAgentStop, registerAgentStopCommands } from "../telegram/agent-stop.ts"; // G163
 import { hasPhoto, photoCaption, photoCapability, PHOTO_HELP, prepareTelegramPhoto, visionReply, type PhotoMessage, type TgPhoto } from "../telegram/photos.ts"; // D142
+import { handleApprovalNoteUpdate } from "../telegram/approval-notes.ts"; // K186
 import { deliverTelegramApprovals, handleLinkedUpdate, linkHowTo } from "../telegram/delivery.ts";
 import { BALANCE_SPEND_COMMANDS, BALANCE_SPEND_HELP, handleBalanceSpend } from "../telegram/balance-spend.ts"; // E152
 import { eq } from "drizzle-orm";
@@ -185,6 +186,7 @@ export class TelegramBot {
   // ---- One update ------------------------------------------------------------------------------
 
   async handleUpdate(u: TgUpdate) {
+    if (await handleApprovalNoteUpdate(this.ctx, this.api, u)) return; // K186
     if (await handleTelegramMenu(this.ctx, this.api, u)) return; // J179
     if (await handleAgentStopAll(this.ctx, this.api, u)) return; // H172
     if (await handleAgentStop(this.ctx, this.api, u)) return; // G163

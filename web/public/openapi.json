@@ -991,6 +991,7 @@
                   "policy_sha256"
                 ],
                 "properties": {
+                  "decision_note": { "type": "string", "maxLength": 280, "description": "K186: optional owner-written plain-text explanation. Empty or omitted text adds no response field; stored with the deciding key and approval, visible to the agent, never sent to a model by Anyroute." },
                   "policy_sha256": {
                     "type": "string",
                     "pattern": "^[a-f0-9]{64}$"
@@ -3250,6 +3251,7 @@
     },
     "/api/v1/agents/approvals/{id}": {
       "get": {
+        "x-k186-decision-notes": "Notes, when present, are also returned to the requesting key; existing authorization is unchanged.",
         "tags": [
           "Agent rulebook"
         ],
@@ -3290,6 +3292,8 @@
                             "used"
                           ]
                         },
+                        "decision_note": { "type": "string", "maxLength": 280, "description": "K186: optional owner-written plain-text explanation. Empty or omitted text adds no response field; stored with the deciding key and approval, visible to the agent, never sent to a model by Anyroute." },
+                        "message": { "type": "string", "description": "K186: when a denied approval has a note, Denied by your owner: <note>. Denied retries also return the note as error.metadata.decision_note." },
                         "expires_at": {
                           "type": "string",
                           "format": "date-time"
@@ -3340,6 +3344,7 @@
             "BearerAuth": []
           }
         ],
+        "requestBody": { "required": false, "description": "K186: optional decision note; the existing decision guard applies.", "content": { "application/json": { "schema": { "type": "object", "properties": { "decision_note": { "type": "string", "maxLength": 280, "description": "K186: optional owner-written plain-text explanation. Empty or omitted text adds no response field; stored with the deciding key and approval, visible to the agent, never sent to a model by Anyroute." } } } } } },
         "responses": {
           "200": {
             "description": "Approval result",
@@ -3394,6 +3399,7 @@
             "BearerAuth": []
           }
         ],
+        "requestBody": { "required": false, "description": "K186: optional decision note; the existing decision guard applies.", "content": { "application/json": { "schema": { "type": "object", "properties": { "decision_note": { "type": "string", "maxLength": 280, "description": "K186: optional owner-written plain-text explanation. Empty or omitted text adds no response field; stored with the deciding key and approval, visible to the agent, never sent to a model by Anyroute." } } } } } },
         "responses": {
           "200": {
             "description": "Approval result",
@@ -25571,6 +25577,8 @@
       "AgentApproval": {
         "type": "object",
         "properties": {
+          "decision_note": { "type": "string", "maxLength": 280, "description": "K186: optional owner-written plain-text explanation. Empty or omitted text adds no response field; stored with the deciding key and approval, visible to the agent, never sent to a model by Anyroute." },
+          "message": { "type": "string", "description": "K186: when a denied approval has a note, Denied by your owner: <note>. Denied retries also return the note as error.metadata.decision_note." },
           "approval_context": {
             "type": "array",
             "items": {

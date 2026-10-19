@@ -1,5 +1,6 @@
 import { inheritRefusal } from "../why/help.ts"; // K190
 import { matchesApprovalWindow, recordApprovalWindowUse } from "./approval-window.ts"; // K194
+import { decisionNote, decisionNoteFields, decisionNoteReasons } from "./decision-notes.ts"; // K186
 import { assertDecisionApprover } from "./approvers.ts"; // E153
 import { recordApprovalDecision } from "./approver-records.ts"; // E153
 import { recordApprovalWebhook } from "../webhooks/approvals.ts"; // V86: transaction-bound notices.
@@ -20,7 +21,7 @@ export const approvalRequest = new AsyncLocalStorage<string | undefined>();
 const ttl = new WeakMap<Db, number>();
 export const configureApprovals = (db: Db, seconds: number) => ttl.set(db, seconds);
 const statusAt = (r: ApprovalRow, now: Date) => ["pending", "approved"].includes(r.status) && r.expiresAt <= now ? "expired" : r.status;
-export const approvalStatus = (r: ApprovalRow, now = new Date()) => ({ id: r.id, status: statusAt(r, now), expires_at: r.expiresAt.toISOString() });
+export const approvalStatus = (r: ApprovalRow, now = new Date()) => ({ id: r.id, status: statusAt(r, now), expires_at: r.expiresAt.toISOString(), ...decisionNoteFields(r) });
 export const approvalJson = (r: ApprovalRow) => ({ ...approvalStatus(r), key_hash: r.keyHash, intent: r.intent, intent_hash: r.intentHash, max_cost_pico: r.maxCostPico.toString(), requested_at: r.requestedAt.toISOString(), decided_at: r.decidedAt?.toISOString() ?? null, decided_by: r.decidedBy, used_at: r.usedAt?.toISOString() ?? null });
 // Explicit projection: the caller's messages, descriptions and tool arguments never enter storage.
 function project(intents: AgentIntent[], cost = true) {
@@ -43,7 +44,7 @@ export async function expireApprovals(tx: Db | Tx, keyHash: string, now = new Da
 async function event(tx: Db | Tx, row: ApprovalRow, kind: string, rows?: PolicyRow[], now = new Date()) {
   ledgerApproval(row.id, kind);
   const policies = rows ?? await policiesFor(tx, row.keyHash);
-  await appendEvent(tx, { keyHash: row.keyHash, kind, intent: row.intent, policySha256: policies[0]?.sha256 ?? "" }, now);
+  await appendEvent(tx, { keyHash: row.keyHash, kind, reasons: ["approval_approved", "approval_denied"].includes(kind) ? decisionNoteReasons(row) : [], intent: row.intent, policySha256: policies[0]?.sha256 ?? "" }, now);
 }
 /** Caller holds the account lock. Validate before reserving; consume only after the reservation succeeds. */
 export async function prepareApproval(db: Db, tx: Tx, rows: PolicyRow[], intents: AgentIntent[], keyHash: string, refusal: ApiError | undefined, now: Date): Promise<{ error?: ApiError; use?: () => Promise<void> }> {
@@ -57,6 +58,7 @@ export async function prepareApproval(db: Db, tx: Tx, rows: PolicyRow[], intents
   if (id !== undefined) {
     const [row] = await tx.select().from(agentApprovals).where(and(eq(agentApprovals.id, id), eq(agentApprovals.keyHash, keyHash))).for("update");
     if (!row || row.status !== "approved" || row.expiresAt <= now || row.usedAt || cost > row.maxCostPico || binding(row.intent) !== canonicalJson(project(intents, false))) {
+      if (row?.status === "denied" && row.decisionNote) return { error: new ApiError(403, `Denied by your owner: ${row.decisionNote}`, "agent_approval_invalid", { approval_id: row.id, decision_note: row.decisionNote }) }; // K186
       return { error: new ApiError(403, "Approval is unavailable or does not match this intent.", "agent_approval_invalid") };
     }
     return { use: async () => {
@@ -77,7 +79,8 @@ export async function prepareApproval(db: Db, tx: Tx, rows: PolicyRow[], intents
   inheritRefusal(error, refusal); // K190
   return { error };
 }
-export async function decideApproval(db: Db, accountId: string, id: string, actor: string, action: "approve" | "deny", transaction?: Tx) {
+export async function decideApproval(db: Db, accountId: string, id: string, actor: string, action: "approve" | "deny", transaction?: Tx, note?: string | null) {
+  const decisionNoteValue = decisionNote(note); // K186
   const decide = async (tx: Tx) => {
     await lockAccount(tx, accountId);
     const [row] = await tx.select().from(agentApprovals).where(eq(agentApprovals.id, id)).for("update");
@@ -85,7 +88,7 @@ export async function decideApproval(db: Db, accountId: string, id: string, acto
     await assertDecisionApprover(db, tx, accountId, actor, row.keyHash); // E153
     const now = new Date();
     if (statusAt(row, now) !== "pending") fail(409, "Approval is no longer pending.", "agent_approval_unavailable");
-    const [updated] = await tx.update(agentApprovals).set({ status: action === "approve" ? "approved" : "denied", decidedAt: now, decidedBy: actor }).where(eq(agentApprovals.id, id)).returning();
+    const [updated] = await tx.update(agentApprovals).set({ status: action === "approve" ? "approved" : "denied", decidedAt: now, decidedBy: actor, decisionNote: decisionNoteValue }).where(eq(agentApprovals.id, id)).returning();
     await recordApprovalDecision(db, tx, updated); // E153
     await event(tx, updated, action === "approve" ? "approval_approved" : "approval_denied", undefined, now);
     await recordApprovalWebhook(db, tx, updated, true); // V86.

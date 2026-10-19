@@ -43,7 +43,7 @@ export async function previewAllow(tx: Db | Tx, row: ApprovalRow) {
   return { own, change, data: { field: change.field, before_usd: change.before_usd, after_usd: change.after_usd, amount_usd: change.amount_usd, policy_sha256: own.sha256 } };
 }
 
-export async function approveAndAllow(db: Db, accountId: string, row: ApprovalRow, actor: string, expectedHash: string) {
+export async function approveAndAllow(db: Db, accountId: string, row: ApprovalRow, actor: string, expectedHash: string, note?: string | null) { // K186
   return db.transaction(async tx => {
     await lockAccount(tx, accountId);
     const [current] = await tx.select().from(agentApprovals).where(eq(agentApprovals.id, row.id)).for("update");
@@ -54,7 +54,7 @@ export async function approveAndAllow(db: Db, accountId: string, row: ApprovalRo
     await tx.update(agentPolicies).set({ spec: policy, version: policy.version, sha256, updatedBy: actor, updatedAt: new Date() }).where(eq(agentPolicies.keyHash, current.keyHash));
     await appendEvent(tx, { keyHash: current.keyHash, kind: "policy_set", policySha256: sha256 });
     await recordPolicyVersion(tx, current.keyHash, policy, actor, "approve_and_allow"); // D144
-    const approved = await decideApproval(db, accountId, current.id, actor, "approve", tx);
+    const approved = await decideApproval(db, accountId, current.id, actor, "approve", tx, note); // K186
     return { approved, change: preview.data, policy: { policy, version: policy.version, sha256 } };
   });
 }

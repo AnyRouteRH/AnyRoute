@@ -1,4 +1,5 @@
 import { agentApprovalWindowRoutes } from "./agent-approval-window.ts"; // K194
+import { readDecisionNote } from "../agents/decision-notes.ts"; // K186
 import { approvalCaller, visibleApprovalKeys, approvalListJson } from "./agent-approvers.ts"; // E153
 import { configureTeamApprovers, canApprove } from "../agents/approvers.ts"; // E153
 import { agentApproveAndAllowRoutes } from "./agent-approve-and-allow.ts"; // B118
@@ -51,7 +52,7 @@ export function agentApprovalsRoutes(app: Hono, ctx: Ctx) {
     const [row] = await ctx.db.select().from(agentApprovals).where(eq(agentApprovals.id, c.req.param("id")));
     if (!row) fail(404, "Approval not found.", "not_found");
     await ownedKey(ctx, caller, row.keyHash);
-    const updated = await decideApproval(ctx.db, caller.accountId, row.id, caller.keyHash, action);
+    const updated = await decideApproval(ctx.db, caller.accountId, row.id, caller.keyHash, action, undefined, await readDecisionNote(c)); // K186
     c.header("Cache-Control", "no-store");
     return c.json({ data: approvalJson(updated) });
   });

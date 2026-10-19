@@ -1,5 +1,6 @@
 import { describeSnoozes } from "./inbox-snooze.ts"; // K187
 import { describeApprovalWindow } from "./approval-window.ts"; // K194
+import { describeDecisionNotes } from "./decision-notes.ts"; // K186
 import { describeKeyRotation } from "./key-rotation.ts"; // G158
 import { describeBusinessDetails } from "./business-details.ts"; // H168
 import { describeWorkHours } from "./work-hours.ts"; // G161
@@ -88,6 +89,7 @@ describeModelWatch(TABLE_DOCS); // G159
 describeIncidentNotices(TABLE_DOCS); // H169
 describeLinkedWallets(TABLE_DOCS); // E154
 describeBusinessDetails(TABLE_DOCS); // H168
+describeDecisionNotes(TABLE_DOCS); // K186
 export { EXTERNAL };
 
 // ---- consistency -----------------------------------------------------------------------------------------------------

@@ -1,0 +1,31 @@
+// K186
+import type { ExternalDoc, TableDoc } from "./types.ts";
+import { rv } from "./tables/common.ts";
+import { telegramLinkNotes, telegramLinkReader } from "./telegram-linking.ts";
+import { approveAndAllowBodyReader } from "./approve-and-allow.ts";
+export function describeDecisionNotes(docs: Record<string, TableDoc>) {
+  docs.agent_approvals.columns.decision_note = { purpose: "Optional plain-text explanation written by the deciding owner or authorized approver, up to 280 Unicode characters; null when omitted. Visible in authenticated approval lists, decision responses, requesting-key polls and denied-retry errors. Anyroute never sends this text to a model. Kept until operator deletion along with the approval. This is readable free-form text and may include sensitive material the writer chooses to paste.", review: rv(["name:content"], "config", "Human-written approval explanation, not automatically copied from inference prompts or answers. Notes can contain arbitrary personal or sensitive text chosen by the approver. Stored unencrypted in this column, and copied into the existing agent event reasons.") };
+  docs.agent_approvals.notes?.push("Decision notes are owner-written text, stored separately from the projected inference intent. Do not put anything here that the requesting agent or other authorized approvers should not read. decided_by is the existing deciding key hash; attaching a Telegram note does not replace the actor or decision timestamp.");
+  docs.agent_policy_events.purpose = "A per-key hash chain of rulebook decisions and policy, Stop and resume changes. Routing decisions exclude prompts and answers. Approval decisions and approval_note_added events may also retain the owner's plain-text decision note.";
+  docs.agent_policy_events.columns.reasons = { purpose: "Fixed decision codes and router-written messages, plus code decision_note with the deciding approver's optional readable explanation (up to 280 characters) on approval decisions or an approval_note_added event. A Telegram note is appended as a new event; prior hashes are never rewritten.", review: rv(["type:json"], "config", "Evaluator reasons are fixed. Approval-note reasons intentionally retain human-written free-form explanations, which may include sensitive text chosen by the writer, and are never sent to a model by Anyroute. Existing event pruning retains these for 90 days when its worker runs.") };
+  docs.agent_policy_events.notes = [...(docs.agent_policy_events.notes ?? []), "approval_note_added records a note attached after a Telegram decision; the note appears in reasons with code decision_note. Existing approve/deny events carry a note immediately when submitted on Agents or inbox."];
+  docs.kv.notes?.push("K186 extends existing telegram-approval delivery markers with note_prompt_id, note_until and note_done. They bind one optional note reply to the current private linked chat, link generation and original deciding key. No note text is stored in kv. The reply window is at most five minutes and no later than the approval deadline. Existing pruning removes expired markers; unlink removes them. Telegram receives the reason the approver types. A reply to a reason request is consumed before Chat even when its marker or link has ended. Reason replies share the existing callback limit of twenty per minute per Telegram user. No new Redis family, table, log field or worker is added.");
+  for (let i = 0; i < telegramLinkNotes.length; i++) telegramLinkNotes[i] = telegramLinkNotes[i].replace("Message text is never stored here.", "No note text is stored in these delivery markers; optional owner-written decision notes are stored on the approval and its event history.");
+  telegramLinkReader.kept += " K186 optional reason replies are stored as readable decision notes on agent_approvals and in agent_policy_events, separately from linking commands and markers; they never go to a model.";
+  approveAndAllowBodyReader.reads = "A strict confirmation body containing the reviewed rulebook SHA-256 plus optional plain-text decision_note up to 280 characters.";
+  approveAndAllowBodyReader.kept += " K186 also keeps an optional decision note in agent_approvals.decision_note and the existing approval event reasons; no inference text is copied automatically.";
+  approveAndAllowBodyReader.evidence = [{ file: "src/api/agent-approve-and-allow.ts", contains: "confirmBody.parse(confirmation)" }];
+}
+export const decisionNoteReaders: ExternalDoc["bodyReaders"] = [{
+  file: "src/agents/decision-notes.ts", carries: "settings",
+  reads: "Optional decision_note from an authenticated approval decision body. Accepts only plain text up to 280 Unicode characters; empty text is omitted.",
+  then: "Uses the existing deciding permissions and account-locked decision transaction. Telegram attachment rechecks the same deciding actor and current permission and appends a new hash-chained event.",
+  kept: "Readable owner-written explanation on the approval and in event reasons. May contain sensitive content the writer chooses to paste; never sent to a model. No new Redis key or logging field.",
+  evidence: [{ file: "src/agents/decision-notes.ts", contains: "export const readDecisionNote" }],
+}, {
+  file: "src/telegram/approval-notes.ts", carries: "settings",
+  reads: "Private human Telegram reason replies, /skip and the originating message id. Runs before Chat. The prompt is enabled only by TELEGRAM_APPROVAL_NOTES_ENABLED, default false.",
+  then: "Checks link generation, active deciding key, current approver permission, originating reply, five-minute deadline and one-use marker. Prompt and replies use existing approvals notification preferences and deferTelegram urgent-approval rules. Even stale replies to the reason prompt are consumed without a model call.",
+  kept: "A valid nonempty reason is kept only as the approval note and event reason; kv holds only prompt id, deadline and completion boolean. Telegram keeps delivered and received messages under its own policy. Plain-text drafts stay in page memory until submitted or the view closes.",
+  evidence: [{ file: "src/telegram/approval-notes.ts", contains: "export async function handleApprovalNoteUpdate" }],
+}];

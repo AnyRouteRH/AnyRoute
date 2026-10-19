@@ -1,5 +1,6 @@
 import { canOfferApprovalHour } from "./approval-window.ts"; // K194
 import { approveForHour } from "../agents/approval-window.ts"; // K194
+import { askDecisionNote } from "./approval-notes.ts"; // K186
 import { STALE_MENU } from "./menu-command.ts"; // J179
 import { readApprovalContext } from "../agents/approval-context.ts"; // J185
 import { approvalMessageMatches } from "./approval-nudges.ts"; // G164
@@ -46,7 +47,7 @@ async function updateNotice(ctx: Ctx, api: TelegramApi, key: string, notice: Not
   const status = approvalStatus(row).status;
   if (status === notice.status || !notice.message_id) return;
   const link = await readLink(ctx.db, notice.uid); if (!link || !await channelEnabled(ctx, link.account, "approvals", "telegram")) return; // E146
-  await api.call("editMessageText", { chat_id: notice.uid, message_id: notice.message_id, text: await noticeText(ctx, row), reply_markup: { inline_keyboard: [] } }, AbortSignal.timeout(5_000));
+  await api.call("editMessageText", { chat_id: notice.uid, message_id: notice.message_id, text: (await noticeText(ctx, row)) + (row.decisionNote ? `\nDecision note: ${row.decisionNote}` : ""), reply_markup: { inline_keyboard: [] } }, AbortSignal.timeout(5_000));
   await ctx.db.update(kv).set({ value: { ...notice, status }, updatedAt: new Date() }).where(eq(kv.key, key));
 }
 /** Delivery holds the link lock until the send ends: an acknowledged unlink stops later sends. */
@@ -150,6 +151,7 @@ export async function handleLinkedUpdate(ctx: Ctx, api: TelegramApi, update: TgU
         const decided = match[1] === "h" ? (await approveForHour(ctx, caller.accountId, row.id, caller.keyHash, undefined, tx)).approval : await decideApproval(ctx.db, caller.accountId, row.id, caller.keyHash, match[1] === "a" ? "approve" : "deny", tx); // K194
         outcome = match[1] === "h" ? "Approved for the next 60 minutes." : `Approval ${decided.status}.`; // K194
         await updateNotice(scoped, api, key, notice!, decided).catch(() => undefined);
+        await askDecisionNote(scoped, api, key, decided).catch(() => undefined); // K186
       });
     } catch (error) { if (error instanceof ApiError && error.status === 409) outcome = "Approval is no longer pending."; }
     await api.call("answerCallbackQuery", { callback_query_id: callback.id, text: outcome }).catch(() => undefined);

@@ -1,4 +1,5 @@
 // B118: owner/management approval auth, with a read-only exact-change preview.
+import { decisionNote } from "../agents/decision-notes.ts"; // K186
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -20,8 +21,10 @@ export function agentApproveAndAllowRoutes(app: Hono, ctx: Ctx) {
     if ((row.intent as { kind?: string })?.kind === "action" && !ctx.cfg.agentGuardEnabled) fail(404, "Not found.", "not_found");
     c.header("Cache-Control", "no-store");
     if (method === "get") return c.json({ data: (await previewAllow(ctx.db, row)).data });
-    const body = confirmBody.parse(await readJson(c));
-    const result = await approveAndAllow(ctx.db, caller.accountId, row, caller.keyHash, body.policy_sha256);
+    const raw = await readJson(c), note = decisionNote(raw.decision_note); // K186
+    const { decision_note: _note, ...confirmation } = raw; // K186
+    const body = confirmBody.parse(confirmation);
+    const result = await approveAndAllow(ctx.db, caller.accountId, row, caller.keyHash, body.policy_sha256, note); // K186
     return c.json({ data: { approval: approvalJson(result.approved), change: result.change, ...result.policy } });
   });
 }

@@ -11,6 +11,7 @@ import KeyRotationDocs from "../../components/KeyRotationDocs"; // G158
 import DuplicateAgentDocs from "../../components/DuplicateAgentDocs"; // H171
 import WorkHoursDocs from "../../components/WorkHoursDocs"; // G161
 import AgentRunwayDocs from "../../components/AgentRunwayDocs"; // H170
+import ApprovalDecisionNoteDocs from "../../components/ApprovalDecisionNoteDocs"; // K186
 import ApprovalContextDocs from "../../components/ApprovalContextDocs"; // J185
 import ApprovalNudgesDocs from "../../components/ApprovalNudgesDocs"; // G164
 import IncidentAlertsDocs from "../../components/incident-notices/IncidentAlertsDocs"; // H169
@@ -989,6 +990,7 @@ export default function Docs() {
           <AgentApprovalDocs />
           <ApprovalContextDocs /> {/* J185 */}
           <ApprovalHourDocs /> {/* K194 */}
+          <ApprovalDecisionNoteDocs /> {/* K186 */}
           <AgentApproversDocs /> {/* E153 */}
           <ApprovalNudgesDocs /> {/* G164 */}
           <ApproveAndAllowDocs /> {/* B118 */}

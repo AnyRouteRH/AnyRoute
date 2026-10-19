@@ -1,5 +1,6 @@
 import { snoozeReader, snoozeStores } from "./inbox-snooze.ts"; // K187
 import { approvalWindowReader } from "./approval-window.ts"; // K194
+import { decisionNoteReaders } from "./decision-notes.ts"; // K186
 import { telegramMenuReader } from "./telegram-menu.ts"; // J179
 import { approvalContextStores } from "./approval-context.ts"; // J185
 import { agentStatusView } from "./agent-status.ts"; // J176
@@ -465,6 +466,7 @@ const addressReaders: Touchpoint[] = [
 ];
 
 const bodyReaders: ExternalDoc["bodyReaders"] = [
+  ...decisionNoteReaders, // K186
   businessDetailsReader, // H168
   rotationReader, // G158
   duplicateAgentReader, // H171

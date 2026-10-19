@@ -19,9 +19,10 @@ export async function nameApprovalDecisions(ctx: Ctx, rows: { id: string; title:
   if (!ctx.cfg.agentTeamApproversEnabled) return;
   const ids = rows.filter(r => r.id.startsWith("approval:")).map(r => r.id.slice(9));
   if (!ids.length) return;
-  const decisions = await ctx.db.select({ id: agentApprovals.id, status: agentApprovals.status, actor: keys.name }).from(agentApprovals).leftJoin(keys, eq(keys.keyHash, agentApprovals.decidedBy)).where(inArray(agentApprovals.id, ids));
+  const decisions = await ctx.db.select({ id: agentApprovals.id, status: agentApprovals.status, note: agentApprovals.decisionNote, actor: keys.name }).from(agentApprovals).leftJoin(keys, eq(keys.keyHash, agentApprovals.decidedBy)).where(inArray(agentApprovals.id, ids));
   for (const row of rows) {
     const d = decisions.find(d => `approval:${d.id}` === row.id);
     if (d?.actor !== undefined && d?.actor !== null) row.title = `Request ${d.status === "denied" ? "denied" : "approved"} ${keyActor(d.actor)}`;
+    if (d?.note) row.title += `: ${d.note}`; // K186
   }
 }
