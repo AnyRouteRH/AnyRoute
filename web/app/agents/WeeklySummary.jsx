@@ -25,9 +25,10 @@ export default function WeeklySummary({ request }) {
   };
   if (!state && !error) return null;
   return <div>
-    {state && <><label className="check-label"><input type="checkbox" checked={state.opted_in} disabled={busy} onChange={e => toggle(e.target.checked)} /> Weekly summary on Mondays</label>
-      <p className="help-text">Get last week’s agent spend, approvals and Stops from 09:00 UTC. Quiet weeks are skipped. Telegram can read the summary and agent names. One summary per account, within this link’s access.</p>
-      <p className="help-text" role="status">{busy ? 'Saving weekly summary…' : state.opted_in ? 'Weekly summary is on.' : 'Weekly summary is off.'}</p></>}
+    <p className="help-text">Choose Daily or Weekly, the hour and time zone in <a href="/dashboard/#notifications">Notifications</a>.</p> {/* K188 */}
+    {state && <><label className="check-label"><input type="checkbox" checked={state.opted_in} disabled={busy} onChange={e => toggle(e.target.checked)} /> Summary</label>
+      <p className="help-text">Get agent spend, approvals and Stops for the previous day or week. Empty periods are skipped. Telegram can read the summary and agent names. One summary per account, within this link’s access.</p>
+      <p className="help-text" role="status">{busy ? 'Saving summary…' : state.opted_in ? 'Summary is on.' : 'Summary is off.'}</p></>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }

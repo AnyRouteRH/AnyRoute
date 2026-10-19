@@ -1,3 +1,4 @@
+import { summaryClaims } from "../telegram/summary-schedule.ts"; // K188
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -24,7 +25,7 @@ export function weeklySummaryRoutes(app: Hono, ctx: Ctx) {
     if (optedIn !== undefined) await tx.update(kv).set({ weeklySummaryOptedIn: optedIn }).where(eq(kv.key, linkKey(link.uid)));
     const [row] = await tx.select({ optedIn: kv.weeklySummaryOptedIn }).from(kv).where(eq(kv.key, linkKey(link.uid)));
     const [account] = await tx.select({ lastSentWeek: accounts.lastSentWeek }).from(accounts).where(eq(accounts.id, caller.accountId));
-    return { opted_in: row?.optedIn === true, last_sent_week: account?.lastSentWeek ?? null };
+    return { opted_in: row?.optedIn === true, last_sent_week: summaryClaims(account?.lastSentWeek ?? null).weekly || null };
   });
   app.get("/api/v1/telegram/weekly-summary", async c => c.json({ data: await preference(await principal(ctx, c)) }));
   app.put("/api/v1/telegram/weekly-summary", async c => {

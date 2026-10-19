@@ -4,11 +4,14 @@ import { Button } from '../UI';
 import { api } from '../../lib/api';
 import { NOTICE_ROWS, readNotifications, saveNotifications, localToUtc, utcToLocal } from '../../lib/notifications';
 import s from './Notifications.module.css';
+import SummarySchedule from './SummarySchedule'; // K188
+import scheduleStyles from './SummarySchedule.module.css'; // K188
+import { initialSummarySchedule } from '../../lib/summary-schedule'; // K188
 export default function AccountNotifications({ apiKey }) {
   const [value, setValue] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(''), [status, setStatus] = useState('');
   const [quiet, setQuiet] = useState(false), [from, setFrom] = useState('22:00'), [to, setTo] = useState('08:00');
   function apply(data) {
-    setValue(data); setQuiet(!!data.quiet_hours);
+    setValue({ ...data, summary_schedule: initialSummarySchedule(data.summary_schedule) }); setQuiet(!!data.quiet_hours);
     if (data.quiet_hours) { setFrom(utcToLocal(data.quiet_hours.from_utc)); setTo(utcToLocal(data.quiet_hours.to_utc)); }
   }
   useEffect(() => {
@@ -33,6 +36,7 @@ export default function AccountNotifications({ apiKey }) {
       {!value.telegram_linked && <p id="telegram-link-hint" className="help-text">Link Telegram from <a href="/agents/">Agents</a> to use its switches.</p>}
       <div className={s.heading} aria-hidden="true"><span>Notice</span><span>Inbox</span><span>Telegram</span></div>
       {NOTICE_ROWS.map(([type, title]) => <div key={type} className={s.row}><span>{title}</span>{['inbox', 'telegram'].map(channel => <label key={channel} className={s.switch}><input type="checkbox" role="switch" aria-label={`${title}: ${channel === 'inbox' ? 'Inbox' : 'Telegram'}`} aria-describedby={channel === 'telegram' && !value.telegram_linked ? 'telegram-link-hint' : undefined} checked={value.channels[type][channel]} disabled={channel === 'telegram' && !value.telegram_linked} onChange={e => change(type, channel, e.target.checked)}/><span aria-hidden="true"/></label>)}</div>)}
+      <SummarySchedule styles={scheduleStyles} value={value.summary_schedule} onChange={summary_schedule => { setValue(v => ({ ...v, summary_schedule })); setStatus(''); }} /> {/* K188 */}
       <div className={s.quiet}><h3>Quiet hours for Telegram</h3>
         {!value.quiet_hours_available && <p className="help-text">Quiet-hour delivery is not switched on yet.</p>}
         <label><input type="checkbox" checked={quiet} disabled={!value.quiet_hours_available || !value.telegram_linked} onChange={e => { setQuiet(e.target.checked); setStatus(''); }}/> Wait during quiet hours</label>

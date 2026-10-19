@@ -287,3 +287,5 @@ TASKS.push({ ...task('weekly-summary-details', 'agents', 'Read your Monday summa
 TASKS.push({ ...task('pin-messages', 'chat', 'Pin a message in Chat', 'Keep messages close, jump to them, and keep them when summarizing.', '/docs/#pin-messages', 'pin, unpin, message, chat, summary, print'), menu: false }); // K191
 
 TASKS.push({ ...task("why-refused", "agents", "Understand a refused request", "Read which rule refused a request and where to change it.", "/why/", "refusal, refused, denied, rule, budget, approval, work hours, ip, read-only"), menu: false }); // K190
+
+TASKS.push({ ...task("summary-schedule", "agents", "Choose a daily or weekly summary", "Set the summary hour and time zone in Notifications.", "/docs/#summary-schedule", "daily, weekly, summary, monday, hour, time zone, notifications"), menu: false }); // K188

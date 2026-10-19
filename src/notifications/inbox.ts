@@ -1,3 +1,5 @@
+import { summaryPeriod } from "../telegram/summary-schedule.ts"; // K188
+import { dailySummaryText } from "../telegram/daily-summary-text.ts"; // K188
 import { readSummarySections } from "../telegram/weekly-summary-sections.ts"; // J184
 import type { Ctx } from "../context.ts";
 import type { KeyRow } from "../api/auth.ts";
@@ -13,11 +15,13 @@ export async function filterNotificationInbox<T extends { kind: string }>(ctx: C
 }
 export async function weeklyInbox(ctx: Ctx, key: KeyRow, whole: boolean, since?: string) {
   if (!whole || !key.management || !ctx.cfg.weeklySummaryEnabled || !(await readPreferences(ctx.db, key.accountId)).channels.weekly_summary.inbox) return [];
-  const week = previousIsoWeek(new Date()), at = week.end.toISOString();
+  const schedule = (await readPreferences(ctx.db, key.accountId)).summary_schedule; // K188
+  const week = schedule ? summaryPeriod(new Date(), schedule, true)! : previousIsoWeek(new Date()), at = week.end.toISOString();
   if (since && at <= since) return [];
   const summary = await readWeeklySummary(ctx.db, key, week);
-  if (!summary.activity) return [];
-  const sections = await readSummarySections(ctx, key, week); // J184
+  if (!summary.activity && schedule?.cadence !== "daily") return [];
+  const sections = await readSummarySections(ctx, key, week, false, schedule?.cadence === "daily"); // K188
+  if (!summary.activity && !sections.length) return []; // K188
   if (summary.topModel) summary.topModel = ctx.catalog.models.get(summary.topModel)?.name ?? summary.topModel;
-  return [{ id: `weekly-summary:${week.id}`, kind: "weekly_summary", at, title: weeklySummaryText(week, summary, ctx.cfg.siteUrl), href: "/dashboard/#activity", status: null, unread: true, ...(sections.length ? { sections } : {}) }];
+  return [{ id: `weekly-summary:${week.id}`, kind: "weekly_summary", at, title: (schedule?.cadence === "daily" ? dailySummaryText : weeklySummaryText)(week, summary, ctx.cfg.siteUrl), href: "/dashboard/#activity", status: null, unread: true, ...(sections.length ? { sections } : {}) }];
 }

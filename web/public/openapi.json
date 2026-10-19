@@ -20770,6 +20770,7 @@
     },
     "/api/v1/account/notifications": {
       "get": {
+        "x-k188": "Summary uses the compatible weekly_summary notice key. Optional saved summary_schedule selects daily/weekly, hour and IANA time zone; absent means Monday 09:00 UTC. Existing management auth and channel settings apply.",
         "summary": "Read account notifications",
         "description": "E146. Active management owner Bearer key; session and team keys excluded. No-store. Quiet delivery worker NOTIFICATION_QUIET_HOURS_ENABLED defaults false. Existing feature gates apply. Weekly Telegram writes existing link opt-ins; security switches share the existing preference. Defaults preserve current channels.",
         "security": [
@@ -20793,6 +20794,7 @@
                         "quiet_hours"
                       ],
                       "properties": {
+                        "summary_schedule": { "$ref": "#/components/schemas/SummarySchedule" },
                         "channels": {
                           "type": "object",
                           "additionalProperties": false,
@@ -21091,6 +21093,7 @@
         "operationId": "readAccountNotifications"
       },
       "put": {
+        "x-k188": "Optional summary_schedule updates the account cadence without changing the Telegram link toggle. Omission preserves the saved schedule. No new flag; WEEKLY_SUMMARY_ENABLED controls both cadences. Quiet hours apply.",
         "summary": "Save account notifications",
         "description": "E146. Active management owner Bearer key; session and team keys excluded. No-store. Quiet delivery worker NOTIFICATION_QUIET_HOURS_ENABLED defaults false. Existing feature gates apply. Weekly Telegram writes existing link opt-ins; security switches share the existing preference. Defaults preserve current channels.",
         "security": [
@@ -21114,6 +21117,7 @@
                         "quiet_hours"
                       ],
                       "properties": {
+                        "summary_schedule": { "$ref": "#/components/schemas/SummarySchedule" },
                         "channels": {
                           "type": "object",
                           "additionalProperties": false,
@@ -21421,6 +21425,7 @@
                   "quiet_hours"
                 ],
                 "properties": {
+                  "summary_schedule": { "$ref": "#/components/schemas/SummarySchedule" },
                   "channels": {
                     "type": "object",
                     "additionalProperties": false,
@@ -23789,6 +23794,7 @@
       }
     },
     "schemas": {
+    "SummarySchedule": { "type": "object", "additionalProperties": false, "required": ["cadence", "hour", "time_zone"], "properties": { "cadence": { "type": "string", "enum": ["weekly", "daily"], "default": "weekly" }, "hour": { "type": "integer", "minimum": 0, "maximum": 23, "default": 9 }, "time_zone": { "type": "string", "minLength": 1, "maxLength": 100, "default": "UTC", "description": "IANA time zone; browser controls initially suggest the device zone. Calendar periods follow daylight-saving changes." } }, "description": "K188: optional account summary schedule stored in existing notification preferences. Daily covers the previous local calendar day; weekly covers the previous local Monday through Sunday. Hourly checks retry on the scheduled day only; DST gaps deliver at the next available hour, folds reuse the period claim. Ordinary concurrent runs and cadence switches do not repeat a period. Telegram acceptance before database commit can repeat delivery." },
       "BusinessDetails": {
         "x-card": "H168",
         "type": "object",

@@ -1,0 +1,8 @@
+.schedule { min-width: 0; border: 1px solid var(--line); padding: 1rem; margin-block: 1rem; }
+.schedule legend { font-weight: 600; }
+.fields { display: flex; flex-wrap: wrap; gap: 1rem; }
+.fields label { display: grid; gap: .4rem; min-width: 0; }
+.fields select { width: 100%; max-width: 100%; min-height: 44px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); padding: .5rem; }
+.fields select:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.zone { flex: 1 1 15rem; }
+@media (max-width: 420px) { .fields { gap: .75rem; } .zone { width: 100%; } }

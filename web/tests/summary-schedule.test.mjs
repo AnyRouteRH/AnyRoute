@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createElement as h } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import SummarySchedule from '../components/notifications/SummarySchedule.js';
+import { initialSummarySchedule, summaryTimeZones } from '../lib/summary-schedule.js';
+import { NOTICE_ROWS, saveNotifications } from '../lib/notifications.js';
+import { TASKS } from '../lib/site-map.js';
+const source = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+test('browser zone defaults to weekly 09:00, while saved daily values survive browser zone changes', () => {
+  assert.deepEqual(initialSummarySchedule(undefined, 'Asia/Kolkata'), { cadence: 'weekly', hour: 9, time_zone: 'Asia/Kolkata' });
+  const saved = { cadence: 'daily', hour: 7, time_zone: 'America/Toronto' };
+  assert.equal(initialSummarySchedule(saved, 'Europe/Paris'), saved);
+  const zones = summaryTimeZones('Asia/Kolkata'); assert.ok(zones.includes('Asia/Kolkata') && zones.includes('UTC'));
+  assert.equal(new Set(zones).size, zones.length);
+  assert.equal(NOTICE_ROWS.find(([type]) => type === 'weekly_summary')[1], 'Summary');
+});
+test('the existing save submits schedule with channel settings and preserves legacy request bytes without a schedule', async () => {
+  const calls = [], request = async (path, options) => { calls.push([path, options]); return { data: options.body }; };
+  const value = { channels: { weekly_summary: { inbox: true, telegram: false } }, quiet_hours: null, summary_schedule: { cadence: 'daily', hour: 9, time_zone: 'America/Toronto' } };
+  assert.deepEqual(await saveNotifications(request, value), value);
+  assert.deepEqual(calls[0][1].body, value);
+  const { summary_schedule, ...legacy } = value;
+  assert.deepEqual(await saveNotifications(request, legacy), legacy);
+});
+test('controls use labelled native selects and preserve all schedule fields when cadence changes', () => {
+  const value = { cadence: 'daily', hour: 9, time_zone: 'America/Toronto' }, changes = [];
+  const html = renderToStaticMarkup(h(SummarySchedule, { value, onChange: next => changes.push(next) }));
+  assert.equal((html.match(/<select/g) || []).length, 3);
+  for (const text of ['Summary schedule', 'Weekly (Monday)', 'Daily', 'Hour', '09:00', 'Time zone', 'America/Toronto', 'quiet hours']) assert.ok(html.includes(text), text);
+  assert.match(html, /value="daily" selected=""/); assert.match(html, /value="9" selected=""/);
+  const tree = SummarySchedule({ value, onChange: next => changes.push(next) });
+  const fields = tree.props.children[2].props.children;
+  fields[0].props.children[1].props.onChange({ target: { value: 'weekly' } });
+  assert.deepEqual(changes, [{ ...value, cadence: 'weekly' }]);
+  const css = source('../components/notifications/SummarySchedule.module.css');
+  assert.match(css, /var\(--ink\)/); assert.match(css, /focus-visible/); assert.match(css, /max-width: 420px/); assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b|rgba?\(/i);
+});
+test('schedule is part of Notifications, documented under the weekly summary and discoverable in search', () => {
+  assert.match(source('../components/notifications/AccountNotifications.jsx'), /<SummarySchedule/);
+  assert.match(source('../app/docs/page.jsx'), /<SummaryScheduleDocs \/>/);
+  assert.match(source('../components/SummaryScheduleDocs.jsx'), /id="summary-schedule"/);
+  assert.match(source('../components/WeeklySummaryDocs.jsx'), /id="weekly-summary"/);
+  assert.ok(TASKS.some(task => task.id === 'summary-schedule' && task.href === '/docs/#summary-schedule'));
+  const spec = JSON.parse(source('../public/openapi.json')), path = spec.paths['/api/v1/account/notifications'];
+  for (const method of ['get', 'put']) assert.ok(path[method].security.length);
+  assert.equal(path.put.requestBody.content['application/json'].schema.properties.summary_schedule.$ref, '#/components/schemas/SummarySchedule');
+  assert.deepEqual(spec.components.schemas.SummarySchedule.properties.cadence.enum, ['weekly', 'daily']);
+});

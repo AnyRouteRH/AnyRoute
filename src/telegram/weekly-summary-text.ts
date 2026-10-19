@@ -16,16 +16,16 @@ export type WeekSummary = {
   approvals: number; approved: number; denied: number; stops: number; topModel: string | null;
 };
 export function summaryDue(now: Date) { return now.getUTCDay() === 1 && now.getUTCHours() >= 9; }
-const dayLabel = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const dayLabel = (date: Date, timeZone = "UTC") => date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone });
 const money = (pico: bigint) => {
   const cents = (pico + 5_000_000_000n) / 10_000_000_000n;
   return `$${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
 };
 // Labels are owner-selected settings. Keep them on one line and within Telegram's text limit.
 const label = (name: string) => Array.from(name.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ")).slice(0, 80).join("");
-export function weeklySummaryText(week: ReturnType<typeof previousIsoWeek>, summary: WeekSummary, siteUrl: string) {
+export function weeklySummaryText(week: ReturnType<typeof previousIsoWeek> & { timeZone?: string }, summary: WeekSummary, siteUrl: string) {
   const lines = [
-    `Anyroute: your week (${dayLabel(week.start)} – ${dayLabel(new Date(week.end.getTime() - DAY))})`,
+    `Anyroute: your week (${dayLabel(week.start, week.timeZone)} – ${dayLabel(new Date(week.end.getTime() - 1), week.timeZone)})`,
     `Spent: ${money(summary.spent)} across ${summary.agents} ${summary.agents === 1 ? "agent" : "agents"}`,
     ...(summary.topKeys.length ? [summary.topKeys.slice(0, 5).map(k => `${label(k.name)} ${money(k.spent)}`).join(" · ")] : []),
     `Approvals: ${summary.approvals} (${summary.approved} approved, ${summary.denied} denied) · Stops: ${summary.stops}`,

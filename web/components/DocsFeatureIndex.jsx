@@ -68,6 +68,7 @@ const sections = [
   ["agent-ledger", "Activity & receipts"],
   ["agent-alerts", "Agent alerts"],
   ["weekly-summary", "Weekly Telegram summary"], // B120
+  ["summary-schedule", "Daily or weekly summary"], // K188
   ["agent-certificates", "Track-record certificates"],
   ["agent-profiles", "Public profiles & directory"],
   ["agent-identity", "Identity, paid reputation & liveness"],

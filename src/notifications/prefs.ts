@@ -1,3 +1,4 @@
+import { summaryScheduleBody, type SummarySchedule } from "../telegram/summary-schedule.ts"; // K188
 import { saveIncidentSubscription } from "../incident-notices/preferences.ts"; // H169
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -11,10 +12,10 @@ export type NoticeType = typeof NOTICE_TYPES[number];
 export type Channels = { inbox: boolean; telegram: boolean };
 const channels = z.strictObject({ inbox: z.boolean(), telegram: z.boolean() });
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
-export const preferenceBody = z.strictObject({ channels: z.strictObject(Object.fromEntries(NOTICE_TYPES.map(type => [type, channels])) as Record<NoticeType, typeof channels>), quiet_hours: z.strictObject({ from_utc: time, to_utc: time }).nullable() });
+export const preferenceBody = z.strictObject({ summary_schedule: summaryScheduleBody.optional(), channels: z.strictObject(Object.fromEntries(NOTICE_TYPES.map(type => [type, channels])) as Record<NoticeType, typeof channels>), quiet_hours: z.strictObject({ from_utc: time, to_utc: time }).nullable() });
 export type Preferences = z.infer<typeof preferenceBody>;
 export const prefsKey = (account: string) => `notification-prefs:${account}`;
-type Stored = { channels?: Partial<Record<NoticeType, Channels>>; quiet_hours?: Preferences["quiet_hours"] };
+type Stored = { summary_schedule?: SummarySchedule; channels?: Partial<Record<NoticeType, Channels>>; quiet_hours?: Preferences["quiet_hours"] };
 export async function readPreferences(db: Db | Tx, account: string): Promise<Preferences> {
   const [row] = await db.select().from(kv).where(eq(kv.key, prefsKey(account)));
   const saved = (row?.value ?? {}) as Stored;
@@ -31,7 +32,7 @@ export async function readPreferences(db: Db | Tx, account: string): Promise<Pre
   values.weekly_summary.inbox = saved.channels?.weekly_summary?.inbox ?? false;
   values.status_incidents = { inbox: false, telegram: false, ...saved.channels?.status_incidents }; // H169
   values.security_alerts = { inbox: sec.inbox ?? sec.enabled !== false, telegram: sec.telegram ?? sec.enabled !== false };
-  return { channels: values, quiet_hours: saved.quiet_hours ?? null };
+  return { channels: values, quiet_hours: saved.quiet_hours ?? null, ...(saved.summary_schedule ? { summary_schedule: saved.summary_schedule } : {}) }; // K188
 }
 export async function savePreferences(db: Db | Tx, account: string, value: Preferences) {
   await saveIncidentSubscription(db, account, value.channels.status_incidents); // H169
@@ -41,7 +42,9 @@ export async function savePreferences(db: Db | Tx, account: string, value: Prefe
   await db.insert(kv).values({ key: securityKey(account), value: secValue }).onConflictDoUpdate({ target: kv.key, set: { value: secValue, updatedAt: new Date() } });
   for (const link of await accountLinks(db, account)) await db.update(kv).set({ weeklySummaryOptedIn: value.channels.weekly_summary.telegram }).where(eq(kv.key, linkKey(link.uid)));
   const { security_alerts: _security, weekly_summary: summary, ...rest } = value.channels;
-  const saved = { channels: { ...rest, weekly_summary: { inbox: summary.inbox } }, quiet_hours: value.quiet_hours };
+  const previous = await readPreferences(db, account); // K188: older clients preserve the schedule.
+  const schedule = value.summary_schedule ?? previous.summary_schedule; // K188
+  const saved = { ...(schedule ? { summary_schedule: schedule } : {}), channels: { ...rest, weekly_summary: { inbox: summary.inbox } }, quiet_hours: value.quiet_hours };
   await db.insert(kv).values({ key: prefsKey(account), value: saved }).onConflictDoUpdate({ target: kv.key, set: { value: saved, updatedAt: new Date() } });
 }
 export async function channelEnabled(ctx: Ctx, account: string, type: NoticeType, channel: keyof Channels) {

@@ -17,9 +17,9 @@ export function capConcern(limits: Awaited<ReturnType<typeof readAgentRunway>>["
   return limits.some(limit => limit.charged_usd !== null && limit.charged_usd > 0
     && (limit.charged_usd >= limit.cap_usd * 0.8 || limit.remaining_usd === 0));
 }
-export async function readSummarySections(ctx: Ctx, caller: KeyRow, week: ReturnType<typeof previousIsoWeek>, catalogReady = false): Promise<SummarySection[]> {
+export async function readSummarySections(ctx: Ctx, caller: KeyRow, week: ReturnType<typeof previousIsoWeek>, catalogReady = false, daily = false): Promise<SummarySection[]> {
   const sections: SummarySection[] = [];
-  const q = { days: 7, from: week.start.toISOString(), to: week.end.toISOString() };
+  const q = { days: daily ? 1 : 7, from: week.start.toISOString(), to: week.end.toISOString() };
   const report = await readReliability(ctx, caller, q, !caller.management);
   if (report.totals.success_rate !== null) sections.push({ text: `${report.totals.success_rate}% of your calls succeeded`, href: "/dashboard/#insights" });
   const savings = await readSavings(ctx, caller, q, { teamOnly: !caller.management, catalogReady });
@@ -44,7 +44,7 @@ export async function readSummarySections(ctx: Ctx, caller: KeyRow, week: Return
       and e.kind = 'decision' and e.decision = 'deny' and exists (select 1 from jsonb_array_elements(case when jsonb_typeof(e.reasons) = 'array' then e.reasons else '[]'::jsonb end) r
         where r->>'code' in ('over_per_request','over_per_hour','over_per_day','over_per_week','breaker:max_spend_usd_per_minute')))`)).orderBy(asc(keys.keyHash));
   for (const key of hits) { const name = key.name || key.label || "Unnamed agent"; if (!near.includes(name)) near.push(name); }
-  if (near.length) sections.push({ text: `Agent caps: ${names(near)} reached a cap last week or were at least 80% used at week end`, href: "/agents/" });
+  if (near.length) sections.push({ text: `Agent caps: ${names(near)} reached a cap ${daily ? "yesterday" : "last week"} or were at least 80% used at ${daily ? "day" : "week"} end`, href: "/agents/" });
   const expired = await ctx.db.select({ id: agentApprovals.id }).from(agentApprovals).innerJoin(keys, eq(keys.keyHash, agentApprovals.keyHash))
     .where(and(eq(keys.accountId, caller.accountId), caller.management ? undefined : eq(keys.teamId, caller.teamId!),
       inArray(agentApprovals.status, ["pending", "expired"]), isNull(agentApprovals.decidedAt),

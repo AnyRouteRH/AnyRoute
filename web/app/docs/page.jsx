@@ -48,6 +48,7 @@ import AgentSpendGlanceDocs from "../../components/AgentSpendGlanceDocs"; // C13
 import RouterLimits from "../../components/RouterLimits"; // HD1
 import AgentGuardDocs from "../../components/AgentGuardDocs"; // V98
 import WeeklySummaryDocs from "../../components/WeeklySummaryDocs"; // B120
+import SummaryScheduleDocs from "../../components/SummaryScheduleDocs"; // K188
 import ScheduledPromptsDocs from "../../components/ScheduledPromptsDocs"; // D136
 import PriceNoticesDocs from "../../components/PriceNoticesDocs"; // C133
 import AgentPayDocs from "../../components/AgentPayDocs"; // Pay another agent
@@ -987,6 +988,7 @@ export default function Docs() {
           <ApproveAndAllowDocs /> {/* B118 */}
           <AgentGuardDocs /> {/* V98 */}
           <WeeklySummaryDocs /> {/* B120 */}
+          <SummaryScheduleDocs /> {/* K188 */}
           <TelegramPhotosDocs /> {/* D142 */}
           <TelegramBalanceSpendDocs /> {/* E152 */}
           <TelegramStopDocs /> {/* G163 */}
