@@ -76,6 +76,7 @@ import AgreementsDocs from "../../components/AgreementsDocs";
 import ReliabilityDocs from "../../components/ReliabilityDocs"; // E155
 import SavingsFinderDocs from "../../components/SavingsFinderDocs"; // G160
 import ModelAccountDocs from "../../components/ModelAccountDocs"; // J178
+import YourModelsDocs from "../../components/YourModelsDocs"; // K192
 import DocsFeatureIndex, { DocsFeatureLinks } from "../../components/DocsFeatureIndex";
 import CommandPaletteDocs from "../../components/CommandPaletteDocs"; // J181
 import KeyboardShortcutsDocs from "../../components/KeyboardShortcutsDocs"; // K193
@@ -999,6 +1000,7 @@ export default function Docs() {
           <ReliabilityDocs /> {/* E155 */}
           <SavingsFinderDocs /> {/* G160 */}
           <ModelAccountDocs /> {/* J178 */}
+          <YourModelsDocs /> {/* K192 */}
           <TraceChargeDocs /> {/* J182 */}
           <IdempotencyDocs /> {/* D145 */}
           <ProjectBudgetsDocs /> {/* D139 */}

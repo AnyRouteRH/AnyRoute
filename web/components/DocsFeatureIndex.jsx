@@ -97,6 +97,7 @@ sections.push(["print-chat", "Print or save a chat as PDF"]); // H174
 
 sections.push(["stop-all", "Stop all agents at once"]); // H172
 sections.push(["your-view-of-a-model", "Your view of a model"]); // J178
+sections.push(["your-models", "Your models in the catalogue"]); // K192
 
 sections.push(["chat-projects", "Chat in a project"]); // J183
 

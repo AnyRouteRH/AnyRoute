@@ -222,6 +222,7 @@
     }
   ],
   "paths": {
+    "/api/v1/account/models/used": { "get": { "operationId": "getAccountModelsUsed", "summary": "Your models in the catalogue", "description": "K192: batches 30 rolling days using Activity account-or-own-key visibility, including session restrictions and removed-key account stamps. Lists current non-hidden catalogue models with recorded calls, exact net spend descending then model id, without a group limit. Refunds use posting time. Success excludes cancelled/error completions and failures before a call record. Cheaper options reuse Ways to save and its estimate limits. No new flag, storage or notices. Read-only keys are refused.", "security": [{ "BearerAuth": [] }], "responses": { "200": { "description": "No-store object with scope (account/key), days (30), from/to UTC bounds, data array. Each row: model; decimal-string calls, succeeded, charged_usd, refunded_usd, cost_usd; numeric success_rate rounded to one decimal; nullable cheaper_option (model, name, estimated_cost_usd, estimated_saving_usd)." }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } } } },
     "/api/v1/account/models/{id}/summary": {
       "get": {
         "operationId": "getAccountModelSummary",

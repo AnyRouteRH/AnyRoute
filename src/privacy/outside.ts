@@ -52,6 +52,7 @@ import { laneReportLimit, laneReportStores } from "./lane-report.ts"; // Lane re
 import { reliabilityStores } from "./reliability.ts"; // E155
 import { savingsStores } from "./savings.ts"; // G160
 import { modelSummaryStores } from "./model-summary.ts"; // J178
+import { yourModelsStores } from "./your-models.ts"; // K192
 import { insightsStores } from "./insights.ts"; // V88: read-only aggregates.
 import { dataToolStores } from "./data-tools.ts"; // B: market-data tools and decision tags.
 import { webhookBodyReader, webhookStores } from "./webhooks.ts"; // V86: event delivery.
@@ -851,6 +852,7 @@ export const EXTERNAL: ExternalDoc = {
     ...insightsStores, // V88: spend insights.
     ...savingsStores, // G160
     ...modelSummaryStores, // J178
+    ...yourModelsStores, // K192
     ...reliabilityStores, // E155
     ...dataToolStores, // B
     ...inboxStores,
