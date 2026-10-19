@@ -9,6 +9,7 @@ const groups: Record<string, InboxGroup> = {
   security: "security", price_notice: "models", model_watch: "models", status_incidents: "models", // H169 incidents sit with model notices
   agreement: "other", host: "other", weekly_summary: "other",
 };
+groups.low_balance_pause = "agents"; // K195
 export const inboxGroup = (kind: string): InboxGroup => Object.hasOwn(groups, kind) ? groups[kind]! : "other";
 const query = z.string().max(512).regex(/^[a-z][a-z_-]*(?:,[a-z][a-z_-]*)*$/);
 export function inboxKinds(value: string): string[] { return [...new Set(query.parse(value).split(","))]; }

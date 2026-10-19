@@ -11,6 +11,9 @@ export const NOTICE_TYPES = ["approvals", "agent_alerts", "deposits", "low_balan
 // K187: append to the shared registry without rewriting other cards’ entries.
 (NOTICE_TYPES as unknown as NoticeType[]).push("inbox_snooze"); // K187
 export type NoticeType = typeof NOTICE_TYPES[number] | "inbox_snooze";
+// K195: append without rewriting the shared notice list.
+(NOTICE_TYPES as unknown as string[]).push("low_balance_pause");
+export type NoticeType = typeof NOTICE_TYPES[number] | "low_balance_pause";
 export type Channels = { inbox: boolean; telegram: boolean };
 const channels = z.strictObject({ inbox: z.boolean(), telegram: z.boolean() });
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);

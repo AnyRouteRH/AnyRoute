@@ -16,6 +16,7 @@ import { describeProjects } from "./projects.ts"; // C134
 import { describeProjectBudgets } from "./project-budgets.ts"; // D139
 import { describePolicyHistory } from "./policy-history.ts"; // D144
 import { describeLowBalance } from "./low-balance.ts"; // B119
+import { describeLowBalancePause } from "./low-balance-pause.ts"; // K195
 import { guardTables } from "./tables/agent-guard.ts"; // V98
 import { describeWeeklySummary } from "./weekly-summary.ts"; // B120
 import { agentPayTables } from "./agent-pay.ts"; // Pay another agent
@@ -72,6 +73,7 @@ describeProjectBudgets(TABLE_DOCS); // D139
 describePolicyHistory(TABLE_DOCS); // D144
 describeWorkHours(TABLE_DOCS); // G161
 describeLowBalance(TABLE_DOCS); // B119
+describeLowBalancePause(TABLE_DOCS); // K195
 describeAutonomy(TABLE_DOCS);
 describeSealed(TABLE_DOCS);
 describeWeeklySummary(TABLE_DOCS); // B120

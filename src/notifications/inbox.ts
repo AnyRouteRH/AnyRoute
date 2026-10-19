@@ -11,6 +11,7 @@ kinds.inbox_snooze = "inbox_snooze"; // K187
 kinds.model_watch = "model_watch"; // G159
 kinds.status_incidents = "status_incidents"; // H169
 export const inboxNoticeType = (kind: string): NoticeType | undefined => Object.hasOwn(kinds, kind) ? kinds[kind] : undefined; // K187
+kinds.low_balance_pause = "low_balance_pause"; // K195
 export async function filterNotificationInbox<T extends { kind: string }>(ctx: Ctx, account: string, items: T[]) {
   const prefs = await readPreferences(ctx.db, account);
   for (let i = items.length - 1; i >= 0; i--) if (kinds[items[i]!.kind] && !prefs.channels[kinds[items[i]!.kind]!].inbox) items.splice(i, 1);

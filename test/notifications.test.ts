@@ -38,6 +38,7 @@ function quietNow() { const now = new Date(); return { from_utc: clock(new Date(
 const kinds = ["approval", "alert", "deposit", "low_balance", "weekly_summary", "security", "quiet-agent", "price_notice", "project_budget", "schedule", "approval_reminder", "model_watch"];
 kinds.push("status_incidents"); // H169
 kinds.push("inbox_snooze"); // K187
+kinds.push("low_balance_pause"); // K195
 test("quiet windows include start, exclude end, wrap midnight and reject equal clocks as a delay", () => {
   const quiet = { from_utc: "22:00", to_utc: "08:00" };
   for (const at of ["2026-10-10T22:00:00Z", "2026-10-11T07:59:59Z"]) expect(quietUntil(quiet, new Date(at))?.toISOString()).toBe("2026-10-11T08:00:00.000Z");
@@ -148,6 +149,7 @@ test("every source feature guard is rechecked at queue delivery, including API r
   const flags = { approvals: "agentPolicyEnabled", agent_alerts: "agentPolicyEnabled", deposits: "depositPingsEnabled", low_balance: "lowBalanceAlertsEnabled", weekly_summary: "weeklySummaryEnabled", security_alerts: "securityAlertsEnabled", quiet_agents: "quietAgentAlertsEnabled", price_notices: "priceNoticesEnabled", project_budgets: "projectBudgetTelegramEnabled", scheduled_results: "scheduledPromptsEnabled", approval_reminders: "approvalNudgesEnabled", model_watch: "modelWatchEnabled" } as const;
   Object.assign(flags, { status_incidents: "statusIncidentNoticesEnabled" }); // H169
   Object.assign(flags, { inbox_snooze: "inboxSnoozeRemindersEnabled" }); // K187
+  Object.assign(flags, { low_balance_pause: "lowBalancePauseEnabled" }); // K195
   for (const type of NOTICE_TYPES) {
     expect(noticeFeatureEnabled({ ...h.ctx, cfg: { ...h.ctx.cfg, [flags[type as keyof typeof flags] ?? "statusIncidentNoticesEnabled"]: false } }, type)).toBe(false);
     expect(noticeFeatureEnabled({ ...h.ctx, cfg: { ...h.ctx.cfg, [flags[type as keyof typeof flags] ?? "statusIncidentNoticesEnabled"]: true } }, type)).toBe(true);

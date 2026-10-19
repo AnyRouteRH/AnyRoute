@@ -2457,7 +2457,15 @@
           }
         ],
         "parameters": [
-          {"name":"snoozed","in":"query","required":false,"description":"K187: true lists waiting notices; false or omitted lists awake notices.","schema":{"type":"boolean"}},
+          {
+            "name": "snoozed",
+            "in": "query",
+            "required": false,
+            "description": "K187: true lists waiting notices; false or omitted lists awake notices.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
           {
             "name": "kinds",
             "in": "query",
@@ -2540,10 +2548,149 @@
         },
         "x-D138-security-alerts": "When SECURITY_ALERTS_ENABLED: security items have kind security, id, at, title, status null, href /dashboard/#settings and unread. Account management keys see all account security items; team owners/admins see only their team; session and ordinary keys see none. since filters event time. One item per recorded event, including changes by the current key. Claimed items expire after 90 days while the worker is enabled.",
         "x-d136-scheduled-prompts": "When SCHEDULED_PROMPTS_ENABLED is true, owner inboxes include finished retained runs visible in their paying-key team scope: kind schedule, id, at, title (name and first 300 reply characters or failure code), status, href to the authenticated saved result, unread. Inference and session keys never receive these items. Deleting the schedule removes its inbox items.",
-        "x-j184-weekly-summary": "Weekly summary items optionally add sections, an array of text and href pairs linking reliability and estimated savings to /dashboard/#insights, retained model-watch changes to /models/, agent caps and undecided expired approvals to /agents/. Empty sections are omitted. Existing management auth, weekly_summary notification preferences and WEEKLY_SUMMARY_ENABLED (default false) apply. No new endpoint or persistence."
+        "x-j184-weekly-summary": "Weekly summary items optionally add sections, an array of text and href pairs linking reliability and estimated savings to /dashboard/#insights, retained model-watch changes to /models/, agent caps and undecided expired approvals to /agents/. Empty sections are omitted. Existing management auth, weekly_summary notification preferences and WEEKLY_SUMMARY_ENABLED (default false) apply. No new endpoint or persistence.",
+        "x-k195-low-balance-pause": "With LOW_BALANCE_PAUSE_ENABLED and AGENT_POLICY_ENABLED, management-owner inboxes include low_balance_pause items in the agents group. Fields: id, at, kind, title (Paused: balance below $X. Resume all), href (/agents/?command=resume-all), amount (settled balance as decimal dollars), status null, unread true. Notice preferences, since and as_of filtering apply. Latest 100 notices remain in account KV. Team, ordinary and session keys receive none. The link opens the existing Resume all confirmation; fetching the inbox never resumes agents."
       }
     },
-    "/api/v1/inbox/{id}/snooze": {"post":{"operationId":"snoozeInboxNotice","summary":"Snooze a notice","description":"K187. Same active Bearer key and visibility as the inbox. Read-only keys refused. Only a currently visible retained source id is accepted. Up to 100 clocks per visibility scope; until must be future and within 30 days. Approvals cap at expiry and return capped=true plus a message; expiry is unchanged. Expired/decided or no-longer-returned sources disappear. No migration. The optional inbox-snooze minute worker requires INBOX_SNOOZE_REMINDERS_ENABLED (default false) and Telegram linking; it respects original and inbox_snooze Telegram settings, source/link authorization and quiet hours. Claims commit before attempts; failures are not retried.","security":[{"BearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","additionalProperties":false,"required":["until"],"properties":{"until":{"type":"string","format":"date-time"}}}}}},"responses":{"200":{"description":"Snoozed; approval cap is explicit.","content":{"application/json":{"schema":{"type":"object","required":["id","until","capped"],"properties":{"id":{"type":"string"},"until":{"type":"string","format":"date-time"},"capped":{"type":"boolean"},"message":{"type":"string"}}}}}},"400":{"$ref":"#/components/responses/BadRequest"},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"},"404":{"$ref":"#/components/responses/NotFound"}}},"delete":{"operationId":"unsnoozeInboxNotice","summary":"Return a snoozed notice now","description":"K187. Same active Bearer key and visibility digest as the inbox; read-only keys refused. Idempotently wakes the matching clock as unread, without Telegram. No other scope is changed.","security":[{"BearerAuth":[]}],"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"Unsnoozed or already absent.","content":{"application/json":{"schema":{"type":"object","required":["id","snoozed"],"properties":{"id":{"type":"string"},"snoozed":{"type":"boolean","enum":[false]}}}}}},"401":{"$ref":"#/components/responses/Unauthorized"},"403":{"$ref":"#/components/responses/Forbidden"}}}},
+    "/api/v1/inbox/{id}/snooze": {
+      "post": {
+        "operationId": "snoozeInboxNotice",
+        "summary": "Snooze a notice",
+        "description": "K187. Same active Bearer key and visibility as the inbox. Read-only keys refused. Only a currently visible retained source id is accepted. Up to 100 clocks per visibility scope; until must be future and within 30 days. Approvals cap at expiry and return capped=true plus a message; expiry is unchanged. Expired/decided or no-longer-returned sources disappear. No migration. The optional inbox-snooze minute worker requires INBOX_SNOOZE_REMINDERS_ENABLED (default false) and Telegram linking; it respects original and inbox_snooze Telegram settings, source/link authorization and quiet hours. Claims commit before attempts; failures are not retried.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "until"
+                ],
+                "properties": {
+                  "until": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Snoozed; approval cap is explicit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "until",
+                    "capped"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "until": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "capped": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "unsnoozeInboxNotice",
+        "summary": "Return a snoozed notice now",
+        "description": "K187. Same active Bearer key and visibility digest as the inbox; read-only keys refused. Idempotently wakes the matching clock as unread, without Telegram. No other scope is changed.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unsnoozed or already absent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "snoozed"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "snoozed": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
     "/api/v1/inbox/seen": {
       "post": {
         "operationId": "markInboxSeen",
@@ -20797,7 +20944,9 @@
                         "quiet_hours"
                       ],
                       "properties": {
-                        "summary_schedule": { "$ref": "#/components/schemas/SummarySchedule" },
+                        "summary_schedule": {
+                          "$ref": "#/components/schemas/SummarySchedule"
+                        },
                         "channels": {
                           "type": "object",
                           "additionalProperties": false,
@@ -20815,7 +20964,8 @@
                             "approval_reminders",
                             "scheduled_results",
                             "status_incidents",
-                            "model_watch"
+                            "model_watch",
+                            "low_balance_pause"
                           ],
                           "properties": {
                             "approvals": {
@@ -20997,7 +21147,25 @@
                                 }
                               }
                             },
-                            "inbox_snooze": {"type":"object","description":"K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.","additionalProperties":false,"required":["inbox","telegram"],"properties":{"inbox":{"type":"boolean","default":true},"telegram":{"type":"boolean","default":true}}},
+                            "inbox_snooze": {
+                              "type": "object",
+                              "description": "K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "telegram": {
+                                  "type": "boolean",
+                                  "default": true
+                                }
+                              }
+                            },
                             "status_incidents": {
                               "type": "object",
                               "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",
@@ -21032,6 +21200,23 @@
                                 "telegram": {
                                   "type": "boolean",
                                   "default": true
+                                }
+                              }
+                            },
+                            "low_balance_pause": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "description": "K195: Low-balance agent pause notices. Both channels default on; account pause opt-in defaults off. Telegram respects quiet hours.",
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
                                 }
                               }
                             }
@@ -21122,7 +21307,9 @@
                         "quiet_hours"
                       ],
                       "properties": {
-                        "summary_schedule": { "$ref": "#/components/schemas/SummarySchedule" },
+                        "summary_schedule": {
+                          "$ref": "#/components/schemas/SummarySchedule"
+                        },
                         "channels": {
                           "type": "object",
                           "additionalProperties": false,
@@ -21140,7 +21327,8 @@
                             "approval_reminders",
                             "scheduled_results",
                             "status_incidents",
-                            "model_watch"
+                            "model_watch",
+                            "low_balance_pause"
                           ],
                           "properties": {
                             "approvals": {
@@ -21322,7 +21510,25 @@
                                 }
                               }
                             },
-                            "inbox_snooze": {"type":"object","description":"K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.","additionalProperties":false,"required":["inbox","telegram"],"properties":{"inbox":{"type":"boolean","default":true},"telegram":{"type":"boolean","default":true}}},
+                            "inbox_snooze": {
+                              "type": "object",
+                              "description": "K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.",
+                              "additionalProperties": false,
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "telegram": {
+                                  "type": "boolean",
+                                  "default": true
+                                }
+                              }
+                            },
                             "status_incidents": {
                               "type": "object",
                               "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",
@@ -21357,6 +21563,23 @@
                                 "telegram": {
                                   "type": "boolean",
                                   "default": true
+                                }
+                              }
+                            },
+                            "low_balance_pause": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "description": "K195: Low-balance agent pause notices. Both channels default on; account pause opt-in defaults off. Telegram respects quiet hours.",
+                              "required": [
+                                "inbox",
+                                "telegram"
+                              ],
+                              "properties": {
+                                "inbox": {
+                                  "type": "boolean"
+                                },
+                                "telegram": {
+                                  "type": "boolean"
                                 }
                               }
                             }
@@ -21432,7 +21655,9 @@
                   "quiet_hours"
                 ],
                 "properties": {
-                  "summary_schedule": { "$ref": "#/components/schemas/SummarySchedule" },
+                  "summary_schedule": {
+                    "$ref": "#/components/schemas/SummarySchedule"
+                  },
                   "channels": {
                     "type": "object",
                     "additionalProperties": false,
@@ -21450,7 +21675,8 @@
                       "approval_reminders",
                       "scheduled_results",
                       "status_incidents",
-                      "model_watch"
+                      "model_watch",
+                      "low_balance_pause"
                     ],
                     "properties": {
                       "approvals": {
@@ -21632,7 +21858,25 @@
                           }
                         }
                       },
-                      "inbox_snooze": {"type":"object","description":"K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.","additionalProperties":false,"required":["inbox","telegram"],"properties":{"inbox":{"type":"boolean","default":true},"telegram":{"type":"boolean","default":true}}},
+                      "inbox_snooze": {
+                        "type": "object",
+                        "description": "K187: Snoozed reminders; both channels default true. Inbox enables the unread wake clock; Telegram requires the reminder worker and the source notice switch.",
+                        "additionalProperties": false,
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "telegram": {
+                            "type": "boolean",
+                            "default": true
+                          }
+                        }
+                      },
                       "status_incidents": {
                         "type": "object",
                         "description": "H169: Service incidents; opt-in on both channels. Requires STATUS_INCIDENT_NOTICES_ENABLED for processing. Quiet hours hold Telegram notices.",
@@ -21667,6 +21911,23 @@
                           "telegram": {
                             "type": "boolean",
                             "default": true
+                          }
+                        }
+                      },
+                      "low_balance_pause": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "description": "K195: Low-balance agent pause notices. Both channels default on; account pause opt-in defaults off. Telegram respects quiet hours.",
+                        "required": [
+                          "inbox",
+                          "telegram"
+                        ],
+                        "properties": {
+                          "inbox": {
+                            "type": "boolean"
+                          },
+                          "telegram": {
+                            "type": "boolean"
                           }
                         }
                       }
@@ -23382,6 +23643,135 @@
           }
         }
       }
+    },
+    "/api/v1/account/low-balance-pause": {
+      "get": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Read the low-balance agent pause",
+        "description": "K195. Active account management owner Bearer key only; session, team, read and inference keys refused. No-store. LOW_BALANCE_PAUSE_ENABLED defaults false; also requires AGENT_POLICY_ENABLED. Worker low-balance-pause runs each minute; production WORKER_JOBS must allow it. Uses settled balance, Stop all and existing per-agent events. First below-threshold check pauses until resumed; no repeat until a check sees balance strictly above the amount. Equality does nothing. Saving the same amount preserves the claim; changing it starts a new check. Null disables future pauses without resuming agents. Latest 100 notices stay in account KV. low_balance_pause notices follow inbox/Telegram preferences and quiet hours. Only rulebooks on Anyroute are covered; in-flight requests may finish. Resume all link opens /agents/?command=resume-all for confirmation.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "operationId": "getLowBalancePause",
+        "responses": {
+          "200": {
+            "description": "Current pause setting and feature availability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "low_balance_usd",
+                    "enabled"
+                  ],
+                  "properties": {
+                    "low_balance_usd": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0,
+                      "maximum": 1000000,
+                      "description": "Null means automatic pause is off; otherwise the chosen settled balance threshold in dollars."
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "LOW_BALANCE_PAUSE_ENABLED and AGENT_POLICY_ENABLED are both on. The saved threshold remains separate."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Keys"
+        ],
+        "summary": "Set the low-balance agent pause",
+        "description": "K195. Active account management owner Bearer key only; session, team, read and inference keys refused. No-store. LOW_BALANCE_PAUSE_ENABLED defaults false; also requires AGENT_POLICY_ENABLED. Worker low-balance-pause runs each minute; production WORKER_JOBS must allow it. Uses settled balance, Stop all and existing per-agent events. First below-threshold check pauses until resumed; no repeat until a check sees balance strictly above the amount. Equality does nothing. Saving the same amount preserves the claim; changing it starts a new check. Null disables future pauses without resuming agents. Latest 100 notices stay in account KV. low_balance_pause notices follow inbox/Telegram preferences and quiet hours. Only rulebooks on Anyroute are covered; in-flight requests may finish. Resume all link opens /agents/?command=resume-all for confirmation.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "operationId": "setLowBalancePause",
+        "responses": {
+          "200": {
+            "description": "Current pause setting and feature availability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "low_balance_usd",
+                    "enabled"
+                  ],
+                  "properties": {
+                    "low_balance_usd": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0,
+                      "maximum": 1000000,
+                      "description": "Null means automatic pause is off; otherwise the chosen settled balance threshold in dollars."
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "LOW_BALANCE_PAUSE_ENABLED and AGENT_POLICY_ENABLED are both on. The saved threshold remains separate."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "low_balance_usd"
+                ],
+                "properties": {
+                  "low_balance_usd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1000000,
+                    "description": "Null means automatic pause is off; otherwise the chosen settled balance threshold in dollars."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -23803,7 +24193,39 @@
       }
     },
     "schemas": {
-    "SummarySchedule": { "type": "object", "additionalProperties": false, "required": ["cadence", "hour", "time_zone"], "properties": { "cadence": { "type": "string", "enum": ["weekly", "daily"], "default": "weekly" }, "hour": { "type": "integer", "minimum": 0, "maximum": 23, "default": 9 }, "time_zone": { "type": "string", "minLength": 1, "maxLength": 100, "default": "UTC", "description": "IANA time zone; browser controls initially suggest the device zone. Calendar periods follow daylight-saving changes." } }, "description": "K188: optional account summary schedule stored in existing notification preferences. Daily covers the previous local calendar day; weekly covers the previous local Monday through Sunday. Hourly checks retry on the scheduled day only; DST gaps deliver at the next available hour, folds reuse the period claim. Ordinary concurrent runs and cadence switches do not repeat a period. Telegram acceptance before database commit can repeat delivery." },
+      "SummarySchedule": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cadence",
+          "hour",
+          "time_zone"
+        ],
+        "properties": {
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "weekly",
+              "daily"
+            ],
+            "default": "weekly"
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "default": 9
+          },
+          "time_zone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "default": "UTC",
+            "description": "IANA time zone; browser controls initially suggest the device zone. Calendar periods follow daylight-saving changes."
+          }
+        },
+        "description": "K188: optional account summary schedule stored in existing notification preferences. Daily covers the previous local calendar day; weekly covers the previous local Monday through Sunday. Hourly checks retry on the scheduled day only; DST gaps deliver at the next available hour, folds reuse the period claim. Ordinary concurrent runs and cadence switches do not repeat a period. Telegram acceptance before database commit can repeat delivery."
+      },
       "BusinessDetails": {
         "x-card": "H168",
         "type": "object",

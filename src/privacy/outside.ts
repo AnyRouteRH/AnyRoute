@@ -35,6 +35,7 @@ import { shareToAnyrouteBrowser } from "./share-to-anyroute.ts"; // D137
 import { idempotencyFamily, idempotencyReader, idempotencyMemory } from "./idempotency.ts"; // D145
 import { modelAlternativesReader } from "./model-alternatives.ts"; // B121
 import { lowBalanceReader } from "./low-balance.ts"; // B119
+import { lowBalancePauseReader, lowBalancePauseStores } from "./low-balance-pause.ts"; // K195
 import { projectBudgetReader } from "./project-budgets.ts"; // D139
 import { anonymousRateFamily, hardeningAddresses, hardeningBodies } from "./hardening.ts"; // HD1
 import { weeklySummaryReader } from "./weekly-summary.ts"; // B120
@@ -477,6 +478,7 @@ const bodyReaders: ExternalDoc["bodyReaders"] = [
   weeklySummaryReader, // B120
   modelAlternativesReader, // B121
   lowBalanceReader, // B119
+  lowBalancePauseReader, // K195
   projectBudgetReader, // D139
   ...hardeningBodies, // HD1
   { file: "src/api/guard.ts", carries: "settings", reads: "A strict bounded action name, optional target label and order digest, decimal amount and approval identifier, or a reported outcome.", then: "Authenticates the deciding key and serializes checks and reports with the account lock. Action and target are readable caller-chosen labels; targets can name a wallet or host. No full order details are accepted. When DECISION_TAGS_ENABLED is on and an order digest is given, the decision also reads the same agent's calls from the preceding 24 hours whose stored receipt carries that digest as decision_tag and returns their ids, model, provider and time as informed_by; GET /api/v1/guard/decisions reads decisions by digest or receipt id within the Activity scope. Neither stores anything new.", kept: "Decision metadata and reported outcomes in agent_action_decisions, with action decisions and outcomes on agent_policy_events and action approval projections in agent_approvals. Reported amounts are not verified execution.", evidence: [ev("src/api/guard.ts", "guardDecideInput.parse(await readJson(c))")] }, // V98
@@ -838,6 +840,7 @@ export const EXTERNAL: ExternalDoc = {
     ...quietAlertStores, // D141
     ...securityAlertStores, // D138
     ...notificationStores, // E146
+    ...lowBalancePauseStores, // K195
     watchingMemory, // J180
     idempotencyMemory, // D145
     ...scheduledPromptsStores, // D136

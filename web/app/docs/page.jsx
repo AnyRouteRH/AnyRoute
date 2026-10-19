@@ -38,6 +38,7 @@ import ModelPageDocs from "../../components/ModelPageDocs"; // E151
 import ModelCompareDocs from "../../components/ModelCompareDocs"; // G165
 import DepositCountdownDocs from "../../components/DepositCountdownDocs"; // B123
 import ModelAlternativesDocs from "../../components/ModelAlternativesDocs"; // B121
+import LowBalancePauseDocs from "../../components/LowBalancePauseDocs"; // K195
 import RunwayDocs from "../../components/RunwayDocs"; // B119
 import ContinueAnswerDocs from "../../components/ContinueAnswerDocs"; // H166
 import ChatCapDocs from "../../components/ChatCapDocs"; // G162
@@ -958,6 +959,7 @@ export default function Docs() {
           <InboxFiltersDocs /> {/* H173 */}
           <SnoozeDocs /> {/* K187 */}
           <DocsFeatureIndex /><RunwayDocs /> {/* B119 */}
+          <LowBalancePauseDocs /> {/* K195 */}
           <KeyProvisioningDocs /> {/* ZK6 */}
           <ReadOnlyKeysDocs /> {/* E149 */}
           <UnusedKeysDocs /> {/* B125 */}

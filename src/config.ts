@@ -383,6 +383,7 @@ const schema = z.object({
   TELEGRAM_BOT_USERNAME: opt, // the bot's public @username, shown on the link panel with a one-tap t.me link
   TELEGRAM_PHOTOS_ENABLED: bool.default(false), // D142
   LOW_BALANCE_ALERTS_ENABLED: bool.default(false), // B119
+  LOW_BALANCE_PAUSE_ENABLED: bool.default(false), // K195
   SCHEDULED_PROMPTS_ENABLED: bool.default(false), // D136
   PRICE_NOTICES_ENABLED: bool.default(false), // C133
   ...securityAlertsEnv, // D138
@@ -568,6 +569,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
       allowed.push("incident-notices"); // H169
       allowed.push("deposit-pings"); // B123
       allowed.push("low-balance-alerts"); // B119
+      allowed.push("low-balance-pause"); // K195
       allowed.push("price-notices"); // C133
       allowed.push("quiet-agent-alerts"); // D141
       allowed.push("scheduled-prompts", "security-alerts", "project-budget-telegram"); // D136, D138, D139: their worker jobs
@@ -715,6 +717,7 @@ export function loadConfig(overrides: Record<string, unknown> = {}) {
     port: e.PORT,
     publicUrl: e.PUBLIC_BASE_URL.replace(/\/$/, ""),
     lowBalanceAlertsEnabled: e.LOW_BALANCE_ALERTS_ENABLED, // B119
+    lowBalancePauseEnabled: e.LOW_BALANCE_PAUSE_ENABLED, // K195
     scheduledPromptsEnabled: e.SCHEDULED_PROMPTS_ENABLED, // D136
     priceNoticesEnabled: e.PRICE_NOTICES_ENABLED, // C133
     securityAlertsEnabled: e.SECURITY_ALERTS_ENABLED, // D138

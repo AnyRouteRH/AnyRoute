@@ -9,6 +9,7 @@ const groups = {
   security: 'security', price_notice: 'models', model_watch: 'models',
   agreement: 'other', host: 'other', weekly_summary: 'other',
 };
+groups.low_balance_pause = 'agents'; // K195
 export const inboxGroup = kind => Object.hasOwn(groups, kind) ? groups[kind] : 'other';
 export const selectedKinds = search => [...new Set((new URLSearchParams(search).get('kinds') || '').split(',').filter(kind => /^[a-z][a-z_-]*$/.test(kind)))];
 export function filterUrl(href, kinds) {

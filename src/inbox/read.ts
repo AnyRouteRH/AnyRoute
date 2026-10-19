@@ -9,6 +9,7 @@ import { delegatedInbox, refreshInboxAuthority } from "./approvers.ts"; // E153
 import { securityInbox } from "../security-alerts/worker.ts"; // D138
 import { scheduleInbox } from "../schedules/inbox.ts"; // D136
 import { depositPingItems } from "./deposit-pings.ts"; // B123
+import { lowBalancePauseInbox } from "../account/low-balance-pause.ts"; // K195
 import { lowBalanceInbox } from "../account/low-balance.ts"; // B119
 import { quietInboxItems } from "../agents/quiet-alerts.ts"; // D141
 import { priceNoticeItems } from "../catalog/price-notices.ts"; // C133
@@ -117,6 +118,7 @@ export async function readInbox(ctx: Ctx, key: KeyRow, since?: string, options: 
     items.push(...hosts.slice(0, 100).map(row => ({ id: `host:${row.id}:${row.at.toISOString()}`, at: row.at.toISOString(), kind: "host", title: "Host record updated", status: row.status, href: `/hosts/?id=${encodeURIComponent(row.id)}`, unread: unread(row.at.toISOString()) })));
   }
   if (scope.whole) { const alerts = await lowBalanceInbox(ctx, key.accountId, since, asOf); capped ||= alerts.length > 100; items.push(...alerts.slice(0, 100)); } // B119
+  if (scope.whole && key.management) items.push(...await lowBalancePauseInbox(ctx, key.accountId, asOf, since)); // K195
   if (scope.canDecide) { const notices = await scheduleInbox(ctx, key, asOf, since); capped ||= notices.length > 100; items.push(...notices.slice(0, 100)); } // D136
   items.push(...await weeklyInbox(ctx, key, scope.whole, since)); // E146
   await filterNotificationInbox(ctx, key.accountId, items); // E146

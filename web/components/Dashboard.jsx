@@ -18,6 +18,7 @@ import { KeyExpiryStatus, KeyExpiryRestore } from "./account/KeyExpiry.js"; // C
 import { expiryKeyFields, withKeyExpiry } from "../lib/key-expiry.js"; // C127
 import { api as accountKeyRequest } from "../lib/api"; // C127
 import "./account/key-expiry.css"; // C127
+import LowBalancePauseSetting from "./runway/LowBalancePauseSetting"; // K195
 import LowBalanceSetting from "./runway/LowBalanceSetting"; // B119
 import DepositCreditStatus from './account/DepositCreditStatus'; // V97
 import DepositProgress from './account/DepositProgress'; // V97B
@@ -1590,6 +1591,7 @@ export default function Dashboard() {
           )}
           {live && tab === "Payments" && <AddFunds showProgress={false} key={apiKey} apiKey={apiKey} balance={ws?.credits?.available} onBalance={() => refresh()}/>} {/* ON1 */}
           {live && tab === "Payments" && <LowBalanceSetting key={apiKey} apiKey={apiKey}/>} {/* B119 */}
+          {live && tab === "Payments" && <LowBalancePauseSetting key={apiKey} apiKey={apiKey}/>} {/* K195 */}
           {live && tab === "Payments" && <DepositProgress apiKey={apiKey}/>} {/* V97B */}
           {tab === "Payments" && escrowOn && (
             <>

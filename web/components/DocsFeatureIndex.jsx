@@ -1,5 +1,6 @@
 const sections = [
   ["snooze", "Snooze a notice"], // K187
+  ["low-balance-pause", "Pause agents when your balance runs low"], // K195
   ["telegram-menu", "One Telegram menu"], // J179
   ["account-checkup", "Account checkup"], // J177
   ["business-details", "Business details on statements"], // H168
